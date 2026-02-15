@@ -5,6 +5,17 @@ use rusqlite::Connection;
 
 use crate::models::{Asset, FileLocation, Variant};
 
+/// A row returned from a search query.
+#[derive(Debug)]
+pub struct SearchRow {
+    pub asset_id: String,
+    pub name: Option<String>,
+    pub asset_type: String,
+    pub created_at: String,
+    pub original_filename: String,
+    pub format: String,
+}
+
 /// SQLite-backed local catalog for fast queries. This is a derived cache,
 /// not the source of truth (sidecar files are).
 pub struct Catalog {
@@ -149,6 +160,62 @@ impl Catalog {
         Ok(Self { conn })
     }
 
+    /// Search assets by optional filters. Results join assets with variants.
+    pub fn search_assets(
+        &self,
+        text: Option<&str>,
+        asset_type: Option<&str>,
+        tag: Option<&str>,
+        format: Option<&str>,
+    ) -> Result<Vec<SearchRow>> {
+        let mut sql = String::from(
+            "SELECT a.id, a.name, a.asset_type, a.created_at, v.original_filename, v.format \
+             FROM assets a JOIN variants v ON a.id = v.asset_id WHERE 1=1",
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if let Some(text) = text {
+            sql.push_str(" AND (a.name LIKE ? OR v.original_filename LIKE ? OR a.description LIKE ?)");
+            let pattern = format!("%{text}%");
+            params.push(Box::new(pattern.clone()));
+            params.push(Box::new(pattern.clone()));
+            params.push(Box::new(pattern));
+        }
+        if let Some(asset_type) = asset_type {
+            sql.push_str(" AND a.asset_type = ?");
+            params.push(Box::new(asset_type.to_lowercase()));
+        }
+        if let Some(tag) = tag {
+            sql.push_str(" AND a.tags LIKE ?");
+            params.push(Box::new(format!("%{tag}%")));
+        }
+        if let Some(format_filter) = format {
+            sql.push_str(" AND v.format = ?");
+            params.push(Box::new(format_filter.to_lowercase()));
+        }
+
+        sql.push_str(" ORDER BY a.created_at DESC");
+
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(param_refs.as_slice(), |row| {
+            Ok(SearchRow {
+                asset_id: row.get(0)?,
+                name: row.get(1)?,
+                asset_type: row.get(2)?,
+                created_at: row.get(3)?,
+                original_filename: row.get(4)?,
+                format: row.get(5)?,
+            })
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
+    }
+
     /// Rebuild the entire catalog from sidecar files.
     pub fn rebuild(&self) -> Result<()> {
         anyhow::bail!("not yet implemented")
@@ -233,5 +300,101 @@ mod tests {
         catalog.insert_variant(&variant).unwrap();
 
         assert!(catalog.has_variant("sha256:abc123").unwrap());
+    }
+
+    /// Helper to set up a catalog with one asset and variant for search tests.
+    fn setup_search_catalog() -> Catalog {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Image);
+        asset.name = Some("sunset photo".to_string());
+        asset.description = Some("A beautiful sunset over the ocean".to_string());
+        asset.tags = vec!["landscape".to_string(), "nature".to_string()];
+        catalog.insert_asset(&asset).unwrap();
+
+        let variant = crate::models::Variant {
+            content_hash: "sha256:search1".to_string(),
+            asset_id: asset.id.clone(),
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 5000,
+            original_filename: "sunset_beach.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        catalog.insert_variant(&variant).unwrap();
+
+        // Add a second asset of different type
+        let mut asset2 = crate::models::Asset::new(crate::models::AssetType::Video);
+        asset2.name = Some("holiday clip".to_string());
+        catalog.insert_asset(&asset2).unwrap();
+
+        let variant2 = crate::models::Variant {
+            content_hash: "sha256:search2".to_string(),
+            asset_id: asset2.id,
+            role: crate::models::VariantRole::Original,
+            format: "mp4".to_string(),
+            file_size: 100_000,
+            original_filename: "holiday.mp4".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        catalog.insert_variant(&variant2).unwrap();
+
+        catalog
+    }
+
+    #[test]
+    fn search_by_text() {
+        let catalog = setup_search_catalog();
+        let results = catalog.search_assets(Some("sunset"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name.as_deref(), Some("sunset photo"));
+    }
+
+    #[test]
+    fn search_by_type() {
+        let catalog = setup_search_catalog();
+        let results = catalog.search_assets(None, Some("video"), None, None).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].format, "mp4");
+    }
+
+    #[test]
+    fn search_by_tag() {
+        let catalog = setup_search_catalog();
+        let results = catalog.search_assets(None, None, Some("landscape"), None).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name.as_deref(), Some("sunset photo"));
+    }
+
+    #[test]
+    fn search_by_format() {
+        let catalog = setup_search_catalog();
+        let results = catalog.search_assets(None, None, None, Some("jpg")).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].original_filename, "sunset_beach.jpg");
+    }
+
+    #[test]
+    fn search_no_results() {
+        let catalog = setup_search_catalog();
+        let results = catalog.search_assets(Some("nonexistent"), None, None, None).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn search_combined_filters() {
+        let catalog = setup_search_catalog();
+        let results = catalog
+            .search_assets(Some("sunset"), Some("image"), Some("landscape"), Some("jpg"))
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        // Combining mismatched filters yields nothing
+        let results = catalog
+            .search_assets(Some("sunset"), Some("video"), None, None)
+            .unwrap();
+        assert!(results.is_empty());
     }
 }

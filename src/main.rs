@@ -5,6 +5,7 @@ use dam::asset_service::AssetService;
 use dam::catalog::Catalog;
 use dam::config::CatalogConfig;
 use dam::device_registry::DeviceRegistry;
+use dam::query::QueryEngine;
 
 #[derive(Parser)]
 #[command(name = "dam", about = "Digital Asset Manager", version)]
@@ -180,8 +181,24 @@ fn main() {
             Ok(())
         }
         Commands::Search { query } => {
-            println!("Searching for '{query}'...");
-            println!("not yet implemented");
+            let catalog_root = dam::config::find_catalog_root()?;
+            let engine = QueryEngine::new(&catalog_root);
+            let results = engine.search(&query)?;
+            if results.is_empty() {
+                println!("No results found.");
+            } else {
+                for row in &results {
+                    let display_name = row
+                        .name
+                        .as_deref()
+                        .unwrap_or(&row.original_filename);
+                    println!(
+                        "{} [{}] ({}) — {}",
+                        display_name, row.asset_type, row.format, row.created_at
+                    );
+                }
+                println!("\n{} result(s)", results.len());
+            }
             Ok(())
         }
         Commands::Show { asset_id } => {
