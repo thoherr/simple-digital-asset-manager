@@ -216,6 +216,7 @@ dependencies = [
  "clap",
  "rusqlite",
  "serde",
+ "serde_json",
  "serde_yaml",
  "sha2",
  "tempfile",

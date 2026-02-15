@@ -1,4 +1,7 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
+use dam::asset_service::AssetService;
 use dam::catalog::Catalog;
 use dam::config::CatalogConfig;
 use dam::device_registry::DeviceRegistry;
@@ -148,8 +151,32 @@ fn main() {
             }
         },
         Commands::Import { paths } => {
-            println!("Importing {} path(s)...", paths.len());
-            println!("not yet implemented");
+            let catalog_root = dam::config::find_catalog_root()?;
+            let registry = DeviceRegistry::new(&catalog_root);
+
+            // Canonicalize input paths
+            let canonical_paths: Vec<PathBuf> = paths
+                .iter()
+                .map(|p| {
+                    std::fs::canonicalize(p)
+                        .unwrap_or_else(|_| PathBuf::from(p))
+                })
+                .collect();
+
+            if canonical_paths.is_empty() {
+                anyhow::bail!("No paths specified for import.");
+            }
+
+            // Find which volume contains the first path
+            let volume = registry.find_volume_for_path(&canonical_paths[0])?;
+
+            let service = AssetService::new(&catalog_root);
+            let result = service.import(&canonical_paths, &volume)?;
+
+            println!(
+                "Import complete: {} imported, {} skipped (duplicate)",
+                result.imported, result.skipped
+            );
             Ok(())
         }
         Commands::Search { query } => {

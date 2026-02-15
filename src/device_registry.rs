@@ -69,6 +69,31 @@ impl DeviceRegistry {
         Ok(volumes)
     }
 
+    /// Find the volume whose mount_point is a prefix of the given path.
+    /// Uses longest prefix match if multiple volumes match.
+    pub fn find_volume_for_path(&self, path: &Path) -> Result<Volume> {
+        let volumes = self.list()?;
+        let mut best: Option<&Volume> = None;
+        let mut best_len = 0;
+
+        for v in &volumes {
+            if path.starts_with(&v.mount_point) {
+                let len = v.mount_point.as_os_str().len();
+                if len > best_len {
+                    best = Some(v);
+                    best_len = len;
+                }
+            }
+        }
+
+        best.cloned().ok_or_else(|| {
+            anyhow::anyhow!(
+                "No registered volume contains path: {}",
+                path.display()
+            )
+        })
+    }
+
     /// Check which mount points are currently available.
     pub fn detect_online(&self) -> Result<()> {
         anyhow::bail!("not yet implemented")
