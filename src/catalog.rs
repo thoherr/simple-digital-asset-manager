@@ -65,8 +65,51 @@ impl Catalog {
         Ok(())
     }
 
+    /// Open an in-memory catalog (for testing).
+    #[cfg(test)]
+    pub fn open_in_memory() -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        Ok(Self { conn })
+    }
+
     /// Rebuild the entire catalog from sidecar files.
     pub fn rebuild(&self) -> Result<()> {
         anyhow::bail!("not yet implemented")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initialize_creates_all_tables() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let tables: Vec<String> = catalog
+            .conn
+            .prepare(
+                "SELECT name FROM sqlite_master \
+                 WHERE type='table' AND name NOT LIKE 'sqlite_%' \
+                 ORDER BY name",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+
+        assert_eq!(
+            tables,
+            vec!["assets", "file_locations", "recipes", "variants", "volumes"]
+        );
+    }
+
+    #[test]
+    fn initialize_is_idempotent() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+        catalog.initialize().unwrap(); // should not error
     }
 }

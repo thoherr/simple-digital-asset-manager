@@ -81,3 +81,79 @@ fn toml_minimal_serialize(config: &CatalogConfig) -> Result<String> {
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serialize_default_config() {
+        let config = CatalogConfig::default();
+        let toml = toml_minimal_serialize(&config).unwrap();
+        assert_eq!(toml, "# dam catalog configuration\n");
+    }
+
+    #[test]
+    fn serialize_with_default_volume() {
+        let uuid = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let config = CatalogConfig {
+            default_volume: Some(uuid),
+        };
+        let toml = toml_minimal_serialize(&config).unwrap();
+        assert!(toml.contains("default_volume = \"550e8400-e29b-41d4-a716-446655440000\""));
+    }
+
+    #[test]
+    fn parse_empty_config() {
+        let config = toml_minimal_parse("").unwrap();
+        assert!(config.default_volume.is_none());
+    }
+
+    #[test]
+    fn parse_comment_only() {
+        let config = toml_minimal_parse("# dam catalog configuration\n").unwrap();
+        assert!(config.default_volume.is_none());
+    }
+
+    #[test]
+    fn parse_with_default_volume() {
+        let input = "default_volume = \"550e8400-e29b-41d4-a716-446655440000\"\n";
+        let config = toml_minimal_parse(input).unwrap();
+        assert_eq!(
+            config.default_volume.unwrap().to_string(),
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+    }
+
+    #[test]
+    fn parse_with_whitespace() {
+        let input = "  default_volume  =  \"550e8400-e29b-41d4-a716-446655440000\"  \n";
+        let config = toml_minimal_parse(input).unwrap();
+        assert!(config.default_volume.is_some());
+    }
+
+    #[test]
+    fn round_trip() {
+        let uuid = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let original = CatalogConfig {
+            default_volume: Some(uuid),
+        };
+        let toml = toml_minimal_serialize(&original).unwrap();
+        let parsed = toml_minimal_parse(&toml).unwrap();
+        assert_eq!(original.default_volume, parsed.default_volume);
+    }
+
+    #[test]
+    fn round_trip_none() {
+        let original = CatalogConfig::default();
+        let toml = toml_minimal_serialize(&original).unwrap();
+        let parsed = toml_minimal_parse(&toml).unwrap();
+        assert_eq!(original.default_volume, parsed.default_volume);
+    }
+
+    #[test]
+    fn parse_invalid_uuid_errors() {
+        let input = "default_volume = \"not-a-uuid\"\n";
+        assert!(toml_minimal_parse(input).is_err());
+    }
+}
