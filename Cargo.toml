@@ -5,12 +5,12 @@ edition = "2021"
 description = "A digital asset manager for large collections of images and videos"
 
 [dependencies]
-anyhow = "=1.0.86"
-chrono = { version = "=0.4.38", features = ["serde"] }
-clap = { version = "=4.4.18", features = ["derive"] }
-rusqlite = { version = "=0.31.0", features = ["bundled"] }
-serde = { version = "=1.0.203", features = ["derive"] }
-serde_yaml = "=0.9.34"
-sha2 = "=0.10.8"
-thiserror = "=1.0.61"
-uuid = { version = "=1.6.1", features = ["v4", "serde"] }
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+sha2 = "0.10"
+thiserror = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
