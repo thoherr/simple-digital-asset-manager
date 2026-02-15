@@ -132,7 +132,18 @@ fn main() {
                 Ok(())
             }
             VolumeCommands::List => {
-                println!("not yet implemented");
+                let catalog_root = dam::config::find_catalog_root()?;
+                let registry = DeviceRegistry::new(&catalog_root);
+                let volumes = registry.list()?;
+                if volumes.is_empty() {
+                    println!("No volumes registered.");
+                } else {
+                    for v in &volumes {
+                        let status = if v.is_online { "online" } else { "offline" };
+                        println!("{} ({}) [{}]", v.label, v.id, status);
+                        println!("  Path: {}", v.mount_point.display());
+                    }
+                }
                 Ok(())
             }
         },

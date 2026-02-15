@@ -62,7 +62,11 @@ impl DeviceRegistry {
 
     /// List all volumes with online/offline status.
     pub fn list(&self) -> Result<Vec<Volume>> {
-        anyhow::bail!("not yet implemented")
+        let mut volumes = self.load()?;
+        for v in &mut volumes {
+            v.is_online = v.mount_point.exists();
+        }
+        Ok(volumes)
     }
 
     /// Check which mount points are currently available.
@@ -138,5 +142,30 @@ mod tests {
 
         let volumes = registry.load().unwrap();
         assert_eq!(volumes.len(), 2);
+    }
+
+    #[test]
+    fn list_detects_online_offline() {
+        let dir = setup();
+        let registry = DeviceRegistry::new(dir.path());
+
+        // Register a volume pointing at a path inside the temp dir (exists)
+        let online_path = dir.path().join("online-vol");
+        std::fs::create_dir(&online_path).unwrap();
+        registry
+            .register("Online", &online_path, VolumeType::Local)
+            .unwrap();
+
+        // Register a volume pointing at a path that doesn't exist
+        registry
+            .register("Offline", Path::new("/nonexistent/volume"), VolumeType::External)
+            .unwrap();
+
+        let volumes = registry.list().unwrap();
+        let online = volumes.iter().find(|v| v.label == "Online").unwrap();
+        let offline = volumes.iter().find(|v| v.label == "Offline").unwrap();
+
+        assert!(online.is_online);
+        assert!(!offline.is_online);
     }
 }
