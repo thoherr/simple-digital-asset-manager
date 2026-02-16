@@ -1,25 +1,11 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use uuid::Uuid;
 
 use crate::catalog::Catalog;
 use crate::content_store::ContentStore;
 use crate::metadata_store::MetadataStore;
 use crate::models::{Asset, AssetType, FileLocation, Variant, VariantRole, Volume};
-
-/// A group of variants that share the same content hash.
-pub struct DuplicateGroup {
-    pub content_hash: String,
-    pub locations: Vec<FileLocation>,
-}
-
-/// An integrity issue found during verification.
-pub struct IntegrityIssue {
-    pub content_hash: String,
-    pub location: FileLocation,
-    pub issue: String,
-}
 
 /// Result of an import operation.
 pub struct ImportResult {
@@ -130,35 +116,6 @@ impl AssetService {
         Ok(ImportResult { imported, skipped })
     }
 
-    /// Manually group variants into one asset.
-    pub fn group(&self, _variant_hashes: &[&str]) -> Result<Asset> {
-        anyhow::bail!("not yet implemented")
-    }
-
-    /// Remove a variant from a group.
-    pub fn ungroup(&self, _asset_id: Uuid, _variant_hash: &str) -> Result<()> {
-        anyhow::bail!("not yet implemented")
-    }
-
-    /// Add tags to an asset.
-    pub fn tag(&self, _asset_id: Uuid, _tags: &[String]) -> Result<()> {
-        anyhow::bail!("not yet implemented")
-    }
-
-    /// Move all variants of an asset to another volume.
-    pub fn relocate(&self, _asset_id: Uuid, _target_volume: Uuid) -> Result<()> {
-        anyhow::bail!("not yet implemented")
-    }
-
-    /// Find variants with the same hash on multiple locations.
-    pub fn find_duplicates(&self) -> Result<Vec<DuplicateGroup>> {
-        anyhow::bail!("not yet implemented")
-    }
-
-    /// Verify hashes for a volume or all online volumes.
-    pub fn check_integrity(&self, _volume_id: Option<Uuid>) -> Result<Vec<IntegrityIssue>> {
-        anyhow::bail!("not yet implemented")
-    }
 }
 
 /// Determine the asset type from a file extension.
