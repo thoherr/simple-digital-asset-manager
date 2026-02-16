@@ -36,6 +36,7 @@ pub struct VariantDetails {
     pub format: String,
     pub file_size: u64,
     pub original_filename: String,
+    pub source_metadata: std::collections::HashMap<String, String>,
     pub locations: Vec<LocationDetails>,
 }
 
@@ -77,7 +78,8 @@ impl Catalog {
                 role TEXT NOT NULL,
                 format TEXT NOT NULL,
                 file_size INTEGER NOT NULL,
-                original_filename TEXT NOT NULL
+                original_filename TEXT NOT NULL,
+                source_metadata TEXT NOT NULL DEFAULT '{}'
             );
 
             CREATE TABLE IF NOT EXISTS file_locations (
@@ -128,9 +130,10 @@ impl Catalog {
 
     /// Insert a variant into the catalog.
     pub fn insert_variant(&self, variant: &Variant) -> Result<()> {
+        let meta_json = serde_json::to_string(&variant.source_metadata)?;
         self.conn.execute(
-            "INSERT OR REPLACE INTO variants (content_hash, asset_id, role, format, file_size, original_filename) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT OR REPLACE INTO variants (content_hash, asset_id, role, format, file_size, original_filename, source_metadata) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![
                 variant.content_hash,
                 variant.asset_id.to_string(),
@@ -138,6 +141,7 @@ impl Catalog {
                 variant.format,
                 variant.file_size,
                 variant.original_filename,
+                meta_json,
             ],
         )?;
         Ok(())
@@ -290,17 +294,21 @@ impl Catalog {
 
         // Load variants
         let mut vstmt = self.conn.prepare(
-            "SELECT content_hash, role, format, file_size, original_filename \
+            "SELECT content_hash, role, format, file_size, original_filename, source_metadata \
              FROM variants WHERE asset_id = ?1",
         )?;
         let variants: Vec<VariantDetails> = vstmt
             .query_map(rusqlite::params![asset_id], |vrow| {
+                let meta_json: String = vrow.get(5)?;
+                let source_metadata: std::collections::HashMap<String, String> =
+                    serde_json::from_str(&meta_json).unwrap_or_default();
                 Ok(VariantDetails {
                     content_hash: vrow.get(0)?,
                     role: vrow.get(1)?,
                     format: vrow.get(2)?,
                     file_size: vrow.get(3)?,
                     original_filename: vrow.get(4)?,
+                    source_metadata,
                     locations: Vec::new(), // filled below
                 })
             })?

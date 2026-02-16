@@ -241,6 +241,13 @@ fn main() {
                             loc.volume_label, loc.relative_path
                         );
                     }
+                    if !v.source_metadata.is_empty() {
+                        let mut keys: Vec<&String> = v.source_metadata.keys().collect();
+                        keys.sort();
+                        for key in keys {
+                            println!("    {}: {}", key, v.source_metadata[key]);
+                        }
+                    }
                 }
             }
 

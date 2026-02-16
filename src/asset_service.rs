@@ -87,7 +87,12 @@ impl AssetService {
                     )
                 })?;
 
+            let exif_data = crate::exif_reader::extract(file_path);
+
             let mut asset = Asset::new(asset_type);
+            if let Some(date_taken) = exif_data.date_taken {
+                asset.created_at = date_taken;
+            }
             asset.name = Some(filename.clone());
 
             let location = FileLocation {
@@ -103,7 +108,7 @@ impl AssetService {
                 format: ext.to_lowercase(),
                 file_size,
                 original_filename: filename,
-                source_metadata: Default::default(),
+                source_metadata: exif_data.source_metadata,
                 locations: vec![location.clone()],
             };
 
