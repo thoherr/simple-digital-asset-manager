@@ -31,4 +31,8 @@ Core layers: CLI → Core Library (Asset Service, Content Store, Metadata Store,
 
 ## Status
 
-Project is in design phase. See `specification.md` for requirements.
+Core CLI is functional. See `specification.md` for full requirements.
+
+**Implemented commands**: `init`, `volume add/list`, `import`, `search`, `show`, `tag`, `group`, `rebuild-catalog`
+
+**Not yet implemented**: `relocate`, `verify`, `duplicates`
