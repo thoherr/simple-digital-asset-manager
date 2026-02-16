@@ -41,12 +41,16 @@ enum Commands {
         asset_id: String,
     },
 
-    /// Add tags to an asset
+    /// Add or remove tags on an asset
     Tag {
         /// Asset ID
         asset_id: String,
 
-        /// Tags to add
+        /// Remove the specified tags instead of adding them
+        #[arg(long)]
+        remove: bool,
+
+        /// Tags to add or remove
         tags: Vec<String>,
     },
 
@@ -242,9 +246,23 @@ fn main() {
 
             Ok(())
         }
-        Commands::Tag { asset_id, tags } => {
-            println!("Tagging asset {asset_id} with {:?}...", tags);
-            println!("not yet implemented");
+        Commands::Tag { asset_id, remove, tags } => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let engine = QueryEngine::new(&catalog_root);
+            let result = engine.tag(&asset_id, &tags, remove)?;
+
+            if !result.changed.is_empty() {
+                if remove {
+                    println!("Removed tags: {}", result.changed.join(", "));
+                } else {
+                    println!("Added tags: {}", result.changed.join(", "));
+                }
+            }
+            if result.current_tags.is_empty() {
+                println!("Tags: (none)");
+            } else {
+                println!("Tags: {}", result.current_tags.join(", "));
+            }
             Ok(())
         }
         Commands::Group { variant_hashes } => {
