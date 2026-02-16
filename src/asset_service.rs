@@ -11,12 +11,14 @@ use crate::models::{Asset, AssetType, FileLocation, Variant, VariantRole, Volume
 /// Status of a single file during import.
 pub enum FileStatus {
     Imported,
+    LocationAdded,
     Skipped,
 }
 
 /// Result of an import operation.
 pub struct ImportResult {
     pub imported: usize,
+    pub locations_added: usize,
     pub skipped: usize,
 }
 
@@ -52,6 +54,7 @@ impl AssetService {
 
         let files = resolve_files(paths);
         let mut imported = 0;
+        let mut locations_added = 0;
         let mut skipped = 0;
 
         for file_path in &files {
@@ -62,8 +65,57 @@ impl AssetService {
                 .with_context(|| format!("Failed to hash {}", file_path.display()))?;
 
             if catalog.has_variant(&content_hash)? {
-                skipped += 1;
-                on_file(file_path, FileStatus::Skipped, file_start.elapsed());
+                // Variant exists — check if we should add a new location
+                let relative_path = file_path
+                    .strip_prefix(&volume.mount_point)
+                    .with_context(|| {
+                        format!(
+                            "File {} is not under volume mount point {}",
+                            file_path.display(),
+                            volume.mount_point.display()
+                        )
+                    })?;
+
+                let location = FileLocation {
+                    volume_id: volume.id,
+                    relative_path: relative_path.to_path_buf(),
+                    verified_at: None,
+                };
+
+                let asset_id = catalog
+                    .find_asset_id_by_variant(&content_hash)?
+                    .with_context(|| {
+                        format!("Variant {} exists but no owning asset found", content_hash)
+                    })?;
+                let asset_id: uuid::Uuid = asset_id.parse().with_context(|| {
+                    format!("Invalid asset UUID: {}", asset_id)
+                })?;
+                let mut asset = metadata_store.load(asset_id)?;
+
+                // Find the variant and check if this exact location already exists
+                let variant = asset
+                    .variants
+                    .iter_mut()
+                    .find(|v| v.content_hash == content_hash);
+                if let Some(variant) = variant {
+                    let already_tracked = variant.locations.iter().any(|l| {
+                        l.volume_id == location.volume_id
+                            && l.relative_path == location.relative_path
+                    });
+                    if already_tracked {
+                        skipped += 1;
+                        on_file(file_path, FileStatus::Skipped, file_start.elapsed());
+                        continue;
+                    }
+                    variant.locations.push(location.clone());
+                    metadata_store.save(&asset)?;
+                    catalog.insert_file_location(&content_hash, &location)?;
+                    locations_added += 1;
+                    on_file(file_path, FileStatus::LocationAdded, file_start.elapsed());
+                } else {
+                    skipped += 1;
+                    on_file(file_path, FileStatus::Skipped, file_start.elapsed());
+                }
                 continue;
             }
 
@@ -134,7 +186,7 @@ impl AssetService {
             on_file(file_path, FileStatus::Imported, file_start.elapsed());
         }
 
-        Ok(ImportResult { imported, skipped })
+        Ok(ImportResult { imported, locations_added, skipped })
     }
 
 }
@@ -238,5 +290,89 @@ mod tests {
 
         let files = resolve_files(&[dir.path().to_path_buf()]);
         assert_eq!(files.len(), 2);
+    }
+
+    /// Set up a minimal catalog in a temp directory for import tests.
+    fn setup_catalog(dir: &std::path::Path) {
+        std::fs::create_dir_all(dir.join("metadata")).unwrap();
+        crate::config::CatalogConfig::default().save(dir).unwrap();
+        let catalog = crate::catalog::Catalog::open(dir).unwrap();
+        catalog.initialize().unwrap();
+    }
+
+    #[test]
+    fn import_duplicate_from_different_path_adds_location() {
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+
+        // Create a volume with two copies of the same file at different paths
+        let vol_dir = tempfile::tempdir().unwrap();
+        let dir_a = vol_dir.path().join("a");
+        let dir_b = vol_dir.path().join("b");
+        std::fs::create_dir_all(&dir_a).unwrap();
+        std::fs::create_dir_all(&dir_b).unwrap();
+        std::fs::write(dir_a.join("photo.jpg"), "identical content").unwrap();
+        std::fs::write(dir_b.join("photo.jpg"), "identical content").unwrap();
+
+        let volume = crate::models::Volume::new(
+            "test-vol".into(),
+            vol_dir.path().to_path_buf(),
+            crate::models::VolumeType::Local,
+        );
+
+        let service = AssetService::new(catalog_dir.path());
+
+        // First import
+        let r1 = service.import(&[dir_a.join("photo.jpg")], &volume).unwrap();
+        assert_eq!(r1.imported, 1);
+        assert_eq!(r1.locations_added, 0);
+        assert_eq!(r1.skipped, 0);
+
+        // Second import — same content, different path
+        let r2 = service.import(&[dir_b.join("photo.jpg")], &volume).unwrap();
+        assert_eq!(r2.imported, 0);
+        assert_eq!(r2.locations_added, 1);
+        assert_eq!(r2.skipped, 0);
+
+        // Verify sidecar has 2 locations
+        let catalog = crate::catalog::Catalog::open(catalog_dir.path()).unwrap();
+        let content_hash = crate::content_store::ContentStore::new(catalog_dir.path())
+            .ingest(&dir_a.join("photo.jpg"), &volume)
+            .unwrap();
+        let asset_id_str = catalog.find_asset_id_by_variant(&content_hash).unwrap().unwrap();
+        let asset_id: uuid::Uuid = asset_id_str.parse().unwrap();
+        let metadata_store = crate::metadata_store::MetadataStore::new(catalog_dir.path());
+        let asset = metadata_store.load(asset_id).unwrap();
+        let variant = &asset.variants[0];
+        assert_eq!(variant.locations.len(), 2);
+        assert_eq!(variant.locations[0].relative_path, std::path::Path::new("a/photo.jpg"));
+        assert_eq!(variant.locations[1].relative_path, std::path::Path::new("b/photo.jpg"));
+    }
+
+    #[test]
+    fn import_duplicate_from_same_path_is_skipped() {
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+
+        let vol_dir = tempfile::tempdir().unwrap();
+        std::fs::write(vol_dir.path().join("photo.jpg"), "some content").unwrap();
+
+        let volume = crate::models::Volume::new(
+            "test-vol".into(),
+            vol_dir.path().to_path_buf(),
+            crate::models::VolumeType::Local,
+        );
+
+        let service = AssetService::new(catalog_dir.path());
+
+        // First import
+        let r1 = service.import(&[vol_dir.path().join("photo.jpg")], &volume).unwrap();
+        assert_eq!(r1.imported, 1);
+
+        // Second import — exact same path
+        let r2 = service.import(&[vol_dir.path().join("photo.jpg")], &volume).unwrap();
+        assert_eq!(r2.imported, 0);
+        assert_eq!(r2.locations_added, 0);
+        assert_eq!(r2.skipped, 1);
     }
 }

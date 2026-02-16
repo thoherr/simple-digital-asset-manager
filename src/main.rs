@@ -191,6 +191,7 @@ fn main() {
                 service.import_with_callback(&canonical_paths, &volume, |path, status, elapsed| {
                     let label = match status {
                         FileStatus::Imported => "OK",
+                        FileStatus::LocationAdded => "location added",
                         FileStatus::Skipped => "skipped",
                     };
                     let name = path.file_name()
@@ -202,10 +203,14 @@ fn main() {
                 service.import(&canonical_paths, &volume)?
             };
 
-            println!(
-                "Import complete: {} imported, {} skipped (duplicate)",
+            let mut summary = format!(
+                "Import complete: {} imported, {} skipped",
                 result.imported, result.skipped
             );
+            if result.locations_added > 0 {
+                summary.push_str(&format!(", {} location(s) added", result.locations_added));
+            }
+            println!("{summary}");
             Ok(())
         }
         Commands::Search { query } => {
