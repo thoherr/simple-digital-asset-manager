@@ -5,6 +5,7 @@ use dam::asset_service::AssetService;
 use dam::catalog::Catalog;
 use dam::config::CatalogConfig;
 use dam::device_registry::DeviceRegistry;
+use dam::metadata_store::MetadataStore;
 use dam::query::QueryEngine;
 
 #[derive(Parser)]
@@ -308,8 +309,27 @@ fn main() {
             Ok(())
         }
         Commands::RebuildCatalog => {
-            println!("Rebuilding catalog from sidecar files...");
-            println!("not yet implemented");
+            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog = Catalog::open(&catalog_root)?;
+            catalog.initialize()?;
+
+            // Ensure volume rows exist so FK references work
+            let registry = DeviceRegistry::new(&catalog_root);
+            for volume in registry.list()? {
+                catalog.ensure_volume(&volume)?;
+            }
+
+            // Clear existing data rows
+            catalog.rebuild()?;
+
+            // Sync sidecar files into catalog
+            let store = MetadataStore::new(&catalog_root);
+            let result = store.sync_to_catalog(&catalog)?;
+
+            println!("Rebuild complete: {} asset(s) synced", result.synced);
+            if result.errors > 0 {
+                println!("  {} error(s) encountered", result.errors);
+            }
             Ok(())
         }
     })();
