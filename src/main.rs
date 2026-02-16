@@ -15,6 +15,10 @@ struct Cli {
     #[arg(short = 't', long = "time", global = true)]
     timing: bool,
 
+    /// Log individual file progress during import
+    #[arg(short = 'l', long = "log", global = true)]
+    log: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -182,7 +186,21 @@ fn main() {
             let volume = registry.find_volume_for_path(&canonical_paths[0])?;
 
             let service = AssetService::new(&catalog_root);
-            let result = service.import(&canonical_paths, &volume)?;
+            let result = if cli.log {
+                use dam::asset_service::FileStatus;
+                service.import_with_callback(&canonical_paths, &volume, |path, status, elapsed| {
+                    let label = match status {
+                        FileStatus::Imported => "OK",
+                        FileStatus::Skipped => "skipped",
+                    };
+                    let name = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or_else(|| path.to_str().unwrap_or("?"));
+                    eprintln!("  {} — {} ({:.3}s)", name, label, elapsed.as_secs_f64());
+                })?
+            } else {
+                service.import(&canonical_paths, &volume)?
+            };
 
             println!(
                 "Import complete: {} imported, {} skipped (duplicate)",

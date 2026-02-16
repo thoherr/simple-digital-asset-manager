@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 
@@ -6,6 +7,12 @@ use crate::catalog::Catalog;
 use crate::content_store::ContentStore;
 use crate::metadata_store::MetadataStore;
 use crate::models::{Asset, AssetType, FileLocation, Variant, VariantRole, Volume};
+
+/// Status of a single file during import.
+pub enum FileStatus {
+    Imported,
+    Skipped,
+}
 
 /// Result of an import operation.
 pub struct ImportResult {
@@ -27,6 +34,16 @@ impl AssetService {
 
     /// Import files: hash, deduplicate, create assets/variants, write sidecars, insert into DB.
     pub fn import(&self, paths: &[PathBuf], volume: &Volume) -> Result<ImportResult> {
+        self.import_with_callback(paths, volume, |_, _, _| {})
+    }
+
+    /// Import files with a per-file callback reporting path, status, and elapsed time.
+    pub fn import_with_callback(
+        &self,
+        paths: &[PathBuf],
+        volume: &Volume,
+        on_file: impl Fn(&Path, FileStatus, Duration),
+    ) -> Result<ImportResult> {
         let content_store = ContentStore::new(&self.catalog_root);
         let metadata_store = MetadataStore::new(&self.catalog_root);
         let catalog = Catalog::open(&self.catalog_root)?;
@@ -38,12 +55,15 @@ impl AssetService {
         let mut skipped = 0;
 
         for file_path in &files {
+            let file_start = Instant::now();
+
             let content_hash = content_store
                 .ingest(file_path, volume)
                 .with_context(|| format!("Failed to hash {}", file_path.display()))?;
 
             if catalog.has_variant(&content_hash)? {
                 skipped += 1;
+                on_file(file_path, FileStatus::Skipped, file_start.elapsed());
                 continue;
             }
 
@@ -111,6 +131,7 @@ impl AssetService {
             catalog.insert_file_location(&content_hash, &location)?;
 
             imported += 1;
+            on_file(file_path, FileStatus::Imported, file_start.elapsed());
         }
 
         Ok(ImportResult { imported, skipped })
