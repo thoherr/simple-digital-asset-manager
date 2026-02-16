@@ -11,6 +11,10 @@ use dam::query::QueryEngine;
 #[derive(Parser)]
 #[command(name = "dam", about = "Digital Asset Manager", version)]
 struct Cli {
+    /// Show elapsed time after command execution
+    #[arg(short = 't', long = "time", global = true)]
+    timing: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -101,6 +105,7 @@ enum VolumeCommands {
 
 fn main() {
     let cli = Cli::parse();
+    let start = std::time::Instant::now();
 
     let result: anyhow::Result<()> = (|| match cli.command {
         Commands::Init => {
@@ -333,6 +338,11 @@ fn main() {
             Ok(())
         }
     })();
+
+    if cli.timing {
+        let elapsed = start.elapsed();
+        eprintln!("Elapsed: {:.3}s", elapsed.as_secs_f64());
+    }
 
     if let Err(e) = result {
         eprintln!("Error: {e:#}");
