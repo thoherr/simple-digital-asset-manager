@@ -190,7 +190,7 @@ fn main() {
                 use dam::asset_service::FileStatus;
                 service.import_with_callback(&canonical_paths, &volume, |path, status, elapsed| {
                     let label = match status {
-                        FileStatus::Imported => "OK",
+                        FileStatus::Imported => "imported",
                         FileStatus::LocationAdded => "location added",
                         FileStatus::Skipped => "skipped",
                         FileStatus::RecipeAttached => "recipe",
@@ -204,17 +204,24 @@ fn main() {
                 service.import(&canonical_paths, &volume)?
             };
 
-            let mut summary = format!(
-                "Import complete: {} imported, {} skipped",
-                result.imported, result.skipped
-            );
+            let mut parts: Vec<String> = Vec::new();
+            if result.imported > 0 {
+                parts.push(format!("{} imported", result.imported));
+            }
+            if result.skipped > 0 {
+                parts.push(format!("{} skipped", result.skipped));
+            }
             if result.locations_added > 0 {
-                summary.push_str(&format!(", {} location(s) added", result.locations_added));
+                parts.push(format!("{} location(s) added", result.locations_added));
             }
             if result.recipes_attached > 0 {
-                summary.push_str(&format!(", {} recipe(s) attached", result.recipes_attached));
+                parts.push(format!("{} recipe(s) attached", result.recipes_attached));
             }
-            println!("{summary}");
+            if parts.is_empty() {
+                println!("Import: nothing to import");
+            } else {
+                println!("Import complete: {}", parts.join(", "));
+            }
             Ok(())
         }
         Commands::Search { query } => {
