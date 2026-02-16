@@ -193,6 +193,7 @@ fn main() {
                         FileStatus::Imported => "OK",
                         FileStatus::LocationAdded => "location added",
                         FileStatus::Skipped => "skipped",
+                        FileStatus::RecipeAttached => "recipe",
                     };
                     let name = path.file_name()
                         .and_then(|n| n.to_str())
@@ -209,6 +210,9 @@ fn main() {
             );
             if result.locations_added > 0 {
                 summary.push_str(&format!(", {} location(s) added", result.locations_added));
+            }
+            if result.recipes_attached > 0 {
+                summary.push_str(&format!(", {} recipe(s) attached", result.recipes_attached));
             }
             println!("{summary}");
             Ok(())

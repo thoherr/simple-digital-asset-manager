@@ -149,6 +149,15 @@ impl MetadataStore {
                             }
                         }
                     }
+                    for recipe in &asset.recipes {
+                        if let Err(e) = catalog.insert_recipe(recipe) {
+                            eprintln!(
+                                "Error inserting recipe {} for asset {}: {e}",
+                                recipe.id, summary.id
+                            );
+                            errors += 1;
+                        }
+                    }
                     synced += 1;
                 }
                 Err(e) => {

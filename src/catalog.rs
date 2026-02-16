@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::models::{Asset, FileLocation, Variant};
+use crate::models::{Asset, FileLocation, Recipe, Variant};
 
 /// A row returned from a search query.
 #[derive(Debug)]
@@ -157,6 +157,24 @@ impl Catalog {
                 loc.volume_id.to_string(),
                 loc.relative_path.to_string_lossy().to_string(),
                 loc.verified_at.map(|t| t.to_rfc3339()),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Insert a recipe into the catalog.
+    pub fn insert_recipe(&self, recipe: &Recipe) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO recipes (id, variant_hash, software, recipe_type, content_hash, volume_id, relative_path) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                recipe.id.to_string(),
+                recipe.variant_hash,
+                recipe.software,
+                format!("{:?}", recipe.recipe_type).to_lowercase(),
+                recipe.content_hash,
+                recipe.location.volume_id.to_string(),
+                recipe.location.relative_path.to_string_lossy().to_string(),
             ],
         )?;
         Ok(())
