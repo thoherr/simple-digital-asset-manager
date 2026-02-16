@@ -35,6 +35,10 @@ Core CLI is functional. See `specification.md` for full requirements.
 
 **Implemented commands**: `init`, `volume add/list`, `import`, `search`, `show`, `tag`, `group`, `rebuild-catalog`
 
-**Import behavior**: When importing a file whose content already exists (same SHA-256), the import adds the new file location to the existing variant rather than silently skipping. This tracks where identical content lives across the filesystem. Only truly skips when the exact same location (volume + path) is already recorded.
+**Import behavior**:
+- **Stem-based auto-grouping**: Files sharing the same filename stem in the same directory are grouped into one Asset during import. RAW files take priority as the primary variant (defining asset identity and EXIF data). Additional media files become extra variants on the same asset.
+- **Recipe handling**: Processing sidecars (`.xmp`, `.cos`, `.cot`, `.cop`, `.pp3`, `.dop`, `.on1`) are attached as Recipe records to the primary variant rather than imported as standalone assets.
+- **Duplicate location tracking**: When a file's content hash already exists, the new file location is added to the existing variant rather than silently skipping. Only truly skips when the exact same location (volume + path) is already recorded.
+- **Show command**: Displays variants and attached recipes for an asset.
 
 **Not yet implemented**: `relocate`, `verify`, `duplicates`
