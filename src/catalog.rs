@@ -16,6 +16,36 @@ pub struct SearchRow {
     pub format: String,
 }
 
+/// Full asset details returned by `load_asset_details`.
+#[derive(Debug)]
+pub struct AssetDetails {
+    pub id: String,
+    pub name: Option<String>,
+    pub asset_type: String,
+    pub created_at: String,
+    pub tags: Vec<String>,
+    pub description: Option<String>,
+    pub variants: Vec<VariantDetails>,
+}
+
+/// Variant details within an `AssetDetails`.
+#[derive(Debug)]
+pub struct VariantDetails {
+    pub content_hash: String,
+    pub role: String,
+    pub format: String,
+    pub file_size: u64,
+    pub original_filename: String,
+    pub locations: Vec<LocationDetails>,
+}
+
+/// File location details within a `VariantDetails`.
+#[derive(Debug)]
+pub struct LocationDetails {
+    pub volume_label: String,
+    pub relative_path: String,
+}
+
 /// SQLite-backed local catalog for fast queries. This is a derived cache,
 /// not the source of truth (sidecar files are).
 pub struct Catalog {
@@ -216,6 +246,106 @@ impl Catalog {
         Ok(results)
     }
 
+    /// Resolve a short asset ID prefix to a full UUID string.
+    ///
+    /// Returns `Ok(Some(id))` if exactly one match, `Ok(None)` if no match,
+    /// or an error if the prefix is ambiguous (multiple matches).
+    pub fn resolve_asset_id(&self, prefix: &str) -> Result<Option<String>> {
+        let pattern = format!("{prefix}%");
+        let mut stmt = self.conn.prepare(
+            "SELECT id FROM assets WHERE id LIKE ?1",
+        )?;
+        let ids: Vec<String> = stmt
+            .query_map(rusqlite::params![pattern], |row| row.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+
+        match ids.len() {
+            0 => Ok(None),
+            1 => Ok(Some(ids.into_iter().next().unwrap())),
+            n => anyhow::bail!(
+                "Ambiguous asset ID prefix '{prefix}': matches {n} assets"
+            ),
+        }
+    }
+
+    /// Load full asset details from the catalog (variants + locations).
+    pub fn load_asset_details(&self, asset_id: &str) -> Result<Option<AssetDetails>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, asset_type, created_at, tags, description \
+             FROM assets WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query(rusqlite::params![asset_id])?;
+        let row = match rows.next()? {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        let id: String = row.get(0)?;
+        let name: Option<String> = row.get(1)?;
+        let asset_type: String = row.get(2)?;
+        let created_at: String = row.get(3)?;
+        let tags_json: String = row.get(4)?;
+        let description: Option<String> = row.get(5)?;
+        let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+
+        // Load variants
+        let mut vstmt = self.conn.prepare(
+            "SELECT content_hash, role, format, file_size, original_filename \
+             FROM variants WHERE asset_id = ?1",
+        )?;
+        let variants: Vec<VariantDetails> = vstmt
+            .query_map(rusqlite::params![asset_id], |vrow| {
+                Ok(VariantDetails {
+                    content_hash: vrow.get(0)?,
+                    role: vrow.get(1)?,
+                    format: vrow.get(2)?,
+                    file_size: vrow.get(3)?,
+                    original_filename: vrow.get(4)?,
+                    locations: Vec::new(), // filled below
+                })
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+
+        // Load locations for each variant
+        let mut lstmt = self.conn.prepare(
+            "SELECT fl.relative_path, v.label \
+             FROM file_locations fl \
+             JOIN volumes v ON fl.volume_id = v.id \
+             WHERE fl.content_hash = ?1",
+        )?;
+
+        let variants: Vec<VariantDetails> = variants
+            .into_iter()
+            .map(|mut v| {
+                let locs: Vec<LocationDetails> = lstmt
+                    .query_map(rusqlite::params![v.content_hash], |lrow| {
+                        Ok(LocationDetails {
+                            volume_label: lrow.get(1)?,
+                            relative_path: lrow.get(0)?,
+                        })
+                    })
+                    .unwrap_or_else(|_| {
+                        // Return an empty iterator wrapper on error
+                        panic!("failed to query locations")
+                    })
+                    .filter_map(|r| r.ok())
+                    .collect();
+                v.locations = locs;
+                v
+            })
+            .collect();
+
+        Ok(Some(AssetDetails {
+            id,
+            name,
+            asset_type,
+            created_at,
+            tags,
+            description,
+            variants,
+        }))
+    }
+
     /// Rebuild the entire catalog from sidecar files.
     pub fn rebuild(&self) -> Result<()> {
         anyhow::bail!("not yet implemented")
@@ -396,5 +526,121 @@ mod tests {
             .search_assets(Some("sunset"), Some("video"), None, None)
             .unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn resolve_asset_id_full_match() {
+        let catalog = setup_search_catalog();
+        let results = catalog.search_assets(None, None, None, None).unwrap();
+        let full_id = &results[0].asset_id;
+        let resolved = catalog.resolve_asset_id(full_id).unwrap();
+        assert_eq!(resolved.as_deref(), Some(full_id.as_str()));
+    }
+
+    #[test]
+    fn resolve_asset_id_prefix_match() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let asset = crate::models::Asset::new(crate::models::AssetType::Image);
+        let full_id = asset.id.to_string();
+        catalog.insert_asset(&asset).unwrap();
+
+        let prefix = &full_id[..8];
+        let resolved = catalog.resolve_asset_id(prefix).unwrap();
+        assert_eq!(resolved.as_deref(), Some(full_id.as_str()));
+    }
+
+    #[test]
+    fn resolve_asset_id_no_match() {
+        let catalog = setup_search_catalog();
+        let resolved = catalog.resolve_asset_id("zzzzzzzz").unwrap();
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn resolve_asset_id_ambiguous() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        // Insert two assets and use an empty prefix to match both
+        let a1 = crate::models::Asset::new(crate::models::AssetType::Image);
+        let a2 = crate::models::Asset::new(crate::models::AssetType::Video);
+        catalog.insert_asset(&a1).unwrap();
+        catalog.insert_asset(&a2).unwrap();
+
+        let result = catalog.resolve_asset_id("");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("Ambiguous"), "expected ambiguous error, got: {msg}");
+    }
+
+    #[test]
+    fn load_asset_details_returns_none_for_missing() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+        let details = catalog.load_asset_details("nonexistent-id").unwrap();
+        assert!(details.is_none());
+    }
+
+    #[test]
+    fn load_asset_details_returns_full_info() {
+        let catalog = setup_search_catalog();
+        let results = catalog.search_assets(Some("sunset"), None, None, None).unwrap();
+        let asset_id = &results[0].asset_id;
+
+        let details = catalog.load_asset_details(asset_id).unwrap().unwrap();
+        assert_eq!(details.id, *asset_id);
+        assert_eq!(details.name.as_deref(), Some("sunset photo"));
+        assert_eq!(details.asset_type, "image");
+        assert_eq!(details.tags, vec!["landscape", "nature"]);
+        assert_eq!(details.description.as_deref(), Some("A beautiful sunset over the ocean"));
+        assert_eq!(details.variants.len(), 1);
+        assert_eq!(details.variants[0].role, "original");
+        assert_eq!(details.variants[0].format, "jpg");
+        assert_eq!(details.variants[0].file_size, 5000);
+        assert_eq!(details.variants[0].original_filename, "sunset_beach.jpg");
+    }
+
+    #[test]
+    fn load_asset_details_includes_locations() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Image);
+        asset.name = Some("located asset".to_string());
+        catalog.insert_asset(&asset).unwrap();
+
+        let volume = crate::models::Volume::new(
+            "test-vol".to_string(),
+            std::path::PathBuf::from("/mnt/test"),
+            crate::models::VolumeType::Local,
+        );
+        catalog.ensure_volume(&volume).unwrap();
+
+        let variant = crate::models::Variant {
+            content_hash: "sha256:loc1".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "png".to_string(),
+            file_size: 2048,
+            original_filename: "photo.png".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        catalog.insert_variant(&variant).unwrap();
+
+        let loc = crate::models::FileLocation {
+            volume_id: volume.id,
+            relative_path: std::path::PathBuf::from("photos/photo.png"),
+            verified_at: None,
+        };
+        catalog.insert_file_location(&variant.content_hash, &loc).unwrap();
+
+        let details = catalog.load_asset_details(&asset.id.to_string()).unwrap().unwrap();
+        assert_eq!(details.variants.len(), 1);
+        assert_eq!(details.variants[0].locations.len(), 1);
+        assert_eq!(details.variants[0].locations[0].volume_label, "test-vol");
+        assert_eq!(details.variants[0].locations[0].relative_path, "photos/photo.png");
     }
 }

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::catalog::{Catalog, SearchRow};
+use crate::catalog::{AssetDetails, Catalog, SearchRow};
 
 /// Search and filter assets via the SQLite catalog.
 pub struct QueryEngine {
@@ -52,5 +52,16 @@ impl QueryEngine {
             tag.as_deref(),
             format.as_deref(),
         )
+    }
+
+    /// Look up a single asset by its full ID or a unique prefix.
+    pub fn show(&self, asset_id_prefix: &str) -> Result<AssetDetails> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let full_id = catalog
+            .resolve_asset_id(asset_id_prefix)?
+            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+        catalog
+            .load_asset_details(&full_id)?
+            .ok_or_else(|| anyhow::anyhow!("Asset '{full_id}' not found in catalog"))
     }
 }

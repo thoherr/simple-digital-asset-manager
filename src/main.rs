@@ -192,9 +192,10 @@ fn main() {
                         .name
                         .as_deref()
                         .unwrap_or(&row.original_filename);
+                    let short_id = &row.asset_id[..8];
                     println!(
-                        "{} [{}] ({}) — {}",
-                        display_name, row.asset_type, row.format, row.created_at
+                        "{}  {} [{}] ({}) — {}",
+                        short_id, display_name, row.asset_type, row.format, row.created_at
                     );
                 }
                 println!("\n{} result(s)", results.len());
@@ -202,8 +203,43 @@ fn main() {
             Ok(())
         }
         Commands::Show { asset_id } => {
-            println!("Showing asset {asset_id}...");
-            println!("not yet implemented");
+            let catalog_root = dam::config::find_catalog_root()?;
+            let engine = QueryEngine::new(&catalog_root);
+            let details = engine.show(&asset_id)?;
+
+            println!("Asset: {}", details.id);
+            if let Some(name) = &details.name {
+                println!("Name:  {name}");
+            }
+            println!("Type:  {}", details.asset_type);
+            println!("Date:  {}", details.created_at);
+            if !details.tags.is_empty() {
+                println!("Tags:  {}", details.tags.join(", "));
+            }
+            if let Some(desc) = &details.description {
+                println!("Description: {desc}");
+            }
+
+            if !details.variants.is_empty() {
+                println!("\nVariants:");
+                for v in &details.variants {
+                    println!(
+                        "  [{}] {} ({}, {})",
+                        v.role,
+                        v.original_filename,
+                        v.format,
+                        format_size(v.file_size)
+                    );
+                    println!("    Hash: {}", v.content_hash);
+                    for loc in &v.locations {
+                        println!(
+                            "    Location: {} \u{2192} {}",
+                            loc.volume_label, loc.relative_path
+                        );
+                    }
+                }
+            }
+
             Ok(())
         }
         Commands::Tag { asset_id, tags } => {
@@ -244,5 +280,21 @@ fn main() {
     if let Err(e) = result {
         eprintln!("Error: {e:#}");
         std::process::exit(1);
+    }
+}
+
+fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    const GB: u64 = 1024 * MB;
+
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{bytes} B")
     }
 }
