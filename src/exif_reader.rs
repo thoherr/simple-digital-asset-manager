@@ -21,6 +21,28 @@ impl ExifData {
     }
 }
 
+/// Extract a clean string from an EXIF field.
+///
+/// Some cameras (notably Fujifilm) store ASCII tags like LensModel as
+/// multi-component values where only the first component is meaningful
+/// and the rest are empty. `display_value()` renders all of them as
+/// comma-separated quoted strings. This function returns just the first
+/// non-empty ASCII component, falling back to `display_value()` for
+/// non-ASCII types.
+fn clean_field_value(field: &exif::Field) -> String {
+    if let exif::Value::Ascii(ref components) = field.value {
+        for component in components {
+            let s = String::from_utf8_lossy(component);
+            let s = s.trim().trim_matches('\0');
+            if !s.is_empty() {
+                return s.to_string();
+            }
+        }
+        return String::new();
+    }
+    field.display_value().to_string()
+}
+
 /// Extract EXIF metadata from a file. Infallible — returns empty data on any error.
 pub fn extract(path: &Path) -> ExifData {
     let file = match std::fs::File::open(path) {
@@ -49,7 +71,7 @@ pub fn extract(path: &Path) -> ExifData {
 
     for (tag, key) in tag_map {
         if let Some(field) = exif.get_field(*tag, exif::In::PRIMARY) {
-            let val = field.display_value().to_string();
+            let val = clean_field_value(field);
             if !val.is_empty() {
                 meta.insert(key.to_string(), val);
             }
@@ -128,5 +150,23 @@ mod tests {
         let data = extract(&PathBuf::from("/nonexistent/file.jpg"));
         assert!(data.source_metadata.is_empty());
         assert!(data.date_taken.is_none());
+    }
+
+    #[test]
+    fn fuji_lens_model_is_clean_string() {
+        // Fuji cameras store LensModel as multi-component ASCII where only
+        // the first component is the actual lens name.
+        let path = PathBuf::from("/private/tmp/dam-test/fuji1.jpg");
+        if !path.exists() {
+            eprintln!("Skipping fuji test — sample file not found");
+            return;
+        }
+        let data = extract(&path);
+        let lens = data.source_metadata.get("lens_model").expect("lens_model should be present");
+        assert!(
+            !lens.contains(','),
+            "lens_model should be a single value, got: {lens}"
+        );
+        assert_eq!(lens, "XF56mmF1.2 R");
     }
 }
