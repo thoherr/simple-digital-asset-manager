@@ -15,6 +15,7 @@ serde_yaml = "0.9"
 sha2 = "0.10"
 thiserror = "1"
 kamadak-exif = "0.5"
+quick-xml = "0.36"
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 
 [dev-dependencies]

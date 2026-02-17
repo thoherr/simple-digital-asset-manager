@@ -415,6 +415,17 @@ impl AssetService {
                 };
 
                 asset.recipes.push(recipe.clone());
+
+                // Extract metadata from XMP sidecars
+                if ext.eq_ignore_ascii_case("xmp") {
+                    let xmp = crate::xmp_reader::extract(file_path);
+                    apply_xmp_data(&xmp, asset, variant_hash);
+                    catalog.insert_asset(asset)?;
+                    if let Some(v) = asset.variants.iter().find(|v| v.content_hash == *variant_hash) {
+                        catalog.insert_variant(v)?;
+                    }
+                }
+
                 metadata_store.save(asset)?;
                 catalog.insert_recipe(&recipe)?;
 
@@ -429,6 +440,31 @@ impl AssetService {
             skipped,
             recipes_attached,
         })
+    }
+}
+
+/// Merge XMP metadata into an asset and its primary variant.
+/// - Keywords merge into `asset.tags` (deduplicated)
+/// - Description sets `asset.description` if not already set
+/// - source_metadata merges into the variant (EXIF takes precedence via `or_insert`)
+fn apply_xmp_data(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, variant_hash: &str) {
+    for kw in &xmp.keywords {
+        if !asset.tags.contains(kw) {
+            asset.tags.push(kw.clone());
+        }
+    }
+
+    if asset.description.is_none() {
+        asset.description.clone_from(&xmp.description);
+    }
+
+    if let Some(variant) = asset.variants.iter_mut().find(|v| v.content_hash == variant_hash) {
+        for (key, val) in &xmp.source_metadata {
+            variant
+                .source_metadata
+                .entry(key.clone())
+                .or_insert_with(|| val.clone());
+        }
     }
 }
 
@@ -931,5 +967,162 @@ mod tests {
         let summaries = metadata_store.list().unwrap();
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].variant_count, 1);
+    }
+
+    /// Helper to create an XMP sidecar with given keywords, rating, label, description.
+    fn make_xmp(
+        keywords: &[&str],
+        rating: Option<u8>,
+        label: Option<&str>,
+        description: Option<&str>,
+        creator: Option<&str>,
+        copyright: Option<&str>,
+    ) -> String {
+        let mut parts = Vec::new();
+        parts.push(r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/""#.to_string());
+        if let Some(r) = rating {
+            parts.push(format!("\n    xmp:Rating=\"{r}\""));
+        }
+        if let Some(l) = label {
+            parts.push(format!("\n    xmp:Label=\"{l}\""));
+        }
+        parts.push(">".to_string());
+        if !keywords.is_empty() {
+            parts.push("   <dc:subject>\n    <rdf:Bag>".to_string());
+            for kw in keywords {
+                parts.push(format!("     <rdf:li>{kw}</rdf:li>"));
+            }
+            parts.push("    </rdf:Bag>\n   </dc:subject>".to_string());
+        }
+        if let Some(desc) = description {
+            parts.push(format!(
+                "   <dc:description>\n    <rdf:Alt>\n     <rdf:li xml:lang=\"x-default\">{desc}</rdf:li>\n    </rdf:Alt>\n   </dc:description>"
+            ));
+        }
+        if let Some(c) = creator {
+            parts.push(format!(
+                "   <dc:creator>\n    <rdf:Seq>\n     <rdf:li>{c}</rdf:li>\n    </rdf:Seq>\n   </dc:creator>"
+            ));
+        }
+        if let Some(cr) = copyright {
+            parts.push(format!(
+                "   <dc:rights>\n    <rdf:Alt>\n     <rdf:li xml:lang=\"x-default\">{cr}</rdf:li>\n    </rdf:Alt>\n   </dc:rights>"
+            ));
+        }
+        parts.push("  </rdf:Description>\n </rdf:RDF>\n</x:xmpmeta>".to_string());
+        parts.join("\n")
+    }
+
+    #[test]
+    fn import_xmp_extracts_tags_and_metadata() {
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+
+        let vol_dir = tempfile::tempdir().unwrap();
+        let photos = vol_dir.path().join("photos");
+        std::fs::create_dir_all(&photos).unwrap();
+        std::fs::write(photos.join("DSC_001.nef"), "raw file data").unwrap();
+        let xmp = make_xmp(
+            &["landscape", "sunset"],
+            Some(4),
+            Some("Blue"),
+            None,
+            None,
+            None,
+        );
+        std::fs::write(photos.join("DSC_001.xmp"), &xmp).unwrap();
+
+        let volume = crate::models::Volume::new(
+            "test-vol".into(),
+            vol_dir.path().to_path_buf(),
+            crate::models::VolumeType::Local,
+        );
+
+        let service = AssetService::new(catalog_dir.path());
+        let result = service.import(&[photos], &volume).unwrap();
+        assert_eq!(result.imported, 1);
+        assert_eq!(result.recipes_attached, 1);
+
+        let metadata_store = crate::metadata_store::MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let asset = metadata_store.load(summaries[0].id).unwrap();
+
+        assert!(asset.tags.contains(&"landscape".to_string()));
+        assert!(asset.tags.contains(&"sunset".to_string()));
+        assert_eq!(
+            asset.variants[0].source_metadata.get("rating").map(|s| s.as_str()),
+            Some("4")
+        );
+        assert_eq!(
+            asset.variants[0].source_metadata.get("label").map(|s| s.as_str()),
+            Some("Blue")
+        );
+    }
+
+    #[test]
+    fn import_xmp_sets_description() {
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+
+        let vol_dir = tempfile::tempdir().unwrap();
+        let photos = vol_dir.path().join("photos");
+        std::fs::create_dir_all(&photos).unwrap();
+        std::fs::write(photos.join("DSC_002.nef"), "raw data 2").unwrap();
+        let xmp = make_xmp(&[], None, None, Some("A great photo"), None, None);
+        std::fs::write(photos.join("DSC_002.xmp"), &xmp).unwrap();
+
+        let volume = crate::models::Volume::new(
+            "test-vol".into(),
+            vol_dir.path().to_path_buf(),
+            crate::models::VolumeType::Local,
+        );
+
+        let service = AssetService::new(catalog_dir.path());
+        service.import(&[photos], &volume).unwrap();
+
+        let metadata_store = crate::metadata_store::MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let asset = metadata_store.load(summaries[0].id).unwrap();
+        assert_eq!(asset.description.as_deref(), Some("A great photo"));
+    }
+
+    #[test]
+    fn import_xmp_does_not_overwrite_existing_tags() {
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+
+        let vol_dir = tempfile::tempdir().unwrap();
+        let photos = vol_dir.path().join("photos");
+        std::fs::create_dir_all(&photos).unwrap();
+        std::fs::write(photos.join("DSC_003.nef"), "raw data 3").unwrap();
+        let xmp = make_xmp(&["nature", "forest"], Some(5), None, None, None, None);
+        std::fs::write(photos.join("DSC_003.xmp"), &xmp).unwrap();
+
+        let volume = crate::models::Volume::new(
+            "test-vol".into(),
+            vol_dir.path().to_path_buf(),
+            crate::models::VolumeType::Local,
+        );
+
+        let service = AssetService::new(catalog_dir.path());
+        service.import(&[photos], &volume).unwrap();
+
+        // Now manually add a tag to the asset
+        let metadata_store = crate::metadata_store::MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let mut asset = metadata_store.load(summaries[0].id).unwrap();
+        asset.tags.push("manual-tag".to_string());
+        metadata_store.save(&asset).unwrap();
+
+        // Verify original XMP tags + manual tag are all present
+        let asset = metadata_store.load(summaries[0].id).unwrap();
+        assert!(asset.tags.contains(&"nature".to_string()));
+        assert!(asset.tags.contains(&"forest".to_string()));
+        assert!(asset.tags.contains(&"manual-tag".to_string()));
     }
 }

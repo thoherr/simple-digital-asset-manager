@@ -8,3 +8,4 @@ pub mod metadata_store;
 pub mod models;
 pub mod preview;
 pub mod query;
+pub mod xmp_reader;

@@ -277,6 +277,69 @@ fn duplicates_empty_when_no_duplicates() {
 }
 
 #[test]
+fn import_xmp_applies_metadata() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+    create_test_file(&photos, "DSC_100.nef", b"raw image bytes");
+
+    let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="3"
+    xmp:Label="Yellow">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>wildlife</rdf:li>
+     <rdf:li>birds</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+    create_test_file(&photos, "DSC_100.xmp", xmp.as_bytes());
+
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("1 imported")
+                .and(predicate::str::contains("1 recipe")),
+        );
+
+    // Get asset ID via search
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "DSC_100"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let short_id = stdout.split_whitespace().next().expect("search returned an ID");
+
+    // Verify tags and metadata appear in show output
+    dam()
+        .current_dir(&root)
+        .args(["show", short_id])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("wildlife")
+                .and(predicate::str::contains("birds"))
+                .and(predicate::str::contains("rating"))
+                .and(predicate::str::contains("3"))
+                .and(predicate::str::contains("label"))
+                .and(predicate::str::contains("Yellow")),
+        );
+}
+
+#[test]
 fn rebuild_catalog_restores_data() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
