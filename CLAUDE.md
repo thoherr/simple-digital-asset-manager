@@ -20,7 +20,7 @@ A digital asset manager designed for large collections of images and videos (ter
 - **Platforms**: macOS, Linux
 - **Interface**: CLI-first (`dam` command), optional web GUI
 - **Catalog**: SQLite (cache/index), YAML sidecar files (source of truth)
-- **Key crates**: clap, sha2, serde, rusqlite, axum, kamadak-exif, image
+- **Key crates**: clap, sha2, serde, rusqlite, axum, kamadak-exif, quick-xml, image
 - **External tools**: dcraw/libraw (RAW previews), ffmpeg (video thumbnails)
 
 ## Architecture
@@ -38,7 +38,8 @@ Core CLI is functional. See `specification.md` for full requirements.
 **Import behavior**:
 - **Stem-based auto-grouping**: Files sharing the same filename stem in the same directory are grouped into one Asset during import. RAW files take priority as the primary variant (defining asset identity and EXIF data). Additional media files become extra variants on the same asset.
 - **Recipe handling**: Processing sidecars (`.xmp`, `.cos`, `.cot`, `.cop`, `.pp3`, `.dop`, `.on1`) are attached as Recipe records to the primary variant rather than imported as standalone assets.
+- **XMP metadata extraction**: When an `.xmp` sidecar is attached as a recipe, its contents are parsed (via `xmp_reader` module) and merged into the asset/variant. Keywords (`dc:subject`) become asset tags (deduplicated), `dc:description` sets the asset description (if not already set), and `xmp:Rating`, `xmp:Label`, `dc:creator`, `dc:rights` are stored in the primary variant's `source_metadata`. EXIF takes precedence for any overlapping `source_metadata` keys.
 - **Duplicate location tracking**: When a file's content hash already exists, the new file location is added to the existing variant rather than silently skipping. Only truly skips when the exact same location (volume + path) is already recorded.
 - **Show command**: Displays variants and attached recipes for an asset.
 
-**Not yet implemented**: `relocate`, `verify`, `duplicates`
+**Not yet implemented**: `relocate`, `verify`
