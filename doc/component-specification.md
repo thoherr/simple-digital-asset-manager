@@ -199,6 +199,7 @@ dam group <variant-hashes...>         # group variants into one asset
 dam relocate <asset-id> <volume>      # move asset to another volume
 dam verify [--volume <vol>]           # check file integrity
 dam duplicates                        # find duplicates
+dam generate-previews [--asset <id>] [--force]  # generate/regenerate thumbnails
 dam rebuild-catalog                   # rebuild SQLite from sidecars
 ```
 

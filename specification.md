@@ -36,11 +36,13 @@
 - **`tag`** — add or remove tags on an asset (with `--remove` flag)
 - **`group`** — manually group variants into one asset by content hash (merges donor assets, combines tags)
 - **`rebuild-catalog`** — drop and rebuild SQLite catalog from YAML sidecar files (including recipes)
+- **`duplicates`** — find files with the same content hash across multiple locations, showing all volume/path pairs
+- **`generate-previews`** — generate missing preview thumbnails for all assets or a specific asset (`--asset`); `--force` regenerates existing previews
+- **Preview generation during import** — 800px JPEG thumbnails are generated for each imported variant. Uses the `image` crate for standard formats, `dcraw`/`dcraw_emu` (LibRaw) for RAW files, and `ffmpeg` for videos. Previews stored in `previews/<hash-prefix>/<hash>.jpg`. Missing external tools are silently skipped; preview failure never blocks import.
+- **`show`** now displays preview status (path if exists, "(none)" otherwise)
 
 ### not yet implemented
 
 - **`relocate`** — move asset files to another volume
 - **`verify`** — check file integrity by re-hashing and comparing
-- **`duplicates`** — find files with the same content hash across multiple locations
-- Preview generation (thumbnails for images and videos)
 - Web GUI for visual browsing
