@@ -354,7 +354,37 @@ fn main() {
             Ok(())
         }
         Commands::Duplicates => {
-            println!("not yet implemented");
+            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog = Catalog::open(&catalog_root)?;
+            let entries = catalog.find_duplicates()?;
+
+            if entries.is_empty() {
+                println!("No duplicates found.");
+            } else {
+                for entry in &entries {
+                    let display_name = entry
+                        .asset_name
+                        .as_deref()
+                        .unwrap_or(&entry.original_filename);
+                    println!(
+                        "{} ({}, {})",
+                        display_name,
+                        entry.format,
+                        format_size(entry.file_size)
+                    );
+                    println!("  Hash: {}", entry.content_hash);
+                    for loc in &entry.locations {
+                        println!(
+                            "    {} \u{2192} {}",
+                            loc.volume_label, loc.relative_path
+                        );
+                    }
+                }
+                println!(
+                    "\n{} file(s) with duplicate locations",
+                    entries.len()
+                );
+            }
             Ok(())
         }
         Commands::RebuildCatalog => {

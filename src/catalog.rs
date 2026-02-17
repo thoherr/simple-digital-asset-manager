@@ -48,6 +48,17 @@ pub struct LocationDetails {
     pub relative_path: String,
 }
 
+/// A variant that exists in multiple file locations.
+#[derive(Debug)]
+pub struct DuplicateEntry {
+    pub content_hash: String,
+    pub original_filename: String,
+    pub format: String,
+    pub file_size: u64,
+    pub asset_name: Option<String>,
+    pub locations: Vec<LocationDetails>,
+}
+
 /// Recipe details within an `AssetDetails`.
 #[derive(Debug)]
 pub struct RecipeDetails {
@@ -436,6 +447,61 @@ impl Catalog {
             anyhow::bail!("No asset found with id '{asset_id}'");
         }
         Ok(())
+    }
+
+    /// Find variants that have more than one file location (duplicates).
+    pub fn find_duplicates(&self) -> Result<Vec<DuplicateEntry>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT v.content_hash, v.original_filename, v.format, v.file_size, a.name \
+             FROM variants v \
+             JOIN assets a ON v.asset_id = a.id \
+             WHERE v.content_hash IN ( \
+                 SELECT content_hash FROM file_locations \
+                 GROUP BY content_hash HAVING COUNT(*) > 1 \
+             ) \
+             ORDER BY v.file_size DESC",
+        )?;
+
+        let entries: Vec<DuplicateEntry> = stmt
+            .query_map([], |row| {
+                Ok(DuplicateEntry {
+                    content_hash: row.get(0)?,
+                    original_filename: row.get(1)?,
+                    format: row.get(2)?,
+                    file_size: row.get(3)?,
+                    asset_name: row.get(4)?,
+                    locations: Vec::new(),
+                })
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+
+        // Load locations for each duplicate
+        let mut lstmt = self.conn.prepare(
+            "SELECT fl.relative_path, vol.label \
+             FROM file_locations fl \
+             JOIN volumes vol ON fl.volume_id = vol.id \
+             WHERE fl.content_hash = ?1",
+        )?;
+
+        let entries: Vec<DuplicateEntry> = entries
+            .into_iter()
+            .map(|mut e| {
+                let locs: Vec<LocationDetails> = lstmt
+                    .query_map(rusqlite::params![e.content_hash], |lrow| {
+                        Ok(LocationDetails {
+                            volume_label: lrow.get(1)?,
+                            relative_path: lrow.get(0)?,
+                        })
+                    })
+                    .unwrap()
+                    .filter_map(|r| r.ok())
+                    .collect();
+                e.locations = locs;
+                e
+            })
+            .collect();
+
+        Ok(entries)
     }
 
     /// Drop and recreate data tables (assets, variants, file_locations, recipes).
@@ -877,5 +943,90 @@ mod tests {
         assert_eq!(count("file_locations"), 0);
         // Volumes should be preserved
         assert_eq!(count("volumes"), 1);
+    }
+
+    #[test]
+    fn find_duplicates_returns_entries_with_multiple_locations() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let vol1 = crate::models::Volume::new(
+            "vol-a".to_string(),
+            std::path::PathBuf::from("/mnt/a"),
+            crate::models::VolumeType::Local,
+        );
+        let vol2 = crate::models::Volume::new(
+            "vol-b".to_string(),
+            std::path::PathBuf::from("/mnt/b"),
+            crate::models::VolumeType::Local,
+        );
+        catalog.ensure_volume(&vol1).unwrap();
+        catalog.ensure_volume(&vol2).unwrap();
+
+        // Asset with a variant that has two locations (duplicate)
+        let asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:dup1");
+        catalog.insert_asset(&asset).unwrap();
+
+        let variant = crate::models::Variant {
+            content_hash: "sha256:dup1".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 5000,
+            original_filename: "photo.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        catalog.insert_variant(&variant).unwrap();
+
+        let loc1 = crate::models::FileLocation {
+            volume_id: vol1.id,
+            relative_path: std::path::PathBuf::from("photos/photo.jpg"),
+            verified_at: None,
+        };
+        let loc2 = crate::models::FileLocation {
+            volume_id: vol2.id,
+            relative_path: std::path::PathBuf::from("backup/photo.jpg"),
+            verified_at: None,
+        };
+        catalog.insert_file_location(&variant.content_hash, &loc1).unwrap();
+        catalog.insert_file_location(&variant.content_hash, &loc2).unwrap();
+
+        // Asset with only one location (not a duplicate)
+        let asset2 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:single1");
+        catalog.insert_asset(&asset2).unwrap();
+
+        let variant2 = crate::models::Variant {
+            content_hash: "sha256:single1".to_string(),
+            asset_id: asset2.id,
+            role: crate::models::VariantRole::Original,
+            format: "png".to_string(),
+            file_size: 1000,
+            original_filename: "unique.png".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        catalog.insert_variant(&variant2).unwrap();
+
+        let loc3 = crate::models::FileLocation {
+            volume_id: vol1.id,
+            relative_path: std::path::PathBuf::from("photos/unique.png"),
+            verified_at: None,
+        };
+        catalog.insert_file_location(&variant2.content_hash, &loc3).unwrap();
+
+        let dupes = catalog.find_duplicates().unwrap();
+        assert_eq!(dupes.len(), 1);
+        assert_eq!(dupes[0].content_hash, "sha256:dup1");
+        assert_eq!(dupes[0].original_filename, "photo.jpg");
+        assert_eq!(dupes[0].locations.len(), 2);
+    }
+
+    #[test]
+    fn find_duplicates_empty_when_no_duplicates() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+        let dupes = catalog.find_duplicates().unwrap();
+        assert!(dupes.is_empty());
     }
 }
