@@ -36,6 +36,14 @@ enum Commands {
     Import {
         /// Paths to files or directories to import
         paths: Vec<String>,
+
+        /// Include additional file type groups (e.g. captureone, documents)
+        #[arg(long)]
+        include: Vec<String>,
+
+        /// Skip default file type groups (e.g. audio, xmp)
+        #[arg(long)]
+        skip: Vec<String>,
     },
 
     /// Search assets
@@ -165,9 +173,35 @@ fn main() {
                 Ok(())
             }
         },
-        Commands::Import { paths } => {
+        Commands::Import {
+            paths,
+            include,
+            skip,
+        } => {
+            use dam::asset_service::FileTypeFilter;
+
             let catalog_root = dam::config::find_catalog_root()?;
             let registry = DeviceRegistry::new(&catalog_root);
+
+            // Build file type filter
+            let mut filter = FileTypeFilter::default();
+
+            // Check for conflicts: same group in both --include and --skip
+            for group in &include {
+                if skip.contains(group) {
+                    anyhow::bail!(
+                        "Group '{}' cannot be both included and skipped.",
+                        group
+                    );
+                }
+            }
+
+            for group in &include {
+                filter.include(group)?;
+            }
+            for group in &skip {
+                filter.skip(group)?;
+            }
 
             // Canonicalize input paths
             let canonical_paths: Vec<PathBuf> = paths
@@ -188,7 +222,7 @@ fn main() {
             let service = AssetService::new(&catalog_root);
             let result = if cli.log {
                 use dam::asset_service::FileStatus;
-                service.import_with_callback(&canonical_paths, &volume, |path, status, elapsed| {
+                service.import_with_callback(&canonical_paths, &volume, &filter, |path, status, elapsed| {
                     let label = match status {
                         FileStatus::Imported => "imported",
                         FileStatus::LocationAdded => "location added",
@@ -201,7 +235,7 @@ fn main() {
                     eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
                 })?
             } else {
-                service.import(&canonical_paths, &volume)?
+                service.import(&canonical_paths, &volume, &filter)?
             };
 
             let mut parts: Vec<String> = Vec::new();

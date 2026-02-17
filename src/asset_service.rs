@@ -1,8 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use uuid::Uuid;
 
 use crate::catalog::Catalog;
@@ -11,6 +11,139 @@ use crate::metadata_store::MetadataStore;
 use crate::models::{
     Asset, AssetType, FileLocation, Recipe, RecipeType, Variant, VariantRole, Volume,
 };
+
+/// File type group definitions: (name, extensions, default_on).
+const GROUPS: &[(&str, &[&str], bool)] = &[
+    (
+        "images",
+        &[
+            "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "webp", "heic", "heif", "svg",
+            "ico", "psd", "xcf", // standard image formats
+            "raw", "cr2", "cr3", "nef", "arw", "orf", "rw2", "dng", "raf", "pef", "srw", // RAW
+        ],
+        true,
+    ),
+    (
+        "video",
+        &[
+            "mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "3gp",
+            "mts", "m2ts",
+        ],
+        true,
+    ),
+    (
+        "audio",
+        &[
+            "mp3", "wav", "flac", "aac", "ogg", "wma", "m4a", "aiff", "alac",
+        ],
+        true,
+    ),
+    ("xmp", &["xmp"], true),
+    (
+        "documents",
+        &[
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "rtf", "csv",
+            "json", "xml", "html", "htm",
+        ],
+        false,
+    ),
+    ("captureone", &["cos", "cot", "cop"], false),
+    ("rawtherapee", &["pp3"], false),
+    ("dxo", &["dop"], false),
+    ("on1", &["on1"], false),
+];
+
+/// Recipe group names — extensions in these groups are treated as recipe sidecars.
+const RECIPE_GROUPS: &[&str] = &["xmp", "captureone", "rawtherapee", "dxo", "on1"];
+
+/// Controls which file types are imported based on enabled/disabled groups.
+pub struct FileTypeFilter {
+    enabled_groups: HashSet<String>,
+}
+
+impl FileTypeFilter {
+    /// Create a filter with only the default groups enabled.
+    pub fn new() -> Self {
+        let enabled = GROUPS
+            .iter()
+            .filter(|(_, _, default_on)| *default_on)
+            .map(|(name, _, _)| name.to_string())
+            .collect();
+        Self {
+            enabled_groups: enabled,
+        }
+    }
+
+    /// Enable an additional group. Returns an error for unknown group names.
+    pub fn include(&mut self, group: &str) -> Result<()> {
+        if !GROUPS.iter().any(|(name, _, _)| *name == group) {
+            bail!(
+                "Unknown file type group '{}'. Valid groups: {}",
+                group,
+                Self::group_names()
+                    .iter()
+                    .map(|(n, _)| *n)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        self.enabled_groups.insert(group.to_string());
+        Ok(())
+    }
+
+    /// Disable a group. Returns an error for unknown group names.
+    pub fn skip(&mut self, group: &str) -> Result<()> {
+        if !GROUPS.iter().any(|(name, _, _)| *name == group) {
+            bail!(
+                "Unknown file type group '{}'. Valid groups: {}",
+                group,
+                Self::group_names()
+                    .iter()
+                    .map(|(n, _)| *n)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        self.enabled_groups.remove(group);
+        Ok(())
+    }
+
+    /// Returns true if the extension belongs to any enabled group.
+    pub fn is_importable(&self, ext: &str) -> bool {
+        let lower = ext.to_lowercase();
+        for (name, extensions, _) in GROUPS {
+            if self.enabled_groups.contains(*name) && extensions.contains(&lower.as_str()) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Returns true if the extension is a recipe type AND its group is enabled.
+    pub fn is_recipe(&self, ext: &str) -> bool {
+        let lower = ext.to_lowercase();
+        for (name, extensions, _) in GROUPS {
+            if RECIPE_GROUPS.contains(name)
+                && extensions.contains(&lower.as_str())
+                && self.enabled_groups.contains(*name)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// List all group names with their default-on status (for help/error messages).
+    pub fn group_names() -> Vec<(&'static str, bool)> {
+        GROUPS.iter().map(|(name, _, default)| (*name, *default)).collect()
+    }
+}
+
+impl Default for FileTypeFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Status of a single file during import.
 pub enum FileStatus {
@@ -49,8 +182,13 @@ impl AssetService {
     }
 
     /// Import files: hash, deduplicate, create assets/variants, write sidecars, insert into DB.
-    pub fn import(&self, paths: &[PathBuf], volume: &Volume) -> Result<ImportResult> {
-        self.import_with_callback(paths, volume, |_, _, _| {})
+    pub fn import(
+        &self,
+        paths: &[PathBuf],
+        volume: &Volume,
+        filter: &FileTypeFilter,
+    ) -> Result<ImportResult> {
+        self.import_with_callback(paths, volume, filter, |_, _, _| {})
     }
 
     /// Import files with a per-file callback reporting path, status, and elapsed time.
@@ -58,6 +196,7 @@ impl AssetService {
         &self,
         paths: &[PathBuf],
         volume: &Volume,
+        filter: &FileTypeFilter,
         on_file: impl Fn(&Path, FileStatus, Duration),
     ) -> Result<ImportResult> {
         let content_store = ContentStore::new(&self.catalog_root);
@@ -67,7 +206,7 @@ impl AssetService {
         catalog.ensure_volume(volume)?;
 
         let files = resolve_files(paths);
-        let groups = group_by_stem(&files);
+        let groups = group_by_stem(&files, filter);
 
         let mut imported = 0;
         let mut locations_added = 0;
@@ -489,14 +628,6 @@ fn determine_asset_type(ext: &str) -> AssetType {
     }
 }
 
-/// Check if a file extension belongs to a processing recipe/sidecar.
-fn is_recipe_extension(ext: &str) -> bool {
-    matches!(
-        ext.to_lowercase().as_str(),
-        "xmp" | "cos" | "cot" | "cop" | "pp3" | "dop" | "on1"
-    )
-}
-
 /// Check if a file extension is a RAW camera format.
 fn is_raw_extension(ext: &str) -> bool {
     matches!(
@@ -519,7 +650,8 @@ fn determine_recipe_software(ext: &str) -> &'static str {
 
 /// Group resolved files by (parent_directory, file_stem).
 /// Media files are sorted with RAW extensions first, then alphabetically by extension.
-fn group_by_stem(files: &[PathBuf]) -> Vec<StemGroup> {
+/// Files with extensions not importable by the filter are skipped entirely.
+fn group_by_stem(files: &[PathBuf], filter: &FileTypeFilter) -> Vec<StemGroup> {
     let mut map: BTreeMap<(PathBuf, String), StemGroup> = BTreeMap::new();
 
     for file in files {
@@ -534,6 +666,10 @@ fn group_by_stem(files: &[PathBuf]) -> Vec<StemGroup> {
             .and_then(|e| e.to_str())
             .unwrap_or("");
 
+        if !filter.is_importable(ext) {
+            continue;
+        }
+
         let key = (dir.clone(), stem.clone());
         let group = map.entry(key).or_insert_with(|| StemGroup {
             _dir: dir,
@@ -542,7 +678,7 @@ fn group_by_stem(files: &[PathBuf]) -> Vec<StemGroup> {
             recipe_files: Vec::new(),
         });
 
-        if is_recipe_extension(ext) {
+        if filter.is_recipe(ext) {
             group.recipe_files.push(file.clone());
         } else {
             group.media_files.push(file.clone());
@@ -626,13 +762,79 @@ mod tests {
     }
 
     #[test]
-    fn is_recipe_extension_works() {
-        assert!(is_recipe_extension("xmp"));
-        assert!(is_recipe_extension("XMP"));
-        assert!(is_recipe_extension("cos"));
-        assert!(is_recipe_extension("pp3"));
-        assert!(!is_recipe_extension("jpg"));
-        assert!(!is_recipe_extension("nef"));
+    fn filter_default_includes_standard_types() {
+        let f = FileTypeFilter::default();
+        // Images
+        assert!(f.is_importable("jpg"));
+        assert!(f.is_importable("nef"));
+        assert!(f.is_importable("PNG"));
+        // Video
+        assert!(f.is_importable("mp4"));
+        // Audio
+        assert!(f.is_importable("mp3"));
+        // XMP
+        assert!(f.is_importable("xmp"));
+        // Non-default groups should NOT be importable
+        assert!(!f.is_importable("cos"));
+        assert!(!f.is_importable("pp3"));
+        assert!(!f.is_importable("dop"));
+        assert!(!f.is_importable("on1"));
+        assert!(!f.is_importable("pdf"));
+    }
+
+    #[test]
+    fn filter_include_adds_group() {
+        let mut f = FileTypeFilter::default();
+        assert!(!f.is_importable("cos"));
+        f.include("captureone").unwrap();
+        assert!(f.is_importable("cos"));
+        assert!(f.is_importable("cot"));
+        assert!(f.is_importable("cop"));
+    }
+
+    #[test]
+    fn filter_skip_removes_group() {
+        let mut f = FileTypeFilter::default();
+        assert!(f.is_importable("mp3"));
+        f.skip("audio").unwrap();
+        assert!(!f.is_importable("mp3"));
+        assert!(!f.is_importable("wav"));
+        // Other defaults still work
+        assert!(f.is_importable("jpg"));
+    }
+
+    #[test]
+    fn filter_unknown_group_errors() {
+        let mut f = FileTypeFilter::default();
+        assert!(f.include("bogus").is_err());
+        assert!(f.skip("nonexistent").is_err());
+    }
+
+    #[test]
+    fn filter_is_recipe_respects_enabled() {
+        let f = FileTypeFilter::default();
+        // xmp is recipe when enabled by default
+        assert!(f.is_recipe("xmp"));
+        assert!(f.is_recipe("XMP"));
+        // cos is NOT recipe when captureone not enabled
+        assert!(!f.is_recipe("cos"));
+        assert!(!f.is_recipe("pp3"));
+
+        let mut f2 = FileTypeFilter::default();
+        f2.include("captureone").unwrap();
+        assert!(f2.is_recipe("cos"));
+        assert!(f2.is_recipe("cot"));
+        // pp3 still not recipe (rawtherapee not enabled)
+        assert!(!f2.is_recipe("pp3"));
+    }
+
+    #[test]
+    fn filter_group_names_lists_all() {
+        let names = FileTypeFilter::group_names();
+        assert!(names.iter().any(|(n, _)| *n == "images"));
+        assert!(names.iter().any(|(n, _)| *n == "captureone"));
+        assert!(names.iter().any(|(n, d)| *n == "images" && *d));
+        assert!(names.iter().any(|(n, d)| *n == "captureone" && !*d));
     }
 
     #[test]
@@ -656,13 +858,14 @@ mod tests {
 
     #[test]
     fn group_by_stem_basic() {
+        let filter = FileTypeFilter::default();
         let files = vec![
             PathBuf::from("/photos/DSC_001.nef"),
             PathBuf::from("/photos/DSC_001.jpg"),
             PathBuf::from("/photos/DSC_001.xmp"),
             PathBuf::from("/photos/DSC_002.jpg"),
         ];
-        let groups = group_by_stem(&files);
+        let groups = group_by_stem(&files, &filter);
         assert_eq!(groups.len(), 2);
 
         let g1 = groups.iter().find(|g| g.stem == "DSC_001").unwrap();
@@ -679,12 +882,28 @@ mod tests {
 
     #[test]
     fn group_by_stem_different_dirs_separate() {
+        let filter = FileTypeFilter::default();
         let files = vec![
             PathBuf::from("/a/photo.jpg"),
             PathBuf::from("/b/photo.jpg"),
         ];
-        let groups = group_by_stem(&files);
+        let groups = group_by_stem(&files, &filter);
         assert_eq!(groups.len(), 2);
+    }
+
+    #[test]
+    fn group_by_stem_skips_non_importable() {
+        let filter = FileTypeFilter::default();
+        let files = vec![
+            PathBuf::from("/photos/DSC_001.nef"),
+            PathBuf::from("/photos/DSC_001.cos"), // captureone not enabled
+            PathBuf::from("/photos/readme.pdf"),   // documents not enabled
+        ];
+        let groups = group_by_stem(&files, &filter);
+        assert_eq!(groups.len(), 1);
+        let g = &groups[0];
+        assert_eq!(g.media_files.len(), 1);
+        assert_eq!(g.recipe_files.len(), 0);
     }
 
     #[test]
@@ -708,6 +927,11 @@ mod tests {
 
         let files = resolve_files(&[dir.path().to_path_buf()]);
         assert_eq!(files.len(), 2);
+    }
+
+    /// Default filter for import tests.
+    fn default_filter() -> FileTypeFilter {
+        FileTypeFilter::default()
     }
 
     /// Set up a minimal catalog in a temp directory for import tests.
@@ -741,13 +965,13 @@ mod tests {
         let service = AssetService::new(catalog_dir.path());
 
         // First import
-        let r1 = service.import(&[dir_a.join("photo.jpg")], &volume).unwrap();
+        let r1 = service.import(&[dir_a.join("photo.jpg")], &volume, &default_filter()).unwrap();
         assert_eq!(r1.imported, 1);
         assert_eq!(r1.locations_added, 0);
         assert_eq!(r1.skipped, 0);
 
         // Second import — same content, different path
-        let r2 = service.import(&[dir_b.join("photo.jpg")], &volume).unwrap();
+        let r2 = service.import(&[dir_b.join("photo.jpg")], &volume, &default_filter()).unwrap();
         assert_eq!(r2.imported, 0);
         assert_eq!(r2.locations_added, 1);
         assert_eq!(r2.skipped, 0);
@@ -791,13 +1015,13 @@ mod tests {
 
         // First import
         let r1 = service
-            .import(&[vol_dir.path().join("photo.jpg")], &volume)
+            .import(&[vol_dir.path().join("photo.jpg")], &volume, &default_filter())
             .unwrap();
         assert_eq!(r1.imported, 1);
 
         // Second import — exact same path
         let r2 = service
-            .import(&[vol_dir.path().join("photo.jpg")], &volume)
+            .import(&[vol_dir.path().join("photo.jpg")], &volume, &default_filter())
             .unwrap();
         assert_eq!(r2.imported, 0);
         assert_eq!(r2.locations_added, 0);
@@ -823,7 +1047,7 @@ mod tests {
 
         let service = AssetService::new(catalog_dir.path());
         let result = service
-            .import(&[photos.clone()], &volume)
+            .import(&[photos.clone()], &volume, &default_filter())
             .unwrap();
 
         assert_eq!(result.imported, 2);
@@ -860,7 +1084,9 @@ mod tests {
         );
 
         let service = AssetService::new(catalog_dir.path());
-        let result = service.import(&[photos.clone()], &volume).unwrap();
+        let result = service
+            .import(&[photos.clone()], &volume, &default_filter())
+            .unwrap();
 
         assert_eq!(result.imported, 1);
         assert_eq!(result.recipes_attached, 1);
@@ -895,7 +1121,9 @@ mod tests {
         );
 
         let service = AssetService::new(catalog_dir.path());
-        let result = service.import(&[photos.clone()], &volume).unwrap();
+        let mut filter = FileTypeFilter::default();
+        filter.include("captureone").unwrap();
+        let result = service.import(&[photos.clone()], &volume, &filter).unwrap();
 
         assert_eq!(result.imported, 2);
         assert_eq!(result.recipes_attached, 2);
@@ -931,7 +1159,7 @@ mod tests {
 
         let service = AssetService::new(catalog_dir.path());
         let result = service
-            .import(&[dir_a, dir_b], &volume)
+            .import(&[dir_a, dir_b], &volume, &default_filter())
             .unwrap();
 
         assert_eq!(result.imported, 2);
@@ -957,7 +1185,7 @@ mod tests {
 
         let service = AssetService::new(catalog_dir.path());
         let result = service
-            .import(&[vol_dir.path().join("solo.jpg")], &volume)
+            .import(&[vol_dir.path().join("solo.jpg")], &volume, &default_filter())
             .unwrap();
 
         assert_eq!(result.imported, 1);
@@ -1044,7 +1272,7 @@ mod tests {
         );
 
         let service = AssetService::new(catalog_dir.path());
-        let result = service.import(&[photos], &volume).unwrap();
+        let result = service.import(&[photos], &volume, &default_filter()).unwrap();
         assert_eq!(result.imported, 1);
         assert_eq!(result.recipes_attached, 1);
 
@@ -1083,7 +1311,7 @@ mod tests {
         );
 
         let service = AssetService::new(catalog_dir.path());
-        service.import(&[photos], &volume).unwrap();
+        service.import(&[photos], &volume, &default_filter()).unwrap();
 
         let metadata_store = crate::metadata_store::MetadataStore::new(catalog_dir.path());
         let summaries = metadata_store.list().unwrap();
@@ -1110,7 +1338,7 @@ mod tests {
         );
 
         let service = AssetService::new(catalog_dir.path());
-        service.import(&[photos], &volume).unwrap();
+        service.import(&[photos], &volume, &default_filter()).unwrap();
 
         // Now manually add a tag to the asset
         let metadata_store = crate::metadata_store::MetadataStore::new(catalog_dir.path());

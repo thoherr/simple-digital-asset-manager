@@ -340,6 +340,156 @@ fn import_xmp_applies_metadata() {
 }
 
 #[test]
+fn import_skips_captureone_by_default() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+    create_test_file(&photos, "DSC_001.nef", b"raw data for cos test");
+    create_test_file(&photos, "DSC_001.cos", b"captureone sidecar");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 imported"));
+
+    // Show should NOT mention CaptureOne recipe
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "DSC_001"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let short_id = stdout.split_whitespace().next().expect("search returned an ID");
+
+    dam()
+        .current_dir(&root)
+        .args(["show", short_id])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Recipes:").not());
+}
+
+#[test]
+fn import_includes_captureone_with_flag() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+    create_test_file(&photos, "DSC_002.nef", b"raw data for cos include test");
+    create_test_file(&photos, "DSC_002.cos", b"captureone sidecar data");
+
+    dam()
+        .current_dir(&root)
+        .args([
+            "import",
+            "--include",
+            "captureone",
+            photos.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("1 imported")
+                .and(predicate::str::contains("1 recipe")),
+        );
+
+    // Show should mention CaptureOne recipe
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "DSC_002"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let short_id = stdout.split_whitespace().next().expect("search returned an ID");
+
+    dam()
+        .current_dir(&root)
+        .args(["show", short_id])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Recipes:")
+                .and(predicate::str::contains("CaptureOne")),
+        );
+}
+
+#[test]
+fn import_skip_audio_excludes_audio_files() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    create_test_file(&root, "photo.jpg", b"jpeg data");
+    create_test_file(&root, "song.mp3", b"audio data");
+
+    // Import with --skip audio
+    dam()
+        .current_dir(&root)
+        .args([
+            "import",
+            "--skip",
+            "audio",
+            root.join("photo.jpg").to_str().unwrap(),
+            root.join("song.mp3").to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 imported"));
+
+    // Only photo should be searchable
+    dam()
+        .current_dir(&root)
+        .args(["search", "song"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No results"));
+}
+
+#[test]
+fn import_unknown_group_errors() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    create_test_file(&root, "photo.jpg", b"data");
+
+    dam()
+        .current_dir(&root)
+        .args([
+            "import",
+            "--include",
+            "bogus",
+            root.join("photo.jpg").to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Unknown file type group"));
+}
+
+#[test]
+fn import_conflicting_include_skip_errors() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    create_test_file(&root, "photo.jpg", b"data");
+
+    dam()
+        .current_dir(&root)
+        .args([
+            "import",
+            "--include",
+            "audio",
+            "--skip",
+            "audio",
+            root.join("photo.jpg").to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be both included and skipped"));
+}
+
+#[test]
 fn rebuild_catalog_restores_data() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
