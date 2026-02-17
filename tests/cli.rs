@@ -469,6 +469,54 @@ fn import_unknown_group_errors() {
 }
 
 #[test]
+fn generate_previews_command_runs() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "preview_test.jpg", b"preview data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    dam()
+        .current_dir(&root)
+        .arg("generate-previews")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("preview(s)"));
+}
+
+#[test]
+fn show_displays_preview_status() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "preview_show.jpg", b"show preview data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "preview_show"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let short_id = stdout.split_whitespace().next().expect("search returned an ID");
+
+    dam()
+        .current_dir(&root)
+        .args(["show", short_id])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Preview:"));
+}
+
+#[test]
 fn import_conflicting_include_skip_errors() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());

@@ -159,6 +159,7 @@ pub struct ImportResult {
     pub locations_added: usize,
     pub skipped: usize,
     pub recipes_attached: usize,
+    pub previews_generated: usize,
 }
 
 /// A group of files sharing the same stem in the same directory.
@@ -202,6 +203,7 @@ impl AssetService {
         let content_store = ContentStore::new(&self.catalog_root);
         let metadata_store = MetadataStore::new(&self.catalog_root);
         let catalog = Catalog::open(&self.catalog_root)?;
+        let preview_gen = crate::preview::PreviewGenerator::new(&self.catalog_root);
 
         catalog.ensure_volume(volume)?;
 
@@ -212,6 +214,7 @@ impl AssetService {
         let mut locations_added = 0;
         let mut skipped = 0;
         let mut recipes_attached = 0;
+        let mut previews_generated = 0;
 
         for group in &groups {
             // Track the asset created/found for this group's primary variant
@@ -361,6 +364,13 @@ impl AssetService {
                     catalog.insert_variant(&variant)?;
                     catalog.insert_file_location(&content_hash, &location)?;
 
+                    // Generate preview for the newly imported variant
+                    match preview_gen.generate(&content_hash, file_path, ext) {
+                        Ok(Some(_)) => previews_generated += 1,
+                        Ok(None) => {}
+                        Err(e) => eprintln!("  Preview warning: {e:#}"),
+                    }
+
                     group_asset = Some(asset);
                 } else {
                     // Additional media file → add variant to existing group asset
@@ -385,6 +395,13 @@ impl AssetService {
                     })?;
                     catalog.insert_variant(&variant)?;
                     catalog.insert_file_location(&content_hash, &location)?;
+
+                    // Generate preview for the additional variant
+                    match preview_gen.generate(&content_hash, file_path, ext) {
+                        Ok(Some(_)) => previews_generated += 1,
+                        Ok(None) => {}
+                        Err(e) => eprintln!("  Preview warning: {e:#}"),
+                    }
                 }
 
                 imported += 1;
@@ -578,6 +595,7 @@ impl AssetService {
             locations_added,
             skipped,
             recipes_attached,
+            previews_generated,
         })
     }
 }

@@ -96,6 +96,17 @@ enum Commands {
     /// Find duplicate files
     Duplicates,
 
+    /// Generate or regenerate preview thumbnails
+    GeneratePreviews {
+        /// Only generate preview for a specific asset
+        #[arg(long)]
+        asset: Option<String>,
+
+        /// Force regeneration even if previews already exist
+        #[arg(long)]
+        force: bool,
+    },
+
     /// Rebuild SQLite catalog from sidecar files
     RebuildCatalog,
 }
@@ -251,6 +262,9 @@ fn main() {
             if result.recipes_attached > 0 {
                 parts.push(format!("{} recipe(s) attached", result.recipes_attached));
             }
+            if result.previews_generated > 0 {
+                parts.push(format!("{} preview(s) generated", result.previews_generated));
+            }
             if parts.is_empty() {
                 println!("Import: nothing to import");
             } else {
@@ -284,6 +298,7 @@ fn main() {
             let catalog_root = dam::config::find_catalog_root()?;
             let engine = QueryEngine::new(&catalog_root);
             let details = engine.show(&asset_id)?;
+            let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root);
 
             println!("Asset: {}", details.id);
             if let Some(name) = &details.name {
@@ -296,6 +311,16 @@ fn main() {
             }
             if let Some(desc) = &details.description {
                 println!("Description: {desc}");
+            }
+
+            // Show preview status for the primary variant
+            if let Some(primary) = details.variants.first() {
+                let preview_path = preview_gen.preview_path(&primary.content_hash);
+                if preview_gen.has_preview(&primary.content_hash) {
+                    println!("Preview: {}", preview_path.display());
+                } else {
+                    println!("Preview: (none)");
+                }
             }
 
             if !details.variants.is_empty() {
@@ -419,6 +444,73 @@ fn main() {
                     entries.len()
                 );
             }
+            Ok(())
+        }
+        Commands::GeneratePreviews { asset, force } => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root);
+            let metadata_store = MetadataStore::new(&catalog_root);
+            let registry = dam::device_registry::DeviceRegistry::new(&catalog_root);
+            let volumes = registry.list()?;
+
+            let assets = if let Some(asset_id) = &asset {
+                let engine = QueryEngine::new(&catalog_root);
+                let details = engine.show(asset_id)?;
+                let uuid: uuid::Uuid = details.id.parse()?;
+                vec![metadata_store.load(uuid)?]
+            } else {
+                let summaries = metadata_store.list()?;
+                summaries
+                    .iter()
+                    .map(|s| metadata_store.load(s.id))
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+
+            let mut generated = 0usize;
+            let mut skipped = 0usize;
+            let mut failed = 0usize;
+
+            for asset in &assets {
+                // Use the primary (first) variant
+                if let Some(variant) = asset.variants.first() {
+                    // Try to find a reachable file for this variant
+                    let source_path = variant.locations.iter().find_map(|loc| {
+                        volumes.iter().find_map(|v| {
+                            if v.id == loc.volume_id && v.is_online {
+                                let full = v.mount_point.join(&loc.relative_path);
+                                if full.exists() { Some(full) } else { None }
+                            } else {
+                                None
+                            }
+                        })
+                    });
+
+                    if let Some(path) = source_path {
+                        let result = if force {
+                            preview_gen.regenerate(&variant.content_hash, &path, &variant.format)
+                        } else {
+                            preview_gen.generate(&variant.content_hash, &path, &variant.format)
+                        };
+                        match result {
+                            Ok(Some(_)) => generated += 1,
+                            Ok(None) => skipped += 1,
+                            Err(e) => {
+                                eprintln!("  Failed for {}: {e:#}", asset.id);
+                                failed += 1;
+                            }
+                        }
+                    } else {
+                        skipped += 1;
+                    }
+                } else {
+                    skipped += 1;
+                }
+            }
+
+            println!(
+                "Generated {} preview(s), {} skipped, {} failed",
+                generated, skipped, failed
+            );
             Ok(())
         }
         Commands::RebuildCatalog => {
