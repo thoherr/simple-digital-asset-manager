@@ -812,3 +812,32 @@ fn verify_specific_path() {
         .success()
         .stdout(predicate::str::contains("1 verified"));
 }
+
+#[test]
+fn verify_path_recognizes_recipe_sidecars() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+    create_test_file(&photos, "DSC_500.nef", b"raw image for verify");
+    create_test_file(&photos, "DSC_500.xmp", b"xmp sidecar for verify");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("1 imported")
+                .and(predicate::str::contains("1 recipe")),
+        );
+
+    // Verify the whole directory — both the NEF and XMP should be verified, not untracked
+    dam()
+        .current_dir(&root)
+        .args(["verify", photos.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 verified"));
+}

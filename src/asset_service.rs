@@ -1008,12 +1008,18 @@ impl AssetService {
                         on_file(file_path, VerifyStatus::Ok);
                     }
                     None => {
-                        result.skipped += 1;
-                        result.errors.push(format!(
-                            "Untracked: {}",
-                            file_path.display()
-                        ));
-                        on_file(file_path, VerifyStatus::Untracked);
+                        // Not a variant — check if it's a known recipe file
+                        if catalog.has_recipe_by_content_hash(&hash)? {
+                            result.verified += 1;
+                            on_file(file_path, VerifyStatus::Ok);
+                        } else {
+                            result.skipped += 1;
+                            result.errors.push(format!(
+                                "Untracked: {}",
+                                file_path.display()
+                            ));
+                            on_file(file_path, VerifyStatus::Untracked);
+                        }
                     }
                 }
             }

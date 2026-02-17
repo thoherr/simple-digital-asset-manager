@@ -551,6 +551,16 @@ impl Catalog {
         Ok(())
     }
 
+    /// Check if a recipe with the given content hash exists.
+    pub fn has_recipe_by_content_hash(&self, content_hash: &str) -> Result<bool> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM recipes WHERE content_hash = ?1",
+            rusqlite::params![content_hash],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
     /// Drop and recreate data tables (assets, variants, file_locations, recipes).
     /// Keeps the volumes table intact. Ensures the schema is up to date.
     pub fn rebuild(&self) -> Result<()> {
