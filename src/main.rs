@@ -48,7 +48,7 @@ enum Commands {
 
     /// Search assets
     Search {
-        /// Search query
+        /// Free-text keywords and optional filters (type:image, tag:landscape, format:jpg)
         query: String,
     },
 
