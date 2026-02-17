@@ -33,7 +33,7 @@ Core layers: CLI → Core Library (Asset Service, Content Store, Metadata Store,
 
 Core CLI is functional. See `specification.md` for full requirements.
 
-**Implemented commands**: `init`, `volume add/list`, `import`, `search`, `show`, `tag`, `group`, `duplicates`, `generate-previews`, `rebuild-catalog`
+**Implemented commands**: `init`, `volume add/list`, `import`, `search`, `show`, `tag`, `group`, `duplicates`, `generate-previews`, `rebuild-catalog`, `relocate`
 
 **Import behavior**:
 - **Stem-based auto-grouping**: Files sharing the same filename stem in the same directory are grouped into one Asset during import. RAW files take priority as the primary variant (defining asset identity and EXIF data). Additional media files become extra variants on the same asset.
@@ -43,5 +43,6 @@ Core CLI is functional. See `specification.md` for full requirements.
 - **Preview generation**: During import, 800px JPEG thumbnails are generated for each variant. Standard image formats use the `image` crate; RAW files use `dcraw` or `dcraw_emu` (LibRaw); videos use `ffmpeg`. Previews are stored in `previews/<hash-prefix>/<hash>.jpg`. Missing external tools are silently skipped — preview failure never blocks import.
 - **Show command**: Displays variants, attached recipes, and preview status for an asset.
 - **Generate-previews command**: Generates missing previews for all assets, or a specific asset with `--asset`. Supports `--force` to regenerate existing previews.
+- **Relocate command**: Copies or moves all files of an asset (variants + recipes) to a target volume. `dam relocate <asset-id> <target-volume> [--remove-source] [--dry-run]`. Without `--remove-source`, files are copied and the asset gains additional locations. With `--remove-source`, source files are deleted after verified copy. `--dry-run` shows what would happen without making changes. Preserves relative paths on the target volume. Verifies file integrity via SHA-256 after copy.
 
-**Not yet implemented**: `relocate`, `verify`
+**Not yet implemented**: `verify`

@@ -94,6 +94,34 @@ impl DeviceRegistry {
         })
     }
 
+    /// Find a volume by label or UUID string.
+    pub fn resolve_volume(&self, label_or_id: &str) -> Result<Volume> {
+        let volumes = self.list()?;
+
+        // Try UUID match first
+        if let Ok(uuid) = uuid::Uuid::parse_str(label_or_id) {
+            if let Some(v) = volumes.iter().find(|v| v.id == uuid) {
+                return Ok(v.clone());
+            }
+        }
+
+        // Fall back to label match
+        if let Some(v) = volumes.iter().find(|v| v.label == label_or_id) {
+            return Ok(v.clone());
+        }
+
+        let labels: Vec<&str> = volumes.iter().map(|v| v.label.as_str()).collect();
+        anyhow::bail!(
+            "No volume found matching '{}'. Known volumes: {}",
+            label_or_id,
+            if labels.is_empty() {
+                "(none)".to_string()
+            } else {
+                labels.join(", ")
+            }
+        )
+    }
+
     /// Check which mount points are currently available.
     pub fn detect_online(&self) -> Result<()> {
         anyhow::bail!("not yet implemented")
@@ -167,6 +195,45 @@ mod tests {
 
         let volumes = registry.load().unwrap();
         assert_eq!(volumes.len(), 2);
+    }
+
+    #[test]
+    fn resolve_volume_by_label() {
+        let dir = setup();
+        let registry = DeviceRegistry::new(dir.path());
+        registry
+            .register("Photos", Path::new("/mnt/photos"), VolumeType::Local)
+            .unwrap();
+
+        let vol = registry.resolve_volume("Photos").unwrap();
+        assert_eq!(vol.label, "Photos");
+    }
+
+    #[test]
+    fn resolve_volume_by_uuid() {
+        let dir = setup();
+        let registry = DeviceRegistry::new(dir.path());
+        let registered = registry
+            .register("Photos", Path::new("/mnt/photos"), VolumeType::Local)
+            .unwrap();
+
+        let vol = registry
+            .resolve_volume(&registered.id.to_string())
+            .unwrap();
+        assert_eq!(vol.id, registered.id);
+        assert_eq!(vol.label, "Photos");
+    }
+
+    #[test]
+    fn resolve_volume_unknown_errors() {
+        let dir = setup();
+        let registry = DeviceRegistry::new(dir.path());
+        registry
+            .register("Photos", Path::new("/mnt/photos"), VolumeType::Local)
+            .unwrap();
+
+        let err = registry.resolve_volume("Nonexistent").unwrap_err();
+        assert!(err.to_string().contains("No volume found"));
     }
 
     #[test]

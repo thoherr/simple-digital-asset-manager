@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::Result;
 use sha2::{Digest, Sha256};
 
-use crate::models::{FileLocation, Volume};
+use crate::models::Volume;
 
 /// Manages file identity, deduplication, and physical location tracking.
 pub struct ContentStore {
@@ -22,6 +22,11 @@ impl ContentStore {
     /// Hash a file and return the SHA-256 content hash as "sha256:<hex>".
     /// Referenced mode: no file copying is performed.
     pub fn ingest(&self, path: &Path, _volume: &Volume) -> Result<String> {
+        self.hash_file(path)
+    }
+
+    /// Hash a file and return the SHA-256 content hash as "sha256:<hex>".
+    pub fn hash_file(&self, path: &Path) -> Result<String> {
         let mut file = File::open(path)?;
         let mut hasher = Sha256::new();
         let mut buffer = [0u8; 8192];
@@ -36,32 +41,31 @@ impl ContentStore {
         Ok(format!("sha256:{:x}", hash))
     }
 
-    /// Find all known locations of a file by its content hash.
-    pub fn locate(&self, _content_hash: &str) -> Result<Vec<FileLocation>> {
-        anyhow::bail!("not yet implemented")
-    }
+    /// Copy a file from source to dest, then verify the copy matches the expected hash.
+    /// Creates parent directories as needed. On hash mismatch, deletes the bad copy.
+    pub fn copy_and_verify(&self, source: &Path, dest: &Path, expected_hash: &str) -> Result<()> {
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
 
-    /// Move/copy a file between volumes, updating locations.
-    pub fn relocate(
-        &self,
-        _content_hash: &str,
-        _from_volume: &Volume,
-        _to_volume: &Volume,
-    ) -> Result<()> {
-        anyhow::bail!("not yet implemented")
+        std::fs::copy(source, dest)?;
+
+        let actual_hash = self.hash_file(dest)?;
+        if actual_hash != expected_hash {
+            let _ = std::fs::remove_file(dest);
+            anyhow::bail!(
+                "Integrity check failed for {}: expected {}, got {}",
+                dest.display(),
+                expected_hash,
+                actual_hash
+            );
+        }
+
+        Ok(())
     }
 
     /// Re-hash file at location and confirm integrity.
-    pub fn verify(&self, _content_hash: &str, _location: &FileLocation) -> Result<bool> {
-        anyhow::bail!("not yet implemented")
-    }
-
-    /// Unregister a location (file moved/deleted externally).
-    pub fn remove_location(
-        &self,
-        _content_hash: &str,
-        _location: &FileLocation,
-    ) -> Result<()> {
+    pub fn verify(&self, _content_hash: &str, _location: &crate::models::FileLocation) -> Result<bool> {
         anyhow::bail!("not yet implemented")
     }
 }
@@ -89,5 +93,68 @@ mod tests {
             hash,
             "sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
         );
+    }
+
+    #[test]
+    fn hash_file_returns_correct_sha256() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("hash_test.txt");
+        std::fs::write(&file_path, "hello world").unwrap();
+
+        let store = ContentStore::new(dir.path());
+        let hash = store.hash_file(&file_path).unwrap();
+        assert_eq!(
+            hash,
+            "sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
+    }
+
+    #[test]
+    fn copy_and_verify_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.txt");
+        std::fs::write(&source, "copy me").unwrap();
+
+        let store = ContentStore::new(dir.path());
+        let hash = store.hash_file(&source).unwrap();
+
+        let dest = dir.path().join("dest.txt");
+        store.copy_and_verify(&source, &dest, &hash).unwrap();
+
+        assert!(dest.exists());
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "copy me");
+    }
+
+    #[test]
+    fn copy_and_verify_creates_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.txt");
+        std::fs::write(&source, "nested copy").unwrap();
+
+        let store = ContentStore::new(dir.path());
+        let hash = store.hash_file(&source).unwrap();
+
+        let dest = dir.path().join("a/b/c/dest.txt");
+        store.copy_and_verify(&source, &dest, &hash).unwrap();
+
+        assert!(dest.exists());
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "nested copy");
+    }
+
+    #[test]
+    fn copy_and_verify_fails_on_hash_mismatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.txt");
+        std::fs::write(&source, "some content").unwrap();
+
+        let store = ContentStore::new(dir.path());
+        let dest = dir.path().join("dest.txt");
+        let err = store
+            .copy_and_verify(&source, &dest, "sha256:0000000000000000")
+            .unwrap_err();
+
+        assert!(err.to_string().contains("Integrity check failed"));
+        // Bad copy should be cleaned up
+        assert!(!dest.exists());
     }
 }

@@ -504,6 +504,37 @@ impl Catalog {
         Ok(entries)
     }
 
+    /// Delete a specific file location row. Returns true if a row was deleted.
+    pub fn delete_file_location(
+        &self,
+        content_hash: &str,
+        volume_id: &str,
+        relative_path: &str,
+    ) -> Result<bool> {
+        let changed = self.conn.execute(
+            "DELETE FROM file_locations WHERE content_hash = ?1 AND volume_id = ?2 AND relative_path = ?3",
+            rusqlite::params![content_hash, volume_id, relative_path],
+        )?;
+        Ok(changed > 0)
+    }
+
+    /// Update the volume and path for a recipe.
+    pub fn update_recipe_location(
+        &self,
+        recipe_id: &str,
+        volume_id: &str,
+        relative_path: &str,
+    ) -> Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE recipes SET volume_id = ?1, relative_path = ?2 WHERE id = ?3",
+            rusqlite::params![volume_id, relative_path, recipe_id],
+        )?;
+        if changed == 0 {
+            anyhow::bail!("No recipe found with id '{recipe_id}'");
+        }
+        Ok(())
+    }
+
     /// Drop and recreate data tables (assets, variants, file_locations, recipes).
     /// Keeps the volumes table intact. Ensures the schema is up to date.
     pub fn rebuild(&self) -> Result<()> {
@@ -1028,5 +1059,144 @@ mod tests {
         catalog.initialize().unwrap();
         let dupes = catalog.find_duplicates().unwrap();
         assert!(dupes.is_empty());
+    }
+
+    #[test]
+    fn delete_file_location_removes_row() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let volume = crate::models::Volume::new(
+            "vol".to_string(),
+            std::path::PathBuf::from("/mnt/vol"),
+            crate::models::VolumeType::Local,
+        );
+        catalog.ensure_volume(&volume).unwrap();
+
+        let asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:delloc1");
+        catalog.insert_asset(&asset).unwrap();
+
+        let variant = crate::models::Variant {
+            content_hash: "sha256:delloc1".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 100,
+            original_filename: "photo.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        catalog.insert_variant(&variant).unwrap();
+
+        let loc = crate::models::FileLocation {
+            volume_id: volume.id,
+            relative_path: std::path::PathBuf::from("photos/photo.jpg"),
+            verified_at: None,
+        };
+        catalog
+            .insert_file_location(&variant.content_hash, &loc)
+            .unwrap();
+
+        let deleted = catalog
+            .delete_file_location("sha256:delloc1", &volume.id.to_string(), "photos/photo.jpg")
+            .unwrap();
+        assert!(deleted);
+
+        // Verify location is gone
+        let details = catalog
+            .load_asset_details(&asset.id.to_string())
+            .unwrap()
+            .unwrap();
+        assert!(details.variants[0].locations.is_empty());
+    }
+
+    #[test]
+    fn delete_file_location_returns_false_for_missing() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let deleted = catalog
+            .delete_file_location("sha256:nope", "some-vol", "some/path.jpg")
+            .unwrap();
+        assert!(!deleted);
+    }
+
+    #[test]
+    fn update_recipe_location_changes_values() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let vol1 = crate::models::Volume::new(
+            "vol1".to_string(),
+            std::path::PathBuf::from("/mnt/vol1"),
+            crate::models::VolumeType::Local,
+        );
+        let vol2 = crate::models::Volume::new(
+            "vol2".to_string(),
+            std::path::PathBuf::from("/mnt/vol2"),
+            crate::models::VolumeType::Local,
+        );
+        catalog.ensure_volume(&vol1).unwrap();
+        catalog.ensure_volume(&vol2).unwrap();
+
+        let asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:rec1");
+        catalog.insert_asset(&asset).unwrap();
+
+        let variant = crate::models::Variant {
+            content_hash: "sha256:rec1".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "nef".to_string(),
+            file_size: 500,
+            original_filename: "photo.nef".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        catalog.insert_variant(&variant).unwrap();
+
+        let recipe_id = uuid::Uuid::new_v4();
+        let recipe = crate::models::Recipe {
+            id: recipe_id,
+            variant_hash: "sha256:rec1".to_string(),
+            software: "Adobe".to_string(),
+            recipe_type: crate::models::RecipeType::Sidecar,
+            content_hash: "sha256:recipe_hash".to_string(),
+            location: crate::models::FileLocation {
+                volume_id: vol1.id,
+                relative_path: std::path::PathBuf::from("photos/photo.xmp"),
+                verified_at: None,
+            },
+        };
+        catalog.insert_recipe(&recipe).unwrap();
+
+        catalog
+            .update_recipe_location(
+                &recipe_id.to_string(),
+                &vol2.id.to_string(),
+                "backup/photo.xmp",
+            )
+            .unwrap();
+
+        // Verify by querying the recipe
+        let row: (String, String) = catalog
+            .conn
+            .query_row(
+                "SELECT volume_id, relative_path FROM recipes WHERE id = ?1",
+                rusqlite::params![recipe_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(row.0, vol2.id.to_string());
+        assert_eq!(row.1, "backup/photo.xmp");
+    }
+
+    #[test]
+    fn update_recipe_location_errors_on_missing() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+        let err = catalog
+            .update_recipe_location("nonexistent-id", "vol", "path")
+            .unwrap_err();
+        assert!(err.to_string().contains("No recipe found"));
     }
 }

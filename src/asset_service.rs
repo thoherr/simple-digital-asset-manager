@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::catalog::Catalog;
 use crate::content_store::ContentStore;
+use crate::device_registry::DeviceRegistry;
 use crate::metadata_store::MetadataStore;
 use crate::models::{
     Asset, AssetType, FileLocation, Recipe, RecipeType, Variant, VariantRole, Volume,
@@ -160,6 +161,32 @@ pub struct ImportResult {
     pub skipped: usize,
     pub recipes_attached: usize,
     pub previews_generated: usize,
+}
+
+/// Result of a relocate operation.
+#[derive(Debug)]
+pub struct RelocateResult {
+    pub copied: usize,
+    pub skipped: usize,
+    pub removed: usize,
+    pub actions: Vec<String>,
+}
+
+/// What kind of file is being relocated.
+enum FileCopyKind {
+    Variant,
+    Recipe { recipe_id: Uuid },
+}
+
+/// A planned file copy for relocation.
+struct FileCopyPlan {
+    content_hash: String,
+    source_path: PathBuf,
+    target_path: PathBuf,
+    kind: FileCopyKind,
+    /// The volume_id + relative_path of the source location (for removal)
+    source_volume_id: Uuid,
+    source_relative_path: PathBuf,
 }
 
 /// A group of files sharing the same stem in the same directory.
@@ -596,6 +623,275 @@ impl AssetService {
             skipped,
             recipes_attached,
             previews_generated,
+        })
+    }
+
+    /// Relocate all files of an asset to a target volume.
+    ///
+    /// Copies variant files and recipe files, verifies integrity, updates metadata.
+    /// With `remove_source`, deletes source files after successful copy.
+    /// With `dry_run`, only reports what would happen.
+    pub fn relocate(
+        &self,
+        asset_id: &str,
+        target_volume_label: &str,
+        remove_source: bool,
+        dry_run: bool,
+    ) -> Result<RelocateResult> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let metadata_store = MetadataStore::new(&self.catalog_root);
+        let content_store = ContentStore::new(&self.catalog_root);
+        let registry = DeviceRegistry::new(&self.catalog_root);
+
+        // Resolve asset
+        let full_id = catalog
+            .resolve_asset_id(asset_id)?
+            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+        let asset_uuid: Uuid = full_id.parse()?;
+        let asset = metadata_store.load(asset_uuid)?;
+
+        // Resolve target volume
+        let target_volume = registry.resolve_volume(target_volume_label)?;
+        if !target_volume.mount_point.exists() {
+            bail!("Target volume '{}' is offline (mount point {} not found)",
+                target_volume.label, target_volume.mount_point.display());
+        }
+
+        // Get all volumes for resolving source paths
+        let volumes = registry.list()?;
+        let find_volume = |vol_id: Uuid| -> Option<Volume> {
+            volumes.iter().find(|v| v.id == vol_id).cloned()
+        };
+
+        // Build copy plan
+        let mut plan: Vec<FileCopyPlan> = Vec::new();
+
+        // Plan variant file copies
+        for variant in &asset.variants {
+            for loc in &variant.locations {
+                if loc.volume_id == target_volume.id {
+                    continue; // Already on target
+                }
+                let source_vol = find_volume(loc.volume_id)
+                    .ok_or_else(|| anyhow::anyhow!(
+                        "Source volume {} not found in registry", loc.volume_id
+                    ))?;
+                if !source_vol.mount_point.exists() {
+                    bail!("Source volume '{}' is offline (mount point {} not found)",
+                        source_vol.label, source_vol.mount_point.display());
+                }
+
+                let source_path = source_vol.mount_point.join(&loc.relative_path);
+                let target_path = target_volume.mount_point.join(&loc.relative_path);
+
+                plan.push(FileCopyPlan {
+                    content_hash: variant.content_hash.clone(),
+                    source_path,
+                    target_path,
+                    kind: FileCopyKind::Variant,
+                    source_volume_id: loc.volume_id,
+                    source_relative_path: loc.relative_path.clone(),
+                });
+            }
+        }
+
+        // Plan recipe file copies
+        for recipe in &asset.recipes {
+            if recipe.location.volume_id == target_volume.id {
+                continue; // Already on target
+            }
+            let source_vol = find_volume(recipe.location.volume_id)
+                .ok_or_else(|| anyhow::anyhow!(
+                    "Source volume {} not found in registry", recipe.location.volume_id
+                ))?;
+            if !source_vol.mount_point.exists() {
+                bail!("Source volume '{}' is offline (mount point {} not found)",
+                    source_vol.label, source_vol.mount_point.display());
+            }
+
+            let source_path = source_vol.mount_point.join(&recipe.location.relative_path);
+            let target_path = target_volume.mount_point.join(&recipe.location.relative_path);
+
+            plan.push(FileCopyPlan {
+                content_hash: recipe.content_hash.clone(),
+                source_path,
+                target_path,
+                kind: FileCopyKind::Recipe { recipe_id: recipe.id },
+                source_volume_id: recipe.location.volume_id,
+                source_relative_path: recipe.location.relative_path.clone(),
+            });
+        }
+
+        // Early return if nothing to do
+        if plan.is_empty() {
+            return Ok(RelocateResult {
+                copied: 0,
+                skipped: 0,
+                removed: 0,
+                actions: vec!["All files already on target volume".to_string()],
+            });
+        }
+
+        // Dry run: report what would happen
+        if dry_run {
+            let mut actions = Vec::new();
+            let mut would_copy = 0usize;
+            let mut would_skip = 0usize;
+
+            for entry in &plan {
+                if entry.target_path.exists() {
+                    let existing_hash = content_store.hash_file(&entry.target_path)?;
+                    if existing_hash == entry.content_hash {
+                        actions.push(format!(
+                            "SKIP {} (already exists with matching hash)",
+                            entry.source_relative_path.display()
+                        ));
+                        would_skip += 1;
+                        continue;
+                    }
+                }
+                let verb = if remove_source { "MOVE" } else { "COPY" };
+                actions.push(format!(
+                    "{} {} -> {}",
+                    verb,
+                    entry.source_path.display(),
+                    entry.target_path.display()
+                ));
+                would_copy += 1;
+            }
+
+            return Ok(RelocateResult {
+                copied: would_copy,
+                skipped: would_skip,
+                removed: if remove_source { would_copy } else { 0 },
+                actions,
+            });
+        }
+
+        // Phase 1: Copy all files (no metadata changes yet)
+        let mut copied = 0usize;
+        let mut skipped = 0usize;
+        let mut actions = Vec::new();
+
+        for entry in &plan {
+            if entry.target_path.exists() {
+                let existing_hash = content_store.hash_file(&entry.target_path)?;
+                if existing_hash == entry.content_hash {
+                    actions.push(format!(
+                        "Skipped {} (already exists on target)",
+                        entry.source_relative_path.display()
+                    ));
+                    skipped += 1;
+                    continue;
+                }
+            }
+            content_store
+                .copy_and_verify(&entry.source_path, &entry.target_path, &entry.content_hash)
+                .with_context(|| format!(
+                    "Failed to copy {} to {}",
+                    entry.source_path.display(),
+                    entry.target_path.display()
+                ))?;
+            actions.push(format!(
+                "Copied {} -> {}",
+                entry.source_relative_path.display(),
+                target_volume.label
+            ));
+            copied += 1;
+        }
+
+        // Phase 2: Update metadata
+        let mut asset = metadata_store.load(asset_uuid)?;
+        catalog.ensure_volume(&target_volume)?;
+
+        for entry in &plan {
+            match &entry.kind {
+                FileCopyKind::Variant => {
+                    // Add new location to the variant
+                    let new_loc = FileLocation {
+                        volume_id: target_volume.id,
+                        relative_path: entry.source_relative_path.clone(),
+                        verified_at: None,
+                    };
+                    if let Some(variant) = asset.variants.iter_mut().find(|v| v.content_hash == entry.content_hash) {
+                        let already_has = variant.locations.iter().any(|l| {
+                            l.volume_id == target_volume.id
+                                && l.relative_path == entry.source_relative_path
+                        });
+                        if !already_has {
+                            variant.locations.push(new_loc.clone());
+                            catalog.insert_file_location(&entry.content_hash, &new_loc)?;
+                        }
+                    }
+                }
+                FileCopyKind::Recipe { recipe_id } => {
+                    // Update recipe location to target volume
+                    if let Some(recipe) = asset.recipes.iter_mut().find(|r| r.id == *recipe_id) {
+                        recipe.location.volume_id = target_volume.id;
+                        recipe.location.relative_path = entry.source_relative_path.clone();
+                    }
+                    catalog.update_recipe_location(
+                        &recipe_id.to_string(),
+                        &target_volume.id.to_string(),
+                        &entry.source_relative_path.to_string_lossy(),
+                    )?;
+                }
+            }
+        }
+
+        metadata_store.save(&asset)?;
+
+        // Phase 3: Remove sources (only if --remove-source)
+        let mut removed = 0usize;
+        if remove_source {
+            for entry in &plan {
+                // Delete source file
+                if entry.source_path.exists() {
+                    std::fs::remove_file(&entry.source_path)
+                        .with_context(|| format!(
+                            "Failed to remove source file {}",
+                            entry.source_path.display()
+                        ))?;
+                }
+
+                match &entry.kind {
+                    FileCopyKind::Variant => {
+                        // Remove old location from variant
+                        if let Some(variant) = asset.variants.iter_mut().find(|v| v.content_hash == entry.content_hash) {
+                            variant.locations.retain(|l| {
+                                !(l.volume_id == entry.source_volume_id
+                                    && l.relative_path == entry.source_relative_path)
+                            });
+                        }
+                        catalog.delete_file_location(
+                            &entry.content_hash,
+                            &entry.source_volume_id.to_string(),
+                            &entry.source_relative_path.to_string_lossy(),
+                        )?;
+                    }
+                    FileCopyKind::Recipe { .. } => {
+                        // Recipe location already updated to target in Phase 2
+                    }
+                }
+
+                removed += 1;
+            }
+
+            // Save again after removals
+            metadata_store.save(&asset)?;
+
+            // Update action messages
+            actions = actions
+                .into_iter()
+                .map(|a| a.replace("Copied", "Moved"))
+                .collect();
+        }
+
+        Ok(RelocateResult {
+            copied,
+            skipped,
+            removed,
+            actions,
         })
     }
 }
@@ -1370,5 +1666,290 @@ mod tests {
         assert!(asset.tags.contains(&"nature".to_string()));
         assert!(asset.tags.contains(&"forest".to_string()));
         assert!(asset.tags.contains(&"manual-tag".to_string()));
+    }
+
+    /// Set up a catalog with volumes registered for relocate tests.
+    /// Returns (catalog_dir, vol1_dir, vol2_dir, vol1, vol2).
+    fn setup_relocate() -> (
+        tempfile::TempDir,
+        tempfile::TempDir,
+        tempfile::TempDir,
+        Volume,
+        Volume,
+    ) {
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+        crate::device_registry::DeviceRegistry::init(catalog_dir.path()).unwrap();
+
+        let vol1_dir = tempfile::tempdir().unwrap();
+        let vol2_dir = tempfile::tempdir().unwrap();
+
+        let registry = crate::device_registry::DeviceRegistry::new(catalog_dir.path());
+        let vol1 = registry
+            .register("vol1", vol1_dir.path(), crate::models::VolumeType::Local)
+            .unwrap();
+        let vol2 = registry
+            .register("vol2", vol2_dir.path(), crate::models::VolumeType::Local)
+            .unwrap();
+
+        // Ensure volumes are in the catalog DB too
+        let catalog = crate::catalog::Catalog::open(catalog_dir.path()).unwrap();
+        catalog.ensure_volume(&vol1).unwrap();
+        catalog.ensure_volume(&vol2).unwrap();
+
+        (catalog_dir, vol1_dir, vol2_dir, vol1, vol2)
+    }
+
+    #[test]
+    fn relocate_copies_variant_to_target_volume() {
+        let (catalog_dir, vol1_dir, vol2_dir, vol1, _vol2) = setup_relocate();
+
+        // Create a file on vol1
+        std::fs::write(vol1_dir.path().join("photo.jpg"), "photo data").unwrap();
+
+        let service = AssetService::new(catalog_dir.path());
+        service
+            .import(
+                &[vol1_dir.path().join("photo.jpg")],
+                &vol1,
+                &default_filter(),
+            )
+            .unwrap();
+
+        // Get asset ID
+        let metadata_store = MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let asset_id = summaries[0].id.to_string();
+
+        // Relocate to vol2
+        let result = service.relocate(&asset_id, "vol2", false, false).unwrap();
+        assert_eq!(result.copied, 1);
+        assert_eq!(result.removed, 0);
+
+        // Verify file exists on vol2
+        assert!(vol2_dir.path().join("photo.jpg").exists());
+        // File also still on vol1
+        assert!(vol1_dir.path().join("photo.jpg").exists());
+
+        // Verify sidecar has locations on both volumes
+        let asset = metadata_store.load(summaries[0].id).unwrap();
+        assert_eq!(asset.variants[0].locations.len(), 2);
+    }
+
+    #[test]
+    fn relocate_with_remove_source_moves_files() {
+        let (catalog_dir, vol1_dir, vol2_dir, vol1, _vol2) = setup_relocate();
+
+        std::fs::write(vol1_dir.path().join("photo.jpg"), "move me").unwrap();
+
+        let service = AssetService::new(catalog_dir.path());
+        service
+            .import(
+                &[vol1_dir.path().join("photo.jpg")],
+                &vol1,
+                &default_filter(),
+            )
+            .unwrap();
+
+        let metadata_store = MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let asset_id = summaries[0].id.to_string();
+
+        let result = service.relocate(&asset_id, "vol2", true, false).unwrap();
+        assert_eq!(result.copied, 1);
+        assert_eq!(result.removed, 1);
+
+        // File should be on vol2 but not on vol1
+        assert!(vol2_dir.path().join("photo.jpg").exists());
+        assert!(!vol1_dir.path().join("photo.jpg").exists());
+
+        // Sidecar should have only vol2 location
+        let asset = metadata_store.load(summaries[0].id).unwrap();
+        assert_eq!(asset.variants[0].locations.len(), 1);
+        assert_eq!(asset.variants[0].locations[0].volume_id, _vol2.id);
+    }
+
+    #[test]
+    fn relocate_copies_recipes_alongside_variants() {
+        let (catalog_dir, vol1_dir, vol2_dir, vol1, _vol2) = setup_relocate();
+
+        let photos = vol1_dir.path().join("photos");
+        std::fs::create_dir_all(&photos).unwrap();
+        std::fs::write(photos.join("DSC.nef"), "raw data for relocate").unwrap();
+        std::fs::write(photos.join("DSC.xmp"), "xmp recipe data").unwrap();
+
+        let service = AssetService::new(catalog_dir.path());
+        service
+            .import(&[photos], &vol1, &default_filter())
+            .unwrap();
+
+        let metadata_store = MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let asset_id = summaries[0].id.to_string();
+
+        let result = service.relocate(&asset_id, "vol2", false, false).unwrap();
+        // Should copy both variant and recipe
+        assert_eq!(result.copied, 2);
+
+        // Both files should exist on vol2
+        assert!(vol2_dir.path().join("photos/DSC.nef").exists());
+        assert!(vol2_dir.path().join("photos/DSC.xmp").exists());
+    }
+
+    #[test]
+    fn relocate_skips_already_present_files() {
+        let (catalog_dir, vol1_dir, _vol2_dir, vol1, _vol2) = setup_relocate();
+
+        std::fs::write(vol1_dir.path().join("photo.jpg"), "skip test").unwrap();
+
+        let service = AssetService::new(catalog_dir.path());
+        service
+            .import(
+                &[vol1_dir.path().join("photo.jpg")],
+                &vol1,
+                &default_filter(),
+            )
+            .unwrap();
+
+        let metadata_store = MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let asset_id = summaries[0].id.to_string();
+
+        // First relocate
+        service.relocate(&asset_id, "vol2", false, false).unwrap();
+
+        // Second relocate — vol1 location still generates a plan entry,
+        // but the file already exists on vol2 with matching hash, so it's skipped
+        let result = service.relocate(&asset_id, "vol2", false, false).unwrap();
+        assert_eq!(result.copied, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(result.actions[0].contains("already exists"));
+    }
+
+    #[test]
+    fn relocate_dry_run_makes_no_changes() {
+        let (catalog_dir, vol1_dir, vol2_dir, vol1, _vol2) = setup_relocate();
+
+        std::fs::write(vol1_dir.path().join("photo.jpg"), "dry run test").unwrap();
+
+        let service = AssetService::new(catalog_dir.path());
+        service
+            .import(
+                &[vol1_dir.path().join("photo.jpg")],
+                &vol1,
+                &default_filter(),
+            )
+            .unwrap();
+
+        let metadata_store = MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let asset_id = summaries[0].id.to_string();
+
+        let result = service.relocate(&asset_id, "vol2", false, true).unwrap();
+        assert_eq!(result.copied, 1);
+
+        // File should NOT exist on vol2
+        assert!(!vol2_dir.path().join("photo.jpg").exists());
+
+        // Sidecar should still only have vol1 location
+        let asset = metadata_store.load(summaries[0].id).unwrap();
+        assert_eq!(asset.variants[0].locations.len(), 1);
+    }
+
+    #[test]
+    fn relocate_noop_when_already_on_target() {
+        let (catalog_dir, vol1_dir, _vol2_dir, vol1, _vol2) = setup_relocate();
+
+        std::fs::write(vol1_dir.path().join("photo.jpg"), "noop test").unwrap();
+
+        let service = AssetService::new(catalog_dir.path());
+        service
+            .import(
+                &[vol1_dir.path().join("photo.jpg")],
+                &vol1,
+                &default_filter(),
+            )
+            .unwrap();
+
+        let metadata_store = MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let asset_id = summaries[0].id.to_string();
+
+        // Relocate to same volume
+        let result = service.relocate(&asset_id, "vol1", false, false).unwrap();
+        assert_eq!(result.copied, 0);
+        assert_eq!(result.skipped, 0);
+        assert!(result.actions[0].contains("already on target"));
+    }
+
+    #[test]
+    fn relocate_fails_if_target_volume_offline() {
+        let (catalog_dir, vol1_dir, _vol2_dir, vol1, _vol2) = setup_relocate();
+
+        std::fs::write(vol1_dir.path().join("photo.jpg"), "offline test").unwrap();
+
+        let service = AssetService::new(catalog_dir.path());
+        service
+            .import(
+                &[vol1_dir.path().join("photo.jpg")],
+                &vol1,
+                &default_filter(),
+            )
+            .unwrap();
+
+        let metadata_store = MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let asset_id = summaries[0].id.to_string();
+
+        // Register an offline volume
+        let registry = crate::device_registry::DeviceRegistry::new(catalog_dir.path());
+        registry
+            .register(
+                "offline-vol",
+                std::path::Path::new("/nonexistent/mount"),
+                crate::models::VolumeType::External,
+            )
+            .unwrap();
+
+        let err = service
+            .relocate(&asset_id, "offline-vol", false, false)
+            .unwrap_err();
+        assert!(err.to_string().contains("offline"));
+    }
+
+    #[test]
+    fn relocate_fails_for_unknown_asset_id() {
+        let (catalog_dir, _vol1_dir, _vol2_dir, _vol1, _vol2) = setup_relocate();
+
+        let service = AssetService::new(catalog_dir.path());
+        let err = service
+            .relocate("nonexistent-id", "vol2", false, false)
+            .unwrap_err();
+        assert!(err.to_string().contains("No asset found"));
+    }
+
+    #[test]
+    fn relocate_fails_for_unknown_volume() {
+        let (catalog_dir, vol1_dir, _vol2_dir, vol1, _vol2) = setup_relocate();
+
+        std::fs::write(vol1_dir.path().join("photo.jpg"), "unknown vol test").unwrap();
+
+        let service = AssetService::new(catalog_dir.path());
+        service
+            .import(
+                &[vol1_dir.path().join("photo.jpg")],
+                &vol1,
+                &default_filter(),
+            )
+            .unwrap();
+
+        let metadata_store = MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let asset_id = summaries[0].id.to_string();
+
+        let err = service
+            .relocate(&asset_id, "nonexistent-vol", false, false)
+            .unwrap_err();
+        assert!(err.to_string().contains("No volume found"));
     }
 }

@@ -516,6 +516,160 @@ fn show_displays_preview_status() {
         .stdout(predicate::str::contains("Preview:"));
 }
 
+/// Initialize a catalog with two volumes: vol1 and vol2.
+/// Returns (canonical root, vol1 path, vol2 path).
+fn init_two_volumes(dir: &Path) -> (PathBuf, PathBuf, PathBuf) {
+    let canonical = dir.canonicalize().expect("canonicalize tempdir");
+    dam().current_dir(&canonical).arg("init").assert().success();
+
+    let vol1 = canonical.join("vol1");
+    let vol2 = canonical.join("vol2");
+    std::fs::create_dir_all(&vol1).unwrap();
+    std::fs::create_dir_all(&vol2).unwrap();
+
+    dam()
+        .current_dir(&canonical)
+        .args(["volume", "add", "vol1", vol1.to_str().unwrap()])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&canonical)
+        .args(["volume", "add", "vol2", vol2.to_str().unwrap()])
+        .assert()
+        .success();
+
+    (canonical, vol1, vol2)
+}
+
+#[test]
+fn relocate_copies_files_between_volumes() {
+    let dir = tempdir().unwrap();
+    let (root, vol1, vol2) = init_two_volumes(dir.path());
+
+    create_test_file(&vol1, "photo.jpg", b"relocate test data");
+
+    // Import on vol1
+    dam()
+        .current_dir(&root)
+        .args(["import", vol1.join("photo.jpg").to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 imported"));
+
+    // Get asset ID
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "photo"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let short_id = stdout.split_whitespace().next().expect("search returned an ID");
+
+    // Relocate to vol2
+    dam()
+        .current_dir(&root)
+        .args(["relocate", short_id, "vol2"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Relocate complete"));
+
+    // Verify file exists on vol2
+    assert!(vol2.join("photo.jpg").exists());
+    // File still on vol1
+    assert!(vol1.join("photo.jpg").exists());
+
+    // Show should list both volumes
+    dam()
+        .current_dir(&root)
+        .args(["show", short_id])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("vol1")
+                .and(predicate::str::contains("vol2")),
+        );
+}
+
+#[test]
+fn relocate_with_remove_source_flag() {
+    let dir = tempdir().unwrap();
+    let (root, vol1, vol2) = init_two_volumes(dir.path());
+
+    create_test_file(&vol1, "move_me.jpg", b"move test data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", vol1.join("move_me.jpg").to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "move_me"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let short_id = stdout.split_whitespace().next().expect("search returned an ID");
+
+    // Relocate with --remove-source
+    dam()
+        .current_dir(&root)
+        .args(["relocate", short_id, "vol2", "--remove-source"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Relocate complete"));
+
+    // File should be on vol2 but not on vol1
+    assert!(vol2.join("move_me.jpg").exists());
+    assert!(!vol1.join("move_me.jpg").exists());
+
+    // Show should only list vol2
+    dam()
+        .current_dir(&root)
+        .args(["show", short_id])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("vol2")
+                .and(predicate::str::contains("vol1").not()),
+        );
+}
+
+#[test]
+fn relocate_dry_run_no_changes() {
+    let dir = tempdir().unwrap();
+    let (root, vol1, vol2) = init_two_volumes(dir.path());
+
+    create_test_file(&vol1, "dry.jpg", b"dry run test data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", vol1.join("dry.jpg").to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "dry"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let short_id = stdout.split_whitespace().next().expect("search returned an ID");
+
+    // Dry run
+    dam()
+        .current_dir(&root)
+        .args(["relocate", short_id, "vol2", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"));
+
+    // File should NOT exist on vol2
+    assert!(!vol2.join("dry.jpg").exists());
+    // File still on vol1
+    assert!(vol1.join("dry.jpg").exists());
+}
+
 #[test]
 fn import_conflicting_include_skip_errors() {
     let dir = tempdir().unwrap();

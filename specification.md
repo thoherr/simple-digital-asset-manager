@@ -40,9 +40,9 @@
 - **`generate-previews`** — generate missing preview thumbnails for all assets or a specific asset (`--asset`); `--force` regenerates existing previews
 - **Preview generation during import** — 800px JPEG thumbnails are generated for each imported variant. Uses the `image` crate for standard formats, `dcraw`/`dcraw_emu` (LibRaw) for RAW files, and `ffmpeg` for videos. Previews stored in `previews/<hash-prefix>/<hash>.jpg`. Missing external tools are silently skipped; preview failure never blocks import.
 - **`show`** now displays preview status (path if exists, "(none)" otherwise)
+- **`relocate`** — copy or move all asset files (variants + recipes) to a target volume: `dam relocate <asset-id> <target-volume> [--remove-source] [--dry-run]`. Copies files with SHA-256 integrity verification, preserves relative paths, updates sidecar and catalog metadata. Without `--remove-source`, the asset gains additional locations. With `--remove-source`, source files are deleted after verified copy. `--dry-run` shows the plan without making changes.
 
 ### not yet implemented
 
-- **`relocate`** — move asset files to another volume
 - **`verify`** — check file integrity by re-hashing and comparing
 - Web GUI for visual browsing

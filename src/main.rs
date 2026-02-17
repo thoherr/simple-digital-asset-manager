@@ -77,13 +77,21 @@ enum Commands {
         variant_hashes: Vec<String>,
     },
 
-    /// Move asset to another volume
+    /// Copy or move asset files to another volume
     Relocate {
         /// Asset ID
         asset_id: String,
 
         /// Target volume label or ID
         volume: String,
+
+        /// Delete source files after successful copy and verification
+        #[arg(long)]
+        remove_source: bool,
+
+        /// Show what would happen without making changes
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Check file integrity
@@ -398,9 +406,42 @@ fn main() {
             }
             Ok(())
         }
-        Commands::Relocate { asset_id, volume } => {
-            println!("Relocating asset {asset_id} to volume {volume}...");
-            println!("not yet implemented");
+        Commands::Relocate {
+            asset_id,
+            volume,
+            remove_source,
+            dry_run,
+        } => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let service = AssetService::new(&catalog_root);
+            let result = service.relocate(&asset_id, &volume, remove_source, dry_run)?;
+
+            if dry_run {
+                println!("Dry run — no changes made:");
+            }
+
+            for action in &result.actions {
+                println!("  {action}");
+            }
+
+            let verb = if remove_source { "moved" } else { "copied" };
+            let mut parts: Vec<String> = Vec::new();
+            if result.copied > 0 {
+                parts.push(format!("{} {verb}", result.copied));
+            }
+            if result.skipped > 0 {
+                parts.push(format!("{} skipped", result.skipped));
+            }
+            if parts.is_empty() {
+                if result.actions.len() == 1 {
+                    // The "already on target" message was printed above
+                } else {
+                    println!("Relocate: nothing to do");
+                }
+            } else {
+                println!("Relocate complete: {}", parts.join(", "));
+            }
+
             Ok(())
         }
         Commands::Verify { volume } => {
