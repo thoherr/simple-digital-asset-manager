@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Browse - DAM{% endblock %}
+
+{% block content %}
+<form class="search-bar"
+      hx-get="/api/search"
+      hx-target="#results"
+      hx-push-url="true"
+      hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": document.querySelector("[name=tag]").value, "format": document.querySelector("[name=format]").value, "volume": document.querySelector("[name=volume]").value, "sort": document.querySelector("[name=sort]").value, "page": "1"}'>
+    <input type="text" name="q" placeholder="Search assets..." value="{{ query }}" autocomplete="off">
+    <select name="type">
+        <option value="">All types</option>
+        <option value="image"{% if asset_type == "image" %} selected{% endif %}>Image</option>
+        <option value="video"{% if asset_type == "video" %} selected{% endif %}>Video</option>
+        <option value="audio"{% if asset_type == "audio" %} selected{% endif %}>Audio</option>
+        <option value="document"{% if asset_type == "document" %} selected{% endif %}>Document</option>
+    </select>
+    <select name="tag">
+        <option value="">All tags</option>
+        {% for t in all_tags %}
+        <option value="{{ t.name }}"{% if tag == t.name %} selected{% endif %}>{{ t.name }} ({{ t.count }})</option>
+        {% endfor %}
+    </select>
+    <select name="format">
+        <option value="">All formats</option>
+        {% for f in all_formats %}
+        <option value="{{ f.name }}"{% if format_filter == f.name %} selected{% endif %}>{{ f.name }}</option>
+        {% endfor %}
+    </select>
+    {% if !all_volumes.is_empty() %}
+    <select name="volume">
+        <option value="">All volumes</option>
+        {% for v in all_volumes %}
+        <option value="{{ v.id }}"{% if volume == v.id %} selected{% endif %}>{{ v.label }}</option>
+        {% endfor %}
+    </select>
+    {% endif %}
+    <select name="sort">
+        <option value="date_desc"{% if sort == "date_desc" %} selected{% endif %}>Newest first</option>
+        <option value="date_asc"{% if sort == "date_asc" %} selected{% endif %}>Oldest first</option>
+        <option value="name_asc"{% if sort == "name_asc" %} selected{% endif %}>Name A-Z</option>
+        <option value="name_desc"{% if sort == "name_desc" %} selected{% endif %}>Name Z-A</option>
+        <option value="size_desc"{% if sort == "size_desc" %} selected{% endif %}>Largest first</option>
+    </select>
+    <button type="submit">Search</button>
+</form>
+
+<div id="results">
+    {% include "results.html" %}
+</div>
+{% endblock %}

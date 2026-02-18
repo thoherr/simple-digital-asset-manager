@@ -194,6 +194,75 @@ pub struct VolumeVerificationStats {
     pub oldest_verified_at: Option<String>,
 }
 
+/// Sort order for paginated search.
+#[derive(Debug, Clone, Copy)]
+pub enum SearchSort {
+    DateDesc,
+    DateAsc,
+    NameAsc,
+    NameDesc,
+    SizeDesc,
+}
+
+impl SearchSort {
+    fn to_sql(&self) -> &'static str {
+        match self {
+            SearchSort::DateDesc => "a.created_at DESC",
+            SearchSort::DateAsc => "a.created_at ASC",
+            SearchSort::NameAsc => "COALESCE(a.name, v.original_filename) ASC",
+            SearchSort::NameDesc => "COALESCE(a.name, v.original_filename) DESC",
+            SearchSort::SizeDesc => "v.file_size DESC",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "date_asc" => SearchSort::DateAsc,
+            "name_asc" => SearchSort::NameAsc,
+            "name_desc" => SearchSort::NameDesc,
+            "size_desc" => SearchSort::SizeDesc,
+            _ => SearchSort::DateDesc,
+        }
+    }
+}
+
+/// Options for paginated search.
+pub struct SearchOptions<'a> {
+    pub text: Option<&'a str>,
+    pub asset_type: Option<&'a str>,
+    pub tag: Option<&'a str>,
+    pub format: Option<&'a str>,
+    pub volume: Option<&'a str>,
+    pub sort: SearchSort,
+    pub page: u32,
+    pub per_page: u32,
+}
+
+impl<'a> Default for SearchOptions<'a> {
+    fn default() -> Self {
+        Self {
+            text: None,
+            asset_type: None,
+            tag: None,
+            format: None,
+            volume: None,
+            sort: SearchSort::DateDesc,
+            page: 1,
+            per_page: 60,
+        }
+    }
+}
+
+/// A page of search results with pagination metadata.
+#[derive(Debug, serde::Serialize)]
+pub struct SearchPage {
+    pub rows: Vec<SearchRow>,
+    pub total: u64,
+    pub page: u32,
+    pub per_page: u32,
+    pub total_pages: u32,
+}
+
 /// SQLite-backed local catalog for fast queries. This is a derived cache,
 /// not the source of truth (sidecar files are).
 pub struct Catalog {
@@ -863,6 +932,180 @@ impl Catalog {
             "SELECT relative_path FROM recipes WHERE relative_path IS NOT NULL",
         )?;
         let rows = stmt.query_map([], |r| r.get(0))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Paginated search with dynamic filters and sorting.
+    pub fn search_paginated(&self, opts: &SearchOptions) -> Result<Vec<SearchRow>> {
+        let mut sql = String::from(
+            "SELECT a.id, a.name, a.asset_type, a.created_at, v.original_filename, v.format, \
+             a.tags, a.description, v.content_hash \
+             FROM assets a JOIN variants v ON a.id = v.asset_id",
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if opts.volume.is_some() {
+            sql.push_str(" JOIN file_locations fl ON v.content_hash = fl.content_hash");
+        }
+
+        sql.push_str(" WHERE 1=1");
+
+        if let Some(text) = opts.text {
+            if !text.is_empty() {
+                sql.push_str(
+                    " AND (a.name LIKE ? OR v.original_filename LIKE ? OR a.description LIKE ?)",
+                );
+                let pattern = format!("%{text}%");
+                params.push(Box::new(pattern.clone()));
+                params.push(Box::new(pattern.clone()));
+                params.push(Box::new(pattern));
+            }
+        }
+        if let Some(asset_type) = opts.asset_type {
+            if !asset_type.is_empty() {
+                sql.push_str(" AND a.asset_type = ?");
+                params.push(Box::new(asset_type.to_lowercase()));
+            }
+        }
+        if let Some(tag) = opts.tag {
+            if !tag.is_empty() {
+                sql.push_str(" AND a.tags LIKE ?");
+                params.push(Box::new(format!("%\"{tag}\"%")));
+            }
+        }
+        if let Some(format_filter) = opts.format {
+            if !format_filter.is_empty() {
+                sql.push_str(" AND v.format = ?");
+                params.push(Box::new(format_filter.to_lowercase()));
+            }
+        }
+        if let Some(volume) = opts.volume {
+            if !volume.is_empty() {
+                sql.push_str(" AND fl.volume_id = ?");
+                params.push(Box::new(volume.to_string()));
+            }
+        }
+
+        sql.push_str(&format!(" ORDER BY {}", opts.sort.to_sql()));
+
+        let page = opts.page.max(1);
+        let offset = (page - 1) as u64 * opts.per_page as u64;
+        sql.push_str(" LIMIT ? OFFSET ?");
+        params.push(Box::new(opts.per_page as u64));
+        params.push(Box::new(offset));
+
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(param_refs.as_slice(), |row| {
+            let tags_json: String = row.get(6)?;
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            Ok(SearchRow {
+                asset_id: row.get(0)?,
+                name: row.get(1)?,
+                asset_type: row.get(2)?,
+                created_at: row.get(3)?,
+                original_filename: row.get(4)?,
+                format: row.get(5)?,
+                tags,
+                description: row.get(7)?,
+                content_hash: row.get(8)?,
+            })
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
+    }
+
+    /// Count total results matching the same filters as search_paginated (without LIMIT/OFFSET).
+    pub fn search_count(&self, opts: &SearchOptions) -> Result<u64> {
+        let mut sql = String::from(
+            "SELECT COUNT(*) FROM assets a JOIN variants v ON a.id = v.asset_id",
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if opts.volume.is_some() {
+            sql.push_str(" JOIN file_locations fl ON v.content_hash = fl.content_hash");
+        }
+
+        sql.push_str(" WHERE 1=1");
+
+        if let Some(text) = opts.text {
+            if !text.is_empty() {
+                sql.push_str(
+                    " AND (a.name LIKE ? OR v.original_filename LIKE ? OR a.description LIKE ?)",
+                );
+                let pattern = format!("%{text}%");
+                params.push(Box::new(pattern.clone()));
+                params.push(Box::new(pattern.clone()));
+                params.push(Box::new(pattern));
+            }
+        }
+        if let Some(asset_type) = opts.asset_type {
+            if !asset_type.is_empty() {
+                sql.push_str(" AND a.asset_type = ?");
+                params.push(Box::new(asset_type.to_lowercase()));
+            }
+        }
+        if let Some(tag) = opts.tag {
+            if !tag.is_empty() {
+                sql.push_str(" AND a.tags LIKE ?");
+                params.push(Box::new(format!("%\"{tag}\"%")));
+            }
+        }
+        if let Some(format_filter) = opts.format {
+            if !format_filter.is_empty() {
+                sql.push_str(" AND v.format = ?");
+                params.push(Box::new(format_filter.to_lowercase()));
+            }
+        }
+        if let Some(volume) = opts.volume {
+            if !volume.is_empty() {
+                sql.push_str(" AND fl.volume_id = ?");
+                params.push(Box::new(volume.to_string()));
+            }
+        }
+
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        let count: u64 = self.conn.query_row(&sql, param_refs.as_slice(), |r| r.get(0))?;
+        Ok(count)
+    }
+
+    /// List all unique tags with their usage counts, sorted by count descending.
+    pub fn list_all_tags(&self) -> Result<Vec<(String, u64)>> {
+        let all_tags_json = self.stats_all_tags_json()?;
+        let mut tag_freq: HashMap<String, u64> = HashMap::new();
+        for tags_str in &all_tags_json {
+            if let Ok(tags) = serde_json::from_str::<Vec<String>>(tags_str) {
+                for tag in tags {
+                    *tag_freq.entry(tag).or_default() += 1;
+                }
+            }
+        }
+        let mut sorted: Vec<(String, u64)> = tag_freq.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        Ok(sorted)
+    }
+
+    /// List all distinct variant formats.
+    pub fn list_all_formats(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT format FROM variants ORDER BY format",
+        )?;
+        let rows = stmt.query_map([], |r| r.get(0))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// List all volumes from the catalog's volumes table.
+    pub fn list_volumes(&self) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, label FROM volumes ORDER BY label",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
     }
 

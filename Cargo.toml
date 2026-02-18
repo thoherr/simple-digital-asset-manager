@@ -18,6 +18,10 @@ image = "0.25"
 kamadak-exif = "0.5"
 quick-xml = "0.36"
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["fs"] }
+askama = "0.12"
 
 [dev-dependencies]
 assert_cmd = "2"

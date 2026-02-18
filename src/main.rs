@@ -172,6 +172,17 @@ enum Commands {
     /// Rebuild SQLite catalog from sidecar files
     RebuildCatalog,
 
+    /// Start the web UI server
+    Serve {
+        /// Port to listen on
+        #[arg(long, default_value_t = 8080, display_order = 10)]
+        port: u16,
+
+        /// Address to bind to
+        #[arg(long, default_value = "127.0.0.1", display_order = 11)]
+        bind: String,
+    },
+
     /// Show catalog statistics
     Stats {
         /// Show asset type and format breakdown
@@ -1045,6 +1056,12 @@ fn main() {
                     println!("  {} error(s) encountered", result.errors);
                 }
             }
+            Ok(())
+        }
+        Commands::Serve { port, bind } => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(dam::web::serve(catalog_root, &bind, port))?;
             Ok(())
         }
         Commands::Stats { types, volumes, tags, verified, all, limit } => {

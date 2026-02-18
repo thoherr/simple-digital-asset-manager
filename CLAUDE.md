@@ -20,7 +20,7 @@ A digital asset manager designed for large collections of images and videos (ter
 - **Platforms**: macOS, Linux
 - **Interface**: CLI-first (`dam` command)
 - **Catalog**: SQLite (cache/index), YAML sidecar files (source of truth)
-- **Key crates**: clap, sha2, serde, rusqlite, kamadak-exif, quick-xml, image, uuid
+- **Key crates**: clap, sha2, serde, rusqlite, kamadak-exif, quick-xml, image, uuid, axum, askama, tokio, tower-http
 - **External tools**: dcraw/libraw (RAW previews), ffmpeg (video thumbnails)
 
 ## Architecture
@@ -33,7 +33,7 @@ Core layers: CLI → Core Library (Asset Service, Content Store, Metadata Store,
 
 Core CLI is functional. See `specification.md` for full requirements.
 
-**Implemented commands**: `init`, `volume add/list`, `import`, `search`, `show`, `tag`, `group`, `duplicates`, `generate-previews`, `rebuild-catalog`, `relocate`, `verify`, `stats`
+**Implemented commands**: `init`, `volume add/list`, `import`, `search`, `show`, `tag`, `group`, `duplicates`, `generate-previews`, `rebuild-catalog`, `relocate`, `verify`, `stats`, `serve`
 
 **Import behavior**:
 - **Stem-based auto-grouping**: Files sharing the same filename stem in the same directory are grouped into one Asset during import. RAW files take priority as the primary variant (defining asset identity and EXIF data). Additional media files become extra variants on the same asset.
@@ -50,6 +50,8 @@ Core CLI is functional. See `specification.md` for full requirements.
 - **Verify command**: Re-hashes files on disk and compares against stored content hashes to detect corruption or bit rot. `dam verify [PATHS...] [--volume <label>] [--asset <id>]`. Without arguments, verifies all file locations on all online volumes. With paths, verifies specific files/directories. `--volume` limits to a specific volume; `--asset` limits to a specific asset. Updates `verified_at` timestamps on successful verification. Exits with code 1 if any mismatches are found. Recipe files that have been modified externally are reported as "modified" (not "FAILED") and do not trigger exit code 1 — their stored hash is updated to reflect the new content.
 
 - **Stats command**: Shows catalog statistics. `dam stats [--types] [--volumes] [--tags] [--verified] [--all] [--limit N]`. Without flags, shows overview only (assets, variants, recipes, volumes, total size). `--types` adds asset type and format breakdown. `--volumes` adds per-volume details (assets, size, directories, verification). `--tags` shows tag usage frequencies. `--verified` shows verification health. `--all` enables all sections. `--limit N` controls top-N lists (default 20). Supports `--json` for structured output.
+
+- **Serve command**: `dam serve [--port <port>] [--bind <addr>]`. Starts a web UI server (default `127.0.0.1:8080`). Browse page with search/filter/sort/pagination. Asset detail page with preview, metadata, editable tags, variants, and recipes. Uses htmx for partial page updates. SQLite connections are opened per-request via `spawn_blocking`. Previews served via `tower-http::ServeDir`. Static assets (htmx.min.js, style.css) embedded at compile time.
 
 **Output formatting**:
 - **Global `--json` flag**: Available on all commands. Outputs structured JSON to stdout; human-readable messages go to stderr. All data types (`SearchRow`, `AssetDetails`, `ImportResult`, `VerifyResult`, `RelocateResult`, `DuplicateEntry`) derive `serde::Serialize`.

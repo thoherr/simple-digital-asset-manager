@@ -6,6 +6,7 @@ The system is organized in four layers, from top to bottom:
 
 ### 1. Interface Layer
 - **CLI** — subcommand-based interface (`dam import`, `dam search`, `dam relocate`, etc.)
+- **Web UI** — browser-based interface via `dam serve`. Uses axum (HTTP), askama (templates), htmx (interactivity). Opens fresh SQLite connections per request via `spawn_blocking`. Serves preview images from the catalog's `previews/` directory.
 
 ### 2. Core Library
 - **Asset Service** — orchestrates import, grouping, relocation, verification, deduplication. Main business logic.
@@ -35,5 +36,5 @@ The system is organized in four layers, from top to bottom:
 
 - **Language**: Rust
 - **Platforms**: macOS, Linux
-- **Key crates**: clap (CLI), sha2 (hashing), serde (serialization), rusqlite (SQLite), kamadak-exif (EXIF parsing), quick-xml (XMP parsing), image (preview generation), uuid (asset identity)
+- **Key crates**: clap (CLI), sha2 (hashing), serde (serialization), rusqlite (SQLite), kamadak-exif (EXIF parsing), quick-xml (XMP parsing), image (preview generation), uuid (asset identity), axum (web server), askama (templates), tokio (async runtime), tower-http (static file serving)
 - **External tools**: dcraw/libraw (RAW previews), ffmpeg (video thumbnails)

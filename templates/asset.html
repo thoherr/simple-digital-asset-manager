@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}{{ display_name }} - DAM{% endblock %}
+
+{% block content %}
+<div class="asset-detail">
+    <div class="asset-preview">
+        {% match primary_preview_url %}
+        {% when Some with (url) %}
+        <img src="{{ url }}" alt="{{ display_name }}">
+        {% when None %}
+        <div class="no-preview">No preview available</div>
+        {% endmatch %}
+    </div>
+    <div class="asset-info">
+        <h1>{{ display_name }}</h1>
+
+        <table class="meta-table">
+            <tr><th>ID</th><td>{{ asset_id }}</td></tr>
+            <tr><th>Type</th><td><span class="badge">{{ asset_type }}</span></td></tr>
+            <tr><th>Date</th><td>{{ created_at }}</td></tr>
+            {% match description %}
+            {% when Some with (desc) %}
+            <tr><th>Description</th><td>{{ desc }}</td></tr>
+            {% when None %}
+            {% endmatch %}
+        </table>
+
+        <details open>
+            <summary>Tags</summary>
+            <div id="tags">
+                {% include "tags_fragment.html" %}
+            </div>
+        </details>
+
+        {% if !variants.is_empty() %}
+        <details open>
+            <summary>Variants ({{ variants.len() }})</summary>
+            <table class="variants-table">
+                <thead>
+                    <tr>
+                        <th>Role</th>
+                        <th>Filename</th>
+                        <th>Format</th>
+                        <th>Size</th>
+                        <th>Locations</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in variants %}
+                    <tr>
+                        <td><span class="badge">{{ v.role }}</span></td>
+                        <td>{{ v.original_filename }}</td>
+                        <td>{{ v.format }}</td>
+                        <td>{{ v.size }}</td>
+                        <td>
+                            {% for loc in v.locations %}
+                            <div>{{ loc.volume_label }}: {{ loc.relative_path }}</div>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </details>
+        {% endif %}
+
+        {% if !recipes.is_empty() %}
+        <details>
+            <summary>Recipes ({{ recipes.len() }})</summary>
+            <table class="variants-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Software</th>
+                        <th>Path</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in recipes %}
+                    <tr>
+                        <td><span class="badge">{{ r.recipe_type }}</span></td>
+                        <td>{{ r.software }}</td>
+                        <td>{{ r.relative_path }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </details>
+        {% endif %}
+
+        {% if !variants.is_empty() && !variants[0].source_metadata.is_empty() %}
+        <details>
+            <summary>Metadata</summary>
+            <table class="meta-table">
+                {% for entry in variants[0].source_metadata %}
+                <tr><th>{{ entry.0 }}</th><td>{{ entry.1 }}</td></tr>
+                {% endfor %}
+            </table>
+        </details>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

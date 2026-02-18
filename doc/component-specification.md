@@ -203,7 +203,34 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 
 **Edge cases**: empty catalog returns all zeros without errors. Division-by-zero for percentages is guarded. Volumes with no files are included in `--volumes` with zero counts. Recipe format is extracted from `relative_path` extension in Rust, falling back to "unknown".
 
-### 10. CLI
+### 10. Web UI
+
+**Responsibility**: browser-based interface for browsing, searching, and editing assets.
+
+**Module**: `src/web/` — axum server with askama templates and htmx interactivity.
+
+**Architecture**:
+- `AppState` holds the catalog root path. Each request opens a fresh `Catalog` connection via `tokio::task::spawn_blocking` (since `rusqlite::Connection` is not `Send`).
+- Static assets (htmx.min.js, style.css) are embedded at compile time via `include_bytes!`/`include_str!`.
+- Preview images are served directly from the catalog's `previews/` directory via `tower-http::ServeDir`.
+
+**Routes**:
+- `GET /` — browse page with search, filter dropdowns, sort, pagination, thumbnail grid
+- `GET /asset/{id}` — asset detail with preview, metadata, editable tags, variants, recipes
+- `GET /api/search` — results partial (htmx target) with pagination
+- `POST /api/asset/{id}/tags` — add tags, returns tags fragment
+- `DELETE /api/asset/{id}/tags/{tag}` — remove tag, returns tags fragment
+- `GET /api/tags` — all tags as JSON (for autocomplete)
+- `GET /api/stats` — catalog stats as JSON
+
+**Catalog extensions** (in `src/catalog.rs`):
+- `SearchOptions` / `SearchSort` / `SearchPage` — paginated search with volume filter and dynamic sort
+- `search_paginated()` / `search_count()` — paginated search queries
+- `list_all_tags()` — unique tags with counts
+- `list_all_formats()` — distinct variant formats
+- `list_volumes()` — volume IDs and labels
+
+### 11. CLI
 
 **Global flags**:
 - `--json` — output machine-readable JSON
@@ -227,6 +254,7 @@ dam duplicates [--format F]                       # find duplicates
 dam generate-previews [PATHS...] [--asset ID] [--volume V] [--include G] [--skip G] [--force]  # generate thumbnails
 dam stats [--types] [--volumes] [--tags] [--verified] [--all] [--limit N]  # catalog statistics
 dam rebuild-catalog                               # rebuild SQLite from sidecars
+dam serve [--port P] [--bind ADDR]                # start web UI server
 ```
 
 ## Catalog Directory Structure

@@ -1,0 +1,21 @@
+<div class="tags-section">
+    {% for t in tags %}
+    <span class="tag-chip">
+        {{ t }}
+        <button class="remove-tag"
+                hx-delete="/api/asset/{{ asset_id }}/tags/{{ t }}"
+                hx-target="#tags"
+                hx-swap="innerHTML">&times;</button>
+    </span>
+    {% endfor %}
+    {% if tags.is_empty() %}
+    <span style="color: var(--text-muted); font-size: 0.85rem;">No tags</span>
+    {% endif %}
+    <form class="tag-add-form"
+          hx-post="/api/asset/{{ asset_id }}/tags"
+          hx-target="#tags"
+          hx-swap="innerHTML">
+        <input type="text" name="tags" placeholder="Add tag..." autocomplete="off">
+        <button type="submit">Add</button>
+    </form>
+</div>

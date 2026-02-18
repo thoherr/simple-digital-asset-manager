@@ -1,0 +1,73 @@
+{% if cards.is_empty() %}
+<div class="no-results">
+    {% if query.is_empty() && asset_type.is_empty() && tag.is_empty() && format_filter.is_empty() && volume.is_empty() %}
+    No assets in catalog. Import some files to get started.
+    {% else %}
+    No results found.
+    {% endif %}
+</div>
+{% else %}
+<div class="results-header">
+    <span>{{ total }} asset{% if total != 1 %}s{% endif %}{% if !query.is_empty() %} matching "{{ query }}"{% endif %}</span>
+    <span>Page {{ page }} of {{ total_pages }}</span>
+</div>
+
+<div class="results-grid">
+    {% for card in cards %}
+    <div class="asset-card">
+        <a href="/asset/{{ card.asset_id }}">
+            <img class="thumb"
+                 src="{{ card.preview_url }}"
+                 alt="{{ card.display_name }}"
+                 loading="lazy"
+                 onerror="this.outerHTML='<div class=\'thumb-placeholder\'>&#128444;</div>'">
+            <div class="card-body">
+                <div class="card-title">{{ card.display_name }}</div>
+                <div class="card-meta">
+                    <span class="badge">{{ card.asset_type }}</span>
+                    <span class="badge">{{ card.format }}</span>
+                    <span>{{ card.date }}</span>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    {% let prev_page = page - 1 %}
+    <a href="?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&sort={{ sort }}&page={{ prev_page }}"
+       hx-get="/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&sort={{ sort }}&page={{ prev_page }}"
+       hx-target="#results"
+       hx-push-url="true">Prev</a>
+    {% else %}
+    <span class="disabled">Prev</span>
+    {% endif %}
+
+    {% for p in 1..=total_pages %}
+    {% if p == page %}
+    <span class="current">{{ p }}</span>
+    {% else if p <= 3 || p > total_pages - 3 || (p >= page.saturating_sub(2) && p <= page + 2) %}
+    <a href="?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&sort={{ sort }}&page={{ p }}"
+       hx-get="/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&sort={{ sort }}&page={{ p }}"
+       hx-target="#results"
+       hx-push-url="true">{{ p }}</a>
+    {% else if p == 4 || p == total_pages.saturating_sub(3) %}
+    <span>&hellip;</span>
+    {% endif %}
+    {% endfor %}
+
+    {% if page < total_pages %}
+    {% let next_page = page + 1 %}
+    <a href="?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&sort={{ sort }}&page={{ next_page }}"
+       hx-get="/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&sort={{ sort }}&page={{ next_page }}"
+       hx-target="#results"
+       hx-push-url="true">Next</a>
+    {% else %}
+    <span class="disabled">Next</span>
+    {% endif %}
+</div>
+{% endif %}
+{% endif %}
