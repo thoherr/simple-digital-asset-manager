@@ -181,6 +181,15 @@ nav .nav-links { display: flex; gap: 1rem; font-size: 0.9rem; }
     color: var(--text-muted);
 }
 
+/* Back link */
+.back-link {
+    display: inline-block;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+.back-link:hover { color: var(--text); text-decoration: none; }
+
 /* Asset detail page */
 .asset-detail {
     display: grid;
