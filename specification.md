@@ -44,6 +44,7 @@
 - **`verify`** — re-hash files on disk and compare against stored content hashes to detect corruption or bit rot: `dam verify [PATHS...] [--volume <label>] [--asset <id>]`. Without arguments, verifies all file locations on all online volumes. With paths, verifies specific files or directories. `--volume` limits to a specific volume; `--asset` limits to a specific asset. Updates `verified_at` timestamps on successful verification. Exits with code 1 if any mismatches are found. Modified recipe files are reported as "modified" (not "FAILED") and do not trigger exit code 1 — their stored hash is updated to reflect the new content.
 - **Output formatting** — flexible output for scripting and machine consumption:
   - Global `--json` flag on all commands: outputs structured JSON to stdout, human messages to stderr
+  - Global `--debug` / `-d` flag: shows stderr output from external tools (ffmpeg, dcraw, dcraw_emu) for diagnosing preview generation issues
   - `search --format=<preset|template>`: presets are `ids` (one UUID per line), `short` (default compact), `full` (with tags/description), `json` (JSON array). Custom templates use `{placeholder}` syntax, e.g. `'{id}\t{name}\t{tags}'`. Supported placeholders: `id`, `short_id`, `name`, `filename`, `type`, `format`, `date`, `tags`, `description`, `hash`
   - `search -q` / `--quiet`: shorthand for `--format=ids`
   - `duplicates --format=<preset|template>`: same presets, with additional `{locations}` placeholder

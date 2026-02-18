@@ -52,6 +52,7 @@ Core CLI is functional. See `specification.md` for full requirements.
 
 **Output formatting**:
 - **Global `--json` flag**: Available on all commands. Outputs structured JSON to stdout; human-readable messages go to stderr. All data types (`SearchRow`, `AssetDetails`, `ImportResult`, `VerifyResult`, `RelocateResult`, `DuplicateEntry`) derive `serde::Serialize`.
+- **Global `--debug` / `-d` flag**: Shows stderr output from external tools (ffmpeg, dcraw, dcraw_emu) for diagnosing preview generation issues. Prints the command line and stderr to eprintln.
 - **`search --format`**: Presets: `ids` (one UUID per line), `short` (default), `full` (with tags/description), `json` (JSON array). Custom templates: `'{id}\t{name}\t{tags}'` with placeholder substitution. Result count suppressed when `--format` is explicit.
 - **`search -q`**: Shorthand for `--format=ids`, for scripting (e.g. `for id in $(dam search -q tag:landscape); do ...`).
 - **`duplicates --format`**: Same presets as search, plus `{locations}` placeholder for templates.
