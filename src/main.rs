@@ -393,7 +393,9 @@ fn main() {
                                 short_id, display_name, row.asset_type, row.format, row.created_at
                             );
                         }
-                        println!("\n{} result(s)", results.len());
+                        if !explicit_format {
+                            println!("\n{} result(s)", results.len());
+                        }
                     }
                     OutputFormat::Full => {
                         for row in &results {
@@ -414,7 +416,9 @@ fn main() {
                                 row.created_at, tags, desc
                             );
                         }
-                        println!("\n{} result(s)", results.len());
+                        if !explicit_format {
+                            println!("\n{} result(s)", results.len());
+                        }
                     }
                     OutputFormat::Json => {
                         println!("{}", serde_json::to_string_pretty(&results)?);
@@ -645,7 +649,7 @@ fn main() {
                     volume.as_deref(),
                     asset.as_deref(),
                     &filter,
-                    |path, status| {
+                    |path, status, elapsed| {
                         let label = match status {
                             VerifyStatus::Ok => "OK",
                             VerifyStatus::Mismatch => "FAILED",
@@ -657,7 +661,7 @@ fn main() {
                         let name = path.file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                        eprintln!("  {} — {}", name, label);
+                        eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
                     },
                 )?
             } else {
@@ -666,7 +670,7 @@ fn main() {
                     volume.as_deref(),
                     asset.as_deref(),
                     &filter,
-                    |_, _| {},
+                    |_, _, _| {},
                 )?
             };
 
@@ -711,6 +715,7 @@ fn main() {
             let catalog_root = dam::config::find_catalog_root()?;
             let catalog = Catalog::open(&catalog_root)?;
             let entries = catalog.find_duplicates()?;
+            let explicit_format = format.is_some();
 
             let output_format = if let Some(fmt) = &format {
                 format::parse_format(fmt).map_err(|e| anyhow::anyhow!(e))?
@@ -724,7 +729,7 @@ fn main() {
                 match output_format {
                     OutputFormat::Json => println!("[]"),
                     _ => {
-                        if format.is_none() {
+                        if !explicit_format {
                             println!("No duplicates found.");
                         }
                     }
@@ -756,10 +761,12 @@ fn main() {
                                 );
                             }
                         }
-                        println!(
-                            "\n{} file(s) with duplicate locations",
-                            entries.len()
-                        );
+                        if !explicit_format {
+                            println!(
+                                "\n{} file(s) with duplicate locations",
+                                entries.len()
+                            );
+                        }
                     }
                     OutputFormat::Json => {
                         println!("{}", serde_json::to_string_pretty(&entries)?);

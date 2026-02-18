@@ -1047,7 +1047,7 @@ impl AssetService {
         volume_filter: Option<&str>,
         asset_filter: Option<&str>,
         filter: &FileTypeFilter,
-        on_file: impl Fn(&Path, VerifyStatus),
+        on_file: impl Fn(&Path, VerifyStatus, Duration),
     ) -> Result<VerifyResult> {
         let content_store = ContentStore::new(&self.catalog_root);
         let metadata_store = MetadataStore::new(&self.catalog_root);
@@ -1068,6 +1068,8 @@ impl AssetService {
             let volumes = registry.list()?;
 
             for file_path in &files {
+                let file_start = std::time::Instant::now();
+
                 // Skip files whose extension isn't in an enabled type group
                 let ext = file_path
                     .extension()
@@ -1087,7 +1089,7 @@ impl AssetService {
                             "No volume found for {}",
                             file_path.display()
                         ));
-                        on_file(file_path, VerifyStatus::Skipped);
+                        on_file(file_path, VerifyStatus::Skipped, file_start.elapsed());
                         continue;
                     }
                 };
@@ -1106,7 +1108,7 @@ impl AssetService {
                             file_path.display(),
                             e
                         ));
-                        on_file(file_path, VerifyStatus::Missing);
+                        on_file(file_path, VerifyStatus::Missing, file_start.elapsed());
                         continue;
                     }
                 };
@@ -1129,7 +1131,7 @@ impl AssetService {
                             volume.id,
                             relative_path,
                         )?;
-                        on_file(file_path, VerifyStatus::Ok);
+                        on_file(file_path, VerifyStatus::Ok, file_start.elapsed());
                     }
                     None => {
                         // Not a variant — check if it's a known recipe file by hash
@@ -1140,7 +1142,7 @@ impl AssetService {
                                 &volume.id.to_string(),
                                 &relative_path.to_string_lossy(),
                             )?;
-                            on_file(file_path, VerifyStatus::Ok);
+                            on_file(file_path, VerifyStatus::Ok, file_start.elapsed());
                         } else if let Some((recipe_id, _old_hash, variant_hash)) =
                             catalog.find_recipe_by_volume_and_path(
                                 &volume.id.to_string(),
@@ -1177,14 +1179,14 @@ impl AssetService {
                             }
 
                             result.modified += 1;
-                            on_file(file_path, VerifyStatus::Modified);
+                            on_file(file_path, VerifyStatus::Modified, file_start.elapsed());
                         } else {
                             result.skipped += 1;
                             result.errors.push(format!(
                                 "Untracked: {}",
                                 file_path.display()
                             ));
-                            on_file(file_path, VerifyStatus::Untracked);
+                            on_file(file_path, VerifyStatus::Untracked, file_start.elapsed());
                         }
                     }
                 }
@@ -1265,8 +1267,10 @@ impl AssetService {
         loc: &FileLocation,
         is_recipe: bool,
         result: &mut VerifyResult,
-        on_file: &impl Fn(&Path, VerifyStatus),
+        on_file: &impl Fn(&Path, VerifyStatus, Duration),
     ) -> Result<()> {
+        let file_start = std::time::Instant::now();
+
         // Apply volume filter
         if let Some(filter_vol) = volume_filter {
             if loc.volume_id != filter_vol.id {
@@ -1284,7 +1288,7 @@ impl AssetService {
                     loc.volume_id,
                     loc.relative_path.display()
                 ));
-                on_file(&loc.relative_path, VerifyStatus::Skipped);
+                on_file(&loc.relative_path, VerifyStatus::Skipped, file_start.elapsed());
                 return Ok(());
             }
         };
@@ -1292,7 +1296,7 @@ impl AssetService {
         // Skip offline volumes
         if !volume.is_online {
             result.skipped += 1;
-            on_file(&loc.relative_path, VerifyStatus::Skipped);
+            on_file(&loc.relative_path, VerifyStatus::Skipped, file_start.elapsed());
             return Ok(());
         }
 
@@ -1306,7 +1310,7 @@ impl AssetService {
                 volume.label,
                 loc.relative_path.display()
             ));
-            on_file(&full_path, VerifyStatus::Missing);
+            on_file(&full_path, VerifyStatus::Missing, file_start.elapsed());
             return Ok(());
         }
 
@@ -1333,7 +1337,7 @@ impl AssetService {
                         &loc.relative_path,
                     )?;
                 }
-                on_file(&full_path, VerifyStatus::Ok);
+                on_file(&full_path, VerifyStatus::Ok, file_start.elapsed());
             }
             Ok(false) => {
                 if is_recipe {
@@ -1376,7 +1380,7 @@ impl AssetService {
                     }
 
                     result.modified += 1;
-                    on_file(&full_path, VerifyStatus::Modified);
+                    on_file(&full_path, VerifyStatus::Modified, file_start.elapsed());
                 } else {
                     result.failed += 1;
                     result.errors.push(format!(
@@ -1385,7 +1389,7 @@ impl AssetService {
                         volume.label,
                         loc.relative_path.display()
                     ));
-                    on_file(&full_path, VerifyStatus::Mismatch);
+                    on_file(&full_path, VerifyStatus::Mismatch, file_start.elapsed());
                 }
             }
             Err(e) => {
@@ -1395,7 +1399,7 @@ impl AssetService {
                     full_path.display(),
                     e
                 ));
-                on_file(&full_path, VerifyStatus::Missing);
+                on_file(&full_path, VerifyStatus::Missing, file_start.elapsed());
             }
         }
 
