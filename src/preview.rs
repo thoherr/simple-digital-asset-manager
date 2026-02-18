@@ -23,7 +23,7 @@ impl PreviewGenerator {
     pub fn preview_path(&self, content_hash: &str) -> PathBuf {
         let hex = content_hash.strip_prefix("sha256:").unwrap_or(content_hash);
         let prefix = &hex[..2.min(hex.len())];
-        self.preview_dir.join(prefix).join(format!("{content_hash}.jpg"))
+        self.preview_dir.join(prefix).join(format!("{hex}.jpg"))
     }
 
     /// Check if a preview already exists on disk.
@@ -272,7 +272,7 @@ mod tests {
         assert_eq!(
             path,
             dir.path()
-                .join("previews/ab/sha256:abcdef1234567890.jpg")
+                .join("previews/ab/abcdef1234567890.jpg")
         );
     }
 
