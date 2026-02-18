@@ -317,6 +317,35 @@ details[open] summary { margin-bottom: 0.5rem; }
     font-size: 1.1rem;
 }
 
+/* Star rating */
+.star-rating {
+    display: inline-flex;
+    gap: 0.15rem;
+    font-size: 1.4rem;
+    line-height: 1;
+}
+.star {
+    cursor: pointer;
+    user-select: none;
+}
+.star.filled { color: #f5a623; }
+.star.empty { color: #ccc; }
+.star:hover { transform: scale(1.2); }
+.rating-section {
+    margin: 0.75rem 0;
+}
+.rating-section strong {
+    display: block;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+.card-stars {
+    font-size: 0.7rem;
+    color: #f5a623;
+    letter-spacing: -1px;
+    margin-top: 0.1rem;
+}
+
 /* htmx loading indicator */
 .htmx-indicator {
     display: none;

@@ -47,6 +47,8 @@ impl QueryEngine {
         let mut asset_type = None;
         let mut tag = None;
         let mut format = None;
+        let mut rating_min = None;
+        let mut rating_exact = None;
 
         for token in query.split_whitespace() {
             if let Some(value) = token.strip_prefix("type:") {
@@ -55,6 +57,14 @@ impl QueryEngine {
                 tag = Some(value.to_string());
             } else if let Some(value) = token.strip_prefix("format:") {
                 format = Some(value.to_string());
+            } else if let Some(value) = token.strip_prefix("rating:") {
+                if let Some(num_str) = value.strip_suffix('+') {
+                    if let Ok(n) = num_str.parse::<u8>() {
+                        rating_min = Some(n);
+                    }
+                } else if let Ok(n) = value.parse::<u8>() {
+                    rating_exact = Some(n);
+                }
             } else {
                 text_parts.push(token);
             }
@@ -72,6 +82,8 @@ impl QueryEngine {
             asset_type.as_deref(),
             tag.as_deref(),
             format.as_deref(),
+            rating_min,
+            rating_exact,
         )
     }
 
@@ -228,6 +240,25 @@ impl QueryEngine {
             changed,
             current_tags: asset.tags.clone(),
         })
+    }
+
+    /// Set the rating on an asset. Updates both sidecar YAML and SQLite catalog.
+    /// Returns the new rating value.
+    pub fn set_rating(&self, asset_id_prefix: &str, rating: Option<u8>) -> Result<Option<u8>> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let full_id = catalog
+            .resolve_asset_id(asset_id_prefix)?
+            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+
+        let uuid: uuid::Uuid = full_id.parse()?;
+        let store = MetadataStore::new(&self.catalog_root);
+        let mut asset = store.load(uuid)?;
+
+        asset.rating = rating;
+        store.save(&asset)?;
+        catalog.update_asset_rating(&full_id, rating)?;
+
+        Ok(rating)
     }
 }
 

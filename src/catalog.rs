@@ -18,6 +18,7 @@ pub struct SearchRow {
     pub tags: Vec<String>,
     pub description: Option<String>,
     pub content_hash: String,
+    pub rating: Option<u8>,
 }
 
 /// Full asset details returned by `load_asset_details`.
@@ -29,6 +30,7 @@ pub struct AssetDetails {
     pub created_at: String,
     pub tags: Vec<String>,
     pub description: Option<String>,
+    pub rating: Option<u8>,
     pub variants: Vec<VariantDetails>,
     pub recipes: Vec<RecipeDetails>,
 }
@@ -233,6 +235,8 @@ pub struct SearchOptions<'a> {
     pub tag: Option<&'a str>,
     pub format: Option<&'a str>,
     pub volume: Option<&'a str>,
+    pub rating_min: Option<u8>,
+    pub rating_exact: Option<u8>,
     pub sort: SearchSort,
     pub page: u32,
     pub per_page: u32,
@@ -246,6 +250,8 @@ impl<'a> Default for SearchOptions<'a> {
             tag: None,
             format: None,
             volume: None,
+            rating_min: None,
+            rating_exact: None,
             sort: SearchSort::DateDesc,
             page: 1,
             per_page: 60,
@@ -324,6 +330,8 @@ impl Catalog {
                 verified_at TEXT
             );",
         )?;
+        // Migration: add rating column to existing catalogs (ignored if already present)
+        let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN rating INTEGER");
         Ok(())
     }
 
@@ -331,8 +339,8 @@ impl Catalog {
     pub fn insert_asset(&self, asset: &Asset) -> Result<()> {
         let tags_json = serde_json::to_string(&asset.tags)?;
         self.conn.execute(
-            "INSERT OR REPLACE INTO assets (id, name, created_at, asset_type, tags, description) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT OR REPLACE INTO assets (id, name, created_at, asset_type, tags, description, rating) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![
                 asset.id.to_string(),
                 asset.name,
@@ -340,7 +348,17 @@ impl Catalog {
                 format!("{:?}", asset.asset_type).to_lowercase(),
                 tags_json,
                 asset.description,
+                asset.rating.map(|r| r as i64),
             ],
+        )?;
+        Ok(())
+    }
+
+    /// Update just the rating for an asset in the catalog.
+    pub fn update_asset_rating(&self, asset_id: &str, rating: Option<u8>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE assets SET rating = ?1 WHERE id = ?2",
+            rusqlite::params![rating.map(|r| r as i64), asset_id],
         )?;
         Ok(())
     }
@@ -436,10 +454,12 @@ impl Catalog {
         asset_type: Option<&str>,
         tag: Option<&str>,
         format: Option<&str>,
+        rating_min: Option<u8>,
+        rating_exact: Option<u8>,
     ) -> Result<Vec<SearchRow>> {
         let mut sql = String::from(
             "SELECT a.id, a.name, a.asset_type, a.created_at, v.original_filename, v.format, \
-             a.tags, a.description, v.content_hash \
+             a.tags, a.description, v.content_hash, a.rating \
              FROM assets a JOIN variants v ON a.id = v.asset_id WHERE 1=1",
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -463,6 +483,14 @@ impl Catalog {
             sql.push_str(" AND v.format = ?");
             params.push(Box::new(format_filter.to_lowercase()));
         }
+        if let Some(min) = rating_min {
+            sql.push_str(" AND a.rating >= ?");
+            params.push(Box::new(min as i64));
+        }
+        if let Some(exact) = rating_exact {
+            sql.push_str(" AND a.rating = ?");
+            params.push(Box::new(exact as i64));
+        }
 
         sql.push_str(" ORDER BY a.created_at DESC");
 
@@ -471,6 +499,7 @@ impl Catalog {
         let rows = stmt.query_map(param_refs.as_slice(), |row| {
             let tags_json: String = row.get(6)?;
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            let rating_val: Option<i64> = row.get(9)?;
             Ok(SearchRow {
                 asset_id: row.get(0)?,
                 name: row.get(1)?,
@@ -481,6 +510,7 @@ impl Catalog {
                 tags,
                 description: row.get(7)?,
                 content_hash: row.get(8)?,
+                rating: rating_val.map(|r| r as u8),
             })
         })?;
 
@@ -516,7 +546,7 @@ impl Catalog {
     /// Load full asset details from the catalog (variants + locations).
     pub fn load_asset_details(&self, asset_id: &str) -> Result<Option<AssetDetails>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, asset_type, created_at, tags, description \
+            "SELECT id, name, asset_type, created_at, tags, description, rating \
              FROM assets WHERE id = ?1",
         )?;
         let mut rows = stmt.query(rusqlite::params![asset_id])?;
@@ -531,6 +561,8 @@ impl Catalog {
         let created_at: String = row.get(3)?;
         let tags_json: String = row.get(4)?;
         let description: Option<String> = row.get(5)?;
+        let rating_val: Option<i64> = row.get(6)?;
+        let rating = rating_val.map(|r| r as u8);
         let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
 
         // Load variants
@@ -610,6 +642,7 @@ impl Catalog {
             created_at,
             tags,
             description,
+            rating,
             variants,
             recipes,
         }))
@@ -939,7 +972,7 @@ impl Catalog {
     pub fn search_paginated(&self, opts: &SearchOptions) -> Result<Vec<SearchRow>> {
         let mut sql = String::from(
             "SELECT a.id, a.name, a.asset_type, a.created_at, v.original_filename, v.format, \
-             a.tags, a.description, v.content_hash \
+             a.tags, a.description, v.content_hash, a.rating \
              FROM assets a JOIN variants v ON a.id = v.asset_id",
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -985,6 +1018,14 @@ impl Catalog {
                 params.push(Box::new(volume.to_string()));
             }
         }
+        if let Some(min) = opts.rating_min {
+            sql.push_str(" AND a.rating >= ?");
+            params.push(Box::new(min as i64));
+        }
+        if let Some(exact) = opts.rating_exact {
+            sql.push_str(" AND a.rating = ?");
+            params.push(Box::new(exact as i64));
+        }
 
         sql.push_str(&format!(" ORDER BY {}", opts.sort.to_sql()));
 
@@ -1000,6 +1041,7 @@ impl Catalog {
         let rows = stmt.query_map(param_refs.as_slice(), |row| {
             let tags_json: String = row.get(6)?;
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            let rating_val: Option<i64> = row.get(9)?;
             Ok(SearchRow {
                 asset_id: row.get(0)?,
                 name: row.get(1)?,
@@ -1010,6 +1052,7 @@ impl Catalog {
                 tags,
                 description: row.get(7)?,
                 content_hash: row.get(8)?,
+                rating: rating_val.map(|r| r as u8),
             })
         })?;
 
@@ -1067,6 +1110,14 @@ impl Catalog {
                 sql.push_str(" AND fl.volume_id = ?");
                 params.push(Box::new(volume.to_string()));
             }
+        }
+        if let Some(min) = opts.rating_min {
+            sql.push_str(" AND a.rating >= ?");
+            params.push(Box::new(min as i64));
+        }
+        if let Some(exact) = opts.rating_exact {
+            sql.push_str(" AND a.rating = ?");
+            params.push(Box::new(exact as i64));
         }
 
         let param_refs: Vec<&dyn rusqlite::types::ToSql> =
@@ -1667,7 +1718,7 @@ mod tests {
     #[test]
     fn search_by_text() {
         let catalog = setup_search_catalog();
-        let results = catalog.search_assets(Some("sunset"), None, None, None).unwrap();
+        let results = catalog.search_assets(Some("sunset"), None, None, None, None, None).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name.as_deref(), Some("sunset photo"));
     }
@@ -1675,7 +1726,7 @@ mod tests {
     #[test]
     fn search_by_type() {
         let catalog = setup_search_catalog();
-        let results = catalog.search_assets(None, Some("video"), None, None).unwrap();
+        let results = catalog.search_assets(None, Some("video"), None, None, None, None).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].format, "mp4");
     }
@@ -1683,7 +1734,7 @@ mod tests {
     #[test]
     fn search_by_tag() {
         let catalog = setup_search_catalog();
-        let results = catalog.search_assets(None, None, Some("landscape"), None).unwrap();
+        let results = catalog.search_assets(None, None, Some("landscape"), None, None, None).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name.as_deref(), Some("sunset photo"));
     }
@@ -1691,7 +1742,7 @@ mod tests {
     #[test]
     fn search_by_format() {
         let catalog = setup_search_catalog();
-        let results = catalog.search_assets(None, None, None, Some("jpg")).unwrap();
+        let results = catalog.search_assets(None, None, None, Some("jpg"), None, None).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].original_filename, "sunset_beach.jpg");
     }
@@ -1699,7 +1750,7 @@ mod tests {
     #[test]
     fn search_no_results() {
         let catalog = setup_search_catalog();
-        let results = catalog.search_assets(Some("nonexistent"), None, None, None).unwrap();
+        let results = catalog.search_assets(Some("nonexistent"), None, None, None, None, None).unwrap();
         assert!(results.is_empty());
     }
 
@@ -1707,12 +1758,12 @@ mod tests {
     fn search_combined_filters() {
         let catalog = setup_search_catalog();
         let results = catalog
-            .search_assets(Some("sunset"), Some("image"), Some("landscape"), Some("jpg"))
+            .search_assets(Some("sunset"), Some("image"), Some("landscape"), Some("jpg"), None, None)
             .unwrap();
         assert_eq!(results.len(), 1);
         // Combining mismatched filters yields nothing
         let results = catalog
-            .search_assets(Some("sunset"), Some("video"), None, None)
+            .search_assets(Some("sunset"), Some("video"), None, None, None, None)
             .unwrap();
         assert!(results.is_empty());
     }
@@ -1720,7 +1771,7 @@ mod tests {
     #[test]
     fn resolve_asset_id_full_match() {
         let catalog = setup_search_catalog();
-        let results = catalog.search_assets(None, None, None, None).unwrap();
+        let results = catalog.search_assets(None, None, None, None, None, None).unwrap();
         let full_id = &results[0].asset_id;
         let resolved = catalog.resolve_asset_id(full_id).unwrap();
         assert_eq!(resolved.as_deref(), Some(full_id.as_str()));
@@ -1775,7 +1826,7 @@ mod tests {
     #[test]
     fn load_asset_details_returns_full_info() {
         let catalog = setup_search_catalog();
-        let results = catalog.search_assets(Some("sunset"), None, None, None).unwrap();
+        let results = catalog.search_assets(Some("sunset"), None, None, None, None, None).unwrap();
         let asset_id = &results[0].asset_id;
 
         let details = catalog.load_asset_details(asset_id).unwrap().unwrap();

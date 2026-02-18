@@ -35,6 +35,8 @@ pub struct Asset {
     pub tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rating: Option<u8>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub variants: Vec<Variant>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -52,6 +54,7 @@ impl Asset {
             asset_type,
             tags: Vec::new(),
             description: None,
+            rating: None,
             variants: Vec::new(),
             recipes: Vec::new(),
         }

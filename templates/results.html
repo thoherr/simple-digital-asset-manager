@@ -1,6 +1,6 @@
 {% if cards.is_empty() %}
 <div class="no-results">
-    {% if query.is_empty() && asset_type.is_empty() && tag.is_empty() && format_filter.is_empty() && volume.is_empty() %}
+    {% if query.is_empty() && asset_type.is_empty() && tag.is_empty() && format_filter.is_empty() && volume.is_empty() && rating.is_empty() %}
     No assets in catalog. Import some files to get started.
     {% else %}
     No results found.
@@ -28,6 +28,9 @@
                     <span class="badge">{{ card.format }}</span>
                     <span>{{ card.date }}</span>
                 </div>
+                {% if card.rating.is_some() && card.rating.unwrap() > 0 %}
+                <div class="card-stars">{% for i in 1..=5u8 %}{% if i <= card.rating.unwrap() %}&#9733;{% else %}&#9734;{% endif %}{% endfor %}</div>
+                {% endif %}
             </div>
         </a>
     </div>
@@ -38,8 +41,8 @@
 <div class="pagination">
     {% if page > 1 %}
     {% let prev_page = page - 1 %}
-    <a href="?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&sort={{ sort }}&page={{ prev_page }}"
-       hx-get="/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&sort={{ sort }}&page={{ prev_page }}"
+    <a href="?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ prev_page }}"
+       hx-get="/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ prev_page }}"
        hx-target="#results"
        hx-push-url="true">Prev</a>
     {% else %}
@@ -50,8 +53,8 @@
     {% if p == page %}
     <span class="current">{{ p }}</span>
     {% else if p <= 3 || p > total_pages - 3 || (p >= page.saturating_sub(2) && p <= page + 2) %}
-    <a href="?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&sort={{ sort }}&page={{ p }}"
-       hx-get="/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&sort={{ sort }}&page={{ p }}"
+    <a href="?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ p }}"
+       hx-get="/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ p }}"
        hx-target="#results"
        hx-push-url="true">{{ p }}</a>
     {% else if p == 4 || p == total_pages.saturating_sub(3) %}
@@ -61,8 +64,8 @@
 
     {% if page < total_pages %}
     {% let next_page = page + 1 %}
-    <a href="?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&sort={{ sort }}&page={{ next_page }}"
-       hx-get="/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&sort={{ sort }}&page={{ next_page }}"
+    <a href="?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ next_page }}"
+       hx-get="/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ next_page }}"
        hx-target="#results"
        hx-push-url="true">Next</a>
     {% else %}

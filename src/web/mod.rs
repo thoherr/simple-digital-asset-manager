@@ -55,6 +55,10 @@ fn build_router(state: Arc<AppState>) -> Router {
             "/api/asset/{id}/tags/{tag}",
             axum::routing::delete(routes::remove_tag),
         )
+        .route(
+            "/api/asset/{id}/rating",
+            axum::routing::put(routes::set_rating),
+        )
         .route("/api/tags", axum::routing::get(routes::tags_api))
         .route("/api/stats", axum::routing::get(routes::stats_api))
         .route("/static/htmx.min.js", axum::routing::get(static_assets::htmx_js))

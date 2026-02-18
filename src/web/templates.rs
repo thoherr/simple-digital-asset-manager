@@ -39,6 +39,7 @@ pub struct AssetCard {
     pub format: String,
     pub date: String,
     pub preview_url: String,
+    pub rating: Option<u8>,
 }
 
 impl AssetCard {
@@ -54,7 +55,26 @@ impl AssetCard {
             format: row.format.clone(),
             date: format_date(&row.created_at),
             preview_url: preview_url(&row.content_hash),
+            rating: row.rating,
         }
+    }
+}
+
+/// Generate star display HTML for a rating value.
+pub fn stars_html(rating: Option<u8>) -> String {
+    match rating {
+        Some(r) if r > 0 => {
+            let mut s = String::new();
+            for i in 1..=5 {
+                if i <= r {
+                    s.push('\u{2605}');
+                } else {
+                    s.push('\u{2606}');
+                }
+            }
+            s
+        }
+        _ => String::new(),
     }
 }
 
@@ -104,6 +124,7 @@ pub struct BrowsePage {
     pub tag: String,
     pub format_filter: String,
     pub volume: String,
+    pub rating: String,
     pub sort: String,
     pub cards: Vec<AssetCard>,
     pub total: u64,
@@ -123,6 +144,7 @@ pub struct ResultsPartial {
     pub tag: String,
     pub format_filter: String,
     pub volume: String,
+    pub rating: String,
     pub sort: String,
     pub cards: Vec<AssetCard>,
     pub total: u64,
@@ -139,6 +161,7 @@ pub struct AssetPage {
     pub asset_type: String,
     pub created_at: String,
     pub description: Option<String>,
+    pub rating: Option<u8>,
     pub tags: Vec<String>,
     pub primary_preview_url: Option<String>,
     pub variants: Vec<VariantRow>,
@@ -204,6 +227,7 @@ impl AssetPage {
             asset_type: details.asset_type,
             created_at: format_date(&details.created_at),
             description: details.description,
+            rating: details.rating,
             tags: details.tags,
             primary_preview_url: preview,
             variants,
@@ -217,4 +241,11 @@ impl AssetPage {
 pub struct TagsFragment {
     pub asset_id: String,
     pub tags: Vec<String>,
+}
+
+#[derive(Template)]
+#[template(path = "rating_fragment.html")]
+pub struct RatingFragment {
+    pub asset_id: String,
+    pub rating: Option<u8>,
 }

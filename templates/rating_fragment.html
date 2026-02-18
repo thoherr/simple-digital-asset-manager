@@ -1,0 +1,19 @@
+<div class="star-rating">
+    {% for i in 1..=5u8 %}
+    {% if rating.is_some() && i <= rating.unwrap() %}
+    <span class="star filled"
+          hx-put="/api/asset/{{ asset_id }}/rating"
+          hx-target="#rating"
+          hx-swap="innerHTML"
+          hx-vals='{"rating": "{% if rating.unwrap() == i %}0{% else %}{{ i }}{% endif %}"}'
+          title="{% if rating.unwrap() == i %}Clear rating{% else %}Rate {{ i }}{% endif %}">&#9733;</span>
+    {% else %}
+    <span class="star empty"
+          hx-put="/api/asset/{{ asset_id }}/rating"
+          hx-target="#rating"
+          hx-swap="innerHTML"
+          hx-vals='{"rating": "{{ i }}"}'
+          title="Rate {{ i }}">&#9734;</span>
+    {% endif %}
+    {% endfor %}
+</div>

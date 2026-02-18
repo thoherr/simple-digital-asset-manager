@@ -1460,6 +1460,15 @@ fn apply_xmp_data(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, variant_h
         asset.description.clone_from(&xmp.description);
     }
 
+    // Promote rating to asset level (conservative: only if not already set)
+    if asset.rating.is_none() {
+        if let Some(rating_str) = xmp.source_metadata.get("rating") {
+            if let Ok(r) = rating_str.parse::<u8>() {
+                asset.rating = Some(r);
+            }
+        }
+    }
+
     if let Some(variant) = asset.variants.iter_mut().find(|v| v.content_hash == variant_hash) {
         for (key, val) in &xmp.source_metadata {
             variant
@@ -1484,6 +1493,13 @@ fn reapply_xmp_data(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, variant
 
     if xmp.description.is_some() {
         asset.description.clone_from(&xmp.description);
+    }
+
+    // Overwrite rating on re-import (matches overwrite semantics)
+    if let Some(rating_str) = xmp.source_metadata.get("rating") {
+        if let Ok(r) = rating_str.parse::<u8>() {
+            asset.rating = Some(r);
+        }
     }
 
     if let Some(variant) = asset.variants.iter_mut().find(|v| v.content_hash == variant_hash) {

@@ -530,6 +530,10 @@ fn main() {
                 if !details.tags.is_empty() {
                     println!("Tags:  {}", details.tags.join(", "));
                 }
+                if let Some(rating) = details.rating {
+                    let stars: String = (1..=5).map(|i| if i <= rating { '\u{2605}' } else { '\u{2606}' }).collect();
+                    println!("Rating: {stars} ({rating}/5)");
+                }
                 if let Some(desc) = &details.description {
                     println!("Description: {desc}");
                 }

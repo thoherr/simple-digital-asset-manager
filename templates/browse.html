@@ -7,7 +7,7 @@
       hx-get="/api/search"
       hx-target="#results"
       hx-push-url="true"
-      hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": document.querySelector("[name=tag]").value, "format": document.querySelector("[name=format]").value, "volume": document.querySelector("[name=volume]").value, "sort": document.querySelector("[name=sort]").value, "page": "1"}'>
+      hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": document.querySelector("[name=tag]").value, "format": document.querySelector("[name=format]").value, "volume": document.querySelector("[name=volume]").value, "rating": document.querySelector("[name=rating]").value, "sort": document.querySelector("[name=sort]").value, "page": "1"}'>
     <input type="text" name="q" placeholder="Search assets..." value="{{ query }}" autocomplete="off">
     <select name="type">
         <option value="">All types</option>
@@ -36,6 +36,14 @@
         {% endfor %}
     </select>
     {% endif %}
+    <select name="rating">
+        <option value="">Any rating</option>
+        <option value="1+"{% if rating == "1+" %} selected{% endif %}>&#9733; 1+</option>
+        <option value="2+"{% if rating == "2+" %} selected{% endif %}>&#9733; 2+</option>
+        <option value="3+"{% if rating == "3+" %} selected{% endif %}>&#9733; 3+</option>
+        <option value="4+"{% if rating == "4+" %} selected{% endif %}>&#9733; 4+</option>
+        <option value="5"{% if rating == "5" %} selected{% endif %}>&#9733; 5</option>
+    </select>
     <select name="sort">
         <option value="date_desc"{% if sort == "date_desc" %} selected{% endif %}>Newest first</option>
         <option value="date_asc"{% if sort == "date_asc" %} selected{% endif %}>Oldest first</option>

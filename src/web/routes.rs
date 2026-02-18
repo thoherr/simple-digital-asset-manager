@@ -9,8 +9,8 @@ use axum::Form;
 use crate::catalog::{SearchOptions, SearchSort};
 
 use super::templates::{
-    AssetCard, AssetPage, BrowsePage, FormatOption, ResultsPartial, TagOption, TagsFragment,
-    VolumeOption,
+    AssetCard, AssetPage, BrowsePage, FormatOption, RatingFragment, ResultsPartial, TagOption,
+    TagsFragment, VolumeOption,
 };
 use super::AppState;
 
@@ -22,6 +22,7 @@ pub struct SearchParams {
     pub tag: Option<String>,
     pub format: Option<String>,
     pub volume: Option<String>,
+    pub rating: Option<String>,
     pub sort: Option<String>,
     pub page: Option<u32>,
 }
@@ -40,8 +41,12 @@ pub async fn browse_page(
         let tag = params.tag.as_deref().unwrap_or("");
         let format = params.format.as_deref().unwrap_or("");
         let volume = params.volume.as_deref().unwrap_or("");
+        let rating_str = params.rating.as_deref().unwrap_or("");
         let sort_str = params.sort.as_deref().unwrap_or("date_desc");
         let page = params.page.unwrap_or(1).max(1);
+
+        // Parse rating filter: "3" = exact, "3+" = minimum
+        let (rating_min, rating_exact) = parse_rating_filter(rating_str);
 
         let opts = SearchOptions {
             text: if query.is_empty() { None } else { Some(query) },
@@ -61,6 +66,8 @@ pub async fn browse_page(
             } else {
                 Some(volume)
             },
+            rating_min,
+            rating_exact,
             sort: SearchSort::from_str(sort_str),
             page,
             per_page: 60,
@@ -93,6 +100,7 @@ pub async fn browse_page(
             tag: tag.to_string(),
             format_filter: format.to_string(),
             volume: volume.to_string(),
+            rating: rating_str.to_string(),
             sort: sort_str.to_string(),
             cards,
             total,
@@ -130,8 +138,11 @@ pub async fn search_api(
         let tag = params.tag.as_deref().unwrap_or("");
         let format = params.format.as_deref().unwrap_or("");
         let volume = params.volume.as_deref().unwrap_or("");
+        let rating_str = params.rating.as_deref().unwrap_or("");
         let sort_str = params.sort.as_deref().unwrap_or("date_desc");
         let page = params.page.unwrap_or(1).max(1);
+
+        let (rating_min, rating_exact) = parse_rating_filter(rating_str);
 
         let opts = SearchOptions {
             text: if query.is_empty() { None } else { Some(query) },
@@ -151,6 +162,8 @@ pub async fn search_api(
             } else {
                 Some(volume)
             },
+            rating_min,
+            rating_exact,
             sort: SearchSort::from_str(sort_str),
             page,
             per_page: 60,
@@ -167,6 +180,7 @@ pub async fn search_api(
             tag: tag.to_string(),
             format_filter: format.to_string(),
             volume: volume.to_string(),
+            rating: rating_str.to_string(),
             sort: sort_str.to_string(),
             cards,
             total,
@@ -329,6 +343,57 @@ pub async fn stats_api(State(state): State<Arc<AppState>>) -> Response {
 
     match result {
         Ok(Ok(stats)) => axum::Json(stats).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+/// Parse a rating filter string into (rating_min, rating_exact).
+/// "3+" → (Some(3), None), "5" → (None, Some(5)), "" → (None, None)
+fn parse_rating_filter(s: &str) -> (Option<u8>, Option<u8>) {
+    if s.is_empty() {
+        return (None, None);
+    }
+    if let Some(num_str) = s.strip_suffix('+') {
+        if let Ok(n) = num_str.parse::<u8>() {
+            return (Some(n), None);
+        }
+    }
+    if let Ok(n) = s.parse::<u8>() {
+        return (None, Some(n));
+    }
+    (None, None)
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct RatingForm {
+    pub rating: Option<u8>,
+}
+
+/// PUT /api/asset/{id}/rating — set rating, return rating fragment.
+pub async fn set_rating(
+    State(state): State<Arc<AppState>>,
+    Path(asset_id): Path<String>,
+    Form(form): Form<RatingForm>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let engine = state.query_engine();
+        // Treat 0 as "clear rating"
+        let rating = form.rating.filter(|&r| r > 0);
+        let new_rating = engine.set_rating(&asset_id, rating)?;
+        let tmpl = RatingFragment {
+            asset_id,
+            rating: new_rating,
+        };
+        Ok::<_, anyhow::Error>(tmpl.render()?)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(html)) => Html(html).into_response(),
         Ok(Err(e)) => {
             (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
         }

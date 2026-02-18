@@ -159,7 +159,7 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 **Responsibility**: search and filter assets via the SQLite catalog.
 
 **Query capabilities**:
-- Filter by: tags, date range, asset type, format, camera model, volume, online/offline status
+- Filter by: tags, date range, asset type, format, rating (`rating:N` exact, `rating:N+` minimum), camera model, volume, online/offline status
 - Full-text search over name and description
 - Sort by: date, name, file size, import date
 - Output: asset list with summary info, or detailed asset view
@@ -215,11 +215,12 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - Preview images are served directly from the catalog's `previews/` directory via `tower-http::ServeDir`.
 
 **Routes**:
-- `GET /` — browse page with search, filter dropdowns, sort, pagination, thumbnail grid
-- `GET /asset/{id}` — asset detail with preview, metadata, editable tags, variants, recipes
+- `GET /` — browse page with search, filter dropdowns (type, tag, format, volume, rating), sort, pagination, thumbnail grid with star ratings
+- `GET /asset/{id}` — asset detail with preview, metadata, editable tags, inline editable star rating, variants, recipes
 - `GET /api/search` — results partial (htmx target) with pagination
 - `POST /api/asset/{id}/tags` — add tags, returns tags fragment
 - `DELETE /api/asset/{id}/tags/{tag}` — remove tag, returns tags fragment
+- `PUT /api/asset/{id}/rating` — set/clear rating (form: `rating=N`), returns rating fragment
 - `GET /api/tags` — all tags as JSON (for autocomplete)
 - `GET /api/stats` — catalog stats as JSON
 
