@@ -270,4 +270,15 @@ mod filters {
     pub fn pct0(val: &f64) -> ::askama::Result<String> {
         Ok(format!("{val:.0}"))
     }
+
+    pub fn verify_class(pct: &f64) -> ::askama::Result<String> {
+        Ok(if *pct >= 80.0 {
+            "fill-good"
+        } else if *pct >= 40.0 {
+            "fill-warn"
+        } else {
+            "fill-low"
+        }
+        .to_string())
+    }
 }

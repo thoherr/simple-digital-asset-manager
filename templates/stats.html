@@ -5,24 +5,59 @@
 {% block content %}
 <h1>Catalog Statistics</h1>
 
-<div class="stats-grid">
-    <div class="stat-card">
+<!-- Overview Cards -->
+<div class="stats-overview">
+    <div class="stat-card accent-blue">
+        <div class="stat-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect>
+            </svg>
+        </div>
         <div class="stat-value">{{ stats.overview.assets }}</div>
         <div class="stat-label">Assets</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card accent-teal">
+        <div class="stat-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                <polyline points="2 17 12 22 22 17"></polyline>
+                <polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
+        </div>
         <div class="stat-value">{{ stats.overview.variants }}</div>
         <div class="stat-label">Variants</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card accent-amber">
+        <div class="stat-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+        </div>
         <div class="stat-value">{{ stats.overview.recipes }}</div>
         <div class="stat-label">Recipes</div>
     </div>
-    <div class="stat-card">
-        <div class="stat-value">{{ stats.overview.volumes_online }} / {{ stats.overview.volumes_total }}</div>
+    <div class="stat-card accent-purple">
+        <div class="stat-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="12" x2="2" y2="12"></line>
+                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>
+                <line x1="6" y1="16" x2="6.01" y2="16"></line><line x1="10" y1="16" x2="10.01" y2="16"></line>
+            </svg>
+        </div>
+        <div class="stat-value">{{ stats.overview.volumes_online }}<span class="stat-sub"> / {{ stats.overview.volumes_total }}</span></div>
         <div class="stat-label">Volumes Online</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card accent-emerald">
+        <div class="stat-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+            </svg>
+        </div>
         <div class="stat-value">{{ total_size_fmt }}</div>
         <div class="stat-label">Total Size</div>
     </div>
@@ -30,62 +65,72 @@
 
 {% match stats.types %}
 {% when Some with (types) %}
-<div class="stats-section">
-    <h2>Asset Types</h2>
-    <table class="stats-table">
-        <thead>
-            <tr><th>Type</th><th>Count</th><th>%</th></tr>
-        </thead>
-        <tbody>
+<!-- Types & Formats — Two Column -->
+<div class="stats-columns">
+    <div class="stats-section">
+        <h2>Asset Types</h2>
+        <div class="bar-chart">
         {% for t in types.asset_types %}
-            <tr>
-                <td>{{ t.asset_type }}</td>
-                <td>{{ t.count }}</td>
-                <td>{{ t.percentage|pct1 }}%</td>
-            </tr>
+            <div class="bar-row">
+                <span class="bar-label">{{ t.asset_type }}</span>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width: {{ t.percentage|pct1 }}%"></div>
+                </div>
+                <span class="bar-value">{{ t.count }} <span class="bar-pct">({{ t.percentage|pct1 }}%)</span></span>
+            </div>
         {% endfor %}
-        </tbody>
-    </table>
+        </div>
+    </div>
 
-    {% if !types.variant_formats.is_empty() %}
-    <h3>Variant Formats</h3>
-    <table class="stats-table">
-        <thead>
-            <tr><th>Format</th><th>Count</th></tr>
-        </thead>
-        <tbody>
+    <div class="stats-section">
+        {% if !types.variant_formats.is_empty() %}
+        <h2>Variant Formats</h2>
+        <div class="bar-chart" data-auto-scale>
         {% for f in types.variant_formats %}
-            <tr><td>{{ f.format }}</td><td>{{ f.count }}</td></tr>
+            <div class="bar-row">
+                <span class="bar-label">{{ f.format }}</span>
+                <div class="bar-track">
+                    <div class="bar-fill accent-fill-teal" data-value="{{ f.count }}"></div>
+                </div>
+                <span class="bar-value">{{ f.count }}</span>
+            </div>
         {% endfor %}
-        </tbody>
-    </table>
-    {% endif %}
+        </div>
+        {% endif %}
 
-    {% if !types.recipe_formats.is_empty() %}
-    <h3>Recipe Formats</h3>
-    <table class="stats-table">
-        <thead>
-            <tr><th>Format</th><th>Count</th></tr>
-        </thead>
-        <tbody>
+        {% if !types.recipe_formats.is_empty() %}
+        <h2 class="subsection-gap">Recipe Formats</h2>
+        <div class="bar-chart" data-auto-scale>
         {% for f in types.recipe_formats %}
-            <tr><td>{{ f.format }}</td><td>{{ f.count }}</td></tr>
+            <div class="bar-row">
+                <span class="bar-label">{{ f.format }}</span>
+                <div class="bar-track">
+                    <div class="bar-fill accent-fill-amber" data-value="{{ f.count }}"></div>
+                </div>
+                <span class="bar-value">{{ f.count }}</span>
+            </div>
         {% endfor %}
-        </tbody>
-    </table>
-    {% endif %}
+        </div>
+        {% endif %}
+    </div>
 </div>
 {% when None %}
 {% endmatch %}
 
 {% match stats.volumes %}
 {% when Some with (volumes) %}
+<!-- Volumes -->
 <div class="stats-section">
     <h2>Volumes</h2>
     <div class="volume-cards">
     {% for vol in volumes %}
-        <div class="volume-card">
+        <div class="volume-card {% if vol.is_online %}vol-online{% else %}vol-offline{% endif %}">
             <div class="volume-header">
+                {% if vol.is_online %}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                {% else %}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#991b1b" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                {% endif %}
                 <strong>{{ vol.label }}</strong>
                 {% if vol.is_online %}
                 <span class="badge badge-online">online</span>
@@ -93,23 +138,40 @@
                 <span class="badge badge-offline">offline</span>
                 {% endif %}
             </div>
-            <table class="meta-table">
-                <tr><th>Assets</th><td>{{ vol.assets }}</td></tr>
-                <tr><th>Variants</th><td>{{ vol.variants }}</td></tr>
-                <tr><th>Recipes</th><td>{{ vol.recipes }}</td></tr>
-                <tr><th>Directories</th><td>{{ vol.directories }}</td></tr>
-                <tr><th>Size</th><td>{{ vol.size|fmt_bytes }}</td></tr>
-                {% if !vol.formats.is_empty() %}
-                <tr><th>Formats</th><td>{{ vol.formats.join(", ") }}</td></tr>
-                {% endif %}
-                <tr>
-                    <th>Verified</th>
-                    <td>
-                        {{ vol.verified_count }} / {{ vol.total_locations }}
-                        ({{ vol.verification_pct|pct0 }}%)
-                    </td>
-                </tr>
-            </table>
+            <div class="vol-stats">
+                <div class="vol-stat">
+                    <span class="vol-stat-val">{{ vol.assets }}</span>
+                    <span class="vol-stat-lbl">assets</span>
+                </div>
+                <div class="vol-stat">
+                    <span class="vol-stat-val">{{ vol.variants }}</span>
+                    <span class="vol-stat-lbl">variants</span>
+                </div>
+                <div class="vol-stat">
+                    <span class="vol-stat-val">{{ vol.recipes }}</span>
+                    <span class="vol-stat-lbl">recipes</span>
+                </div>
+                <div class="vol-stat">
+                    <span class="vol-stat-val">{{ vol.size|fmt_bytes }}</span>
+                    <span class="vol-stat-lbl">size</span>
+                </div>
+            </div>
+            {% if !vol.formats.is_empty() %}
+            <div class="vol-formats">
+                {% for fmt in vol.formats %}
+                <span class="fmt-chip">{{ fmt }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+            <div class="vol-verify">
+                <div class="vol-verify-header">
+                    <span>Verification</span>
+                    <span>{{ vol.verified_count }} / {{ vol.total_locations }}</span>
+                </div>
+                <div class="mini-bar-track">
+                    <div class="mini-bar-fill {{ vol.verification_pct|verify_class }}" style="width: {{ vol.verification_pct|pct0 }}%"></div>
+                </div>
+            </div>
         </div>
     {% endfor %}
     </div>
@@ -119,27 +181,30 @@
 
 {% match stats.tags %}
 {% when Some with (tags) %}
+<!-- Tags -->
 <div class="stats-section">
     <h2>Tags</h2>
-    <div class="stats-grid stats-grid-3">
-        <div class="stat-card">
-            <div class="stat-value">{{ tags.unique_tags }}</div>
-            <div class="stat-label">Unique Tags</div>
+    <div class="tag-summary">
+        <div class="tag-summary-item">
+            <span class="tag-summary-val">{{ tags.unique_tags }}</span>
+            <span class="tag-summary-lbl">unique tags</span>
         </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ tags.tagged_assets }}</div>
-            <div class="stat-label">Tagged Assets</div>
+        <span class="tag-summary-sep"></span>
+        <div class="tag-summary-item">
+            <span class="tag-summary-val">{{ tags.tagged_assets }}</span>
+            <span class="tag-summary-lbl">tagged assets</span>
         </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ tags.untagged_assets }}</div>
-            <div class="stat-label">Untagged Assets</div>
+        <span class="tag-summary-sep"></span>
+        <div class="tag-summary-item">
+            <span class="tag-summary-val">{{ tags.untagged_assets }}</span>
+            <span class="tag-summary-lbl">untagged assets</span>
         </div>
     </div>
     {% if !tags.top_tags.is_empty() %}
     <h3>Top Tags</h3>
-    <div class="tags-cloud">
+    <div class="tag-cloud" id="tag-cloud">
         {% for t in tags.top_tags %}
-        <span class="tag-chip">{{ t.tag }} <span class="tag-count">({{ t.count }})</span></span>
+        <a href="/?tag={{ t.tag }}" class="cloud-tag" data-count="{{ t.count }}">{{ t.tag }}<sup>{{ t.count }}</sup></a>
         {% endfor %}
     </div>
     {% endif %}
@@ -149,38 +214,51 @@
 
 {% match stats.verified %}
 {% when Some with (v) %}
+<!-- Verification Health -->
 <div class="stats-section">
-    <h2>Verification</h2>
-    <div class="verification-overview">
-        <div class="progress-bar-container">
-            <div class="progress-bar" style="width: {{ v.coverage_pct|pct0 }}%"></div>
+    <h2>Verification Health</h2>
+    <div class="verify-hero">
+        <div class="verify-bar-track">
+            <div class="verify-bar-fill {{ v.coverage_pct|verify_class }}" style="width: {{ v.coverage_pct|pct0 }}%"></div>
         </div>
-        <div class="progress-label">{{ v.coverage_pct|pct1 }}% verified ({{ v.verified_locations }} / {{ v.total_locations }} locations)</div>
+        <div class="verify-meta">
+            <span class="verify-pct">{{ v.coverage_pct|pct1 }}% verified</span>
+            <span class="verify-counts">
+                <strong>{{ v.verified_locations }}</strong> verified,
+                <strong>{{ v.unverified_locations }}</strong> unverified
+                of <strong>{{ v.total_locations }}</strong> locations
+            </span>
+        </div>
+        <div class="verify-dates">
+            {% match v.oldest_verified_at %}
+            {% when Some with (date) %}
+            <span class="verify-date">Oldest: {{ date }}</span>
+            {% when None %}
+            {% endmatch %}
+            {% match v.newest_verified_at %}
+            {% when Some with (date) %}
+            <span class="verify-date">Newest: {{ date }}</span>
+            {% when None %}
+            {% endmatch %}
+        </div>
     </div>
-    <table class="meta-table" style="margin-top: 0.75rem;">
-        <tr><th>Unverified</th><td>{{ v.unverified_locations }}</td></tr>
-        {% match v.oldest_verified_at %}
-        {% when Some with (date) %}
-        <tr><th>Oldest Verification</th><td>{{ date }}</td></tr>
-        {% when None %}
-        {% endmatch %}
-        {% match v.newest_verified_at %}
-        {% when Some with (date) %}
-        <tr><th>Newest Verification</th><td>{{ date }}</td></tr>
-        {% when None %}
-        {% endmatch %}
-    </table>
 
     {% if !v.per_volume.is_empty() %}
     <h3>Per Volume</h3>
-    <table class="stats-table">
+    <table class="stats-table verify-table">
         <thead>
-            <tr><th>Volume</th><th>Status</th><th>Locations</th><th>Verified</th><th>Coverage</th></tr>
+            <tr>
+                <th>Volume</th>
+                <th>Status</th>
+                <th style="width: 35%;">Coverage</th>
+                <th>Verified</th>
+                <th>Total</th>
+            </tr>
         </thead>
         <tbody>
         {% for pv in v.per_volume %}
             <tr>
-                <td>{{ pv.label }}</td>
+                <td><strong>{{ pv.label }}</strong></td>
                 <td>
                     {% if pv.is_online %}
                     <span class="badge badge-online">online</span>
@@ -188,9 +266,16 @@
                     <span class="badge badge-offline">offline</span>
                     {% endif %}
                 </td>
-                <td>{{ pv.locations }}</td>
+                <td>
+                    <div class="inline-bar">
+                        <div class="inline-bar-track">
+                            <div class="inline-bar-fill {{ pv.coverage_pct|verify_class }}" style="width: {{ pv.coverage_pct|pct0 }}%"></div>
+                        </div>
+                        <span class="inline-bar-label">{{ pv.coverage_pct|pct0 }}%</span>
+                    </div>
+                </td>
                 <td>{{ pv.verified }}</td>
-                <td>{{ pv.coverage_pct|pct0 }}%</td>
+                <td>{{ pv.locations }}</td>
             </tr>
         {% endfor %}
         </tbody>
@@ -199,5 +284,36 @@
 </div>
 {% when None %}
 {% endmatch %}
+
+<script>
+// Auto-scale bar charts that don't have pre-computed percentages
+document.querySelectorAll('.bar-chart[data-auto-scale]').forEach(function(chart) {
+    var fills = chart.querySelectorAll('.bar-fill[data-value]');
+    var max = 0;
+    fills.forEach(function(f) { var v = parseInt(f.dataset.value, 10); if (v > max) max = v; });
+    if (max > 0) fills.forEach(function(f) {
+        f.style.width = (parseInt(f.dataset.value, 10) / max * 100) + '%';
+    });
+});
+
+// Weighted tag cloud
+(function() {
+    var tags = document.querySelectorAll('#tag-cloud .cloud-tag');
+    if (!tags.length) return;
+    var min = Infinity, max = 0;
+    tags.forEach(function(t) {
+        var c = parseInt(t.dataset.count, 10);
+        if (c < min) min = c;
+        if (c > max) max = c;
+    });
+    var range = Math.max(max - min, 1);
+    tags.forEach(function(t) {
+        var c = parseInt(t.dataset.count, 10);
+        var w = (c - min) / range;
+        t.style.fontSize = (0.8 + w * 1.2) + 'rem';
+        t.style.opacity = 0.6 + w * 0.4;
+    });
+})();
+</script>
 
 {% endblock %}
