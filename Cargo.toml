@@ -15,6 +15,9 @@ serde_yaml = "0.9"
 sha2 = "0.10"
 thiserror = "1"
 image = "0.25"
+imageproc = { version = "0.26", default-features = false, features = ["text"] }
+ab_glyph = "0.2"
+lofty = "0.23"
 kamadak-exif = "0.5"
 quick-xml = "0.36"
 uuid = { version = "1", features = ["v4", "v5", "serde"] }

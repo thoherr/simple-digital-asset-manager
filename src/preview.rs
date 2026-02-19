@@ -1,9 +1,41 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use ab_glyph::FontRef;
 use anyhow::{Context, Result};
+use image::{Rgb, RgbImage};
+use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut, text_size};
+use imageproc::rect::Rect;
 
 const PREVIEW_MAX_EDGE: u32 = 800;
+
+const INFO_CARD_WIDTH: u32 = 800;
+const INFO_CARD_HEIGHT: u32 = 600;
+
+const BG_COLOR: Rgb<u8> = Rgb([35, 35, 40]);
+const TEXT_COLOR: Rgb<u8> = Rgb([220, 220, 225]);
+const DIM_COLOR: Rgb<u8> = Rgb([140, 140, 150]);
+const SEPARATOR_COLOR: Rgb<u8> = Rgb([60, 60, 70]);
+
+// Format badge colors
+const BADGE_AUDIO: Rgb<u8> = Rgb([60, 100, 180]);
+const BADGE_DOCUMENT: Rgb<u8> = Rgb([180, 140, 40]);
+const BADGE_IMAGE: Rgb<u8> = Rgb([50, 150, 80]);
+const BADGE_VIDEO: Rgb<u8> = Rgb([180, 50, 50]);
+const BADGE_OTHER: Rgb<u8> = Rgb([100, 100, 110]);
+const BADGE_TEXT: Rgb<u8> = Rgb([255, 255, 255]);
+
+static FONT_DATA: &[u8] = include_bytes!("fonts/DejaVuSans.ttf");
+
+const AUDIO_FORMATS: &[&str] = &[
+    "mp3", "flac", "aac", "ogg", "wav", "wma", "m4a", "aiff", "aif", "opus", "alac", "ape",
+    "wv",
+];
+
+const DOCUMENT_FORMATS: &[&str] = &[
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "txt",
+    "csv", "epub",
+];
 
 /// Creates and caches thumbnails for browsing.
 pub struct PreviewGenerator {
@@ -64,13 +96,14 @@ impl PreviewGenerator {
 
     fn do_generate(
         &self,
-        content_hash: &str,
+        _content_hash: &str,
         source_path: &Path,
         format: &str,
     ) -> Result<Option<PathBuf>> {
-        let dest = self.preview_path(content_hash);
+        let dest = self.preview_path(_content_hash);
+        let fmt = format.to_lowercase();
 
-        let result = match format.to_lowercase().as_str() {
+        let result = match fmt.as_str() {
             // Standard image formats the `image` crate can decode
             "jpg" | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "tif" | "webp" | "ico" => {
                 self.generate_image(&dest, source_path)
@@ -81,8 +114,8 @@ impl PreviewGenerator {
             // Video formats
             "mp4" | "mov" | "avi" | "mkv" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg"
             | "3gp" | "mts" | "m2ts" => self.generate_video(&dest, source_path),
-            // Unsupported for preview (audio, documents, etc.)
-            _ => return Ok(None),
+            // Audio and everything else → info card
+            _ => return self.generate_info_card(&dest, source_path, &fmt),
         };
 
         match result {
@@ -90,13 +123,13 @@ impl PreviewGenerator {
             Err(e) => {
                 // If the dest was partially written, clean up
                 std::fs::remove_file(&dest).ok();
-                // Check if it's a missing-tool error — return None instead of propagating
+                // Check if it's a missing-tool error — fall back to info card
                 let msg = e.to_string();
                 if msg.contains("not found")
                     || msg.contains("No such file")
                     || msg.contains("does not contain any stream")
                 {
-                    Ok(None)
+                    self.generate_info_card(&dest, source_path, &fmt)
                 } else {
                     Err(e)
                 }
@@ -223,6 +256,335 @@ impl PreviewGenerator {
             .with_context(|| format!("Failed to save preview to {}", dest.display()))?;
         Ok(())
     }
+
+    /// Generate an info card preview showing textual metadata.
+    fn generate_info_card(
+        &self,
+        dest: &Path,
+        source_path: &Path,
+        format: &str,
+    ) -> Result<Option<PathBuf>> {
+        let info = InfoCardData::from_file(source_path, format);
+        let img = render_info_card(&info);
+        ensure_parent(dest)?;
+        img.save(dest)
+            .with_context(|| format!("Failed to save info card to {}", dest.display()))?;
+        Ok(Some(dest.to_path_buf()))
+    }
+}
+
+// ── Info card rendering ──────────────────────────────────────────────────────
+
+struct InfoCardData {
+    display_name: String,
+    format: String,
+    file_size: String,
+    duration: Option<String>,
+    bitrate: Option<String>,
+    sample_rate: Option<String>,
+    channels: Option<String>,
+}
+
+impl InfoCardData {
+    fn from_file(source_path: &Path, format: &str) -> Self {
+        let display_name = source_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Unknown".into());
+
+        let file_size = std::fs::metadata(source_path)
+            .ok()
+            .map(|m| format_file_size(m.len()))
+            .unwrap_or_else(|| "Unknown size".into());
+
+        let (duration, bitrate, sample_rate, channels) = extract_audio_metadata(source_path);
+
+        InfoCardData {
+            display_name,
+            format: format.to_uppercase(),
+            file_size,
+            duration,
+            bitrate,
+            sample_rate,
+            channels,
+        }
+    }
+
+    fn format_category(&self) -> FormatCategory {
+        let fmt = self.format.to_lowercase();
+        if AUDIO_FORMATS.contains(&fmt.as_str()) {
+            FormatCategory::Audio
+        } else if DOCUMENT_FORMATS.contains(&fmt.as_str()) {
+            FormatCategory::Document
+        } else if matches!(
+            fmt.as_str(),
+            "jpg" | "jpeg"
+                | "png"
+                | "gif"
+                | "bmp"
+                | "tiff"
+                | "tif"
+                | "webp"
+                | "ico"
+                | "raw"
+                | "cr2"
+                | "cr3"
+                | "nef"
+                | "arw"
+                | "orf"
+                | "rw2"
+                | "dng"
+                | "raf"
+                | "pef"
+                | "srw"
+        ) {
+            FormatCategory::Image
+        } else if matches!(
+            fmt.as_str(),
+            "mp4" | "mov"
+                | "avi"
+                | "mkv"
+                | "wmv"
+                | "flv"
+                | "webm"
+                | "m4v"
+                | "mpg"
+                | "mpeg"
+                | "3gp"
+                | "mts"
+                | "m2ts"
+        ) {
+            FormatCategory::Video
+        } else {
+            FormatCategory::Other
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum FormatCategory {
+    Audio,
+    Document,
+    Image,
+    Video,
+    Other,
+}
+
+impl FormatCategory {
+    fn badge_color(self) -> Rgb<u8> {
+        match self {
+            FormatCategory::Audio => BADGE_AUDIO,
+            FormatCategory::Document => BADGE_DOCUMENT,
+            FormatCategory::Image => BADGE_IMAGE,
+            FormatCategory::Video => BADGE_VIDEO,
+            FormatCategory::Other => BADGE_OTHER,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            FormatCategory::Audio => "AUDIO",
+            FormatCategory::Document => "DOCUMENT",
+            FormatCategory::Image => "IMAGE",
+            FormatCategory::Video => "VIDEO",
+            FormatCategory::Other => "FILE",
+        }
+    }
+}
+
+fn extract_audio_metadata(
+    path: &Path,
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
+    let tagged_file = match lofty::read_from_path(path) {
+        Ok(f) => f,
+        Err(_) => return (None, None, None, None),
+    };
+
+    use lofty::file::AudioFile;
+    let props = tagged_file.properties();
+
+    let duration = {
+        let dur = props.duration();
+        let total_secs = dur.as_secs();
+        if total_secs == 0 && dur.subsec_millis() == 0 {
+            None
+        } else {
+            let hours = total_secs / 3600;
+            let mins = (total_secs % 3600) / 60;
+            let secs = total_secs % 60;
+            Some(if hours > 0 {
+                format!("{hours}:{mins:02}:{secs:02}")
+            } else {
+                format!("{mins}:{secs:02}")
+            })
+        }
+    };
+
+    let bitrate = props
+        .audio_bitrate()
+        .or_else(|| props.overall_bitrate())
+        .map(|b| format!("{b} kbps"));
+
+    let sample_rate = props.sample_rate().map(|sr| {
+        if sr % 1000 == 0 {
+            format!("{} kHz", sr / 1000)
+        } else {
+            format!("{:.1} kHz", sr as f64 / 1000.0)
+        }
+    });
+
+    let channels = props.channels().map(|ch| match ch {
+        1 => "Mono".into(),
+        2 => "Stereo".into(),
+        n => format!("{n} channels"),
+    });
+
+    (duration, bitrate, sample_rate, channels)
+}
+
+fn render_info_card(info: &InfoCardData) -> RgbImage {
+    let font = FontRef::try_from_slice(FONT_DATA).expect("embedded font is valid");
+
+    let mut img = RgbImage::from_pixel(INFO_CARD_WIDTH, INFO_CARD_HEIGHT, BG_COLOR);
+
+    let category = info.format_category();
+    let badge_color = category.badge_color();
+
+    // ── Format badge ─────────────────────────────────────────────────────
+    let badge_scale = 18.0_f32;
+    let badge_text = format!("{} · {}", category.label(), info.format);
+    let (badge_tw, badge_th) = text_size(badge_scale, &font, &badge_text);
+    let badge_pad_x: u32 = 16;
+    let badge_pad_y: u32 = 8;
+    let badge_x: i32 = 40;
+    let badge_y: i32 = 180;
+    let badge_w = badge_tw + badge_pad_x * 2;
+    let badge_h = badge_th + badge_pad_y * 2;
+    draw_filled_rect_mut(
+        &mut img,
+        Rect::at(badge_x, badge_y).of_size(badge_w, badge_h),
+        badge_color,
+    );
+    draw_text_mut(
+        &mut img,
+        BADGE_TEXT,
+        badge_x + badge_pad_x as i32,
+        badge_y + badge_pad_y as i32,
+        badge_scale,
+        &font,
+        &badge_text,
+    );
+
+    // ── Display name ─────────────────────────────────────────────────────
+    let name_scale = 28.0_f32;
+    let max_name_width = (INFO_CARD_WIDTH - 80) as u32;
+    let display_name = truncate_to_width(&info.display_name, name_scale, &font, max_name_width);
+    let name_y = badge_y + badge_h as i32 + 30;
+    draw_text_mut(
+        &mut img,
+        TEXT_COLOR,
+        40,
+        name_y,
+        name_scale,
+        &font,
+        &display_name,
+    );
+
+    // ── Separator line ───────────────────────────────────────────────────
+    let (_, name_th) = text_size(name_scale, &font, &display_name);
+    let sep_y = name_y + name_th as i32 + 16;
+    draw_filled_rect_mut(
+        &mut img,
+        Rect::at(40, sep_y).of_size(INFO_CARD_WIDTH - 80, 1),
+        SEPARATOR_COLOR,
+    );
+
+    // ── Metadata lines ───────────────────────────────────────────────────
+    let meta_scale = 20.0_f32;
+    let line_height: i32 = 34;
+    let mut y = sep_y + 20;
+
+    let mut draw_meta_line = |label: &str, value: &str| {
+        draw_text_mut(&mut img, DIM_COLOR, 40, y, meta_scale, &font, label);
+        let (label_w, _) = text_size(meta_scale, &font, label);
+        draw_text_mut(
+            &mut img,
+            TEXT_COLOR,
+            40 + label_w as i32 + 8,
+            y,
+            meta_scale,
+            &font,
+            value,
+        );
+        y += line_height;
+    };
+
+    draw_meta_line("Size:", &info.file_size);
+
+    if let Some(ref dur) = info.duration {
+        draw_meta_line("Duration:", dur);
+    }
+    if let Some(ref br) = info.bitrate {
+        draw_meta_line("Bitrate:", br);
+    }
+    if let Some(ref sr) = info.sample_rate {
+        draw_meta_line("Sample rate:", sr);
+    }
+    if let Some(ref ch) = info.channels {
+        draw_meta_line("Channels:", ch);
+    }
+
+    img
+}
+
+fn truncate_to_width(text: &str, scale: f32, font: &FontRef, max_width: u32) -> String {
+    let (w, _) = text_size(scale, font, text);
+    if w <= max_width {
+        return text.to_string();
+    }
+
+    let ellipsis = "...";
+    let (ew, _) = text_size(scale, font, ellipsis);
+    let target = max_width.saturating_sub(ew);
+
+    // Binary search for the longest prefix that fits
+    let chars: Vec<char> = text.chars().collect();
+    let mut lo = 0usize;
+    let mut hi = chars.len();
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        let prefix: String = chars[..mid].iter().collect();
+        let (pw, _) = text_size(scale, font, &prefix);
+        if pw <= target {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+
+    let prefix: String = chars[..lo].iter().collect();
+    format!("{prefix}{ellipsis}")
+}
+
+fn format_file_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    const GB: u64 = 1024 * MB;
+
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.0} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 /// Resize an image so the longest edge is at most `PREVIEW_MAX_EDGE` pixels.
@@ -287,13 +649,148 @@ mod tests {
     }
 
     #[test]
-    fn generate_returns_none_for_audio() {
+    fn generate_creates_info_card_for_audio() {
         let dir = tempfile::tempdir().unwrap();
         let gen = PreviewGenerator::new(dir.path(), false);
+
+        // Create a dummy file so file_size can be read
+        let source = dir.path().join("song.mp3");
+        std::fs::write(&source, b"fake audio data for testing").unwrap();
+
         let result = gen
-            .generate("sha256:abc123", Path::new("/fake/file.mp3"), "mp3")
+            .generate("sha256:audiocard1", &source, "mp3")
             .unwrap();
-        assert!(result.is_none());
+        assert!(result.is_some(), "audio format should produce an info card");
+
+        let preview_path = result.unwrap();
+        assert!(preview_path.exists());
+
+        let preview = image::open(&preview_path).unwrap();
+        assert!(preview.width() <= PREVIEW_MAX_EDGE);
+        assert!(preview.height() <= PREVIEW_MAX_EDGE);
+    }
+
+    #[test]
+    fn generate_creates_info_card_for_document() {
+        let dir = tempfile::tempdir().unwrap();
+        let gen = PreviewGenerator::new(dir.path(), false);
+
+        let source = dir.path().join("report.pdf");
+        std::fs::write(&source, b"fake pdf content").unwrap();
+
+        let result = gen
+            .generate("sha256:doccard1", &source, "pdf")
+            .unwrap();
+        assert!(result.is_some(), "document format should produce an info card");
+        assert!(result.unwrap().exists());
+    }
+
+    #[test]
+    fn generate_creates_info_card_for_unknown() {
+        let dir = tempfile::tempdir().unwrap();
+        let gen = PreviewGenerator::new(dir.path(), false);
+
+        let source = dir.path().join("data.xyz");
+        std::fs::write(&source, b"unknown format data").unwrap();
+
+        let result = gen
+            .generate("sha256:unknowncard1", &source, "xyz")
+            .unwrap();
+        assert!(result.is_some(), "unknown format should produce an info card");
+        assert!(result.unwrap().exists());
+    }
+
+    #[test]
+    fn info_card_has_expected_dimensions() {
+        let dir = tempfile::tempdir().unwrap();
+        let gen = PreviewGenerator::new(dir.path(), false);
+
+        let source = dir.path().join("track.flac");
+        std::fs::write(&source, b"fake flac").unwrap();
+
+        let result = gen
+            .generate("sha256:dimcard1", &source, "flac")
+            .unwrap()
+            .unwrap();
+
+        let preview = image::open(&result).unwrap();
+        assert_eq!(preview.width(), INFO_CARD_WIDTH);
+        assert_eq!(preview.height(), INFO_CARD_HEIGHT);
+    }
+
+    #[test]
+    fn render_info_card_produces_valid_image() {
+        let info = InfoCardData {
+            display_name: "Test File".into(),
+            format: "MP3".into(),
+            file_size: "4.2 MB".into(),
+            duration: Some("3:45".into()),
+            bitrate: Some("320 kbps".into()),
+            sample_rate: Some("44.1 kHz".into()),
+            channels: Some("Stereo".into()),
+        };
+
+        let img = render_info_card(&info);
+        assert_eq!(img.width(), INFO_CARD_WIDTH);
+        assert_eq!(img.height(), INFO_CARD_HEIGHT);
+
+        // Verify it's not a solid background — some non-BG pixels should exist
+        let non_bg = img.pixels().filter(|p| **p != BG_COLOR).count();
+        assert!(non_bg > 100, "info card should have visible content, found {non_bg} non-bg pixels");
+    }
+
+    #[test]
+    fn truncate_long_name() {
+        let font = FontRef::try_from_slice(FONT_DATA).unwrap();
+        let long_name = "This_is_a_very_long_filename_that_should_be_truncated_to_fit_within_bounds";
+        let truncated = truncate_to_width(long_name, 28.0, &font, 300);
+
+        assert!(truncated.ends_with("..."));
+        assert!(truncated.len() < long_name.len());
+
+        // Verify the truncated text actually fits
+        let (w, _) = text_size(28.0, &font, &truncated);
+        assert!(w <= 300, "truncated text width {w} should be <= 300");
+    }
+
+    #[test]
+    fn truncate_short_name_unchanged() {
+        let font = FontRef::try_from_slice(FONT_DATA).unwrap();
+        let short_name = "photo";
+        let result = truncate_to_width(short_name, 28.0, &font, 500);
+        assert_eq!(result, short_name);
+    }
+
+    #[test]
+    fn format_file_size_ranges() {
+        assert_eq!(format_file_size(0), "0 B");
+        assert_eq!(format_file_size(512), "512 B");
+        assert_eq!(format_file_size(1024), "1 KB");
+        assert_eq!(format_file_size(1536), "2 KB");
+        assert_eq!(format_file_size(1_048_576), "1.0 MB");
+        assert_eq!(format_file_size(1_073_741_824), "1.0 GB");
+    }
+
+    #[test]
+    fn info_card_fallback_when_raw_tool_missing() {
+        // Only test if dcraw is NOT available — otherwise the visual preview would succeed
+        if tool_available("dcraw") || tool_available("dcraw_emu") {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let gen = PreviewGenerator::new(dir.path(), false);
+
+        let source = dir.path().join("photo.nef");
+        std::fs::write(&source, b"fake raw data").unwrap();
+
+        let result = gen
+            .generate("sha256:rawfallback1", &source, "nef")
+            .unwrap();
+        assert!(
+            result.is_some(),
+            "RAW with missing tools should fall back to info card"
+        );
+        assert!(result.unwrap().exists());
     }
 
     #[test]
