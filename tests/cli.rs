@@ -1,12 +1,13 @@
 use std::path::{Path, PathBuf};
 
+use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
 use predicates::prelude::*;
 use tempfile::tempdir;
 
 /// Return a Command for the `dam` binary.
 fn dam() -> Command {
-    Command::cargo_bin("dam").expect("binary exists")
+    cargo_bin_cmd!(assert_cmd::pkg_name!()).into()
 }
 
 /// Initialize a catalog and register a volume pointing at `dir`.
