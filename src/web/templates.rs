@@ -300,4 +300,8 @@ mod filters {
         }
         .to_string())
     }
+
+    pub fn version(_s: &str) -> ::askama::Result<String> {
+        Ok(env!("CARGO_PKG_VERSION").to_string())
+    }
 }
