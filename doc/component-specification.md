@@ -13,6 +13,7 @@ The central entity. Represents a logical asset (e.g. "photo of sunset at beach, 
 | asset_type | Enum | Image, Video, Audio, Document, Other |
 | tags | Vec<String> | User-defined tags |
 | description | String | Free-text description (optional) |
+| rating | Option<u8> | User/XMP rating 1–5, or unset |
 
 An asset groups one or more **variants**.
 
@@ -171,7 +172,9 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 **Approach**:
 - Images: use `image` crate for common formats, shell out to `dcraw` or `libraw` for RAW files.
 - Videos: shell out to `ffmpeg` to extract a frame.
-- Store previews in `<catalog_root>/previews/<hash-prefix>/<hash>.jpg` at a standard size (e.g. 800px longest edge).
+- Non-visual formats (audio, documents, unknown): generate an info card — an 800x600 JPEG showing file metadata (name, format, size, and audio-specific properties like duration/bitrate via `lofty`). Uses `imageproc` for text rendering with an embedded DejaVu Sans font (`ab_glyph`).
+- Fallback: when external tools (dcraw, ffmpeg) are missing, RAW and video files also get an info card instead of no preview.
+- Store previews in `<catalog_root>/previews/<hash-prefix>/<hash>.jpg` at a standard size (800px longest edge for visual previews, 800x600 for info cards).
 - Generate on import, regenerate on demand.
 
 ### 8. Output Formatting

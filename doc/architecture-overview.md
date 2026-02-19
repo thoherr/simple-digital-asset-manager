@@ -36,5 +36,5 @@ The system is organized in four layers, from top to bottom:
 
 - **Language**: Rust
 - **Platforms**: macOS, Linux
-- **Key crates**: clap (CLI), sha2 (hashing), serde (serialization), rusqlite (SQLite), kamadak-exif (EXIF parsing), quick-xml (XMP parsing), image (preview generation), uuid (asset identity), axum (web server), askama (templates), tokio (async runtime), tower-http (static file serving)
+- **Key crates**: clap (CLI), sha2 (hashing), serde (serialization), rusqlite (SQLite), kamadak-exif (EXIF parsing), quick-xml (XMP parsing), image (preview generation), imageproc/ab_glyph (info card text rendering), lofty (audio metadata), uuid (asset identity), axum (web server), askama (templates), tokio (async runtime), tower-http (static file serving)
 - **External tools**: dcraw/libraw (RAW previews), ffmpeg (video thumbnails)
