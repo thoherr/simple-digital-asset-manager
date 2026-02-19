@@ -936,16 +936,27 @@ fn main() {
                         &vol.id.to_string(),
                         &relative_path.to_string_lossy(),
                     )? {
+                        let file_start = std::time::Instant::now();
                         let result = if force {
                             preview_gen.regenerate(&content_hash, file_path, &format)
                         } else {
                             preview_gen.generate(&content_hash, file_path, &format)
                         };
+                        let file_elapsed = file_start.elapsed();
+                        let name = file_path.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or_else(|| file_path.to_str().unwrap_or("?"));
                         match result {
-                            Ok(Some(_)) => generated += 1,
-                            Ok(None) => skipped += 1,
+                            Ok(Some(_)) => {
+                                generated += 1;
+                                if cli.log { eprintln!("  {} — generated ({})", name, format_duration(file_elapsed)); }
+                            }
+                            Ok(None) => {
+                                skipped += 1;
+                                if cli.log { eprintln!("  {} — skipped ({})", name, format_duration(file_elapsed)); }
+                            }
                             Err(e) => {
-                                eprintln!("  Failed for {}: {e:#}", file_path.display());
+                                eprintln!("  Failed for {}: {e:#} ({})", file_path.display(), format_duration(file_elapsed));
                                 failed += 1;
                             }
                         }
@@ -1000,16 +1011,27 @@ fn main() {
                         });
 
                         if let Some(path) = source_path {
+                            let file_start = std::time::Instant::now();
                             let result = if force {
                                 preview_gen.regenerate(&variant.content_hash, &path, &variant.format)
                             } else {
                                 preview_gen.generate(&variant.content_hash, &path, &variant.format)
                             };
+                            let file_elapsed = file_start.elapsed();
+                            let name = path.file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or_else(|| path.to_str().unwrap_or("?"));
                             match result {
-                                Ok(Some(_)) => generated += 1,
-                                Ok(None) => skipped += 1,
+                                Ok(Some(_)) => {
+                                    generated += 1;
+                                    if cli.log { eprintln!("  {} — generated ({})", name, format_duration(file_elapsed)); }
+                                }
+                                Ok(None) => {
+                                    skipped += 1;
+                                    if cli.log { eprintln!("  {} — skipped ({})", name, format_duration(file_elapsed)); }
+                                }
                                 Err(e) => {
-                                    eprintln!("  Failed for {}: {e:#}", asset_data.id);
+                                    eprintln!("  Failed for {}: {e:#} ({})", asset_data.id, format_duration(file_elapsed));
                                     failed += 1;
                                 }
                             }
