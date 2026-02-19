@@ -3,10 +3,10 @@ use askama::Template;
 use crate::catalog::{AssetDetails, CatalogStats, SearchRow};
 
 /// Compute preview URL from a content hash like "sha256:abcdef...".
-pub fn preview_url(content_hash: &str) -> String {
+pub fn preview_url(content_hash: &str, ext: &str) -> String {
     let hex = content_hash.strip_prefix("sha256:").unwrap_or(content_hash);
     let prefix = &hex[..2.min(hex.len())];
-    format!("/preview/{prefix}/{hex}.jpg")
+    format!("/preview/{prefix}/{hex}.{ext}")
 }
 
 /// Format a byte count for display.
@@ -43,7 +43,7 @@ pub struct AssetCard {
 }
 
 impl AssetCard {
-    pub fn from_row(row: &SearchRow) -> Self {
+    pub fn from_row(row: &SearchRow, preview_ext: &str) -> Self {
         Self {
             asset_id: row.asset_id.clone(),
             display_name: row
@@ -54,7 +54,7 @@ impl AssetCard {
             asset_type: row.asset_type.clone(),
             format: row.format.clone(),
             date: format_date(&row.created_at),
-            preview_url: preview_url(&row.content_hash),
+            preview_url: preview_url(&row.content_hash, preview_ext),
             rating: row.rating,
         }
     }

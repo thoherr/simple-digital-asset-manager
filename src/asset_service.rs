@@ -224,13 +224,15 @@ pub struct VerifyResult {
 pub struct AssetService {
     catalog_root: PathBuf,
     debug: bool,
+    preview_config: crate::config::PreviewConfig,
 }
 
 impl AssetService {
-    pub fn new(catalog_root: &Path, debug: bool) -> Self {
+    pub fn new(catalog_root: &Path, debug: bool, preview_config: &crate::config::PreviewConfig) -> Self {
         Self {
             catalog_root: catalog_root.to_path_buf(),
             debug,
+            preview_config: preview_config.clone(),
         }
     }
 
@@ -241,7 +243,7 @@ impl AssetService {
         volume: &Volume,
         filter: &FileTypeFilter,
     ) -> Result<ImportResult> {
-        self.import_with_callback(paths, volume, filter, |_, _, _| {})
+        self.import_with_callback(paths, volume, filter, &[], &[], |_, _, _| {})
     }
 
     /// Import files with a per-file callback reporting path, status, and elapsed time.
@@ -250,16 +252,18 @@ impl AssetService {
         paths: &[PathBuf],
         volume: &Volume,
         filter: &FileTypeFilter,
+        exclude_patterns: &[String],
+        auto_tags: &[String],
         on_file: impl Fn(&Path, FileStatus, Duration),
     ) -> Result<ImportResult> {
         let content_store = ContentStore::new(&self.catalog_root);
         let metadata_store = MetadataStore::new(&self.catalog_root);
         let catalog = Catalog::open(&self.catalog_root)?;
-        let preview_gen = crate::preview::PreviewGenerator::new(&self.catalog_root, self.debug);
+        let preview_gen = crate::preview::PreviewGenerator::new(&self.catalog_root, self.debug, &self.preview_config);
 
         catalog.ensure_volume(volume)?;
 
-        let files = resolve_files(paths);
+        let files = resolve_files(paths, exclude_patterns);
         let groups = group_by_stem(&files, filter);
 
         let mut imported = 0;
@@ -394,6 +398,13 @@ impl AssetService {
                         asset.created_at = date_taken;
                     }
                     asset.name = Some(group.stem.clone());
+
+                    // Apply auto_tags (merge, no duplicates)
+                    for tag in auto_tags {
+                        if !asset.tags.contains(tag) {
+                            asset.tags.push(tag.clone());
+                        }
+                    }
 
                     let variant = Variant {
                         content_hash: content_hash.clone(),
@@ -636,6 +647,11 @@ impl AssetService {
                     };
                     let mut asset = Asset::new(AssetType::Other, &content_hash);
                     asset.name = Some(filename.clone());
+                    for tag in auto_tags {
+                        if !asset.tags.contains(tag) {
+                            asset.tags.push(tag.clone());
+                        }
+                    }
                     let variant = Variant {
                         content_hash: content_hash.clone(),
                         asset_id: asset.id,
@@ -1066,7 +1082,7 @@ impl AssetService {
 
         if !paths.is_empty() {
             // Path mode
-            let files = resolve_files(paths);
+            let files = resolve_files(paths, &[]);
             let volumes = registry.list()?;
 
             for file_path in &files {
@@ -1607,20 +1623,25 @@ fn group_by_stem(files: &[PathBuf], filter: &FileTypeFilter) -> Vec<StemGroup> {
 }
 
 /// Expand paths: if a path is a directory, recurse into it collecting files.
-/// Skips hidden files/directories (starting with '.').
-pub fn resolve_files(paths: &[PathBuf]) -> Vec<PathBuf> {
+/// Skips hidden files/directories (starting with '.') and files matching exclude patterns.
+pub fn resolve_files(paths: &[PathBuf], exclude_patterns: &[String]) -> Vec<PathBuf> {
     let mut result = Vec::new();
     for path in paths {
         if path.is_dir() {
-            collect_files_recursive(path, &mut result);
+            collect_files_recursive(path, exclude_patterns, &mut result);
         } else if path.is_file() {
-            result.push(path.clone());
+            let name_str = path.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if !is_excluded_name(&name_str, exclude_patterns) {
+                result.push(path.clone());
+            }
         }
     }
     result
 }
 
-fn collect_files_recursive(dir: &Path, result: &mut Vec<PathBuf>) {
+fn collect_files_recursive(dir: &Path, exclude_patterns: &[String], result: &mut Vec<PathBuf>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -1632,12 +1653,25 @@ fn collect_files_recursive(dir: &Path, result: &mut Vec<PathBuf>) {
         if name_str.starts_with('.') {
             continue;
         }
+        if is_excluded_name(&name_str, exclude_patterns) {
+            continue;
+        }
         if path.is_dir() {
-            collect_files_recursive(&path, result);
+            collect_files_recursive(&path, exclude_patterns, result);
         } else if path.is_file() {
             result.push(path);
         }
     }
+}
+
+/// Check if a filename matches any of the exclude patterns.
+fn is_excluded_name(name: &str, patterns: &[String]) -> bool {
+    for pattern in patterns {
+        if glob_match::glob_match(pattern, name) {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -1863,7 +1897,7 @@ mod tests {
         std::fs::write(dir.path().join("visible.txt"), "hello").unwrap();
         std::fs::write(dir.path().join(".hidden"), "secret").unwrap();
 
-        let files = resolve_files(&[dir.path().to_path_buf()]);
+        let files = resolve_files(&[dir.path().to_path_buf()], &[]);
         assert_eq!(files.len(), 1);
         assert!(files[0].file_name().unwrap().to_str().unwrap() == "visible.txt");
     }
@@ -1876,7 +1910,7 @@ mod tests {
         std::fs::write(dir.path().join("a.txt"), "a").unwrap();
         std::fs::write(sub.join("b.txt"), "b").unwrap();
 
-        let files = resolve_files(&[dir.path().to_path_buf()]);
+        let files = resolve_files(&[dir.path().to_path_buf()], &[]);
         assert_eq!(files.len(), 2);
     }
 
@@ -1913,7 +1947,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
 
         // First import
         let r1 = service.import(&[dir_a.join("photo.jpg")], &volume, &default_filter()).unwrap();
@@ -1962,7 +1996,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
 
         // First import
         let r1 = service
@@ -1996,7 +2030,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         let result = service
             .import(&[photos.clone()], &volume, &default_filter())
             .unwrap();
@@ -2034,7 +2068,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         let result = service
             .import(&[photos.clone()], &volume, &default_filter())
             .unwrap();
@@ -2071,7 +2105,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         let mut filter = FileTypeFilter::default();
         filter.include("captureone").unwrap();
         let result = service.import(&[photos.clone()], &volume, &filter).unwrap();
@@ -2108,7 +2142,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         let result = service
             .import(&[dir_a, dir_b], &volume, &default_filter())
             .unwrap();
@@ -2134,7 +2168,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         let result = service
             .import(&[vol_dir.path().join("solo.jpg")], &volume, &default_filter())
             .unwrap();
@@ -2222,7 +2256,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         let result = service.import(&[photos], &volume, &default_filter()).unwrap();
         assert_eq!(result.imported, 1);
         assert_eq!(result.recipes_attached, 1);
@@ -2261,7 +2295,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service.import(&[photos], &volume, &default_filter()).unwrap();
 
         let metadata_store = crate::metadata_store::MetadataStore::new(catalog_dir.path());
@@ -2288,7 +2322,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service.import(&[photos], &volume, &default_filter()).unwrap();
 
         // Now manually add a tag to the asset
@@ -2344,7 +2378,7 @@ mod tests {
         // Create a file on vol1
         std::fs::write(vol1_dir.path().join("photo.jpg"), "photo data").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -2379,7 +2413,7 @@ mod tests {
 
         std::fs::write(vol1_dir.path().join("photo.jpg"), "move me").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -2415,7 +2449,7 @@ mod tests {
         std::fs::write(photos.join("DSC.nef"), "raw data for relocate").unwrap();
         std::fs::write(photos.join("DSC.xmp"), "xmp recipe data").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service
             .import(&[photos], &vol1, &default_filter())
             .unwrap();
@@ -2439,7 +2473,7 @@ mod tests {
 
         std::fs::write(vol1_dir.path().join("photo.jpg"), "skip test").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -2469,7 +2503,7 @@ mod tests {
 
         std::fs::write(vol1_dir.path().join("photo.jpg"), "dry run test").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -2499,7 +2533,7 @@ mod tests {
 
         std::fs::write(vol1_dir.path().join("photo.jpg"), "noop test").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -2525,7 +2559,7 @@ mod tests {
 
         std::fs::write(vol1_dir.path().join("photo.jpg"), "offline test").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -2558,7 +2592,7 @@ mod tests {
     fn relocate_fails_for_unknown_asset_id() {
         let (catalog_dir, _vol1_dir, _vol2_dir, _vol1, _vol2) = setup_relocate();
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         let err = service
             .relocate("nonexistent-id", "vol2", false, false)
             .unwrap_err();
@@ -2571,7 +2605,7 @@ mod tests {
 
         std::fs::write(vol1_dir.path().join("photo.jpg"), "unknown vol test").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false);
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -2588,5 +2622,111 @@ mod tests {
             .relocate(&asset_id, "nonexistent-vol", false, false)
             .unwrap_err();
         assert!(err.to_string().contains("No volume found"));
+    }
+
+    #[test]
+    fn resolve_files_excludes_patterns() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("photo.jpg"), "image").unwrap();
+        std::fs::write(dir.path().join("Thumbs.db"), "thumbs").unwrap();
+        std::fs::write(dir.path().join("cache.tmp"), "temp").unwrap();
+        std::fs::write(dir.path().join("notes.txt"), "notes").unwrap();
+
+        let exclude = vec!["Thumbs.db".to_string(), "*.tmp".to_string()];
+        let files = resolve_files(&[dir.path().to_path_buf()], &exclude);
+        let names: Vec<String> = files
+            .iter()
+            .map(|f| f.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(names.contains(&"photo.jpg".to_string()));
+        assert!(names.contains(&"notes.txt".to_string()));
+        assert!(!names.contains(&"Thumbs.db".to_string()));
+        assert!(!names.contains(&"cache.tmp".to_string()));
+    }
+
+    #[test]
+    fn resolve_files_exclude_in_subdirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("subdir");
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(sub.join("photo.jpg"), "image").unwrap();
+        std::fs::write(sub.join("Thumbs.db"), "thumbs").unwrap();
+
+        let exclude = vec!["Thumbs.db".to_string()];
+        let files = resolve_files(&[dir.path().to_path_buf()], &exclude);
+        assert_eq!(files.len(), 1);
+        assert!(files[0].file_name().unwrap().to_str().unwrap() == "photo.jpg");
+    }
+
+    #[test]
+    fn import_auto_tags_applied() {
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+
+        let vol_dir = tempfile::tempdir().unwrap();
+        std::fs::write(vol_dir.path().join("photo.jpg"), "test content for tags").unwrap();
+
+        let volume = crate::models::Volume::new(
+            "test-vol".into(),
+            vol_dir.path().to_path_buf(),
+            crate::models::VolumeType::Local,
+        );
+
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let auto_tags = vec!["inbox".to_string(), "unreviewed".to_string()];
+        let result = service.import_with_callback(
+            &[vol_dir.path().join("photo.jpg")],
+            &volume,
+            &default_filter(),
+            &[],
+            &auto_tags,
+            |_, _, _| {},
+        ).unwrap();
+
+        assert_eq!(result.imported, 1);
+
+        let metadata_store = crate::metadata_store::MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let asset = metadata_store.load(summaries[0].id).unwrap();
+        assert!(asset.tags.contains(&"inbox".to_string()));
+        assert!(asset.tags.contains(&"unreviewed".to_string()));
+    }
+
+    #[test]
+    fn import_exclude_patterns_skip_files() {
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+
+        let vol_dir = tempfile::tempdir().unwrap();
+        std::fs::write(vol_dir.path().join("photo.jpg"), "real image").unwrap();
+        std::fs::write(vol_dir.path().join("Thumbs.db"), "thumbnail cache").unwrap();
+
+        let volume = crate::models::Volume::new(
+            "test-vol".into(),
+            vol_dir.path().to_path_buf(),
+            crate::models::VolumeType::Local,
+        );
+
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let exclude = vec!["Thumbs.db".to_string()];
+        let result = service.import_with_callback(
+            &[vol_dir.path().to_path_buf()],
+            &volume,
+            &default_filter(),
+            &exclude,
+            &[],
+            |_, _, _| {},
+        ).unwrap();
+
+        assert_eq!(result.imported, 1);
+    }
+
+    #[test]
+    fn is_excluded_name_works() {
+        assert!(is_excluded_name("Thumbs.db", &["Thumbs.db".to_string()]));
+        assert!(is_excluded_name("cache.tmp", &["*.tmp".to_string()]));
+        assert!(is_excluded_name(".DS_Store", &[".DS_Store".to_string()]));
+        assert!(!is_excluded_name("photo.jpg", &["*.tmp".to_string()]));
+        assert!(!is_excluded_name("photo.jpg", &[]));
     }
 }

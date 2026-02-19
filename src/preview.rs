@@ -1,3 +1,4 @@
+use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -7,10 +8,7 @@ use image::{Rgb, RgbImage};
 use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut, text_size};
 use imageproc::rect::Rect;
 
-const PREVIEW_MAX_EDGE: u32 = 800;
-
-const INFO_CARD_WIDTH: u32 = 800;
-const INFO_CARD_HEIGHT: u32 = 600;
+use crate::config::{PreviewConfig, PreviewFormat};
 
 const BG_COLOR: Rgb<u8> = Rgb([35, 35, 40]);
 const TEXT_COLOR: Rgb<u8> = Rgb([220, 220, 225]);
@@ -41,13 +39,19 @@ const DOCUMENT_FORMATS: &[&str] = &[
 pub struct PreviewGenerator {
     preview_dir: PathBuf,
     debug: bool,
+    max_edge: u32,
+    format: PreviewFormat,
+    quality: u8,
 }
 
 impl PreviewGenerator {
-    pub fn new(catalog_root: &Path, debug: bool) -> Self {
+    pub fn new(catalog_root: &Path, debug: bool, config: &PreviewConfig) -> Self {
         Self {
             preview_dir: catalog_root.join("previews"),
             debug,
+            max_edge: config.max_edge,
+            format: config.format.clone(),
+            quality: config.quality,
         }
     }
 
@@ -55,7 +59,8 @@ impl PreviewGenerator {
     pub fn preview_path(&self, content_hash: &str) -> PathBuf {
         let hex = content_hash.strip_prefix("sha256:").unwrap_or(content_hash);
         let prefix = &hex[..2.min(hex.len())];
-        self.preview_dir.join(prefix).join(format!("{hex}.jpg"))
+        let ext = self.format.extension();
+        self.preview_dir.join(prefix).join(format!("{hex}.{ext}"))
     }
 
     /// Check if a preview already exists on disk.
@@ -137,16 +142,34 @@ impl PreviewGenerator {
         }
     }
 
+    /// Save a preview image using the configured format and quality.
+    fn save_preview(&self, img: &image::DynamicImage, dest: &Path) -> Result<()> {
+        let file = std::fs::File::create(dest)
+            .with_context(|| format!("Failed to create preview file {}", dest.display()))?;
+        let writer = BufWriter::new(file);
+        match self.format {
+            PreviewFormat::Jpeg => {
+                let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(writer, self.quality);
+                img.write_with_encoder(encoder)
+                    .with_context(|| format!("Failed to save preview to {}", dest.display()))?;
+            }
+            PreviewFormat::Webp => {
+                let encoder = image::codecs::webp::WebPEncoder::new_lossless(writer);
+                img.write_with_encoder(encoder)
+                    .with_context(|| format!("Failed to save preview to {}", dest.display()))?;
+            }
+        }
+        Ok(())
+    }
+
     /// Generate preview from a standard image format using the `image` crate.
     fn generate_image(&self, dest: &Path, source: &Path) -> Result<()> {
         let img = image::open(source)
             .with_context(|| format!("Failed to open image {}", source.display()))?;
 
-        let resized = resize_image(&img);
+        let resized = resize_image(&img, self.max_edge);
         ensure_parent(dest)?;
-        resized
-            .save(dest)
-            .with_context(|| format!("Failed to save preview to {}", dest.display()))?;
+        self.save_preview(&resized, dest)?;
         Ok(())
     }
 
@@ -170,10 +193,8 @@ impl PreviewGenerator {
             if output.status.success() && !output.stdout.is_empty() {
                 let img = image::load_from_memory(&output.stdout)
                     .context("Failed to decode dcraw output")?;
-                let resized = resize_image(&img);
-                resized.save(dest).with_context(|| {
-                    format!("Failed to save preview to {}", dest.display())
-                })?;
+                let resized = resize_image(&img, self.max_edge);
+                self.save_preview(&resized, dest)?;
                 return Ok(());
             }
         }
@@ -198,10 +219,8 @@ impl PreviewGenerator {
                     format!("Failed to open dcraw_emu output {}", temp_tiff.display())
                 })?;
                 std::fs::remove_file(&temp_tiff).ok();
-                let resized = resize_image(&img);
-                resized.save(dest).with_context(|| {
-                    format!("Failed to save preview to {}", dest.display())
-                })?;
+                let resized = resize_image(&img, self.max_edge);
+                self.save_preview(&resized, dest)?;
                 return Ok(());
             }
             if !output.status.success() {
@@ -250,10 +269,8 @@ impl PreviewGenerator {
             .with_context(|| format!("Failed to open ffmpeg frame {}", temp_frame.display()))?;
         std::fs::remove_file(&temp_frame).ok();
 
-        let resized = resize_image(&img);
-        resized
-            .save(dest)
-            .with_context(|| format!("Failed to save preview to {}", dest.display()))?;
+        let resized = resize_image(&img, self.max_edge);
+        self.save_preview(&resized, dest)?;
         Ok(())
     }
 
@@ -265,10 +282,11 @@ impl PreviewGenerator {
         format: &str,
     ) -> Result<Option<PathBuf>> {
         let info = InfoCardData::from_file(source_path, format);
-        let img = render_info_card(&info);
+        let card_width = self.max_edge;
+        let card_height = (self.max_edge as f64 * 0.75) as u32;
+        let img = render_info_card(&info, card_width, card_height);
         ensure_parent(dest)?;
-        img.save(dest)
-            .with_context(|| format!("Failed to save info card to {}", dest.display()))?;
+        self.save_preview(&image::DynamicImage::ImageRgb8(img), dest)?;
         Ok(Some(dest.to_path_buf()))
     }
 }
@@ -447,10 +465,10 @@ fn extract_audio_metadata(
     (duration, bitrate, sample_rate, channels)
 }
 
-fn render_info_card(info: &InfoCardData) -> RgbImage {
+fn render_info_card(info: &InfoCardData, width: u32, height: u32) -> RgbImage {
     let font = FontRef::try_from_slice(FONT_DATA).expect("embedded font is valid");
 
-    let mut img = RgbImage::from_pixel(INFO_CARD_WIDTH, INFO_CARD_HEIGHT, BG_COLOR);
+    let mut img = RgbImage::from_pixel(width, height, BG_COLOR);
 
     let category = info.format_category();
     let badge_color = category.badge_color();
@@ -482,7 +500,7 @@ fn render_info_card(info: &InfoCardData) -> RgbImage {
 
     // ── Display name ─────────────────────────────────────────────────────
     let name_scale = 28.0_f32;
-    let max_name_width = (INFO_CARD_WIDTH - 80) as u32;
+    let max_name_width = width.saturating_sub(80);
     let display_name = truncate_to_width(&info.display_name, name_scale, &font, max_name_width);
     let name_y = badge_y + badge_h as i32 + 30;
     draw_text_mut(
@@ -500,7 +518,7 @@ fn render_info_card(info: &InfoCardData) -> RgbImage {
     let sep_y = name_y + name_th as i32 + 16;
     draw_filled_rect_mut(
         &mut img,
-        Rect::at(40, sep_y).of_size(INFO_CARD_WIDTH - 80, 1),
+        Rect::at(40, sep_y).of_size(width.saturating_sub(80), 1),
         SEPARATOR_COLOR,
     );
 
@@ -587,16 +605,16 @@ fn format_file_size(bytes: u64) -> String {
     }
 }
 
-/// Resize an image so the longest edge is at most `PREVIEW_MAX_EDGE` pixels.
+/// Resize an image so the longest edge is at most `max_edge` pixels.
 /// If already smaller, returns as-is.
-fn resize_image(img: &image::DynamicImage) -> image::DynamicImage {
+fn resize_image(img: &image::DynamicImage, max_edge: u32) -> image::DynamicImage {
     let (w, h) = (img.width(), img.height());
     let max_dim = w.max(h);
-    if max_dim <= PREVIEW_MAX_EDGE {
+    if max_dim <= max_edge {
         return img.clone();
     }
-    let nwidth = (w as f64 * PREVIEW_MAX_EDGE as f64 / max_dim as f64).round() as u32;
-    let nheight = (h as f64 * PREVIEW_MAX_EDGE as f64 / max_dim as f64).round() as u32;
+    let nwidth = (w as f64 * max_edge as f64 / max_dim as f64).round() as u32;
+    let nheight = (h as f64 * max_edge as f64 / max_dim as f64).round() as u32;
     image::DynamicImage::ImageRgba8(image::imageops::resize(
         img,
         nwidth,
@@ -632,7 +650,7 @@ mod tests {
     #[test]
     fn preview_path_shards_correctly() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false);
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
         let path = gen.preview_path("sha256:abcdef1234567890");
         assert_eq!(
             path,
@@ -644,14 +662,14 @@ mod tests {
     #[test]
     fn has_preview_false_when_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false);
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
         assert!(!gen.has_preview("sha256:0000000000"));
     }
 
     #[test]
     fn generate_creates_info_card_for_audio() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false);
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
 
         // Create a dummy file so file_size can be read
         let source = dir.path().join("song.mp3");
@@ -666,14 +684,14 @@ mod tests {
         assert!(preview_path.exists());
 
         let preview = image::open(&preview_path).unwrap();
-        assert!(preview.width() <= PREVIEW_MAX_EDGE);
-        assert!(preview.height() <= PREVIEW_MAX_EDGE);
+        assert!(preview.width() <= 800);
+        assert!(preview.height() <= 800);
     }
 
     #[test]
     fn generate_creates_info_card_for_document() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false);
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
 
         let source = dir.path().join("report.pdf");
         std::fs::write(&source, b"fake pdf content").unwrap();
@@ -688,7 +706,7 @@ mod tests {
     #[test]
     fn generate_creates_info_card_for_unknown() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false);
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
 
         let source = dir.path().join("data.xyz");
         std::fs::write(&source, b"unknown format data").unwrap();
@@ -703,7 +721,7 @@ mod tests {
     #[test]
     fn info_card_has_expected_dimensions() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false);
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
 
         let source = dir.path().join("track.flac");
         std::fs::write(&source, b"fake flac").unwrap();
@@ -714,8 +732,8 @@ mod tests {
             .unwrap();
 
         let preview = image::open(&result).unwrap();
-        assert_eq!(preview.width(), INFO_CARD_WIDTH);
-        assert_eq!(preview.height(), INFO_CARD_HEIGHT);
+        assert_eq!(preview.width(), 800);
+        assert_eq!(preview.height(), 600);
     }
 
     #[test]
@@ -730,9 +748,9 @@ mod tests {
             channels: Some("Stereo".into()),
         };
 
-        let img = render_info_card(&info);
-        assert_eq!(img.width(), INFO_CARD_WIDTH);
-        assert_eq!(img.height(), INFO_CARD_HEIGHT);
+        let img = render_info_card(&info, 800, 600);
+        assert_eq!(img.width(), 800);
+        assert_eq!(img.height(), 600);
 
         // Verify it's not a solid background — some non-BG pixels should exist
         let non_bg = img.pixels().filter(|p| **p != BG_COLOR).count();
@@ -778,7 +796,7 @@ mod tests {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false);
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
 
         let source = dir.path().join("photo.nef");
         std::fs::write(&source, b"fake raw data").unwrap();
@@ -796,7 +814,7 @@ mod tests {
     #[test]
     fn generate_image_creates_preview() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false);
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
 
         // Create a real 1600x1200 PNG in the temp dir
         let img = image::DynamicImage::new_rgb8(1600, 1200);
@@ -821,7 +839,7 @@ mod tests {
     #[test]
     fn generate_skips_if_already_exists() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false);
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
 
         let img = image::DynamicImage::new_rgb8(100, 100);
         let source = dir.path().join("small.png");
@@ -847,7 +865,7 @@ mod tests {
     #[test]
     fn regenerate_overwrites_existing() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false);
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
 
         // Create initial preview from a 200x200 image
         let img = image::DynamicImage::new_rgb8(200, 200);
@@ -876,7 +894,7 @@ mod tests {
     #[test]
     fn resize_preserves_aspect_ratio() {
         let img = image::DynamicImage::new_rgb8(2000, 1000);
-        let resized = resize_image(&img);
+        let resized = resize_image(&img, 800);
         assert_eq!(resized.width(), 800);
         assert_eq!(resized.height(), 400);
     }
@@ -884,7 +902,7 @@ mod tests {
     #[test]
     fn resize_noop_for_small_image() {
         let img = image::DynamicImage::new_rgb8(400, 300);
-        let resized = resize_image(&img);
+        let resized = resize_image(&img, 800);
         assert_eq!(resized.width(), 400);
         assert_eq!(resized.height(), 300);
     }
@@ -895,7 +913,7 @@ mod tests {
             return; // skip if ffmpeg not installed
         }
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false);
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
 
         // Create a file that is not a valid video
         let bad_source = dir.path().join("bad.mov");
@@ -915,5 +933,44 @@ mod tests {
             !msg.contains("non-zero status"),
             "Should not have generic 'non-zero status' message, got: {msg}"
         );
+    }
+
+    #[test]
+    fn non_default_max_edge() {
+        let config = PreviewConfig {
+            max_edge: 400,
+            ..PreviewConfig::default()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let gen = PreviewGenerator::new(dir.path(), false, &config);
+
+        let img = image::DynamicImage::new_rgb8(1600, 1200);
+        let source = dir.path().join("big.png");
+        img.save(&source).unwrap();
+
+        let result = gen.generate("sha256:smalledge", &source, "png").unwrap().unwrap();
+        let preview = image::open(&result).unwrap();
+        assert_eq!(preview.width(), 400);
+        assert!(preview.height() <= 400);
+    }
+
+    #[test]
+    fn preview_path_uses_configured_extension() {
+        let config = PreviewConfig {
+            format: PreviewFormat::Webp,
+            ..PreviewConfig::default()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let gen = PreviewGenerator::new(dir.path(), false, &config);
+        let path = gen.preview_path("sha256:abcdef1234567890");
+        assert!(path.to_string_lossy().ends_with(".webp"));
+    }
+
+    #[test]
+    fn resize_custom_max_edge() {
+        let img = image::DynamicImage::new_rgb8(2000, 1000);
+        let resized = resize_image(&img, 400);
+        assert_eq!(resized.width(), 400);
+        assert_eq!(resized.height(), 200);
     }
 }

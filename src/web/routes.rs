@@ -35,6 +35,7 @@ pub async fn browse_page(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SearchParams>,
 ) -> Response {
+    let preview_ext = state.preview_ext.clone();
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
         let catalog = state.catalog()?;
@@ -60,7 +61,7 @@ pub async fn browse_page(
         let total = catalog.search_count(&opts)?;
         let rows = catalog.search_paginated(&opts)?;
         let total_pages = ((total as f64) / 60.0).ceil() as u32;
-        let cards: Vec<AssetCard> = rows.iter().map(AssetCard::from_row).collect();
+        let cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
 
         let all_tags: Vec<TagOption> = catalog
             .list_all_tags()?
@@ -113,6 +114,7 @@ pub async fn search_api(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SearchParams>,
 ) -> Response {
+    let preview_ext = state.preview_ext.clone();
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
         let catalog = state.catalog()?;
@@ -138,7 +140,7 @@ pub async fn search_api(
         let total = catalog.search_count(&opts)?;
         let rows = catalog.search_paginated(&opts)?;
         let total_pages = ((total as f64) / 60.0).ceil() as u32;
-        let cards: Vec<AssetCard> = rows.iter().map(AssetCard::from_row).collect();
+        let cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
 
         let tmpl = ResultsPartial {
             query: query.to_string(),
@@ -172,6 +174,7 @@ pub async fn asset_page(
     State(state): State<Arc<AppState>>,
     Path(asset_id): Path<String>,
 ) -> Response {
+    let preview_ext = state.preview_ext.clone();
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
         let engine = state.query_engine();
@@ -180,7 +183,7 @@ pub async fn asset_page(
         let preview_gen = state.preview_generator();
         let preview_url = details.variants.first().and_then(|primary| {
             if preview_gen.has_preview(&primary.content_hash) {
-                Some(super::templates::preview_url(&primary.content_hash))
+                Some(super::templates::preview_url(&primary.content_hash, &preview_ext))
             } else {
                 None
             }
@@ -470,6 +473,7 @@ pub async fn generate_preview(
     State(state): State<Arc<AppState>>,
     Path(asset_id): Path<String>,
 ) -> Response {
+    let preview_ext = state.preview_ext.clone();
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
         let engine = state.query_engine();
@@ -510,7 +514,7 @@ pub async fn generate_preview(
         preview_gen.regenerate(content_hash, &source_path, format)?;
 
         let preview_url = if preview_gen.has_preview(content_hash) {
-            Some(super::templates::preview_url(content_hash))
+            Some(super::templates::preview_url(content_hash, &preview_ext))
         } else {
             None
         };

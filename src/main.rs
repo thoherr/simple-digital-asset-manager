@@ -174,13 +174,13 @@ enum Commands {
 
     /// Start the web UI server
     Serve {
-        /// Port to listen on
-        #[arg(long, default_value_t = 8080, display_order = 10)]
-        port: u16,
+        /// Port to listen on (default: 8080, or from dam.toml [serve] port)
+        #[arg(long, display_order = 10)]
+        port: Option<u16>,
 
-        /// Address to bind to
-        #[arg(long, default_value = "127.0.0.1", display_order = 11)]
-        bind: String,
+        /// Address to bind to (default: 127.0.0.1, or from dam.toml [serve] bind)
+        #[arg(long, display_order = 11)]
+        bind: Option<String>,
     },
 
     /// Show catalog statistics
@@ -319,6 +319,7 @@ fn main() {
             use dam::asset_service::FileTypeFilter;
 
             let catalog_root = dam::config::find_catalog_root()?;
+            let config = CatalogConfig::load(&catalog_root)?;
             let registry = DeviceRegistry::new(&catalog_root);
 
             // Build file type filter
@@ -361,10 +362,10 @@ fn main() {
                 registry.find_volume_for_path(&canonical_paths[0])?
             };
 
-            let service = AssetService::new(&catalog_root, cli.debug);
+            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
             let result = if cli.log {
                 use dam::asset_service::FileStatus;
-                service.import_with_callback(&canonical_paths, &volume, &filter, |path, status, elapsed| {
+                service.import_with_callback(&canonical_paths, &volume, &filter, &config.import.exclude, &config.import.auto_tags, |path, status, elapsed| {
                     let label = match status {
                         FileStatus::Imported => "imported",
                         FileStatus::LocationAdded => "location added",
@@ -378,7 +379,7 @@ fn main() {
                     eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
                 })?
             } else {
-                service.import(&canonical_paths, &volume, &filter)?
+                service.import_with_callback(&canonical_paths, &volume, &filter, &config.import.exclude, &config.import.auto_tags, |_, _, _| {})?
             };
 
             if cli.json {
@@ -513,13 +514,14 @@ fn main() {
         }
         Commands::Show { asset_id } => {
             let catalog_root = dam::config::find_catalog_root()?;
+            let config = CatalogConfig::load(&catalog_root)?;
             let engine = QueryEngine::new(&catalog_root);
             let details = engine.show(&asset_id)?;
 
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&details)?);
             } else {
-                let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, cli.debug);
+                let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, cli.debug, &config.preview);
 
                 println!("Asset: {}", details.id);
                 if let Some(name) = &details.name {
@@ -646,7 +648,8 @@ fn main() {
             dry_run,
         } => {
             let catalog_root = dam::config::find_catalog_root()?;
-            let service = AssetService::new(&catalog_root, cli.debug);
+            let config = CatalogConfig::load(&catalog_root)?;
+            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
             let result = service.relocate(&asset_id, &volume, remove_source, dry_run)?;
 
             if cli.json {
@@ -685,7 +688,8 @@ fn main() {
             use dam::asset_service::FileTypeFilter;
 
             let catalog_root = dam::config::find_catalog_root()?;
-            let service = AssetService::new(&catalog_root, cli.debug);
+            let config = CatalogConfig::load(&catalog_root)?;
+            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
 
             // Build file type filter (same logic as import)
             let mut filter = FileTypeFilter::default();
@@ -865,7 +869,8 @@ fn main() {
             use dam::asset_service::FileTypeFilter;
 
             let catalog_root = dam::config::find_catalog_root()?;
-            let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, cli.debug);
+            let config = CatalogConfig::load(&catalog_root)?;
+            let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, cli.debug, &config.preview);
             let metadata_store = MetadataStore::new(&catalog_root);
             let registry = dam::device_registry::DeviceRegistry::new(&catalog_root);
             let catalog = dam::catalog::Catalog::open(&catalog_root)?;
@@ -903,7 +908,7 @@ fn main() {
 
             if !canonical_paths.is_empty() {
                 // PATHS mode: resolve files, look up each in catalog
-                let files = dam::asset_service::resolve_files(&canonical_paths);
+                let files = dam::asset_service::resolve_files(&canonical_paths, &config.import.exclude);
 
                 for file_path in &files {
                     // Filter by extension
@@ -1064,8 +1069,11 @@ fn main() {
         }
         Commands::Serve { port, bind } => {
             let catalog_root = dam::config::find_catalog_root()?;
+            let config = CatalogConfig::load(&catalog_root)?;
+            let port = port.unwrap_or(config.serve.port);
+            let bind = bind.unwrap_or_else(|| config.serve.bind.clone());
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(dam::web::serve(catalog_root, &bind, port))?;
+            rt.block_on(dam::web::serve(catalog_root, &bind, port, config.preview))?;
             Ok(())
         }
         Commands::Stats { types, volumes, tags, verified, all, limit } => {

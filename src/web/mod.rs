@@ -11,17 +11,25 @@ use axum::Router;
 use tower_http::services::ServeDir;
 
 use crate::catalog::Catalog;
+use crate::config::PreviewConfig;
 use crate::preview::PreviewGenerator;
 use crate::query::QueryEngine;
 
 /// Shared application state for the web server.
 pub struct AppState {
     catalog_root: PathBuf,
+    preview_config: PreviewConfig,
+    pub preview_ext: String,
 }
 
 impl AppState {
-    pub fn new(catalog_root: PathBuf) -> Self {
-        Self { catalog_root }
+    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig) -> Self {
+        let preview_ext = preview_config.format.extension().to_string();
+        Self {
+            catalog_root,
+            preview_config,
+            preview_ext,
+        }
     }
 
     /// Open a fresh catalog connection (each request gets its own).
@@ -36,7 +44,7 @@ impl AppState {
 
     /// Create a PreviewGenerator for checking preview existence.
     pub fn preview_generator(&self) -> PreviewGenerator {
-        PreviewGenerator::new(&self.catalog_root, false)
+        PreviewGenerator::new(&self.catalog_root, false, &self.preview_config)
     }
 }
 
@@ -74,8 +82,8 @@ fn build_router(state: Arc<AppState>) -> Router {
 }
 
 /// Start the web server.
-pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16) -> Result<()> {
-    let state = Arc::new(AppState::new(catalog_root));
+pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig) -> Result<()> {
+    let state = Arc::new(AppState::new(catalog_root, preview_config));
 
     // Verify catalog is accessible
     state.catalog()?;
