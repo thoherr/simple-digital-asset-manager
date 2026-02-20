@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use askama::Template;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use axum::Form;
 
@@ -30,11 +30,13 @@ pub struct SearchParams {
     pub page: Option<u32>,
 }
 
-/// GET / — browse page with initial results.
+/// GET / — browse page with initial results (full page for browser, partial for htmx).
 pub async fn browse_page(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SearchParams>,
+    headers: HeaderMap,
 ) -> Response {
+    let is_htmx = headers.get("HX-Request").is_some();
     let preview_ext = state.preview_ext.clone();
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
@@ -62,6 +64,24 @@ pub async fn browse_page(
         let rows = catalog.search_paginated(&opts)?;
         let total_pages = ((total as f64) / 60.0).ceil() as u32;
         let cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
+
+        if is_htmx {
+            let tmpl = ResultsPartial {
+                query: query.to_string(),
+                asset_type: asset_type.to_string(),
+                tag: tag.to_string(),
+                format_filter: format.to_string(),
+                volume: volume.to_string(),
+                rating: rating_str.to_string(),
+                sort: sort_str.to_string(),
+                cards,
+                total,
+                page,
+                per_page: 60,
+                total_pages,
+            };
+            return Ok::<_, anyhow::Error>(tmpl.render()?);
+        }
 
         let all_tags: Vec<TagOption> = catalog
             .list_all_tags()?
@@ -109,11 +129,25 @@ pub async fn browse_page(
     }
 }
 
-/// GET /api/search — returns results partial for htmx.
+/// GET /api/search — redirects non-htmx requests to browse page, returns partial for htmx.
 pub async fn search_api(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SearchParams>,
+    headers: HeaderMap,
+    uri: Uri,
 ) -> Response {
+    // Non-htmx requests (direct browser load, reload, back button) get redirected
+    // to the browse page which renders the full HTML with layout and CSS.
+    if headers.get("HX-Request").is_none() {
+        let query_string = uri.query().unwrap_or("");
+        let redirect_url = if query_string.is_empty() {
+            "/".to_string()
+        } else {
+            format!("/?{query_string}")
+        };
+        return axum::response::Redirect::to(&redirect_url).into_response();
+    }
+
     let preview_ext = state.preview_ext.clone();
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {

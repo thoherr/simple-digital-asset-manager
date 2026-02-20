@@ -4,7 +4,7 @@
 
 {% block content %}
 <form class="search-bar"
-      hx-get="/api/search"
+      hx-get="/"
       hx-target="#results"
       hx-push-url="true"
       hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": getSelectedTags().join(","), "format": document.querySelector("[name=format]").value, "volume": (document.querySelector("[name=volume]") || {value:""}).value, "rating": getFilterRating(), "sort": new URLSearchParams(window.location.search).get("sort") || "date_desc", "page": "1"}'>
