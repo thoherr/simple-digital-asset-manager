@@ -202,6 +202,25 @@ enum Commands {
         apply: bool,
     },
 
+    /// Update a file's catalog path after it was moved on disk
+    #[command(name = "update-location")]
+    UpdateLocation {
+        /// Asset ID (or unique prefix)
+        asset_id: String,
+
+        /// Old path (absolute or volume-relative) where the file was before
+        #[arg(long)]
+        from: String,
+
+        /// New absolute path where the file is now
+        #[arg(long)]
+        to: String,
+
+        /// Volume label or ID (auto-detected from --to if omitted)
+        #[arg(long)]
+        volume: Option<String>,
+    },
+
     /// Find duplicate files
     Duplicates {
         /// Output format: ids, short, full, json, or a custom template (e.g. '{hash}\t{filename}')
@@ -1097,6 +1116,33 @@ fn main() {
                 }
             }
 
+            Ok(())
+        }
+        Commands::UpdateLocation { asset_id, from, to, volume } => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let config = CatalogConfig::load(&catalog_root)?;
+            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+
+            let to_path = std::fs::canonicalize(&to)
+                .unwrap_or_else(|_| PathBuf::from(&to));
+
+            let result = service.update_location(
+                &asset_id,
+                &from,
+                &to_path,
+                volume.as_deref(),
+            )?;
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                let short_id = &result.asset_id[..8];
+                println!(
+                    "Updated {} location for asset {short_id} on volume '{}'",
+                    result.file_type, result.volume_label,
+                );
+                println!("  {} -> {}", result.old_path, result.new_path);
+            }
             Ok(())
         }
         Commands::Duplicates { format } => {

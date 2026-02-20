@@ -108,7 +108,7 @@ New search filters to find assets needing attention:
 - `stale:N` — Assets with at least one location not verified in N days (or never verified)
 - `volume:none` — Assets with no locations on any online volume
 
-#### 1.4 `dam update-location` Command
+#### 1.4 `dam update-location` Command — **done**
 
 Manually update a file's location when you know where it moved:
 
@@ -116,7 +116,7 @@ Manually update a file's location when you know where it moved:
 dam update-location <asset-id> --from <old-path> --to <new-path> [--volume <label>]
 ```
 
-For cases where `sync` is overkill and the user knows exactly what changed.
+Implemented as `dam update-location <asset-id> --from <old-path> --to <new-path> [--volume <label>]`. `--to` must be an absolute path; `--from` can be absolute or volume-relative. Auto-detects volume from `--to` path. Verifies content hash at new location matches catalog record. Updates both SQLite and sidecar YAML. Handles variant file locations and recipe file locations.
 
 ---
 

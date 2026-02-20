@@ -33,7 +33,7 @@ Core layers: CLI → Core Library (Asset Service, Content Store, Metadata Store,
 
 Core CLI is functional. See `specification.md` for full requirements.
 
-**Implemented commands**: `init`, `volume add/list`, `import`, `search`, `show`, `tag`, `edit`, `group`, `duplicates`, `generate-previews`, `rebuild-catalog`, `relocate`, `verify`, `sync`, `cleanup`, `stats`, `serve`
+**Implemented commands**: `init`, `volume add/list`, `import`, `search`, `show`, `tag`, `edit`, `group`, `duplicates`, `generate-previews`, `rebuild-catalog`, `relocate`, `update-location`, `verify`, `sync`, `cleanup`, `stats`, `serve`
 
 **Import behavior**:
 - **Stem-based auto-grouping**: Files sharing the same filename stem in the same directory are grouped into one Asset during import. RAW files take priority as the primary variant (defining asset identity and EXIF data). Additional media files become extra variants on the same asset.
@@ -47,6 +47,8 @@ Core CLI is functional. See `specification.md` for full requirements.
 - **Import `--volume` flag**: `dam import [--volume <label>] <PATHS...>` — when provided, uses the specified volume instead of auto-detecting from the first path. Useful when auto-detection picks the wrong volume.
 - **Generate-previews command**: `dam generate-previews [PATHS...] [--asset <id>] [--volume <label>] [--include <group>] [--skip <group>] [--force]`. Without PATHS, iterates all catalog assets (optionally filtered by `--asset` or `--volume`). With PATHS, resolves files on disk and looks up their variants in the catalog. `--include`/`--skip` filter by file type group. `--force` regenerates existing previews.
 - **Relocate command**: Copies or moves all files of an asset (variants + recipes) to a target volume. `dam relocate <asset-id> <target-volume> [--remove-source] [--dry-run]`. Without `--remove-source`, files are copied and the asset gains additional locations. With `--remove-source`, source files are deleted after verified copy. `--dry-run` shows what would happen without making changes. Preserves relative paths on the target volume. Verifies file integrity via SHA-256 after copy.
+
+- **Update-location command**: Updates a file's catalog path after it was manually moved on disk. `dam update-location <asset-id> --from <old-path> --to <new-path> [--volume <label>]`. `--to` must be an absolute path to the file's current location. `--from` can be absolute or volume-relative. Volume is auto-detected from `--to` via `find_volume_for_path()`, or specified via `--volume`. Verifies the file at `--to` has the same content hash as the catalog record (safety check). Updates both SQLite catalog and sidecar YAML. Handles both variant file locations and recipe file locations. Supports `--json` (via global flag).
 
 - **Verify command**: Re-hashes files on disk and compares against stored content hashes to detect corruption or bit rot. `dam verify [PATHS...] [--volume <label>] [--asset <id>]`. Without arguments, verifies all file locations on all online volumes. With paths, verifies specific files/directories. `--volume` limits to a specific volume; `--asset` limits to a specific asset. Updates `verified_at` timestamps on successful verification. Exits with code 1 if any mismatches are found. Recipe files that have been modified externally are reported as "modified" (not "FAILED") and do not trigger exit code 1 — their stored hash is updated to reflect the new content.
 

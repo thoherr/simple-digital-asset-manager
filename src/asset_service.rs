@@ -250,6 +250,17 @@ pub enum CleanupStatus {
     OrphanedPreview,
 }
 
+/// Result of an update-location operation.
+#[derive(Debug, serde::Serialize)]
+pub struct UpdateLocationResult {
+    pub asset_id: String,
+    pub file_type: String,
+    pub content_hash: String,
+    pub old_path: String,
+    pub new_path: String,
+    pub volume_label: String,
+}
+
 /// Result of a cleanup operation.
 #[derive(Debug, serde::Serialize)]
 pub struct CleanupResult {
@@ -1095,6 +1106,183 @@ impl AssetService {
             removed,
             actions,
         })
+    }
+
+    /// Update a file's location in the catalog after it was moved on disk.
+    ///
+    /// Looks up the old path as a variant file location or recipe, verifies the
+    /// file at `to_path` has the same content hash, and updates catalog + sidecar.
+    pub fn update_location(
+        &self,
+        asset_id: &str,
+        from_path: &str,
+        to_path: &Path,
+        volume_label: Option<&str>,
+    ) -> Result<UpdateLocationResult> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let metadata_store = MetadataStore::new(&self.catalog_root);
+        let content_store = ContentStore::new(&self.catalog_root);
+        let registry = DeviceRegistry::new(&self.catalog_root);
+
+        // Resolve volume from --to path or explicit --volume
+        let volume = if let Some(label) = volume_label {
+            registry.resolve_volume(label)?
+        } else {
+            registry.find_volume_for_path(to_path)?
+        };
+        let volume_id_str = volume.id.to_string();
+
+        // Convert to_path to volume-relative
+        let new_relative = to_path
+            .strip_prefix(&volume.mount_point)
+            .with_context(|| {
+                format!(
+                    "Path '{}' is not under volume '{}' ({})",
+                    to_path.display(),
+                    volume.label,
+                    volume.mount_point.display()
+                )
+            })?;
+        let new_relative_str = new_relative.to_string_lossy().to_string();
+
+        // Convert from_path to volume-relative (strip mount point if absolute)
+        let from = Path::new(from_path);
+        let old_relative_str = if from.is_absolute() {
+            from.strip_prefix(&volume.mount_point)
+                .with_context(|| {
+                    format!(
+                        "Path '{}' is not under volume '{}' ({})",
+                        from_path,
+                        volume.label,
+                        volume.mount_point.display()
+                    )
+                })?
+                .to_string_lossy()
+                .to_string()
+        } else {
+            from_path.to_string()
+        };
+
+        // Resolve asset ID
+        let full_id = catalog
+            .resolve_asset_id(asset_id)?
+            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+
+        // Try as variant file location first, then recipe
+        if let Some((content_hash, _format)) =
+            catalog.find_variant_by_volume_and_path(&volume_id_str, &old_relative_str)?
+        {
+            // Verify this variant belongs to the resolved asset
+            let variant_asset_id = catalog.find_asset_id_by_variant(&content_hash)?;
+            if variant_asset_id.as_deref() != Some(&full_id) {
+                bail!(
+                    "File at '{}' belongs to asset {}, not {}",
+                    old_relative_str,
+                    variant_asset_id.unwrap_or_else(|| "(unknown)".to_string()),
+                    &full_id[..8]
+                );
+            }
+
+            // Verify file exists at new path
+            if !to_path.exists() {
+                bail!("File not found at '{}'", to_path.display());
+            }
+
+            // Verify content hash matches
+            let actual_hash = content_store.hash_file(to_path)?;
+            if actual_hash != content_hash {
+                bail!(
+                    "Hash mismatch: file at '{}' has hash {} but catalog expects {}",
+                    to_path.display(),
+                    &actual_hash[..16],
+                    &content_hash[..16]
+                );
+            }
+
+            // Update catalog
+            catalog.update_file_location_path(
+                &content_hash,
+                &volume_id_str,
+                &old_relative_str,
+                &new_relative_str,
+            )?;
+
+            // Update sidecar
+            self.update_sidecar_file_location_path(
+                &metadata_store,
+                &catalog,
+                &content_hash,
+                volume.id,
+                &old_relative_str,
+                &new_relative_str,
+            )?;
+
+            Ok(UpdateLocationResult {
+                asset_id: full_id,
+                file_type: "variant".to_string(),
+                content_hash,
+                old_path: old_relative_str,
+                new_path: new_relative_str,
+                volume_label: volume.label,
+            })
+        } else if let Some((recipe_id, content_hash, variant_hash)) =
+            catalog.find_recipe_by_volume_and_path(&volume_id_str, &old_relative_str)?
+        {
+            // Verify the recipe's variant belongs to the resolved asset
+            let variant_asset_id = catalog.find_asset_id_by_variant(&variant_hash)?;
+            if variant_asset_id.as_deref() != Some(&full_id) {
+                bail!(
+                    "Recipe at '{}' belongs to asset {}, not {}",
+                    old_relative_str,
+                    variant_asset_id.unwrap_or_else(|| "(unknown)".to_string()),
+                    &full_id[..8]
+                );
+            }
+
+            // Verify file exists at new path
+            if !to_path.exists() {
+                bail!("File not found at '{}'", to_path.display());
+            }
+
+            // Verify content hash matches
+            let actual_hash = content_store.hash_file(to_path)?;
+            if actual_hash != content_hash {
+                bail!(
+                    "Hash mismatch: file at '{}' has hash {} but catalog expects {}",
+                    to_path.display(),
+                    &actual_hash[..16],
+                    &content_hash[..16]
+                );
+            }
+
+            // Update catalog
+            catalog.update_recipe_relative_path(&recipe_id, &new_relative_str)?;
+
+            // Update sidecar
+            self.update_sidecar_recipe_path(
+                &metadata_store,
+                &catalog,
+                &variant_hash,
+                volume.id,
+                &old_relative_str,
+                &new_relative_str,
+            )?;
+
+            Ok(UpdateLocationResult {
+                asset_id: full_id,
+                file_type: "recipe".to_string(),
+                content_hash,
+                old_path: old_relative_str,
+                new_path: new_relative_str,
+                volume_label: volume.label,
+            })
+        } else {
+            bail!(
+                "No variant or recipe found at '{}' on volume '{}'",
+                old_relative_str,
+                volume.label
+            );
+        }
     }
 
     /// Verify file integrity by re-hashing files and comparing against stored content hashes.

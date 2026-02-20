@@ -2769,3 +2769,277 @@ fn cleanup_json_includes_orphan_fields() {
     assert!(json.get("orphaned_previews").is_some());
     assert!(json.get("removed_previews").is_some());
 }
+
+// ── update-location tests ─────────────────────────────────────────
+
+#[test]
+fn update_location_moves_variant_path() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let sub = root.join("originals");
+    std::fs::create_dir_all(&sub).unwrap();
+    let file = create_test_file(&sub, "photo.jpg", b"update location test data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Get asset ID
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "--format", "ids", "*"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+
+    // Move the file on disk
+    let new_sub = root.join("moved");
+    std::fs::create_dir_all(&new_sub).unwrap();
+    std::fs::rename(&file, new_sub.join("photo.jpg")).unwrap();
+
+    let old_path = format!("originals/photo.jpg");
+    let new_path = new_sub.join("photo.jpg");
+
+    // Run update-location
+    dam()
+        .current_dir(&root)
+        .args([
+            "update-location", &asset_id,
+            "--from", &old_path,
+            "--to", new_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updated variant location"));
+
+    // Verify show has the new path
+    dam()
+        .current_dir(&root)
+        .args(["--json", "show", &asset_id])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("moved/photo.jpg")
+                .and(predicate::str::contains("originals/photo.jpg").not()),
+        );
+}
+
+#[test]
+fn update_location_moves_recipe_path() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    create_test_file(&root, "DSC_001.nef", b"raw image for recipe move");
+    let xmp = create_test_file(&root, "DSC_001.xmp", b"<xmp>recipe</xmp>");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Get asset ID
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "--format", "ids", "*"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+
+    // Move the XMP file on disk
+    let sub = root.join("recipes");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::rename(&xmp, sub.join("DSC_001.xmp")).unwrap();
+
+    let new_path = sub.join("DSC_001.xmp");
+
+    // Run update-location
+    dam()
+        .current_dir(&root)
+        .args([
+            "update-location", &asset_id,
+            "--from", "DSC_001.xmp",
+            "--to", new_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updated recipe location"));
+
+    // Verify show has the new recipe path
+    dam()
+        .current_dir(&root)
+        .args(["--json", "show", &asset_id])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("recipes/DSC_001.xmp"));
+}
+
+#[test]
+fn update_location_rejects_wrong_hash() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "photo.jpg", b"original content");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "--format", "ids", "*"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+
+    // Create a DIFFERENT file at the new path
+    let new_file = create_test_file(&root, "moved/photo.jpg", b"different content entirely");
+
+    dam()
+        .current_dir(&root)
+        .args([
+            "update-location", &asset_id,
+            "--from", "photo.jpg",
+            "--to", new_file.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Hash mismatch"));
+}
+
+#[test]
+fn update_location_rejects_missing_from() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "photo.jpg", b"some data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "--format", "ids", "*"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+
+    // --from path doesn't exist in catalog, --to is a valid file
+    let new_file = create_test_file(&root, "elsewhere/photo.jpg", b"some data");
+
+    dam()
+        .current_dir(&root)
+        .args([
+            "update-location", &asset_id,
+            "--from", "nonexistent/photo.jpg",
+            "--to", new_file.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No variant or recipe found"));
+}
+
+#[test]
+fn update_location_json_output() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let sub = root.join("originals");
+    std::fs::create_dir_all(&sub).unwrap();
+    let file = create_test_file(&sub, "photo.jpg", b"json output test data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "--format", "ids", "*"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+
+    // Move on disk
+    let new_sub = root.join("moved");
+    std::fs::create_dir_all(&new_sub).unwrap();
+    std::fs::rename(&file, new_sub.join("photo.jpg")).unwrap();
+
+    let new_path = new_sub.join("photo.jpg");
+
+    let output = dam()
+        .current_dir(&root)
+        .args([
+            "--json", "update-location", &asset_id,
+            "--from", "originals/photo.jpg",
+            "--to", new_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let out = String::from_utf8_lossy(&output.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&out).expect("valid JSON");
+    assert_eq!(json["file_type"], "variant");
+    assert_eq!(json["old_path"], "originals/photo.jpg");
+    assert_eq!(json["new_path"], "moved/photo.jpg");
+    assert_eq!(json["volume_label"], "test-vol");
+    assert!(json["asset_id"].as_str().is_some());
+    assert!(json["content_hash"].as_str().is_some());
+}
+
+#[test]
+fn update_location_auto_detects_volume() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "auto.jpg", b"auto detect volume test");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "--format", "ids", "*"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+
+    // Move on disk (same volume, no --volume flag)
+    let new_sub = root.join("newdir");
+    std::fs::create_dir_all(&new_sub).unwrap();
+    std::fs::rename(&file, new_sub.join("auto.jpg")).unwrap();
+
+    let new_path = new_sub.join("auto.jpg");
+
+    dam()
+        .current_dir(&root)
+        .args([
+            "update-location", &asset_id,
+            "--from", "auto.jpg",
+            "--to", new_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updated variant location"));
+
+    // Verify new path in show output
+    dam()
+        .current_dir(&root)
+        .args(["--json", "show", &asset_id])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("newdir/auto.jpg"));
+}
