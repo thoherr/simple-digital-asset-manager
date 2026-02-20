@@ -54,7 +54,7 @@ dam serve
 | `dam relocate <id> <volume>` | Copy or move an asset to another volume |
 | `dam verify` | Re-hash files to detect corruption |
 | `dam sync <paths...>` | Reconcile catalog with moved/modified/missing files |
-| `dam cleanup` | Remove stale location records for files no longer on disk |
+| `dam cleanup` | Remove stale locations, orphaned assets, and orphaned previews |
 | `dam stats` | Show catalog statistics |
 | `dam rebuild-catalog` | Rebuild SQLite index from sidecar files |
 | `dam serve` | Start the web UI server |

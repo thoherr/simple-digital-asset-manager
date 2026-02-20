@@ -85,18 +85,19 @@ These features address the core workflow break: files moving outside DAM.
 
 Implemented as `dam sync <PATHS...> [--volume <label>] [--apply] [--remove-stale]`. Report-only by default (safe); `--apply` writes changes. `--remove-stale` (requires `--apply`) removes catalog locations for missing files. Detects unchanged, moved, new, modified, and missing files. New files are not auto-imported — user runs `dam import` separately.
 
-#### 1.2 `dam cleanup` Command
+#### 1.2 `dam cleanup` Command — **done** (v0.3.1, extended v0.3.4)
 
-Remove stale location records from the catalog:
+Remove stale location records, orphaned assets, and orphaned preview files:
 
 ```
-dam cleanup [--volume <label>] [--dry-run]
+dam cleanup [--volume <label>] [--list] [--apply]
 ```
 
-- Iterates all file locations on the specified volume (or all online volumes)
-- Checks if each file exists on disk
-- Reports and optionally removes location records for missing files
-- Does NOT delete assets — an asset with zero remaining locations is still valid (it's an offline/lost asset)
+- Report-only by default (safe); `--apply` writes changes
+- **Pass 1:** Iterates all file locations and recipes on the specified volume (or all online volumes), reports and optionally removes records for missing files
+- **Pass 2:** Deletes orphaned assets (all variants have zero file_locations) including their recipes, variants, catalog rows, and sidecar YAML
+- **Pass 3:** Removes orphaned preview files (content hash no longer matches any variant)
+- Report-only mode predicts orphans that would result from removing stale locations
 
 #### 1.3 Search Filters for Location Health — **done** (v0.3.3)
 
