@@ -7,50 +7,45 @@
       hx-get="/api/search"
       hx-target="#results"
       hx-push-url="true"
-      hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": getSelectedTags().join(","), "format": document.querySelector("[name=format]").value, "volume": (document.querySelector("[name=volume]") || {value:""}).value, "rating": document.querySelector("[name=rating]").value, "sort": document.querySelector("[name=sort]").value, "page": "1"}'>
-    <input type="text" name="q" placeholder="Search assets..." value="{{ query }}" autocomplete="off">
-    <select name="type">
-        <option value="">All types</option>
-        <option value="image"{% if asset_type == "image" %} selected{% endif %}>Image</option>
-        <option value="video"{% if asset_type == "video" %} selected{% endif %}>Video</option>
-        <option value="audio"{% if asset_type == "audio" %} selected{% endif %}>Audio</option>
-        <option value="document"{% if asset_type == "document" %} selected{% endif %}>Document</option>
-    </select>
-    <div class="tag-filter" id="tag-filter">
-        <div class="tag-filter-chips" id="tag-chips"></div>
-        <input type="text" class="tag-filter-input" id="tag-input" placeholder="Filter by tags..." autocomplete="off">
-        <div class="tag-autocomplete" id="tag-autocomplete"></div>
+      hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": getSelectedTags().join(","), "format": document.querySelector("[name=format]").value, "volume": (document.querySelector("[name=volume]") || {value:""}).value, "rating": getFilterRating(), "sort": new URLSearchParams(window.location.search).get("sort") || "date_desc", "page": "1"}'>
+    <div class="search-row">
+        <input type="text" name="q" placeholder="Search assets..." value="{{ query }}" autocomplete="off">
+        <button type="submit">Search</button>
     </div>
-    <select name="format">
-        <option value="">All formats</option>
-        {% for f in all_formats %}
-        <option value="{{ f.name }}"{% if format_filter == f.name %} selected{% endif %}>{{ f.name }}</option>
-        {% endfor %}
-    </select>
-    {% if !all_volumes.is_empty() %}
-    <select name="volume">
-        <option value="">All volumes</option>
-        {% for v in all_volumes %}
-        <option value="{{ v.id }}"{% if volume == v.id %} selected{% endif %}>{{ v.label }}</option>
-        {% endfor %}
-    </select>
-    {% endif %}
-    <select name="rating">
-        <option value="">Any rating</option>
-        <option value="1+"{% if rating == "1+" %} selected{% endif %}>&#9733; 1+</option>
-        <option value="2+"{% if rating == "2+" %} selected{% endif %}>&#9733; 2+</option>
-        <option value="3+"{% if rating == "3+" %} selected{% endif %}>&#9733; 3+</option>
-        <option value="4+"{% if rating == "4+" %} selected{% endif %}>&#9733; 4+</option>
-        <option value="5"{% if rating == "5" %} selected{% endif %}>&#9733; 5</option>
-    </select>
-    <select name="sort">
-        <option value="date_desc"{% if sort == "date_desc" %} selected{% endif %}>Newest first</option>
-        <option value="date_asc"{% if sort == "date_asc" %} selected{% endif %}>Oldest first</option>
-        <option value="name_asc"{% if sort == "name_asc" %} selected{% endif %}>Name A-Z</option>
-        <option value="name_desc"{% if sort == "name_desc" %} selected{% endif %}>Name Z-A</option>
-        <option value="size_desc"{% if sort == "size_desc" %} selected{% endif %}>Largest first</option>
-    </select>
-    <button type="submit">Search</button>
+    <div class="filter-row">
+        <div class="tag-filter" id="tag-filter">
+            <div class="tag-filter-chips" id="tag-chips"></div>
+            <input type="text" class="tag-filter-input" id="tag-input" placeholder="Filter by tags..." autocomplete="off">
+            <div class="tag-autocomplete" id="tag-autocomplete"></div>
+        </div>
+        <div class="rating-filter-stars" id="rating-stars">
+            {% for i in 1..=5u8 %}
+            <span class="star {% if rating == "5" && i <= 5 || rating == "4+" && i <= 4 || rating == "3+" && i <= 3 || rating == "2+" && i <= 2 || rating == "1+" && i <= 1 %}filled{% else %}empty{% endif %}" data-value="{{ i }}">{% if rating == "5" && i <= 5 || rating == "4+" && i <= 4 || rating == "3+" && i <= 3 || rating == "2+" && i <= 2 || rating == "1+" && i <= 1 %}&#9733;{% else %}&#9734;{% endif %}</span>
+            {% endfor %}
+            <span class="rating-filter-hint" id="rating-hint">{% if !rating.is_empty() %}{{ rating }}{% endif %}</span>
+        </div>
+        <select name="type">
+            <option value="">All types</option>
+            <option value="image"{% if asset_type == "image" %} selected{% endif %}>Image</option>
+            <option value="video"{% if asset_type == "video" %} selected{% endif %}>Video</option>
+            <option value="audio"{% if asset_type == "audio" %} selected{% endif %}>Audio</option>
+            <option value="document"{% if asset_type == "document" %} selected{% endif %}>Document</option>
+        </select>
+        <select name="format">
+            <option value="">All formats</option>
+            {% for f in all_formats %}
+            <option value="{{ f.name }}"{% if format_filter == f.name %} selected{% endif %}>{{ f.name }}</option>
+            {% endfor %}
+        </select>
+        {% if !all_volumes.is_empty() %}
+        <select name="volume">
+            <option value="">All volumes</option>
+            {% for v in all_volumes %}
+            <option value="{{ v.id }}"{% if volume == v.id %} selected{% endif %}>{{ v.label }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
+    </div>
 </form>
 
 <div id="results">
@@ -222,8 +217,57 @@
         });
     }
 
+    // --- Rating filter stars ---
+    var currentRating = "{{ rating }}";
+    var ratingStars = document.querySelectorAll('#rating-stars .star');
+    var ratingHint = document.getElementById('rating-hint');
+
+    function getFilterRating() {
+        return currentRating;
+    }
+
+    function setRatingFilter(value) {
+        currentRating = value;
+        ratingStars.forEach(function(s, idx) {
+            var starVal = idx + 1;
+            var active = false;
+            if (value === '5' && starVal <= 5) active = true;
+            else if (value === '4+' && starVal <= 4) active = true;
+            else if (value === '3+' && starVal <= 3) active = true;
+            else if (value === '2+' && starVal <= 2) active = true;
+            else if (value === '1+' && starVal <= 1) active = true;
+            s.className = 'star ' + (active ? 'filled' : 'empty');
+            s.innerHTML = active ? '&#9733;' : '&#9734;';
+        });
+        ratingHint.textContent = value || '';
+    }
+
+    ratingStars.forEach(function(s) {
+        s.style.cursor = 'pointer';
+        s.addEventListener('click', function() {
+            var val = parseInt(this.getAttribute('data-value'));
+            var newRating;
+            if (val === 5) {
+                newRating = currentRating === '5' ? '' : '5';
+            } else {
+                var plus = val + '+';
+                newRating = currentRating === plus ? '' : plus;
+            }
+            setRatingFilter(newRating);
+            triggerSearch();
+        });
+    });
+
+    // Handle popstate for rating
+    var origPopstate = window.onpopstate;
+    window.addEventListener('popstate', function() {
+        var params = new URLSearchParams(window.location.search);
+        setRatingFilter(params.get('rating') || '');
+    });
+
     // Expose for hx-vals
     window.getSelectedTags = getSelectedTags;
+    window.getFilterRating = getFilterRating;
 })();
 </script>
 {% endblock %}

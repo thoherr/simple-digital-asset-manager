@@ -204,6 +204,7 @@ pub enum SearchSort {
     NameAsc,
     NameDesc,
     SizeDesc,
+    SizeAsc,
 }
 
 impl SearchSort {
@@ -214,6 +215,7 @@ impl SearchSort {
             SearchSort::NameAsc => "COALESCE(a.name, v.original_filename) ASC",
             SearchSort::NameDesc => "COALESCE(a.name, v.original_filename) DESC",
             SearchSort::SizeDesc => "v.file_size DESC",
+            SearchSort::SizeAsc => "v.file_size ASC",
         }
     }
 
@@ -223,6 +225,7 @@ impl SearchSort {
             "name_asc" => SearchSort::NameAsc,
             "name_desc" => SearchSort::NameDesc,
             "size_desc" => SearchSort::SizeDesc,
+            "size_asc" => SearchSort::SizeAsc,
             _ => SearchSort::DateDesc,
         }
     }

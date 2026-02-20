@@ -1,3 +1,7 @@
+{% macro page_url(p) %}?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ p }}{% endmacro %}
+{% macro api_url(p) %}/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ p }}{% endmacro %}
+{% macro sort_url(s) %}/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ s }}&page=1{% endmacro %}
+{% macro sort_href(s) %}?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ s }}&page=1{% endmacro %}
 {% if cards.is_empty() %}
 <div class="no-results">
     {% if query.is_empty() && asset_type.is_empty() && tag.is_empty() && format_filter.is_empty() && volume.is_empty() && rating.is_empty() %}
@@ -7,9 +11,70 @@
     {% endif %}
 </div>
 {% else %}
-<div class="results-header">
-    <span>{{ total }} asset{% if total != 1 %}s{% endif %}{% if !query.is_empty() %} matching "{{ query }}"{% endif %}</span>
-    <span>Page {{ page }} of {{ total_pages }}</span>
+<div class="results-bar">
+    <span class="results-count">{{ total }} asset{% if total != 1 %}s{% endif %}{% if !query.is_empty() %} matching &ldquo;{{ query }}&rdquo;{% endif %}</span>
+
+    <div class="sort-controls">
+        {% if sort == "date_desc" %}
+        <a class="sort-btn active" href="{% call sort_href("date_asc") %}" hx-get="{% call sort_url("date_asc") %}" hx-target="#results" hx-push-url="true">Date<span class="sort-arrow">&#9660;</span></a>
+        {% else if sort == "date_asc" %}
+        <a class="sort-btn active" href="{% call sort_href("date_desc") %}" hx-get="{% call sort_url("date_desc") %}" hx-target="#results" hx-push-url="true">Date<span class="sort-arrow">&#9650;</span></a>
+        {% else %}
+        <a class="sort-btn" href="{% call sort_href("date_desc") %}" hx-get="{% call sort_url("date_desc") %}" hx-target="#results" hx-push-url="true">Date</a>
+        {% endif %}
+
+        {% if sort == "name_asc" %}
+        <a class="sort-btn active" href="{% call sort_href("name_desc") %}" hx-get="{% call sort_url("name_desc") %}" hx-target="#results" hx-push-url="true">Name<span class="sort-arrow">&#9650;</span></a>
+        {% else if sort == "name_desc" %}
+        <a class="sort-btn active" href="{% call sort_href("name_asc") %}" hx-get="{% call sort_url("name_asc") %}" hx-target="#results" hx-push-url="true">Name<span class="sort-arrow">&#9660;</span></a>
+        {% else %}
+        <a class="sort-btn" href="{% call sort_href("name_asc") %}" hx-get="{% call sort_url("name_asc") %}" hx-target="#results" hx-push-url="true">Name</a>
+        {% endif %}
+
+        {% if sort == "size_desc" %}
+        <a class="sort-btn active" href="{% call sort_href("size_asc") %}" hx-get="{% call sort_url("size_asc") %}" hx-target="#results" hx-push-url="true">Size<span class="sort-arrow">&#9660;</span></a>
+        {% else if sort == "size_asc" %}
+        <a class="sort-btn active" href="{% call sort_href("size_desc") %}" hx-get="{% call sort_url("size_desc") %}" hx-target="#results" hx-push-url="true">Size<span class="sort-arrow">&#9650;</span></a>
+        {% else %}
+        <a class="sort-btn" href="{% call sort_href("size_desc") %}" hx-get="{% call sort_url("size_desc") %}" hx-target="#results" hx-push-url="true">Size</a>
+        {% endif %}
+    </div>
+
+    {% if total_pages > 1 %}
+    <div class="top-pagination">
+        {% if page > 1 %}
+        <a href="{% call page_url(1) %}" hx-get="{% call api_url(1) %}" hx-target="#results" hx-push-url="true">&laquo;</a>
+        {% let prev_page = page - 1 %}
+        <a href="{% call page_url(prev_page) %}" hx-get="{% call api_url(prev_page) %}" hx-target="#results" hx-push-url="true">&lsaquo;</a>
+        {% else %}
+        <span class="disabled">&laquo;</span>
+        <span class="disabled">&lsaquo;</span>
+        {% endif %}
+
+        {% for p in 1..=total_pages %}
+        {% if p == page %}
+        <span class="current">{{ p }}</span>
+        {% else if p <= 3 || p > total_pages - 3 || (p >= page.saturating_sub(2) && p <= page + 2) %}
+        <a href="{% call page_url(p) %}" hx-get="{% call api_url(p) %}" hx-target="#results" hx-push-url="true">{{ p }}</a>
+        {% else if p == 4 || p == total_pages.saturating_sub(3) %}
+        <span>&hellip;</span>
+        {% endif %}
+        {% endfor %}
+
+        {% if page < total_pages %}
+        {% let next_page = page + 1 %}
+        <a href="{% call page_url(next_page) %}" hx-get="{% call api_url(next_page) %}" hx-target="#results" hx-push-url="true">&rsaquo;</a>
+        <a href="{% call page_url(total_pages) %}" hx-get="{% call api_url(total_pages) %}" hx-target="#results" hx-push-url="true">&raquo;</a>
+        {% else %}
+        <span class="disabled">&rsaquo;</span>
+        <span class="disabled">&raquo;</span>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if total_pages > 1 %}
+    <span class="results-page">Page {{ page }} of {{ total_pages }}</span>
+    {% endif %}
 </div>
 
 <div class="results-grid">
@@ -40,23 +105,19 @@
 {% if total_pages > 1 %}
 <div class="pagination">
     {% if page > 1 %}
+    <a href="{% call page_url(1) %}" hx-get="{% call api_url(1) %}" hx-target="#results" hx-push-url="true">&laquo;</a>
     {% let prev_page = page - 1 %}
-    <a href="?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ prev_page }}"
-       hx-get="/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ prev_page }}"
-       hx-target="#results"
-       hx-push-url="true">Prev</a>
+    <a href="{% call page_url(prev_page) %}" hx-get="{% call api_url(prev_page) %}" hx-target="#results" hx-push-url="true">&lsaquo;</a>
     {% else %}
-    <span class="disabled">Prev</span>
+    <span class="disabled">&laquo;</span>
+    <span class="disabled">&lsaquo;</span>
     {% endif %}
 
     {% for p in 1..=total_pages %}
     {% if p == page %}
     <span class="current">{{ p }}</span>
     {% else if p <= 3 || p > total_pages - 3 || (p >= page.saturating_sub(2) && p <= page + 2) %}
-    <a href="?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ p }}"
-       hx-get="/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ p }}"
-       hx-target="#results"
-       hx-push-url="true">{{ p }}</a>
+    <a href="{% call page_url(p) %}" hx-get="{% call api_url(p) %}" hx-target="#results" hx-push-url="true">{{ p }}</a>
     {% else if p == 4 || p == total_pages.saturating_sub(3) %}
     <span>&hellip;</span>
     {% endif %}
@@ -64,12 +125,11 @@
 
     {% if page < total_pages %}
     {% let next_page = page + 1 %}
-    <a href="?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ next_page }}"
-       hx-get="/api/search?q={{ query }}&type={{ asset_type }}&tag={{ tag }}&format={{ format_filter }}&volume={{ volume }}&rating={{ rating }}&sort={{ sort }}&page={{ next_page }}"
-       hx-target="#results"
-       hx-push-url="true">Next</a>
+    <a href="{% call page_url(next_page) %}" hx-get="{% call api_url(next_page) %}" hx-target="#results" hx-push-url="true">&rsaquo;</a>
+    <a href="{% call page_url(total_pages) %}" hx-get="{% call api_url(total_pages) %}" hx-target="#results" hx-push-url="true">&raquo;</a>
     {% else %}
-    <span class="disabled">Next</span>
+    <span class="disabled">&rsaquo;</span>
+    <span class="disabled">&raquo;</span>
     {% endif %}
 </div>
 {% endif %}

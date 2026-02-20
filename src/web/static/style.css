@@ -50,12 +50,15 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
 /* Search bar */
 .search-bar {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 0.5rem;
     margin-bottom: 1rem;
-    align-items: flex-end;
 }
-.search-bar input[type="text"] {
+.search-row {
+    display: flex;
+    gap: 0.5rem;
+}
+.search-row input[type="text"] {
     flex: 1;
     min-width: 200px;
     padding: 0.5rem 0.75rem;
@@ -64,15 +67,7 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     font-size: 0.95rem;
     background: var(--bg-input);
 }
-.search-bar select {
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-size: 0.9rem;
-    background: var(--bg-input);
-    min-width: 100px;
-}
-.search-bar button {
+.search-row button {
     padding: 0.5rem 1.25rem;
     background: var(--primary);
     color: #fff;
@@ -82,7 +77,24 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     font-size: 0.95rem;
     font-weight: 500;
 }
-.search-bar button:hover { background: var(--primary-hover); }
+.search-row button:hover { background: var(--primary-hover); }
+.filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+.filter-row select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    background: var(--bg-input);
+    min-width: 100px;
+}
+.filter-row select:first-of-type {
+    margin-left: auto;
+}
 
 /* Results grid */
 .results-grid {
@@ -172,14 +184,88 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     pointer-events: none;
 }
 
-/* Results header */
-.results-header {
+/* Results bar */
+.results-bar {
     display: flex;
-    justify-content: space-between;
+    flex-wrap: wrap;
     align-items: center;
+    gap: 0.75rem;
     margin-bottom: 0.75rem;
     font-size: 0.9rem;
     color: var(--text-muted);
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+}
+.results-count {
+    white-space: nowrap;
+}
+.results-page {
+    margin-left: auto;
+    white-space: nowrap;
+    font-size: 0.85rem;
+}
+
+/* Sort controls */
+.sort-controls {
+    display: inline-flex;
+    gap: 0.25rem;
+}
+.sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-decoration: none;
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid transparent;
+}
+.sort-btn:hover {
+    color: var(--text);
+    background: var(--badge-bg);
+    text-decoration: none;
+}
+.sort-btn.active {
+    color: var(--primary);
+    font-weight: 600;
+    border-color: var(--border);
+    background: var(--bg-card);
+}
+.sort-btn .sort-arrow {
+    font-size: 0.65em;
+    margin-left: 0.1rem;
+}
+
+/* Top pagination */
+.top-pagination {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+.top-pagination a, .top-pagination span {
+    padding: 0.15rem 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    text-decoration: none;
+}
+.top-pagination a:hover {
+    background: var(--badge-bg);
+    text-decoration: none;
+}
+.top-pagination .current {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+.top-pagination .disabled {
+    color: var(--text-muted);
+    pointer-events: none;
+    opacity: 0.4;
 }
 
 /* Back link */
@@ -316,8 +402,9 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     flex-wrap: wrap;
     align-items: center;
     gap: 0.2rem;
-    min-width: 180px;
-    max-width: 350px;
+    min-width: 250px;
+    max-width: 450px;
+    flex: 1;
     padding: 0.3rem 0.5rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -368,6 +455,28 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
 }
 .tag-suggestion:hover {
     background: var(--badge-bg);
+}
+
+/* Rating filter (browse page) */
+.rating-filter-stars {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1rem;
+    font-size: 1.1rem;
+    line-height: 1;
+}
+.rating-filter-stars .star {
+    cursor: pointer;
+    user-select: none;
+}
+.rating-filter-stars .star.filled { color: #f5a623; }
+.rating-filter-stars .star.empty { color: #ccc; }
+.rating-filter-stars .star:hover { transform: scale(1.2); }
+.rating-filter-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-left: 0.25rem;
+    min-width: 1.5em;
 }
 
 /* Variants table */
