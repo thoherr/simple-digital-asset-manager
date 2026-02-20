@@ -91,6 +91,36 @@ enum Commands {
         tags: Vec<String>,
     },
 
+    /// Edit asset metadata (name, description, rating)
+    Edit {
+        /// Asset ID (or unique prefix)
+        asset_id: String,
+
+        /// Set asset name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// Clear asset name
+        #[arg(long)]
+        clear_name: bool,
+
+        /// Set asset description
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Clear asset description
+        #[arg(long)]
+        clear_description: bool,
+
+        /// Set rating (1-5)
+        #[arg(long, value_parser = clap::value_parser!(u8).range(1..=5))]
+        rating: Option<u8>,
+
+        /// Clear rating
+        #[arg(long)]
+        clear_rating: bool,
+    },
+
     /// Group variants into one asset
     Group {
         /// Content hashes of variants to group
@@ -612,6 +642,57 @@ fn main() {
                     println!("Tags: (none)");
                 } else {
                     println!("Tags: {}", result.current_tags.join(", "));
+                }
+            }
+            Ok(())
+        }
+        Commands::Edit { asset_id, name, clear_name, description, clear_description, rating, clear_rating } => {
+            use dam::query::EditFields;
+
+            if name.is_none() && !clear_name && description.is_none() && !clear_description && rating.is_none() && !clear_rating {
+                anyhow::bail!("No edit flags provided. Use --name, --description, --rating, --clear-name, --clear-description, or --clear-rating.");
+            }
+
+            let fields = EditFields {
+                name: if clear_name {
+                    Some(None)
+                } else {
+                    name.map(Some)
+                },
+                description: if clear_description {
+                    Some(None)
+                } else {
+                    description.map(Some)
+                },
+                rating: if clear_rating {
+                    Some(None)
+                } else {
+                    rating.map(Some)
+                },
+            };
+
+            let catalog_root = dam::config::find_catalog_root()?;
+            let engine = QueryEngine::new(&catalog_root);
+            let result = engine.edit(&asset_id, fields)?;
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                if let Some(name) = &result.name {
+                    println!("Name: {name}");
+                } else {
+                    println!("Name: (none)");
+                }
+                if let Some(desc) = &result.description {
+                    println!("Description: {desc}");
+                } else {
+                    println!("Description: (none)");
+                }
+                if let Some(r) = result.rating {
+                    let stars: String = (1..=5).map(|i| if i <= r { '\u{2605}' } else { '\u{2606}' }).collect();
+                    println!("Rating: {stars} ({r}/5)");
+                } else {
+                    println!("Rating: (none)");
                 }
             }
             Ok(())

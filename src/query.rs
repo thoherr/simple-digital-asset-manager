@@ -170,6 +170,22 @@ pub struct GroupResult {
     pub donors_removed: usize,
 }
 
+/// Fields to edit on an asset. `None` = no change, `Some(None)` = clear, `Some(Some(x))` = set.
+pub struct EditFields {
+    pub name: Option<Option<String>>,
+    pub description: Option<Option<String>>,
+    pub rating: Option<Option<u8>>,
+}
+
+/// Result of an edit operation.
+#[derive(Debug, serde::Serialize)]
+pub struct EditResult {
+    pub asset_id: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub rating: Option<u8>,
+}
+
 /// Result of a tag add/remove operation.
 pub struct TagResult {
     /// Tags that were actually added or removed.
@@ -358,6 +374,38 @@ impl QueryEngine {
         Ok(TagResult {
             changed,
             current_tags: asset.tags.clone(),
+        })
+    }
+
+    /// Edit asset metadata (name, description, rating). Updates both sidecar YAML and SQLite.
+    pub fn edit(&self, asset_id_prefix: &str, fields: EditFields) -> Result<EditResult> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let full_id = catalog
+            .resolve_asset_id(asset_id_prefix)?
+            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+
+        let uuid: uuid::Uuid = full_id.parse()?;
+        let store = MetadataStore::new(&self.catalog_root);
+        let mut asset = store.load(uuid)?;
+
+        if let Some(name) = &fields.name {
+            asset.name = name.clone();
+        }
+        if let Some(description) = &fields.description {
+            asset.description = description.clone();
+        }
+        if let Some(rating) = &fields.rating {
+            asset.rating = *rating;
+        }
+
+        store.save(&asset)?;
+        catalog.insert_asset(&asset)?;
+
+        Ok(EditResult {
+            asset_id: full_id,
+            name: asset.name,
+            description: asset.description,
+            rating: asset.rating,
         })
     }
 

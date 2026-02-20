@@ -1568,6 +1568,215 @@ fn generate_previews_with_paths() {
 }
 
 #[test]
+fn edit_sets_name_and_description() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "editable.jpg", b"edit test data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .output()
+        .unwrap();
+    let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Set name and description
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--name", "My Photo", "--description", "A lovely sunset"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Name: My Photo")
+                .and(predicate::str::contains("Description: A lovely sunset")),
+        );
+
+    // Verify via show --json
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "show", &asset_id])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(parsed["name"].as_str(), Some("My Photo"));
+    assert_eq!(parsed["description"].as_str(), Some("A lovely sunset"));
+}
+
+#[test]
+fn edit_sets_and_clears_rating() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "rated.jpg", b"rating test data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .output()
+        .unwrap();
+    let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Set rating
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--rating", "4"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Rating: \u{2605}\u{2605}\u{2605}\u{2605}\u{2606} (4/5)"));
+
+    // Verify via show --json
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "show", &asset_id])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(parsed["rating"].as_u64(), Some(4));
+
+    // Clear rating
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--clear-rating"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Rating: (none)"));
+
+    // Verify cleared
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "show", &asset_id])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert!(parsed["rating"].is_null());
+}
+
+#[test]
+fn edit_clears_name_and_description() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "clearable.jpg", b"clear test data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .output()
+        .unwrap();
+    let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Set name and description
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--name", "Test Name", "--description", "Test Desc"])
+        .assert()
+        .success();
+
+    // Clear them
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--clear-name", "--clear-description"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Name: (none)")
+                .and(predicate::str::contains("Description: (none)")),
+        );
+
+    // Verify via show --json
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "show", &asset_id])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert!(parsed["name"].is_null());
+    assert!(parsed["description"].is_null());
+}
+
+#[test]
+fn edit_json_output() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "json_edit.jpg", b"json edit test");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .output()
+        .unwrap();
+    let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "edit", &asset_id, "--name", "JSON Name", "--rating", "3"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(parsed["asset_id"].as_str().unwrap().len(), 36);
+    assert_eq!(parsed["name"].as_str(), Some("JSON Name"));
+    assert_eq!(parsed["rating"].as_u64(), Some(3));
+}
+
+#[test]
+fn edit_no_flags_errors() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "noflags.jpg", b"no flags test");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .output()
+        .unwrap();
+    let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No edit flags provided"));
+}
+
+#[test]
 fn generate_previews_log_shows_per_file_progress() {
     use image::{ImageBuffer, Rgb};
 
