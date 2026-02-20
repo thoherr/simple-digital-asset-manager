@@ -246,6 +246,8 @@ pub enum CleanupStatus {
     Ok,
     Stale,
     Offline,
+    OrphanedAsset,
+    OrphanedPreview,
 }
 
 /// Result of a cleanup operation.
@@ -255,6 +257,10 @@ pub struct CleanupResult {
     pub stale: usize,
     pub removed: usize,
     pub skipped_offline: usize,
+    pub orphaned_assets: usize,
+    pub removed_assets: usize,
+    pub orphaned_previews: usize,
+    pub removed_previews: usize,
     pub errors: Vec<String>,
 }
 
@@ -1966,6 +1972,10 @@ impl AssetService {
             stale: 0,
             removed: 0,
             skipped_offline: 0,
+            orphaned_assets: 0,
+            removed_assets: 0,
+            orphaned_previews: 0,
+            removed_previews: 0,
             errors: Vec::new(),
         };
 
@@ -1974,6 +1984,9 @@ impl AssetService {
         } else {
             registry.list()?
         };
+
+        // Collect stale locations for report-mode orphan prediction
+        let mut stale_locations: Vec<(String, String, String)> = Vec::new();
 
         for volume in &volumes {
             if !volume.is_online {
@@ -2020,6 +2033,12 @@ impl AssetService {
                         } else {
                             result.removed += 1;
                         }
+                    } else {
+                        stale_locations.push((
+                            content_hash.clone(),
+                            vol_id_str.clone(),
+                            relative_path.clone(),
+                        ));
                     }
                 }
             }
@@ -2056,6 +2075,106 @@ impl AssetService {
                             ));
                         } else {
                             result.removed += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Pass 2: Orphaned assets (all variants have zero file_locations)
+        // In apply mode, locations were already removed so we query directly.
+        // In report mode, we predict which assets would become orphaned.
+        let orphaned_ids = if apply {
+            catalog.list_orphaned_asset_ids()?
+        } else {
+            catalog.list_would_be_orphaned_asset_ids(&stale_locations)?
+        };
+        result.orphaned_assets = orphaned_ids.len();
+
+        if apply {
+            for asset_id in &orphaned_ids {
+                let file_start = Instant::now();
+                let asset_id_path = PathBuf::from(asset_id);
+
+                if let Err(e) = catalog.delete_recipes_for_asset(asset_id) {
+                    result.errors.push(format!(
+                        "Failed to delete recipes for orphaned asset {asset_id}: {e}"
+                    ));
+                    continue;
+                }
+                if let Err(e) = catalog.delete_file_locations_for_asset(asset_id) {
+                    result.errors.push(format!(
+                        "Failed to delete locations for orphaned asset {asset_id}: {e}"
+                    ));
+                    continue;
+                }
+                if let Err(e) = catalog.delete_variants_for_asset(asset_id) {
+                    result.errors.push(format!(
+                        "Failed to delete variants for orphaned asset {asset_id}: {e}"
+                    ));
+                    continue;
+                }
+                if let Err(e) = catalog.delete_asset(asset_id) {
+                    result.errors.push(format!(
+                        "Failed to delete orphaned asset {asset_id}: {e}"
+                    ));
+                    continue;
+                }
+
+                // Delete sidecar YAML
+                if let Ok(uuid) = uuid::Uuid::parse_str(asset_id) {
+                    if let Err(e) = metadata_store.delete(uuid) {
+                        result.errors.push(format!(
+                            "Failed to delete sidecar for orphaned asset {asset_id}: {e}"
+                        ));
+                    }
+                }
+
+                result.removed_assets += 1;
+                on_file(&asset_id_path, CleanupStatus::OrphanedAsset, file_start.elapsed());
+            }
+        }
+
+        // Pass 3: Orphaned previews (preview files with no matching variant)
+        let preview_dir = self.catalog_root.join("previews");
+        if preview_dir.is_dir() {
+            let variant_hashes = catalog.list_all_variant_hashes()?;
+
+            if let Ok(shard_entries) = std::fs::read_dir(&preview_dir) {
+                for shard_entry in shard_entries.flatten() {
+                    if !shard_entry.path().is_dir() {
+                        continue;
+                    }
+                    if let Ok(file_entries) = std::fs::read_dir(shard_entry.path()) {
+                        for file_entry in file_entries.flatten() {
+                            let path = file_entry.path();
+                            if !path.is_file() {
+                                continue;
+                            }
+                            // Extract content hash from filename: <hex>.<ext> → sha256:<hex>
+                            let stem = path.file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("");
+                            if stem.is_empty() {
+                                continue;
+                            }
+                            let content_hash = format!("sha256:{stem}");
+
+                            if !variant_hashes.contains(&content_hash) {
+                                result.orphaned_previews += 1;
+                                if apply {
+                                    let file_start = Instant::now();
+                                    if let Err(e) = std::fs::remove_file(&path) {
+                                        result.errors.push(format!(
+                                            "Failed to remove orphaned preview {}: {e}",
+                                            path.display()
+                                        ));
+                                    } else {
+                                        result.removed_previews += 1;
+                                        on_file(&path, CleanupStatus::OrphanedPreview, file_start.elapsed());
+                                    }
+                                }
+                            }
                         }
                     }
                 }

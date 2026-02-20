@@ -1825,6 +1825,103 @@ impl Catalog {
             verified,
         })
     }
+
+    /// Return asset IDs where all variants have zero file_locations.
+    pub fn list_orphaned_asset_ids(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT a.id FROM assets a WHERE NOT EXISTS ( \
+                 SELECT 1 FROM variants v JOIN file_locations fl ON fl.content_hash = v.content_hash \
+                 WHERE v.asset_id = a.id \
+             )",
+        )?;
+        let ids = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<std::result::Result<Vec<String>, _>>()?;
+        Ok(ids)
+    }
+
+    /// Delete all recipes attached to variants of an asset.
+    pub fn delete_recipes_for_asset(&self, asset_id: &str) -> Result<usize> {
+        let changed = self.conn.execute(
+            "DELETE FROM recipes WHERE variant_hash IN (SELECT content_hash FROM variants WHERE asset_id = ?1)",
+            rusqlite::params![asset_id],
+        )?;
+        Ok(changed)
+    }
+
+    /// Delete all file_locations for variants of an asset (safety net for true orphans).
+    pub fn delete_file_locations_for_asset(&self, asset_id: &str) -> Result<usize> {
+        let changed = self.conn.execute(
+            "DELETE FROM file_locations WHERE content_hash IN (SELECT content_hash FROM variants WHERE asset_id = ?1)",
+            rusqlite::params![asset_id],
+        )?;
+        Ok(changed)
+    }
+
+    /// Delete all variants belonging to an asset.
+    pub fn delete_variants_for_asset(&self, asset_id: &str) -> Result<usize> {
+        let changed = self.conn.execute(
+            "DELETE FROM variants WHERE asset_id = ?1",
+            rusqlite::params![asset_id],
+        )?;
+        Ok(changed)
+    }
+
+    /// Return asset IDs where all variants would have zero file_locations
+    /// if the given set of stale locations were removed.
+    /// Each stale location is `(content_hash, volume_id, relative_path)`.
+    pub fn list_would_be_orphaned_asset_ids(
+        &self,
+        stale_locations: &[(String, String, String)],
+    ) -> Result<Vec<String>> {
+        if stale_locations.is_empty() {
+            return self.list_orphaned_asset_ids();
+        }
+
+        // Create a temp table with stale locations to exclude
+        self.conn.execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS _stale_locs (content_hash TEXT, volume_id TEXT, relative_path TEXT)",
+        )?;
+        self.conn.execute("DELETE FROM _stale_locs", [])?;
+
+        let mut insert = self.conn.prepare(
+            "INSERT INTO _stale_locs (content_hash, volume_id, relative_path) VALUES (?1, ?2, ?3)",
+        )?;
+        for (hash, vol, path) in stale_locations {
+            insert.execute(rusqlite::params![hash, vol, path])?;
+        }
+        drop(insert);
+
+        let mut stmt = self.conn.prepare(
+            "SELECT a.id FROM assets a WHERE NOT EXISTS ( \
+                 SELECT 1 FROM variants v \
+                 JOIN file_locations fl ON fl.content_hash = v.content_hash \
+                 WHERE v.asset_id = a.id \
+                 AND NOT EXISTS ( \
+                     SELECT 1 FROM _stale_locs sl \
+                     WHERE sl.content_hash = fl.content_hash \
+                     AND sl.volume_id = fl.volume_id \
+                     AND sl.relative_path = fl.relative_path \
+                 ) \
+             )",
+        )?;
+        let ids = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<std::result::Result<Vec<String>, _>>()?;
+
+        self.conn.execute("DROP TABLE IF EXISTS _stale_locs", [])?;
+
+        Ok(ids)
+    }
+
+    /// Return all variant content hashes in the catalog.
+    pub fn list_all_variant_hashes(&self) -> Result<std::collections::HashSet<String>> {
+        let mut stmt = self.conn.prepare("SELECT content_hash FROM variants")?;
+        let hashes = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<std::result::Result<std::collections::HashSet<String>, _>>()?;
+        Ok(hashes)
+    }
 }
 
 #[cfg(test)]

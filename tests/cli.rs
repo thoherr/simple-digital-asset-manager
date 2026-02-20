@@ -34,6 +34,25 @@ fn create_test_file(dir: &Path, name: &str, content: &[u8]) -> PathBuf {
     path
 }
 
+/// Count files in the previews directory (two levels: shard dirs containing preview files).
+fn count_preview_files(previews_dir: &Path) -> usize {
+    let mut count = 0;
+    if let Ok(shards) = std::fs::read_dir(previews_dir) {
+        for shard in shards.flatten() {
+            if shard.path().is_dir() {
+                if let Ok(files) = std::fs::read_dir(shard.path()) {
+                    for file in files.flatten() {
+                        if file.path().is_file() {
+                            count += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    count
+}
+
 // ── Tests ──────────────────────────────────────────────────────────
 
 #[test]
@@ -2151,15 +2170,6 @@ fn cleanup_apply_removes_stale() {
         .assert()
         .success();
 
-    // Get asset id
-    let search_output = dam()
-        .current_dir(&root)
-        .args(["search", "--format", "ids", "*"])
-        .assert()
-        .success();
-    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
-    let asset_id = stdout.trim().to_string();
-
     std::fs::remove_file(&file).unwrap();
 
     dam()
@@ -2167,18 +2177,20 @@ fn cleanup_apply_removes_stale() {
         .args(["cleanup", "--apply"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("1 removed"));
+        .stdout(predicate::str::contains("1 removed"))
+        .stdout(predicate::str::contains("1 orphaned assets removed"));
 
-    // Verify location is gone via show --json
-    let show_output = dam()
+    // Asset should be fully removed (no results from search)
+    let search_output = dam()
         .current_dir(&root)
-        .args(["--json", "show", &asset_id])
+        .args(["search", "-q", "*"])
         .assert()
-        .success();
-    let show_stdout = String::from_utf8_lossy(&show_output.get_output().stdout);
-    let show_json: serde_json::Value = serde_json::from_str(&show_stdout).expect("valid JSON");
-    let locations = &show_json["variants"][0]["locations"];
-    assert_eq!(locations.as_array().unwrap().len(), 0, "location should be removed");
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let stdout = String::from_utf8(search_output).unwrap();
+    assert!(stdout.trim().is_empty(), "orphaned asset should be removed");
 }
 
 #[test]
@@ -2210,7 +2222,7 @@ fn cleanup_default_is_report_only() {
         .assert()
         .success()
         .stdout(predicate::str::contains("1 stale"))
-        .stdout(predicate::str::contains("Run with --apply"));
+        .stdout(predicate::str::contains("--apply"));
 
     // Location should still be in the catalog
     let show_output = dam()
@@ -2402,13 +2414,26 @@ fn search_orphan_filter() {
     let asset_id = stdout.trim().to_string();
     assert!(!asset_id.is_empty(), "should find imported asset");
 
-    // Delete the file, then cleanup --apply to remove all locations
+    // Delete the file, then cleanup (report only) to remove just locations
     std::fs::remove_file(&file).unwrap();
+
+    // Use report-only cleanup — doesn't remove anything
     dam()
         .current_dir(&root)
-        .args(["cleanup", "--apply"])
+        .args(["cleanup"])
         .assert()
-        .success();
+        .success()
+        .stdout(predicate::str::contains("1 stale"));
+
+    // Manually remove the stale location via cleanup --apply but the orphan
+    // asset is also removed now. So test orphan search by using --json cleanup
+    // without --apply first, then verifying the orphan count.
+    // For the orphan:true search test, we need an asset with no locations.
+    // Use SQLite directly to delete the file_location.
+    let db_path = root.join("catalog.db");
+    let conn = rusqlite::Connection::open(&db_path).unwrap();
+    conn.execute("DELETE FROM file_locations", []).unwrap();
+    drop(conn);
 
     // Now search orphan:true should find the asset
     dam()
@@ -2558,13 +2583,11 @@ fn search_volume_none_filter() {
     let asset_id = stdout.trim().to_string();
     assert!(!asset_id.is_empty(), "should find imported asset");
 
-    // Delete file and cleanup to remove locations
-    std::fs::remove_file(&file).unwrap();
-    dam()
-        .current_dir(&root)
-        .args(["cleanup", "--apply"])
-        .assert()
-        .success();
+    // Remove locations directly via SQLite (not cleanup --apply, which also removes orphaned assets)
+    let db_path = root.join("catalog.db");
+    let conn = rusqlite::Connection::open(&db_path).unwrap();
+    conn.execute("DELETE FROM file_locations", []).unwrap();
+    drop(conn);
 
     // volume:none should find the asset (no locations on any online volume)
     dam()
@@ -2573,4 +2596,176 @@ fn search_volume_none_filter() {
         .assert()
         .success()
         .stdout(predicate::str::contains(&asset_id[..8]));
+}
+
+// ── Cleanup orphaned assets and previews ────────────────────────────
+
+#[test]
+fn cleanup_removes_orphaned_assets() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "orphan_cleanup.jpg", b"orphan cleanup data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    std::fs::remove_file(&file).unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["cleanup", "--apply"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 orphaned assets removed"));
+
+    // search orphan:true should return nothing — the orphan was removed
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "orphan:true"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let stdout = String::from_utf8(search_output).unwrap();
+    assert!(stdout.trim().is_empty(), "orphaned asset should be removed by cleanup --apply");
+}
+
+#[test]
+fn cleanup_reports_orphaned_without_apply() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "report_orphan.jpg", b"report orphan data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Get asset id
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+
+    std::fs::remove_file(&file).unwrap();
+
+    // Report-only mode: should count orphaned assets but not remove them
+    dam()
+        .current_dir(&root)
+        .args(["cleanup"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 orphaned assets"));
+
+    // Asset should still exist
+    dam()
+        .current_dir(&root)
+        .args(["show", &asset_id])
+        .assert()
+        .success();
+}
+
+#[test]
+fn cleanup_removes_orphaned_previews() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    // Use .mp3 extension — generates an info card preview (always succeeds, audio is on by default)
+    let file = create_test_file(&root, "preview_orphan.mp3", b"preview orphan data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Check that a preview was generated
+    let previews_dir = root.join("previews");
+    let preview_count_before = count_preview_files(&previews_dir);
+    assert!(preview_count_before > 0, "preview should exist after import");
+
+    std::fs::remove_file(&file).unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["cleanup", "--apply"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("orphaned previews removed"));
+
+    // Preview should be gone
+    let preview_count_after = count_preview_files(&previews_dir);
+    assert_eq!(preview_count_after, 0, "orphaned previews should be removed");
+}
+
+#[test]
+fn cleanup_preserves_non_orphaned_assets() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "keep_me.jpg", b"keep me data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Get asset id
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+
+    // File still on disk — cleanup --apply should not remove anything
+    dam()
+        .current_dir(&root)
+        .args(["cleanup", "--apply"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0 stale"));
+
+    // Asset should still exist
+    dam()
+        .current_dir(&root)
+        .args(["show", &asset_id])
+        .assert()
+        .success();
+}
+
+#[test]
+fn cleanup_json_includes_orphan_fields() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "json_orphan.jpg", b"json orphan data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    std::fs::remove_file(&file).unwrap();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "cleanup", "--apply"])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(json["orphaned_assets"], 1);
+    assert_eq!(json["removed_assets"], 1);
+    assert!(json.get("orphaned_previews").is_some());
+    assert!(json.get("removed_previews").is_some());
 }

@@ -1030,6 +1030,16 @@ fn main() {
                                     .unwrap_or_else(|| path.to_str().unwrap_or("?"));
                                 eprintln!("  {} — offline", name);
                             }
+                            CleanupStatus::OrphanedAsset => {
+                                let name = path.to_str().unwrap_or("?");
+                                eprintln!("  {} — orphaned asset removed ({})", name, format_duration(elapsed));
+                            }
+                            CleanupStatus::OrphanedPreview => {
+                                let name = path.file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or_else(|| path.to_str().unwrap_or("?"));
+                                eprintln!("  {} — orphaned preview removed ({})", name, format_duration(elapsed));
+                            }
                             _ => {}
                         }
                     },
@@ -1057,17 +1067,32 @@ fn main() {
                 }
 
                 if apply {
-                    println!(
-                        "Cleanup complete: {} checked, {} stale, {} removed",
-                        result.checked, result.stale, result.removed
-                    );
+                    let mut parts = vec![
+                        format!("{} checked", result.checked),
+                        format!("{} stale", result.stale),
+                        format!("{} removed", result.removed),
+                    ];
+                    if result.removed_assets > 0 {
+                        parts.push(format!("{} orphaned assets removed", result.removed_assets));
+                    }
+                    if result.removed_previews > 0 {
+                        parts.push(format!("{} orphaned previews removed", result.removed_previews));
+                    }
+                    println!("Cleanup complete: {}", parts.join(", "));
                 } else {
-                    println!(
-                        "Cleanup complete: {} checked, {} stale",
-                        result.checked, result.stale
-                    );
-                    if result.stale > 0 {
-                        println!("  Run with --apply to remove stale location records.");
+                    let mut parts = vec![
+                        format!("{} checked", result.checked),
+                        format!("{} stale", result.stale),
+                    ];
+                    if result.orphaned_assets > 0 {
+                        parts.push(format!("{} orphaned assets", result.orphaned_assets));
+                    }
+                    if result.orphaned_previews > 0 {
+                        parts.push(format!("{} orphaned previews", result.orphaned_previews));
+                    }
+                    println!("Cleanup complete: {}", parts.join(", "));
+                    if result.stale > 0 || result.orphaned_assets > 0 || result.orphaned_previews > 0 {
+                        println!("  Run with --apply to remove stale records, orphaned assets, and previews.");
                     }
                 }
             }
