@@ -98,13 +98,13 @@ dam cleanup [--volume <label>] [--dry-run]
 - Reports and optionally removes location records for missing files
 - Does NOT delete assets — an asset with zero remaining locations is still valid (it's an offline/lost asset)
 
-#### 1.3 Search Filters for Location Health
+#### 1.3 Search Filters for Location Health — **done** (v0.3.3)
 
 New search filters to find assets needing attention:
 
 - `missing:true` — Assets where at least one location points to a non-existent file
-- `orphan:true` — Assets with zero valid locations (all files missing/offline)
-- `stale:true` — Assets with locations not verified in N days (configurable)
+- `orphan:true` — Assets with zero file_location records
+- `stale:N` — Assets with at least one location not verified in N days (or never verified)
 - `volume:none` — Assets with no locations on any online volume
 
 #### 1.4 `dam update-location` Command
@@ -244,5 +244,5 @@ For v0.3.0, focus on **Phase 1** (sync, cleanup, location health) and the most i
 2. `dam cleanup` for stale locations
 3. `dam import --dry-run`
 4. ~~`dam edit` for name/description/rating~~ — **done** (v0.3.1)
-5. Search filters: `missing:`, `orphan:`
+5. ~~Search filters: `missing:`, `orphan:`~~ — **done** (v0.3.3)
 6. Web UI: description editing, batch tag/rate

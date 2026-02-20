@@ -45,7 +45,7 @@ dam serve
 | `dam init` | Initialize a new catalog in the current directory |
 | `dam volume add/list` | Register and list storage volumes |
 | `dam import <paths...>` | Import files with auto-grouping and metadata extraction |
-| `dam search <query>` | Search by text, tags, type, format, rating, camera, and more |
+| `dam search <query>` | Search by text, tags, type, format, rating, camera, location health, and more |
 | `dam show <id>` | Display full asset details |
 | `dam tag <id> <tags...>` | Add or remove tags |
 | `dam group <hashes...>` | Manually group variants into one asset |
@@ -60,6 +60,31 @@ dam serve
 | `dam serve` | Start the web UI server |
 
 **Global flags**: `--json` (machine-readable output), `-l`/`--log` (per-file progress for import, verify, sync, cleanup, generate-previews), `-d`/`--debug` (external tool stderr), `-t`/`--time` (elapsed time). See `dam --help` and `dam <command> --help` for full usage.
+
+### Search filters
+
+`dam search` supports prefix filters that can be combined freely:
+
+| Filter | Example | Description |
+|--------|---------|-------------|
+| `type:` | `type:image` | Asset type (image, video, audio, document, other) |
+| `tag:` | `tag:landscape` | Tag name |
+| `format:` | `format:jpg` | File format |
+| `rating:` | `rating:3+` or `rating:5` | Minimum or exact rating |
+| `camera:` | `camera:fuji` | Camera model (partial match) |
+| `lens:` | `lens:56mm` | Lens model (partial match) |
+| `iso:` | `iso:100-800` | ISO range, exact, or minimum |
+| `focal:` | `focal:35-70` | Focal length range |
+| `f:` | `f:1.4-2.8` | Aperture range |
+| `width:` | `width:4000+` | Minimum image width |
+| `height:` | `height:2000+` | Minimum image height |
+| `meta:` | `meta:label=Red` | Source metadata key=value |
+| `orphan:true` | `orphan:true` | Assets with no file locations |
+| `missing:true` | `missing:true` | Assets with files missing from disk |
+| `stale:` | `stale:30` | Locations not verified in N days |
+| `volume:none` | `volume:none` | Assets with no locations on online volumes |
+
+Remaining tokens are free-text search across name, filename, description, and metadata.
 
 ## Configuration
 

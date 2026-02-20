@@ -160,8 +160,9 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 **Responsibility**: search and filter assets via the SQLite catalog.
 
 **Query capabilities**:
-- Filter by: tags, date range, asset type, format, rating (`rating:N` exact, `rating:N+` minimum), camera model, volume, online/offline status
-- Full-text search over name and description
+- Filter by: tags, date range, asset type, format, rating (`rating:N` exact, `rating:N+` minimum), camera model, lens, ISO, focal length, aperture, dimensions, volume, online/offline status
+- Location health filters: `orphan:true` (no file locations), `missing:true` (files missing from disk), `stale:N` (not verified in N days), `volume:none` (no locations on online volumes)
+- Full-text search over name, filename, description, and source metadata
 - Sort by: date, name, file size, import date
 - Output: asset list with summary info, or detailed asset view
 

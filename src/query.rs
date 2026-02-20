@@ -1,9 +1,10 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::Result;
 
 use crate::catalog::{AssetDetails, Catalog, SearchOptions, SearchRow};
+use crate::device_registry::DeviceRegistry;
 use crate::metadata_store::MetadataStore;
 
 /// Parsed search query with all supported filter prefixes.
@@ -26,6 +27,10 @@ pub struct ParsedSearch {
     pub width_min: Option<i64>,
     pub height_min: Option<i64>,
     pub meta_filters: Vec<(String, String)>,
+    pub orphan: bool,
+    pub stale_days: Option<u64>,
+    pub missing: bool,
+    pub volume_none: bool,
 }
 
 impl ParsedSearch {
@@ -53,6 +58,8 @@ impl ParsedSearch {
                 .iter()
                 .map(|(k, v)| (k.as_str(), v.as_str()))
                 .collect(),
+            orphan: self.orphan,
+            stale_days: self.stale_days,
             ..Default::default()
         }
     }
@@ -113,6 +120,16 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
             if let Some((key, val)) = value.split_once('=') {
                 parsed.meta_filters.push((key.to_string(), val.to_string()));
             }
+        } else if token == "orphan:true" {
+            parsed.orphan = true;
+        } else if token == "missing:true" {
+            parsed.missing = true;
+        } else if let Some(value) = token.strip_prefix("stale:") {
+            if let Ok(days) = value.parse::<u64>() {
+                parsed.stale_days = Some(days);
+            }
+        } else if token == "volume:none" {
+            parsed.volume_none = true;
         } else {
             text_parts.push(token);
         }
@@ -214,11 +231,48 @@ impl QueryEngine {
     /// Remaining tokens are joined as free-text search against name/filename/description/metadata.
     pub fn search(&self, query: &str) -> Result<Vec<SearchRow>> {
         let parsed = parse_search_query(query);
-        let opts = SearchOptions {
+        let mut opts = SearchOptions {
             per_page: u32::MAX,
             ..parsed.to_search_options()
         };
         let catalog = Catalog::open(&self.catalog_root)?;
+
+        // Pre-compute missing asset IDs if needed (requires disk I/O)
+        let missing_ids;
+        if parsed.missing {
+            let registry = DeviceRegistry::new(&self.catalog_root);
+            let volumes = registry.list()?;
+            let online: HashMap<String, std::path::PathBuf> = volumes
+                .iter()
+                .filter(|v| v.is_online)
+                .map(|v| (v.id.to_string(), v.mount_point.clone()))
+                .collect();
+            let all_locs = catalog.list_all_locations_with_assets()?;
+            let mut ids = HashSet::new();
+            for (asset_id, volume_id, relative_path) in &all_locs {
+                if let Some(mount) = online.get(volume_id) {
+                    if !mount.join(relative_path).exists() {
+                        ids.insert(asset_id.clone());
+                    }
+                }
+            }
+            missing_ids = ids.into_iter().collect::<Vec<_>>();
+            opts.missing_asset_ids = Some(&missing_ids);
+        }
+
+        // Pre-compute online volume IDs for volume:none
+        let online_vol_ids;
+        if parsed.volume_none {
+            let registry = DeviceRegistry::new(&self.catalog_root);
+            let volumes = registry.list()?;
+            online_vol_ids = volumes
+                .iter()
+                .filter(|v| v.is_online)
+                .map(|v| v.id.to_string())
+                .collect::<Vec<_>>();
+            opts.no_online_locations = Some(&online_vol_ids);
+        }
+
         catalog.search_paginated(&opts)
     }
 
@@ -735,5 +789,49 @@ mod tests {
         assert_eq!(p.format.as_deref(), Some("jpg"));
         assert_eq!(p.rating_min, Some(3));
         assert!(p.rating_exact.is_none());
+    }
+
+    #[test]
+    fn parse_orphan_filter() {
+        let p = parse_search_query("orphan:true");
+        assert!(p.orphan);
+        assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_missing_filter() {
+        let p = parse_search_query("missing:true");
+        assert!(p.missing);
+        assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_stale_filter() {
+        let p = parse_search_query("stale:30");
+        assert_eq!(p.stale_days, Some(30));
+        assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_stale_filter_zero() {
+        let p = parse_search_query("stale:0");
+        assert_eq!(p.stale_days, Some(0));
+    }
+
+    #[test]
+    fn parse_volume_none_filter() {
+        let p = parse_search_query("volume:none");
+        assert!(p.volume_none);
+        assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_location_health_combined() {
+        let p = parse_search_query("orphan:true stale:7 tag:landscape");
+        assert!(p.orphan);
+        assert_eq!(p.stale_days, Some(7));
+        assert_eq!(p.tag.as_deref(), Some("landscape"));
+        assert!(!p.missing);
+        assert!(!p.volume_none);
     }
 }

@@ -60,7 +60,10 @@ enum Commands {
 
     /// Search assets
     Search {
-        /// Free-text keywords and optional filters (type:image, tag:landscape, format:jpg)
+        /// Free-text keywords and optional filters (type:image, tag:landscape, format:jpg,
+        /// rating:3+, camera:fuji, lens:56mm, iso:100-800, focal:35-70, f:1.4-2.8,
+        /// width:4000+, height:2000+, meta:key=value, orphan:true, missing:true,
+        /// stale:30, volume:none)
         query: String,
 
         /// Output format: ids, short, full, json, or a custom template (e.g. '{id}\t{name}')

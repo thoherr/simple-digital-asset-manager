@@ -248,6 +248,10 @@ pub struct SearchOptions<'a> {
     pub width_min: Option<i64>,
     pub height_min: Option<i64>,
     pub meta_filters: Vec<(&'a str, &'a str)>,
+    pub orphan: bool,
+    pub stale_days: Option<u64>,
+    pub missing_asset_ids: Option<&'a [String]>,
+    pub no_online_locations: Option<&'a [String]>,
     pub sort: SearchSort,
     pub page: u32,
     pub per_page: u32,
@@ -274,6 +278,10 @@ impl<'a> Default for SearchOptions<'a> {
             width_min: None,
             height_min: None,
             meta_filters: Vec::new(),
+            orphan: false,
+            stale_days: None,
+            missing_asset_ids: None,
+            no_online_locations: None,
             sort: SearchSort::DateDesc,
             page: 1,
             per_page: 60,
@@ -467,6 +475,28 @@ impl Catalog {
             ],
         )?;
         Ok(())
+    }
+
+    /// List all file locations with their associated asset IDs.
+    /// Returns `(asset_id, volume_id, relative_path)` tuples.
+    pub fn list_all_locations_with_assets(&self) -> Result<Vec<(String, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT v.asset_id, fl.volume_id, fl.relative_path \
+             FROM file_locations fl \
+             JOIN variants v ON fl.content_hash = v.content_hash",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
     }
 
     /// Insert a recipe into the catalog.
@@ -1201,6 +1231,48 @@ impl Catalog {
         for (key, value) in &opts.meta_filters {
             clauses.push(format!("json_extract(v.source_metadata, '$.{key}') LIKE ?"));
             params.push(Box::new(format!("%{value}%")));
+        }
+
+        // Location health filters
+        if opts.orphan {
+            clauses.push(
+                "NOT EXISTS (SELECT 1 FROM file_locations fl2 WHERE fl2.content_hash = v.content_hash)"
+                    .to_string(),
+            );
+        }
+        if let Some(days) = opts.stale_days {
+            clauses.push(format!(
+                "EXISTS (SELECT 1 FROM file_locations fl2 \
+                 JOIN variants v2 ON fl2.content_hash = v2.content_hash \
+                 WHERE v2.asset_id = a.id AND \
+                 (fl2.verified_at IS NULL OR fl2.verified_at < datetime('now', '-{} days')))",
+                days
+            ));
+        }
+        if let Some(ids) = opts.missing_asset_ids {
+            if ids.is_empty() {
+                clauses.push("0".to_string()); // no matches
+            } else {
+                let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+                clauses.push(format!("a.id IN ({})", placeholders.join(",")));
+                for id in ids {
+                    params.push(Box::new(id.clone()));
+                }
+            }
+        }
+        if let Some(online_ids) = opts.no_online_locations {
+            if !online_ids.is_empty() {
+                let placeholders: Vec<&str> = online_ids.iter().map(|_| "?").collect();
+                clauses.push(format!(
+                    "NOT EXISTS (SELECT 1 FROM file_locations fl2 \
+                     WHERE fl2.content_hash = v.content_hash AND fl2.volume_id IN ({}))",
+                    placeholders.join(",")
+                ));
+                for id in online_ids {
+                    params.push(Box::new(id.clone()));
+                }
+            }
+            // If online_ids is empty, every asset matches volume:none (no clause needed)
         }
 
         let where_clause = if clauses.is_empty() {

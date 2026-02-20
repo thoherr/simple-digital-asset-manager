@@ -2377,3 +2377,200 @@ fn cleanup_list_shows_only_stale() {
     // Should NOT list the present file (--list filters to stale only)
     assert!(!stderr.contains("present.jpg"), "should not list ok files on stderr");
 }
+
+// ── Search location health filters ─────────────────────────────────
+
+#[test]
+fn search_orphan_filter() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "orphan_test.jpg", b"orphan data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Get asset id
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+    assert!(!asset_id.is_empty(), "should find imported asset");
+
+    // Delete the file, then cleanup --apply to remove all locations
+    std::fs::remove_file(&file).unwrap();
+    dam()
+        .current_dir(&root)
+        .args(["cleanup", "--apply"])
+        .assert()
+        .success();
+
+    // Now search orphan:true should find the asset
+    dam()
+        .current_dir(&root)
+        .args(["search", "orphan:true"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(&asset_id[..8]));
+}
+
+#[test]
+fn search_orphan_filter_excludes_located() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    create_test_file(&root, "located.jpg", b"located data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // File still exists on disk, locations intact — orphan:true should return nothing
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "orphan:true"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.trim().is_empty(), "orphan:true should find nothing when locations exist");
+}
+
+#[test]
+fn search_missing_filter() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "missing_test.jpg", b"missing data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Get asset id
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+    assert!(!asset_id.is_empty(), "should find imported asset");
+
+    // Delete the file but DON'T run cleanup (location record still exists)
+    std::fs::remove_file(&file).unwrap();
+
+    // missing:true should find it (file missing from disk but location in catalog)
+    dam()
+        .current_dir(&root)
+        .args(["search", "missing:true"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(&asset_id[..8]));
+}
+
+#[test]
+fn search_missing_filter_excludes_present() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    create_test_file(&root, "present.jpg", b"present data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // File still exists — missing:true should find nothing
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "missing:true"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    assert!(stdout.trim().is_empty(), "missing:true should find nothing when files exist");
+}
+
+#[test]
+fn search_stale_filter() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "stale_test.jpg", b"stale data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Get asset id
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+    assert!(!asset_id.is_empty(), "should find imported asset");
+
+    // Never explicitly verified, so verified_at is NULL — stale:0 should match
+    dam()
+        .current_dir(&root)
+        .args(["search", "stale:0"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(&asset_id[..8]));
+}
+
+#[test]
+fn search_volume_none_filter() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "volnone_test.jpg", b"volnone data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Get asset id
+    let search_output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+    assert!(!asset_id.is_empty(), "should find imported asset");
+
+    // Delete file and cleanup to remove locations
+    std::fs::remove_file(&file).unwrap();
+    dam()
+        .current_dir(&root)
+        .args(["cleanup", "--apply"])
+        .assert()
+        .success();
+
+    // volume:none should find the asset (no locations on any online volume)
+    dam()
+        .current_dir(&root)
+        .args(["search", "volume:none"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(&asset_id[..8]));
+}
