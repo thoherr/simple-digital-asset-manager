@@ -81,28 +81,9 @@ What already works well for this workflow:
 
 These features address the core workflow break: files moving outside DAM.
 
-#### 1.1 `dam sync` Command
+#### 1.1 `dam sync` Command — **IMPLEMENTED** (v0.3.1)
 
-A new command that re-scans a directory (or volume) and reconciles the catalog with reality:
-
-```
-dam sync [PATHS...] [--volume <label>] [--dry-run] [--remove-stale]
-```
-
-Behavior:
-- **Scan disk** — Walk the directory, hash every known file type
-- **Match against catalog** — For each file, look up its content hash
-- **Report changes:**
-  - `Moved` — Hash exists in catalog but at a different path (old path missing, new path found)
-  - `New` — Hash not in catalog → candidate for import
-  - `Modified` — Recipe/sidecar at known path but with different hash
-  - `Missing` — Catalog has a location in this directory but file is gone (and not found elsewhere)
-  - `Unchanged` — File at expected path with matching hash
-- **`--dry-run`** — Report only, change nothing (default for safety)
-- **Without `--dry-run`** — Update location records: move stale paths to new paths, import new files, update recipe hashes
-- **`--remove-stale`** — Remove location records for files confirmed missing (not just moved)
-
-This is the single most impactful feature for external tool integration.
+Implemented as `dam sync <PATHS...> [--volume <label>] [--apply] [--remove-stale]`. Report-only by default (safe); `--apply` writes changes. `--remove-stale` (requires `--apply`) removes catalog locations for missing files. Detects unchanged, moved, new, modified, and missing files. New files are not auto-imported — user runs `dam import` separately.
 
 #### 1.2 `dam cleanup` Command
 
@@ -259,9 +240,9 @@ For v0.3.0, focus on **Phase 1** (sync, cleanup, location health) and the most i
 
 ### Suggested v0.3.0 Scope
 
-1. `dam sync` with dry-run default
+1. ~~`dam sync` with dry-run default~~ — **done** (v0.3.1)
 2. `dam cleanup` for stale locations
 3. `dam import --dry-run`
-4. `dam edit` for name/description/rating
+4. ~~`dam edit` for name/description/rating~~ — **done** (v0.3.1)
 5. Search filters: `missing:`, `orphan:`
 6. Web UI: description editing, batch tag/rate

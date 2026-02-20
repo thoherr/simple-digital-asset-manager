@@ -53,11 +53,12 @@ dam serve
 | `dam generate-previews` | Generate or regenerate preview thumbnails |
 | `dam relocate <id> <volume>` | Copy or move an asset to another volume |
 | `dam verify` | Re-hash files to detect corruption |
+| `dam sync <paths...>` | Reconcile catalog with moved/modified/missing files |
 | `dam stats` | Show catalog statistics |
 | `dam rebuild-catalog` | Rebuild SQLite index from sidecar files |
 | `dam serve` | Start the web UI server |
 
-**Global flags**: `--json` (machine-readable output), `-l`/`--log` (per-file progress for import, verify, generate-previews), `-d`/`--debug` (external tool stderr), `-t`/`--time` (elapsed time). See `dam --help` and `dam <command> --help` for full usage.
+**Global flags**: `--json` (machine-readable output), `-l`/`--log` (per-file progress for import, verify, sync, generate-previews), `-d`/`--debug` (external tool stderr), `-t`/`--time` (elapsed time). See `dam --help` and `dam <command> --help` for full usage.
 
 ## Configuration
 
