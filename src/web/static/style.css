@@ -980,7 +980,7 @@ body.batch-active .select-checkbox {
 .batch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .shortcut-hint {
     font-family: inherit;
-    font-size: 0.5em;
+    font-size: 0.7em;
     opacity: 0.5;
     margin-left: 0.3em;
     vertical-align: top;
