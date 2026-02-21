@@ -373,6 +373,16 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     line-height: 1;
 }
 .tag-chip .remove-tag:hover { opacity: 1; }
+.edit-pencil {
+    all: unset;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-left: 0.4rem;
+    opacity: 0.6;
+    vertical-align: middle;
+}
+.edit-pencil:hover { opacity: 1; }
 .tag-add-form {
     display: inline-flex;
     gap: 0.3rem;

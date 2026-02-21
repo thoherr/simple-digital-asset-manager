@@ -17,12 +17,14 @@
             <tr><th>ID</th><td>{{ asset_id }}</td></tr>
             <tr><th>Type</th><td><span class="badge">{{ asset_type }}</span></td></tr>
             <tr><th>Date</th><td>{{ created_at }}</td></tr>
-            {% match description %}
-            {% when Some with (desc) %}
-            <tr><th>Description</th><td>{{ desc }}</td></tr>
-            {% when None %}
-            {% endmatch %}
         </table>
+
+        <div class="description-wrapper">
+            <strong>Description</strong>
+            <div id="description">
+                {% include "description_fragment.html" %}
+            </div>
+        </div>
 
         <div class="rating-section">
             <strong>Rating</strong>

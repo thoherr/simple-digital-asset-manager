@@ -70,6 +70,10 @@ fn build_router(state: Arc<AppState>) -> Router {
             axum::routing::put(routes::set_rating),
         )
         .route(
+            "/api/asset/{id}/description",
+            axum::routing::put(routes::set_description),
+        )
+        .route(
             "/api/asset/{id}/preview",
             axum::routing::post(routes::generate_preview),
         )

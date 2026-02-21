@@ -262,6 +262,116 @@ fn update_tags_in_string(content: &str, tags_to_add: &[String], tags_to_remove: 
     content
 }
 
+/// Update the `dc:description` in an XMP file on disk.
+///
+/// Uses string-based find/replace to preserve all other XMP content byte-for-byte.
+/// Returns `Ok(true)` if the file was modified, `Ok(false)` if no change was needed.
+/// `description` of `None` or `Some("")` removes the `dc:description` block.
+pub fn update_description(path: &Path, description: Option<&str>) -> Result<bool> {
+    let content = std::fs::read_to_string(path)?;
+    let modified = update_description_in_string(&content, description);
+    if modified == content {
+        return Ok(false);
+    }
+    std::fs::write(path, &modified)?;
+    Ok(true)
+}
+
+/// Apply a description update to an XMP string, returning the modified string.
+fn update_description_in_string(content: &str, description: Option<&str>) -> String {
+    let desc_text = description.unwrap_or("");
+
+    // Match existing dc:description block with rdf:Alt
+    let desc_re = Regex::new(
+        r"(?s)([ \t]*)<dc:description>\s*<rdf:Alt>\s*<rdf:li[^>]*>[^<]*</rdf:li>\s*</rdf:Alt>\s*</dc:description>"
+    ).unwrap();
+
+    if let Some(caps) = desc_re.captures(content) {
+        let full_match = caps.get(0).unwrap();
+
+        if desc_text.is_empty() {
+            // Remove the entire dc:description block including the preceding newline
+            let start = full_match.start();
+            let end = full_match.end();
+            let trim_start = if content[..start].ends_with('\n') {
+                start - 1
+            } else {
+                start
+            };
+            return format!("{}{}", &content[..trim_start], &content[end..]);
+        }
+
+        // Replace inner rdf:li text
+        let li_re = Regex::new(r"(<rdf:li[^>]*>)[^<]*(</rdf:li>)").unwrap();
+        let replaced = li_re.replace(
+            full_match.as_str(),
+            format!("${{1}}{}{}", xml_escape(desc_text), "${2}"),
+        );
+        return format!(
+            "{}{}{}",
+            &content[..full_match.start()],
+            replaced,
+            &content[full_match.end()..]
+        );
+    }
+
+    // No existing dc:description — only proceed if we have text to add
+    if desc_text.is_empty() {
+        return content.to_string();
+    }
+
+    // Ensure xmlns:dc namespace is declared
+    let mut content = content.to_string();
+    if !content.contains("xmlns:dc") {
+        let ns_re = Regex::new(r#"(<rdf:Description\b)"#).unwrap();
+        if ns_re.is_match(&content) {
+            content = ns_re
+                .replace(
+                    &content,
+                    r#"${1} xmlns:dc="http://purl.org/dc/elements/1.1/""#,
+                )
+                .into_owned();
+        }
+    }
+
+    // Try to inject before </rdf:Description>
+    let close_re = Regex::new(r"([ \t]*)</rdf:Description>").unwrap();
+    if let Some(caps) = close_re.captures(&content) {
+        let m = caps.get(0).unwrap();
+        let desc_indent = caps.get(1).unwrap().as_str();
+        let indent = format!("{} ", desc_indent);
+        let alt_indent = format!("{}  ", desc_indent);
+        let li_indent = format!("{}   ", desc_indent);
+
+        let block = format!(
+            "{}<dc:description>\n{}<rdf:Alt>\n{}<rdf:li xml:lang=\"x-default\">{}</rdf:li>\n{}</rdf:Alt>\n{}</dc:description>\n",
+            indent, alt_indent, li_indent, xml_escape(desc_text), alt_indent, indent
+        );
+
+        return format!("{}{}{}", &content[..m.start()], block, &content[m.start()..]);
+    }
+
+    // Try to handle self-closing rdf:Description: convert /> to > and append
+    let self_close_re = Regex::new(r"(?s)([ \t]*)<rdf:Description\b([^>]*?)/>").unwrap();
+    if let Some(caps) = self_close_re.captures(&content) {
+        let m = caps.get(0).unwrap();
+        let desc_indent = caps.get(1).unwrap().as_str();
+        let attrs = caps.get(2).unwrap().as_str();
+        let indent = format!("{} ", desc_indent);
+        let alt_indent = format!("{}  ", desc_indent);
+        let li_indent = format!("{}   ", desc_indent);
+
+        let block = format!(
+            "{}<rdf:Description{}>\n{}<dc:description>\n{}<rdf:Alt>\n{}<rdf:li xml:lang=\"x-default\">{}</rdf:li>\n{}</rdf:Alt>\n{}</dc:description>\n{}</rdf:Description>",
+            desc_indent, attrs, indent, alt_indent, li_indent, xml_escape(desc_text), alt_indent, indent, desc_indent
+        );
+
+        return format!("{}{}{}", &content[..m.start()], block, &content[m.end()..]);
+    }
+
+    content
+}
+
 /// Escape special XML characters in a string.
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -1058,5 +1168,250 @@ mod tests {
             &[],
         );
         assert!(result.contains("<rdf:li>black &amp; white</rdf:li>"));
+    }
+
+    // ── update_description tests ──────────────────────────────
+
+    #[test]
+    fn update_description_existing_block() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="3">
+   <dc:description>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default">Old description</rdf:li>
+    </rdf:Alt>
+   </dc:description>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_description_in_string(xmp, Some("New description"));
+        assert!(result.contains("New description"));
+        assert!(!result.contains("Old description"));
+        assert!(result.contains(r#"xmp:Rating="3""#));
+    }
+
+    #[test]
+    fn update_description_clear_removes_block() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmp:Rating="4">
+   <dc:description>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default">Remove me</rdf:li>
+    </rdf:Alt>
+   </dc:description>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_description_in_string(xmp, None);
+        assert!(!result.contains("dc:description"));
+        assert!(!result.contains("Remove me"));
+        assert!(result.contains("xmp:Rating"));
+    }
+
+    #[test]
+    fn update_description_clear_with_empty_string() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+   <dc:description>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default">Remove me</rdf:li>
+    </rdf:Alt>
+   </dc:description>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_description_in_string(xmp, Some(""));
+        assert!(!result.contains("dc:description"));
+    }
+
+    #[test]
+    fn update_description_inject_when_missing() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="3">
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_description_in_string(xmp, Some("Injected description"));
+        assert!(result.contains("dc:description"));
+        assert!(result.contains("Injected description"));
+        assert!(result.contains("rdf:Alt"));
+        assert!(result.contains(r#"xml:lang="x-default""#));
+        assert!(result.contains("xmp:Rating"));
+    }
+
+    #[test]
+    fn update_description_inject_adds_xmlns_dc() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="3">
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_description_in_string(xmp, Some("New desc"));
+        assert!(result.contains("xmlns:dc"));
+        assert!(result.contains("New desc"));
+    }
+
+    #[test]
+    fn update_description_inject_self_closing() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="3"/>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_description_in_string(xmp, Some("Self-closing test"));
+        assert!(result.contains("xmlns:dc"));
+        assert!(result.contains("Self-closing test"));
+        assert!(result.contains("</rdf:Description>"));
+        assert!(!result.contains("/>"));
+    }
+
+    #[test]
+    fn update_description_preserves_other_content() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="4"
+    xmp:Label="Blue">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>landscape</rdf:li>
+     <rdf:li>sunset</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+   <dc:description>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default">A beautiful sunset</rdf:li>
+    </rdf:Alt>
+   </dc:description>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_description_in_string(xmp, Some("Updated sunset"));
+        assert!(result.contains(r#"xmp:Rating="4""#));
+        assert!(result.contains(r#"xmp:Label="Blue""#));
+        assert!(result.contains("<rdf:li>landscape</rdf:li>"));
+        assert!(result.contains("<rdf:li>sunset</rdf:li>"));
+        assert!(result.contains("Updated sunset"));
+        assert!(!result.contains("A beautiful sunset"));
+    }
+
+    #[test]
+    fn update_description_xml_escapes() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+   <dc:description>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default">old</rdf:li>
+    </rdf:Alt>
+   </dc:description>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_description_in_string(xmp, Some("black & white <nice>"));
+        assert!(result.contains("black &amp; white &lt;nice&gt;"));
+    }
+
+    #[test]
+    fn update_description_file_on_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.xmp");
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+   <dc:description>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default">Original</rdf:li>
+    </rdf:Alt>
+   </dc:description>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+        std::fs::write(&path, xmp).unwrap();
+
+        let modified = update_description(&path, Some("Updated")).unwrap();
+        assert!(modified);
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("Updated"));
+        assert!(!content.contains("Original"));
+    }
+
+    #[test]
+    fn update_description_no_change_returns_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.xmp");
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+   <dc:description>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default">Same text</rdf:li>
+    </rdf:Alt>
+   </dc:description>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+        std::fs::write(&path, xmp).unwrap();
+
+        let modified = update_description(&path, Some("Same text")).unwrap();
+        assert!(!modified);
+    }
+
+    #[test]
+    fn update_description_none_no_existing_is_noop() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="3">
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_description_in_string(xmp, None);
+        assert_eq!(result, xmp);
     }
 }

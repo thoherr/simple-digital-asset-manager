@@ -270,6 +270,13 @@ pub struct TagsFragment {
 }
 
 #[derive(Template)]
+#[template(path = "description_fragment.html")]
+pub struct DescriptionFragment {
+    pub asset_id: String,
+    pub description: Option<String>,
+}
+
+#[derive(Template)]
 #[template(path = "rating_fragment.html")]
 pub struct RatingFragment {
     pub asset_id: String,

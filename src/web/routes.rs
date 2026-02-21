@@ -12,8 +12,9 @@ use crate::query::parse_search_query;
 use crate::device_registry::DeviceRegistry;
 
 use super::templates::{
-    format_size, AssetCard, AssetPage, BrowsePage, FormatOption, PreviewFragment, RatingFragment,
-    ResultsPartial, StatsPage, TagOption, TagPageEntry, TagsFragment, TagsPage, VolumeOption,
+    format_size, AssetCard, AssetPage, BrowsePage, DescriptionFragment, FormatOption,
+    PreviewFragment, RatingFragment, ResultsPartial, StatsPage, TagOption, TagPageEntry,
+    TagsFragment, TagsPage, VolumeOption,
 };
 use super::AppState;
 
@@ -488,6 +489,40 @@ pub async fn set_rating(
         let tmpl = RatingFragment {
             asset_id,
             rating: new_rating,
+        };
+        Ok::<_, anyhow::Error>(tmpl.render()?)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct DescriptionForm {
+    pub description: Option<String>,
+}
+
+/// PUT /api/asset/{id}/description — set description, return description fragment.
+pub async fn set_description(
+    State(state): State<Arc<AppState>>,
+    Path(asset_id): Path<String>,
+    Form(form): Form<DescriptionForm>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let engine = state.query_engine();
+        // Treat empty string as "clear description"
+        let description = form.description.filter(|s| !s.trim().is_empty());
+        let new_desc = engine.set_description(&asset_id, description)?;
+        let tmpl = DescriptionFragment {
+            asset_id,
+            description: new_desc,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
