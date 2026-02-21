@@ -1096,6 +1096,34 @@ impl Catalog {
         Ok(result)
     }
 
+    /// List all recipes for a given asset (across all volumes).
+    /// Returns `(recipe_id, content_hash, variant_hash, relative_path, volume_id)` tuples.
+    pub fn list_recipes_for_asset(
+        &self,
+        asset_id: &str,
+    ) -> Result<Vec<(String, String, String, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT r.id, r.content_hash, r.variant_hash, r.relative_path, r.volume_id \
+             FROM recipes r \
+             JOIN variants v ON r.variant_hash = v.content_hash \
+             WHERE v.asset_id = ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![asset_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
     /// Update the relative_path for a file location (variant moved on disk).
     pub fn update_file_location_path(
         &self,

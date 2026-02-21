@@ -43,9 +43,9 @@ What already works well for this workflow:
 
 Addressed by `dam sync` (detects moved/new/missing files), `dam cleanup` (removes stale records and orphans), `dam update-location` (manual path correction), and search filters (`missing:true`, `orphan:true`, `stale:N`, `volume:none`).
 
-### 2. No Metadata Sync After External Edits — **PARTIALLY RESOLVED**
+### ~~2. No Metadata Sync After External Edits~~ — **RESOLVED**
 
-XMP write-back (v0.4.1–v0.4.3) enables DAM→CaptureOne sync for rating, tags, and description. `dam sync --apply` detects modified recipe files and updates their hashes. However, there is still no dedicated `dam refresh` command to re-extract metadata from changed XMP/COS files without a full re-import. Re-importing works but is heavier than needed for metadata-only changes.
+XMP write-back (v0.4.1–v0.4.3) enables DAM→CaptureOne sync for rating, tags, and description. `dam refresh` provides lightweight CaptureOne→DAM sync by re-reading metadata from changed sidecar/recipe files without a full re-import. Together with `dam sync --apply` (which detects moved/modified/missing files), bidirectional metadata sync is complete.
 
 ### ~~3. No Batch Operations in Web UI~~ — **RESOLVED**
 
@@ -112,7 +112,7 @@ Implemented as `dam update-location <asset-id> --from <old-path> --to <new-path>
 
 ### Phase 2: Metadata Sync & Re-import Improvements — **PARTIALLY COMPLETE**
 
-#### 2.1 `dam refresh` Command
+#### 2.1 `dam refresh` Command — **IMPLEMENTED**
 
 Re-read metadata from sidecar files (XMP, COS) without a full import:
 
@@ -122,8 +122,9 @@ dam refresh [PATHS...] [--volume <label>] [--asset <id>] [--dry-run]
 
 - Finds all recipe/sidecar files for matching assets
 - Compares current hash to stored hash
-- If changed: re-extract metadata (XMP keywords, rating, description) and update catalog
+- If changed: re-extract metadata (XMP keywords, rating, description, color label) and update catalog
 - `--dry-run` shows what would change without applying
+- Supports `--json`, `--log`, `--time` flags
 
 This is lighter than `sync` — it only touches metadata, not file locations.
 
@@ -232,7 +233,7 @@ Named, manually curated groups of assets (separate from tags). A "Project: Weddi
 | Multi-select & batch operations | Done | v0.4.3–v0.4.4 |
 | Color labels (CLI, web UI, XMP) | Done | v0.4.4 |
 | XMP write-back (color label) | Done | v0.4.4 |
-| `dam refresh` | Not started | — |
+| `dam refresh` | Done | v0.4.5 |
 | `dam import --dry-run` | Not started | — |
 | Web UI name editing | Not started | — |
 | Keyboard navigation | Not started | — |
@@ -248,6 +249,6 @@ The most impactful next steps are:
 
 1. **Keyboard navigation (3.3)** — Arrow keys + number keys for rating would match the speed of CaptureOne's review workflow. Now that batch ops and color labels are in place, this is the main remaining gap for a competitive culling experience.
 
-2. **`dam refresh` (2.1)** — Lightweight metadata re-sync from changed sidecars. Less urgent now that XMP write-back provides DAM→CaptureOne sync, but still needed for CaptureOne→DAM direction without full re-import.
+2. **`dam import --dry-run` (2.2)** — Useful safety net but lower priority than workflow speed improvements.
 
-3. **`dam import --dry-run` (2.2)** — Useful safety net but lower priority than workflow speed improvements.
+3. **Web UI name editing** — Minor gap in web UI completeness.

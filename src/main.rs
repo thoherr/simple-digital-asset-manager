@@ -195,6 +195,24 @@ enum Commands {
         remove_stale: bool,
     },
 
+    /// Re-read metadata from changed sidecar/recipe files
+    Refresh {
+        /// Paths to files or directories to scan
+        paths: Vec<String>,
+
+        /// Limit to a specific volume
+        #[arg(long, display_order = 10)]
+        volume: Option<String>,
+
+        /// Refresh only a specific asset
+        #[arg(long, display_order = 11)]
+        asset: Option<String>,
+
+        /// Preview what would change without applying
+        #[arg(long, display_order = 20)]
+        dry_run: bool,
+    },
+
     /// Remove stale file location records (files no longer on disk)
     Cleanup {
         /// Limit to a specific volume
@@ -1043,6 +1061,105 @@ fn main() {
                 }
                 if result.new_files > 0 {
                     println!("  Tip: run 'dam import' to import new files.");
+                }
+            }
+
+            Ok(())
+        }
+        Commands::Refresh { paths, volume, asset, dry_run } => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let config = CatalogConfig::load(&catalog_root)?;
+            let registry = DeviceRegistry::new(&catalog_root);
+
+            let canonical_paths: Vec<PathBuf> = paths
+                .iter()
+                .map(|p| {
+                    std::fs::canonicalize(p)
+                        .unwrap_or_else(|_| PathBuf::from(p))
+                })
+                .collect();
+
+            // Resolve volume
+            let resolved_volume = if let Some(label) = &volume {
+                Some(registry.resolve_volume(label)?)
+            } else if !canonical_paths.is_empty() {
+                Some(registry.find_volume_for_path(&canonical_paths[0])?)
+            } else {
+                None
+            };
+
+            // Resolve asset ID prefix
+            let resolved_asset_id = if let Some(prefix) = &asset {
+                let catalog = Catalog::open(&catalog_root)?;
+                match catalog.resolve_asset_id(prefix)? {
+                    Some(id) => Some(id),
+                    None => anyhow::bail!("No asset found matching '{prefix}'"),
+                }
+            } else {
+                None
+            };
+
+            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let result = if cli.log {
+                use dam::asset_service::RefreshStatus;
+                service.refresh(
+                    &canonical_paths,
+                    resolved_volume.as_ref(),
+                    resolved_asset_id.as_deref(),
+                    dry_run,
+                    &config.import.exclude,
+                    |path, status, elapsed| {
+                        let label = match status {
+                            RefreshStatus::Unchanged => "unchanged",
+                            RefreshStatus::Refreshed => "refreshed",
+                            RefreshStatus::Missing => "missing",
+                            RefreshStatus::Offline => "offline",
+                        };
+                        let name = path.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or_else(|| path.to_str().unwrap_or("?"));
+                        eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
+                    },
+                )?
+            } else {
+                service.refresh(
+                    &canonical_paths,
+                    resolved_volume.as_ref(),
+                    resolved_asset_id.as_deref(),
+                    dry_run,
+                    &config.import.exclude,
+                    |_, _, _| {},
+                )?
+            };
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                for err in &result.errors {
+                    eprintln!("  {err}");
+                }
+
+                if dry_run {
+                    eprint!("Dry run — ");
+                }
+
+                let mut parts: Vec<String> = Vec::new();
+                if result.refreshed > 0 {
+                    parts.push(format!("{} refreshed", result.refreshed));
+                }
+                if result.unchanged > 0 {
+                    parts.push(format!("{} unchanged", result.unchanged));
+                }
+                if result.missing > 0 {
+                    parts.push(format!("{} missing", result.missing));
+                }
+                if result.skipped > 0 {
+                    parts.push(format!("{} skipped (offline)", result.skipped));
+                }
+                if parts.is_empty() {
+                    println!("Refresh: no recipes to check");
+                } else {
+                    println!("Refresh complete: {}", parts.join(", "));
                 }
             }
 

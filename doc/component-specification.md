@@ -155,6 +155,7 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - `relocate(asset_id, target_volume)` — move all variants of an asset to another volume. Supports `--remove-source` (move instead of copy) and `--dry-run`.
 - `find_duplicates() -> Vec<DuplicateGroup>` — find variants with same hash on multiple locations.
 - `verify(paths, volume, asset) -> VerifyResult` — re-hash files on disk and compare against stored content hashes. Reports `Ok`, `Mismatch`, `Modified` (recipe with changed hash), `Missing`, `Skipped`, or `Untracked`. Modified recipes are not treated as failures — their stored hash is updated. Supports path mode (verify specific files/dirs), catalog mode (verify all locations), `--volume`, `--asset`, and `--include`/`--skip` filters.
+- `refresh(paths, volume, asset_id, dry_run) -> RefreshResult` — re-read metadata from changed recipe/sidecar files. Iterates recipe file locations, compares on-disk hash to stored hash, and for changed files re-extracts XMP metadata and updates catalog + sidecar. Reports `Unchanged`, `Refreshed`, `Missing`, or `Offline`. Lighter than `sync` — only touches metadata, never file locations.
 
 ### 6. Query Engine
 
@@ -247,7 +248,7 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 
 **Global flags**:
 - `--json` — output machine-readable JSON
-- `-l` / `--log` — log individual file progress (import, verify, sync, cleanup, generate-previews)
+- `-l` / `--log` — log individual file progress (import, verify, sync, refresh, cleanup, generate-previews)
 - `-d` / `--debug` — show stderr output from external tools (ffmpeg, dcraw, dcraw_emu)
 - `-t` / `--time` — show elapsed time after command execution
 
@@ -265,6 +266,7 @@ dam group <variant-hashes...>                     # group variants into one asse
 dam relocate <id> <vol> [--remove-source] [--dry-run]  # copy/move asset
 dam verify [PATHS...] [--volume V] [--asset ID] [--include G] [--skip G]  # check file integrity
 dam sync <PATHS...> [--volume V] [--apply] [--remove-stale]  # reconcile catalog with disk
+dam refresh [PATHS...] [--volume V] [--asset ID] [--dry-run]  # re-read metadata from changed sidecars
 dam update-location <id> --from <old> --to <new> [--volume V]  # update path after manual move
 dam cleanup [--volume V] [--list] [--apply]       # remove stale locations, orphaned assets, and previews
 dam duplicates [--format F]                       # find duplicates

@@ -275,6 +275,24 @@ pub struct CleanupResult {
     pub errors: Vec<String>,
 }
 
+/// Status of a single recipe during refresh.
+pub enum RefreshStatus {
+    Unchanged,
+    Refreshed,
+    Missing,
+    Offline,
+}
+
+/// Result of a refresh operation.
+#[derive(Debug, serde::Serialize)]
+pub struct RefreshResult {
+    pub unchanged: usize,
+    pub refreshed: usize,
+    pub missing: usize,
+    pub skipped: usize,
+    pub errors: Vec<String>,
+}
+
 /// High-level operations that orchestrate the other components.
 pub struct AssetService {
     catalog_root: PathBuf,
@@ -2366,6 +2384,158 @@ impl AssetService {
                         }
                     }
                 }
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Re-read metadata from changed recipe/sidecar files without scanning media files.
+    pub fn refresh(
+        &self,
+        paths: &[PathBuf],
+        volume: Option<&Volume>,
+        asset_id: Option<&str>,
+        dry_run: bool,
+        exclude_patterns: &[String],
+        on_file: impl Fn(&Path, RefreshStatus, Duration),
+    ) -> Result<RefreshResult> {
+        let content_store = ContentStore::new(&self.catalog_root);
+        let metadata_store = MetadataStore::new(&self.catalog_root);
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let registry = DeviceRegistry::new(&self.catalog_root);
+
+        let mut result = RefreshResult {
+            unchanged: 0,
+            refreshed: 0,
+            missing: 0,
+            skipped: 0,
+            errors: Vec::new(),
+        };
+
+        // Collect recipe locations to check: (recipe_id, content_hash, variant_hash, relative_path, volume_id_str)
+        let recipe_entries: Vec<(String, String, String, String, String)>;
+
+        if let Some(aid) = asset_id {
+            // Asset mode: all recipes for a specific asset
+            recipe_entries = catalog.list_recipes_for_asset(aid)?;
+        } else if !paths.is_empty() {
+            // Path mode: scan files under given paths, filter to recipes, look up each
+            let files = resolve_files(paths, exclude_patterns);
+            let filter = FileTypeFilter::default();
+            let vol = volume.ok_or_else(|| anyhow::anyhow!("No volume resolved for path mode"))?;
+            let vol_id = vol.id.to_string();
+
+            let mut entries = Vec::new();
+            for file_path in &files {
+                let ext = file_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+                if !filter.is_recipe(ext) {
+                    continue;
+                }
+                let relative_path = match file_path.strip_prefix(&vol.mount_point) {
+                    Ok(rp) => rp.to_string_lossy().to_string(),
+                    Err(_) => continue,
+                };
+                if let Some((recipe_id, content_hash, variant_hash)) =
+                    catalog.find_recipe_by_volume_and_path(&vol_id, &relative_path)?
+                {
+                    entries.push((recipe_id, content_hash, variant_hash, relative_path, vol_id.clone()));
+                }
+            }
+            recipe_entries = entries;
+        } else if let Some(vol) = volume {
+            // Volume mode: all recipes on the specified volume
+            let vol_id = vol.id.to_string();
+            recipe_entries = catalog
+                .list_recipes_for_volume_under_prefix(&vol_id, "")?
+                .into_iter()
+                .map(|(rid, ch, vh, rp)| (rid, ch, vh, rp, vol_id.clone()))
+                .collect();
+        } else {
+            // All mode: iterate all online volumes
+            let volumes = registry.list()?;
+            let mut entries = Vec::new();
+            for vol in &volumes {
+                if !vol.is_online {
+                    continue;
+                }
+                let vol_id = vol.id.to_string();
+                for (rid, ch, vh, rp) in
+                    catalog.list_recipes_for_volume_under_prefix(&vol_id, "")?
+                {
+                    entries.push((rid, ch, vh, rp, vol_id.clone()));
+                }
+            }
+            recipe_entries = entries;
+        }
+
+        // Resolve volumes for lookup
+        let all_volumes = registry.list()?;
+
+        // Process each recipe
+        for (recipe_id, stored_hash, variant_hash, relative_path, volume_id_str) in &recipe_entries {
+            let file_start = Instant::now();
+
+            // Find the volume
+            let vol = match all_volumes.iter().find(|v| v.id.to_string() == *volume_id_str) {
+                Some(v) => v,
+                None => {
+                    result.skipped += 1;
+                    on_file(Path::new(&relative_path), RefreshStatus::Offline, file_start.elapsed());
+                    continue;
+                }
+            };
+
+            if !vol.is_online {
+                result.skipped += 1;
+                on_file(
+                    &vol.mount_point.join(relative_path),
+                    RefreshStatus::Offline,
+                    file_start.elapsed(),
+                );
+                continue;
+            }
+
+            let full_path = vol.mount_point.join(relative_path);
+
+            if !full_path.exists() {
+                result.missing += 1;
+                on_file(&full_path, RefreshStatus::Missing, file_start.elapsed());
+                continue;
+            }
+
+            let new_hash = match content_store.hash_file(&full_path) {
+                Ok(h) => h,
+                Err(e) => {
+                    result.errors.push(format!("{}: {}", full_path.display(), e));
+                    continue;
+                }
+            };
+
+            if new_hash == *stored_hash {
+                result.unchanged += 1;
+                on_file(&full_path, RefreshStatus::Unchanged, file_start.elapsed());
+            } else {
+                if !dry_run {
+                    if let Err(e) = self.apply_modified_recipe(
+                        &catalog,
+                        &metadata_store,
+                        recipe_id,
+                        &new_hash,
+                        variant_hash,
+                        vol,
+                        &full_path,
+                        relative_path,
+                    ) {
+                        result.errors.push(format!("{}: {}", full_path.display(), e));
+                        continue;
+                    }
+                }
+                result.refreshed += 1;
+                on_file(&full_path, RefreshStatus::Refreshed, file_start.elapsed());
             }
         }
 
