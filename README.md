@@ -8,7 +8,7 @@ A command-line digital asset manager built in Rust, designed for large collectio
 - **Multi-volume support** — manage assets across external drives, NAS, and offline storage (terabytes scale)
 - **Variant grouping** — automatically groups related files (RAW + JPEG + XMP) into a single asset by filename stem
 - **Recipe management** — tracks processing sidecars from CaptureOne, Lightroom/XMP, RawTherapee, DxO, and ON1
-- **EXIF/XMP extraction** — camera metadata, keywords, ratings, and descriptions extracted at import
+- **EXIF/XMP extraction** — camera metadata, keywords, ratings, color labels, and descriptions extracted at import
 - **Preview generation** — thumbnails for images (via `image` crate), RAW files (via dcraw/LibRaw), videos (via ffmpeg), and info cards for audio/documents
 - **Integrity verification** — detect bit rot and corruption by re-hashing files against stored checksums
 - **Asset relocation** — copy or move assets between volumes with integrity verification
@@ -47,6 +47,7 @@ dam serve
 | `dam import <paths...>` | Import files with auto-grouping and metadata extraction |
 | `dam search <query>` | Search by text, tags, type, format, rating, camera, location health, and more |
 | `dam show <id>` | Display full asset details |
+| `dam edit <id> [flags]` | Edit name, description, rating, color label |
 | `dam tag <id> <tags...>` | Add or remove tags |
 | `dam group <hashes...>` | Manually group variants into one asset |
 | `dam duplicates` | Find files with identical content across locations |
@@ -71,6 +72,7 @@ dam serve
 | `tag:` | `tag:landscape` | Tag name |
 | `format:` | `format:jpg` | File format |
 | `rating:` | `rating:3+` or `rating:5` | Minimum or exact rating |
+| `label:` | `label:Red` | Color label (Red, Orange, Yellow, Green, Blue, Pink, Purple) |
 | `camera:` | `camera:fuji` | Camera model (partial match) |
 | `lens:` | `lens:56mm` | Lens model (partial match) |
 | `iso:` | `iso:100-800` | ISO range, exact, or minimum |

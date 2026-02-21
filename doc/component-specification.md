@@ -14,6 +14,7 @@ The central entity. Represents a logical asset (e.g. "photo of sunset at beach, 
 | tags | Vec<String> | User-defined tags |
 | description | String | Free-text description (optional) |
 | rating | Option<u8> | User/XMP rating 1–5, or unset |
+| color_label | Option<String> | Color label: Red, Orange, Yellow, Green, Blue, Pink, Purple, or unset |
 
 An asset groups one or more **variants**.
 
@@ -160,7 +161,7 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 **Responsibility**: search and filter assets via the SQLite catalog.
 
 **Query capabilities**:
-- Filter by: tags, date range, asset type, format, rating (`rating:N` exact, `rating:N+` minimum), camera model, lens, ISO, focal length, aperture, dimensions, volume, online/offline status
+- Filter by: tags, date range, asset type, format, rating (`rating:N` exact, `rating:N+` minimum), color label (`label:Red`), camera model, lens, ISO, focal length, aperture, dimensions, volume, online/offline status
 - Location health filters: `orphan:true` (no file locations), `missing:true` (files missing from disk), `stale:N` (not verified in N days), `volume:none` (no locations on online volumes)
 - Full-text search over name, filename, description, and source metadata
 - Sort by: date, name, file size, import date
@@ -188,7 +189,7 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - **Global `--json` flag**: available on all commands. Outputs structured JSON to stdout; human-readable messages go to stderr. All result types derive `serde::Serialize`.
 - **`--format` flag** (on `search` and `duplicates`): presets (`ids`, `short`, `full`, `json`) or custom templates (`'{id}\t{name}\t{tags}'`). When `--format` is explicit, result counts are suppressed.
 - **`-q`/`--quiet`** (on `search`): shorthand for `--format=ids`, outputting one UUID per line for scripting.
-- **Template placeholders**: `{id}`, `{short_id}`, `{name}`, `{filename}`, `{type}`, `{format}`, `{date}`, `{tags}`, `{description}`, `{hash}`. Templates support `\t` and `\n` escape sequences.
+- **Template placeholders**: `{id}`, `{short_id}`, `{name}`, `{filename}`, `{type}`, `{format}`, `{date}`, `{tags}`, `{description}`, `{label}`, `{hash}`. Templates support `\t` and `\n` escape sequences.
 
 ### 9. Stats
 
@@ -214,18 +215,24 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 **Module**: `src/web/` — axum server with askama templates and htmx interactivity.
 
 **Architecture**:
-- `AppState` holds the catalog root path. Each request opens a fresh `Catalog` connection via `tokio::task::spawn_blocking` (since `rusqlite::Connection` is not `Send`).
+- `AppState` holds the catalog root path and preview config. Schema migrations run once at server startup via `Catalog::open()`. Each request opens a fresh connection via `Catalog::open_fast()` (skips migrations) through `tokio::task::spawn_blocking` (since `rusqlite::Connection` is not `Send`).
 - Static assets (htmx.min.js, style.css) are embedded at compile time via `include_bytes!`/`include_str!`.
 - Preview images are served directly from the catalog's `previews/` directory via `tower-http::ServeDir`.
 
 **Routes**:
-- `GET /` — browse page with search, filter dropdowns (type, tag, format, volume, rating), sort, pagination, thumbnail grid with star ratings
-- `GET /asset/{id}` — asset detail with preview, metadata, editable tags, inline editable star rating, variants, recipes
+- `GET /` — browse page with search, filter dropdowns (type, tag, format, volume, rating), color label filter dots, sort, pagination, thumbnail grid with star ratings and color label dots. Batch operations toolbar with tag, rating, and label editing.
+- `GET /asset/{id}` — asset detail with preview, metadata, editable tags, inline editable star rating, inline color label picker (7 color dots), variants, recipes
 - `GET /tags` — tags page with sortable columns (name/count), live text filter, multi-column layout
 - `GET /api/search` — results partial (htmx target) with pagination
 - `POST /api/asset/{id}/tags` — add tags, returns tags fragment
 - `DELETE /api/asset/{id}/tags/{tag}` — remove tag, returns tags fragment
 - `PUT /api/asset/{id}/rating` — set/clear rating (form: `rating=N`), returns rating fragment
+- `PUT /api/asset/{id}/description` — set/clear description, returns description fragment
+- `PUT /api/asset/{id}/label` — set/clear color label (form: `label=Red`), returns label fragment
+- `POST /api/asset/{id}/preview` — generate preview on demand
+- `PUT /api/batch/rating` — batch set/clear rating for multiple assets
+- `POST /api/batch/tags` — batch add/remove tags for multiple assets
+- `PUT /api/batch/label` — batch set/clear color label for multiple assets
 - `GET /api/tags` — all tags as JSON (for autocomplete)
 - `GET /api/stats` — catalog stats as JSON
 
@@ -250,9 +257,10 @@ dam init                                          # initialize a new catalog
 dam volume add <label> <path>                     # register a volume
 dam volume list                                   # list volumes and status
 dam import <paths...> [--volume V] [--include G] [--skip G]  # import files
-dam search <query> [--format F] [-q]              # search assets
+dam search <query> [--format F] [-q]              # search assets (label:Red filter)
 dam show <asset-id>                               # show asset details
 dam tag <asset-id> [--remove] <tags...>           # add/remove tags
+dam edit <id> [--name N] [--description T] [--rating R] [--label C] [--clear-*]  # edit metadata
 dam group <variant-hashes...>                     # group variants into one asset
 dam relocate <id> <vol> [--remove-source] [--dry-run]  # copy/move asset
 dam verify [PATHS...] [--volume V] [--asset ID] [--include G] [--skip G]  # check file integrity

@@ -27,13 +27,15 @@ What already works well for this workflow:
 - **Location-based recipe identity** — Re-importing a modified COS/XMP file updates its hash in place, no duplicates
 - **XMP metadata extraction** — Keywords, rating, description, label, creator, rights are all captured
 - **Re-import semantics** — Changed XMP data overwrites rating/description and merges keywords
-- **XMP write-back** — Rating, tag, and description changes are written back to `.xmp` files on disk, enabling bidirectional sync with CaptureOne (v0.4.1–v0.4.3)
+- **XMP write-back** — Rating, tag, description, and color label changes are written back to `.xmp` files on disk, enabling bidirectional sync with CaptureOne (v0.4.1–v0.4.4)
 - **Multi-location tracking** — An asset can exist on multiple volumes simultaneously
 - **Content-addressed integrity** — SHA-256 hashes detect corruption and enable deduplication
 - **File type group filtering** — `--include captureone` / `--skip captureone` controls recipe import
 - **External change recovery** — `dam sync` detects moved/modified/missing files, `dam cleanup` removes stale records
-- **CLI metadata editing** — `dam edit` for name, description, rating; `dam tag` for tags
-- **Web UI inline editing** — Star rating, tags, and description editable on asset detail page
+- **CLI metadata editing** — `dam edit` for name, description, rating, color label; `dam tag` for tags
+- **Web UI inline editing** — Star rating, tags, description, and color label editable on asset detail page
+- **Batch operations** — Multi-select with checkbox, batch tag/untag, batch rating, batch color label via fixed toolbar (v0.4.3–v0.4.4)
+- **Color labels** — First-class 7-color label support (Red, Orange, Yellow, Green, Blue, Pink, Purple) with XMP `xmp:Label` extraction, CLI editing, web UI color dot picker, browse filtering, and XMP write-back (v0.4.4)
 
 ## Identified Gaps
 
@@ -45,14 +47,9 @@ Addressed by `dam sync` (detects moved/new/missing files), `dam cleanup` (remove
 
 XMP write-back (v0.4.1–v0.4.3) enables DAM→CaptureOne sync for rating, tags, and description. `dam sync --apply` detects modified recipe files and updates their hashes. However, there is still no dedicated `dam refresh` command to re-extract metadata from changed XMP/COS files without a full re-import. Re-importing works but is heavier than needed for metadata-only changes.
 
-### 3. No Batch Operations in Web UI
+### ~~3. No Batch Operations in Web UI~~ — **RESOLVED**
 
-**The problem:** The web UI supports editing tags and rating for one asset at a time. A photographer culling 500 images needs to:
-- Apply the same tag to many assets at once
-- Rate multiple assets in quick succession
-- Select a set of assets for bulk operations
-
-**Impact:** The web UI is useful for browsing but not for the review/cull phase of a photo workflow.
+Addressed by multi-select checkboxes on browse cards, a fixed bottom toolbar with batch tag (add/remove), batch rating (set/clear), and batch color label (set/clear). Selection state survives pagination/sort. Keyboard shortcuts: Cmd/Ctrl+A to select all on page, Escape to clear. Backend: `POST /api/batch/tags`, `PUT /api/batch/rating`, `PUT /api/batch/label`. Implemented in v0.4.3–v0.4.4.
 
 ### ~~4. Limited Metadata Editing~~ — **RESOLVED**
 
@@ -144,23 +141,26 @@ Preview what an import would do:
 
 No files written, no catalog changes.
 
-#### 2.3 `dam edit` Command — **IMPLEMENTED** (v0.3.1)
+#### 2.3 `dam edit` Command — **IMPLEMENTED** (v0.3.1, extended v0.4.4)
 
-Implemented as `dam edit <asset-id> [--name <name>] [--description <text>] [--rating <1-5>] [--clear-name] [--clear-description] [--clear-rating]`. Supports `--json`. Rating and description changes trigger XMP write-back.
+Implemented as `dam edit <asset-id> [--name <name>] [--description <text>] [--rating <1-5>] [--label <color>] [--clear-name] [--clear-description] [--clear-rating] [--clear-label]`. Supports `--json`. Rating, description, and color label changes trigger XMP write-back.
 
 ---
 
 ### Phase 3: Web UI Workflow Improvements — **PARTIALLY COMPLETE**
 
-#### 3.1 Multi-Select & Batch Operations
+#### 3.1 Multi-Select & Batch Operations — **IMPLEMENTED** (v0.4.3–v0.4.4)
 
-- **Checkbox selection** on browse cards (click to select, shift-click for range)
-- **Selection toolbar** appearing when assets are selected:
-  - "Tag selected" — add/remove tags on all selected assets
-  - "Rate selected" — set rating on all selected assets
-  - "Clear selection"
-- **Select all on page** / **Select all matching query**
-- Backend: batch API endpoints (`POST /api/batch/tags`, `PUT /api/batch/rating`)
+- **Checkbox selection** on browse cards (hover-visible, always-visible when any selected)
+- **Fixed bottom toolbar** appearing when assets are selected:
+  - Tag input with "+ Tag" / "− Tag" buttons
+  - 5 rating stars with clear (×)
+  - 7 color label dots with clear (×)
+  - "Select page" / "Clear" buttons, selection count
+- **Keyboard shortcuts**: Cmd/Ctrl+A selects all on page, Escape clears selection
+- Selection state survives htmx pagination/sort swaps
+- Backend: `POST /api/batch/tags`, `PUT /api/batch/rating`, `PUT /api/batch/label`
+- Each individual operation triggers XMP write-back
 
 #### 3.2 Description & Name Editing — **PARTIALLY IMPLEMENTED** (v0.4.3)
 
@@ -198,9 +198,9 @@ dam watch [PATHS...] [--volume <label>]
 
 File system watcher (via `notify` crate) that auto-imports/syncs when files change. Useful for monitoring a CaptureOne session's output folder during an active editing session.
 
-#### ~~4.2 XMP Write-Back~~ — **IMPLEMENTED** (v0.4.1–v0.4.3)
+#### ~~4.2 XMP Write-Back~~ — **IMPLEMENTED** (v0.4.1–v0.4.4)
 
-Rating (v0.4.1), tags (v0.4.2), and description (v0.4.3) are written back to `.xmp` recipe files on disk whenever changed via CLI or web UI. Uses string-based find/replace to preserve XMP structure. Re-hashes files and updates catalog after modification. Enables bidirectional sync with CaptureOne.
+Rating (v0.4.1), tags (v0.4.2), description (v0.4.3), and color label (v0.4.4) are written back to `.xmp` recipe files on disk whenever changed via CLI or web UI. Uses string-based find/replace to preserve XMP structure. Re-hashes files and updates catalog after modification. Enables bidirectional sync with CaptureOne.
 
 #### 4.3 Export Command
 
@@ -229,10 +229,12 @@ Named, manually curated groups of assets (separate from tags). A "Project: Weddi
 | XMP write-back (tags) | Done | v0.4.2 |
 | XMP write-back (description) | Done | v0.4.3 |
 | Web UI description editing | Done | v0.4.3 |
+| Multi-select & batch operations | Done | v0.4.3–v0.4.4 |
+| Color labels (CLI, web UI, XMP) | Done | v0.4.4 |
+| XMP write-back (color label) | Done | v0.4.4 |
 | `dam refresh` | Not started | — |
 | `dam import --dry-run` | Not started | — |
 | Web UI name editing | Not started | — |
-| Multi-select & batch operations | Not started | — |
 | Keyboard navigation | Not started | — |
 | Saved searches / collections | Not started | — |
 | Watch mode | Not started | — |
@@ -240,14 +242,12 @@ Named, manually curated groups of assets (separate from tags). A "Project: Weddi
 
 ## Priority Recommendation
 
-**Phase 1** is complete. **Phase 4.2** (XMP write-back) was pulled forward and is complete, enabling bidirectional CaptureOne sync.
+**Phase 1** is complete. **Phase 4.2** (XMP write-back) was pulled forward and is complete for all metadata fields (rating, tags, description, color label). **Phase 3.1** (multi-select & batch operations) and **Phase 3.2** (description editing) are complete. Color labels (v0.4.4) round out the metadata feature set with CaptureOne-compatible 7-color support.
 
 The most impactful next steps are:
 
-1. **Multi-select & batch operations (3.1)** — The single biggest gap for the photo workflow. Rating and tagging 500 images one at a time makes the web UI impractical for culling. Checkbox selection + batch tag/rate would make DAM a viable review tool.
+1. **Keyboard navigation (3.3)** — Arrow keys + number keys for rating would match the speed of CaptureOne's review workflow. Now that batch ops and color labels are in place, this is the main remaining gap for a competitive culling experience.
 
-2. **Keyboard navigation (3.3)** — Combined with batch ops, arrow keys + number keys for rating would match the speed of CaptureOne's review workflow.
+2. **`dam refresh` (2.1)** — Lightweight metadata re-sync from changed sidecars. Less urgent now that XMP write-back provides DAM→CaptureOne sync, but still needed for CaptureOne→DAM direction without full re-import.
 
-3. **`dam refresh` (2.1)** — Lightweight metadata re-sync from changed sidecars. Less urgent now that XMP write-back provides DAM→CaptureOne sync, but still needed for CaptureOne→DAM direction without full re-import.
-
-4. **`dam import --dry-run` (2.2)** — Useful safety net but lower priority than workflow speed improvements.
+3. **`dam import --dry-run` (2.2)** — Useful safety net but lower priority than workflow speed improvements.
