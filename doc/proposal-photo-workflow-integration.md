@@ -1,4 +1,4 @@
-# Proposal: Photo Workflow Tool Integration (v0.3.0+)
+# Proposal: Photo Workflow Tool Integration
 
 ## Motivation
 
@@ -13,7 +13,7 @@ A typical CaptureOne session workflow looks like this:
 5. **Select** — Chosen images moved to `Selects/` folder within the CaptureOne session
 6. **Process & export** — Final edits applied, exports generated
 
-DAM currently handles steps 2–3 well. Steps 4–6 create problems: files move without DAM knowing, metadata changes go unnoticed, and stale location records accumulate silently.
+DAM currently handles steps 2–4 well. Steps 5–6 (file movement, batch operations) still create friction, though DAM now has tools (`sync`, `cleanup`) to recover from external file moves.
 
 This proposal identifies the gaps and suggests features to close them — not just for CaptureOne, but for any external tool that operates on the same files.
 
@@ -27,30 +27,23 @@ What already works well for this workflow:
 - **Location-based recipe identity** — Re-importing a modified COS/XMP file updates its hash in place, no duplicates
 - **XMP metadata extraction** — Keywords, rating, description, label, creator, rights are all captured
 - **Re-import semantics** — Changed XMP data overwrites rating/description and merges keywords
+- **XMP write-back** — Rating, tag, and description changes are written back to `.xmp` files on disk, enabling bidirectional sync with CaptureOne (v0.4.1–v0.4.3)
 - **Multi-location tracking** — An asset can exist on multiple volumes simultaneously
 - **Content-addressed integrity** — SHA-256 hashes detect corruption and enable deduplication
 - **File type group filtering** — `--include captureone` / `--skip captureone` controls recipe import
+- **External change recovery** — `dam sync` detects moved/modified/missing files, `dam cleanup` removes stale records
+- **CLI metadata editing** — `dam edit` for name, description, rating; `dam tag` for tags
+- **Web UI inline editing** — Star rating, tags, and description editable on asset detail page
 
 ## Identified Gaps
 
-### 1. External File Movement Goes Undetected
+### ~~1. External File Movement Goes Undetected~~ — **RESOLVED**
 
-**The problem:** When CaptureOne moves a file from `Capture/` to `Selects/`, DAM still records the old path. On verify, the old location shows as `Missing`, but:
-- The missing location record is never cleaned up
-- The file at its new location is unknown to DAM
-- Re-importing the new location adds it, but the stale old location persists
-- There is no way to find "all assets with missing locations" via search
+Addressed by `dam sync` (detects moved/new/missing files), `dam cleanup` (removes stale records and orphans), `dam update-location` (manual path correction), and search filters (`missing:true`, `orphan:true`, `stale:N`, `volume:none`).
 
-**Impact:** Over time, the catalog accumulates stale location records, making it unreliable for answering "where is this file?"
+### 2. No Metadata Sync After External Edits — **PARTIALLY RESOLVED**
 
-### 2. No Metadata Sync After External Edits
-
-**The problem:** After the initial import, CaptureOne edits (refined keywords, changed ratings, new adjustments) are invisible to DAM unless the user manually re-imports. There is no mechanism to:
-- Detect that XMP/COS files have changed since last import
-- Selectively re-apply changed metadata without a full re-import
-- See which assets have pending external changes
-
-**Impact:** DAM metadata drifts out of sync with the "source of truth" in CaptureOne sidecars.
+XMP write-back (v0.4.1–v0.4.3) enables DAM→CaptureOne sync for rating, tags, and description. `dam sync --apply` detects modified recipe files and updates their hashes. However, there is still no dedicated `dam refresh` command to re-extract metadata from changed XMP/COS files without a full re-import. Re-importing works but is heavier than needed for metadata-only changes.
 
 ### 3. No Batch Operations in Web UI
 
@@ -61,9 +54,9 @@ What already works well for this workflow:
 
 **Impact:** The web UI is useful for browsing but not for the review/cull phase of a photo workflow.
 
-### 4. Limited Metadata Editing
+### ~~4. Limited Metadata Editing~~ — **RESOLVED**
 
-**The problem:** Description and name cannot be edited via the web UI or CLI (only set during XMP import). Source metadata is read-only.
+Name, description, and rating are editable via CLI (`dam edit`). Rating, tags, and description are editable inline in the web UI. Changes are written back to XMP sidecar files on disk. Name editing in the web UI is the only remaining gap.
 
 ### 5. No Saved Searches or Collections
 
@@ -77,9 +70,9 @@ What already works well for this workflow:
 
 ## Proposed Features
 
-### Phase 1: External Change Detection & Location Management
+### Phase 1: External Change Detection & Location Management — **COMPLETE**
 
-These features address the core workflow break: files moving outside DAM.
+All features in this phase are implemented.
 
 #### 1.1 `dam sync` Command — **IMPLEMENTED** (v0.3.1)
 
@@ -120,7 +113,7 @@ Implemented as `dam update-location <asset-id> --from <old-path> --to <new-path>
 
 ---
 
-### Phase 2: Metadata Sync & Re-import Improvements
+### Phase 2: Metadata Sync & Re-import Improvements — **PARTIALLY COMPLETE**
 
 #### 2.1 `dam refresh` Command
 
@@ -151,19 +144,13 @@ Preview what an import would do:
 
 No files written, no catalog changes.
 
-#### 2.3 `dam edit` Command
+#### 2.3 `dam edit` Command — **IMPLEMENTED** (v0.3.1)
 
-Edit asset metadata from the CLI:
-
-```
-dam edit <asset-id> [--name <name>] [--description <text>] [--rating <1-5|clear>]
-```
-
-Currently, name and description can only be set via XMP import. This gives direct control.
+Implemented as `dam edit <asset-id> [--name <name>] [--description <text>] [--rating <1-5>] [--clear-name] [--clear-description] [--clear-rating]`. Supports `--json`. Rating and description changes trigger XMP write-back.
 
 ---
 
-### Phase 3: Web UI Workflow Improvements
+### Phase 3: Web UI Workflow Improvements — **PARTIALLY COMPLETE**
 
 #### 3.1 Multi-Select & Batch Operations
 
@@ -175,10 +162,10 @@ Currently, name and description can only be set via XMP import. This gives direc
 - **Select all on page** / **Select all matching query**
 - Backend: batch API endpoints (`POST /api/batch/tags`, `PUT /api/batch/rating`)
 
-#### 3.2 Description & Name Editing
+#### 3.2 Description & Name Editing — **PARTIALLY IMPLEMENTED** (v0.4.3)
 
-- Inline-editable description field on asset detail page (like the existing star rating)
-- Inline-editable asset name
+- ~~Inline-editable description field on asset detail page~~ — **done** (pencil icon, textarea, Save/Cancel, `PUT /api/asset/{id}/description`, XMP write-back)
+- Inline-editable asset name — not yet implemented in web UI (editable via CLI `dam edit --name`)
 
 #### 3.3 Keyboard Navigation
 
@@ -211,11 +198,9 @@ dam watch [PATHS...] [--volume <label>]
 
 File system watcher (via `notify` crate) that auto-imports/syncs when files change. Useful for monitoring a CaptureOne session's output folder during an active editing session.
 
-#### 4.2 XMP Write-Back
+#### ~~4.2 XMP Write-Back~~ — **IMPLEMENTED** (v0.4.1–v0.4.3)
 
-When metadata is edited in DAM (tags, rating, description), write changes back to XMP sidecar files so CaptureOne picks them up. This creates true bidirectional sync.
-
-Requires careful conflict resolution — DAM and CaptureOne could both modify the same XMP file.
+Rating (v0.4.1), tags (v0.4.2), and description (v0.4.3) are written back to `.xmp` recipe files on disk whenever changed via CLI or web UI. Uses string-based find/replace to preserve XMP structure. Re-hashes files and updates catalog after modification. Enables bidirectional sync with CaptureOne.
 
 #### 4.3 Export Command
 
@@ -231,19 +216,38 @@ Named, manually curated groups of assets (separate from tags). A "Project: Weddi
 
 ---
 
+## Implementation Status Summary
+
+| Feature | Status | Version |
+|---------|--------|---------|
+| `dam sync` | Done | v0.3.1 |
+| `dam cleanup` | Done | v0.3.1, v0.3.4 |
+| Search location health filters | Done | v0.3.3 |
+| `dam update-location` | Done | v0.3.x |
+| `dam edit` (CLI) | Done | v0.3.1 |
+| XMP write-back (rating) | Done | v0.4.1 |
+| XMP write-back (tags) | Done | v0.4.2 |
+| XMP write-back (description) | Done | v0.4.3 |
+| Web UI description editing | Done | v0.4.3 |
+| `dam refresh` | Not started | — |
+| `dam import --dry-run` | Not started | — |
+| Web UI name editing | Not started | — |
+| Multi-select & batch operations | Not started | — |
+| Keyboard navigation | Not started | — |
+| Saved searches / collections | Not started | — |
+| Watch mode | Not started | — |
+| Export command | Not started | — |
+
 ## Priority Recommendation
 
-For v0.3.0, focus on **Phase 1** (sync, cleanup, location health) and the most impactful pieces of **Phase 2** (dry-run import, edit command). These address the fundamental workflow break where external tools move files and DAM loses track.
+**Phase 1** is complete. **Phase 4.2** (XMP write-back) was pulled forward and is complete, enabling bidirectional CaptureOne sync.
 
-**Phase 3** (web UI batch ops, keyboard nav) would make DAM a viable review/cull tool, reducing dependence on CaptureOne for that step.
+The most impactful next steps are:
 
-**Phase 4** is aspirational and depends on how the tool evolves with actual use.
+1. **Multi-select & batch operations (3.1)** — The single biggest gap for the photo workflow. Rating and tagging 500 images one at a time makes the web UI impractical for culling. Checkbox selection + batch tag/rate would make DAM a viable review tool.
 
-### Suggested v0.3.0 Scope
+2. **Keyboard navigation (3.3)** — Combined with batch ops, arrow keys + number keys for rating would match the speed of CaptureOne's review workflow.
 
-1. ~~`dam sync` with dry-run default~~ — **done** (v0.3.1)
-2. `dam cleanup` for stale locations
-3. `dam import --dry-run`
-4. ~~`dam edit` for name/description/rating~~ — **done** (v0.3.1)
-5. ~~Search filters: `missing:`, `orphan:`~~ — **done** (v0.3.3)
-6. Web UI: description editing, batch tag/rate
+3. **`dam refresh` (2.1)** — Lightweight metadata re-sync from changed sidecars. Less urgent now that XMP write-back provides DAM→CaptureOne sync, but still needed for CaptureOne→DAM direction without full re-import.
+
+4. **`dam import --dry-run` (2.2)** — Useful safety net but lower priority than workflow speed improvements.
