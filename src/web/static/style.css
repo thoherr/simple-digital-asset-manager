@@ -978,6 +978,12 @@ body.batch-active .select-checkbox {
 }
 .batch-btn:hover { background: rgba(255,255,255,0.1); }
 .batch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.batch-btn kbd {
+    font-family: inherit;
+    font-size: 0.7em;
+    opacity: 0.5;
+    margin-left: 0.2em;
+}
 .batch-btn-primary {
     background: var(--primary);
     border-color: var(--primary);

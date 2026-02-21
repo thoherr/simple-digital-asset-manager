@@ -55,8 +55,8 @@
 <div class="batch-toolbar" id="batch-toolbar">
     <div class="batch-toolbar-inner">
         <span class="batch-count" id="batch-count">0 selected</span>
-        <button class="batch-btn" id="batch-select-page">Select page</button>
-        <button class="batch-btn" id="batch-clear">Clear</button>
+        <button class="batch-btn" id="batch-select-page">Select page <kbd>&#8984;A</kbd></button>
+        <button class="batch-btn" id="batch-clear">Clear <kbd>Esc</kbd></button>
         <span class="batch-sep"></span>
         <input type="text" class="batch-tag-input" id="batch-tag-input" placeholder="tag name">
         <button class="batch-btn batch-btn-primary" id="batch-add-tag">+ Tag</button>
@@ -383,9 +383,10 @@
 
     // Keyboard shortcuts
     document.addEventListener('keydown', function(e) {
-        // Ignore when typing in an input/textarea
-        var tag = e.target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        // Ignore when typing in a text input/textarea/select (but not checkboxes)
+        var el = e.target;
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
+        if (el.tagName === 'INPUT' && el.type !== 'checkbox') return;
 
         if (e.key === 'Escape' && selected.size > 0) {
             clearSelection();
