@@ -110,7 +110,7 @@ Implemented as `dam update-location <asset-id> --from <old-path> --to <new-path>
 
 ---
 
-### Phase 2: Metadata Sync & Re-import Improvements — **PARTIALLY COMPLETE**
+### Phase 2: Metadata Sync & Re-import Improvements — **COMPLETE**
 
 #### 2.1 `dam refresh` Command — **IMPLEMENTED** (v0.4.5)
 
@@ -128,7 +128,7 @@ dam refresh [PATHS...] [--volume <label>] [--asset <id>] [--dry-run]
 
 This is lighter than `sync` — it only touches metadata, not file locations.
 
-#### 2.2 Dry-Run Mode for Import
+#### 2.2 Dry-Run Mode for Import — **IMPLEMENTED** (v0.5.1)
 
 ```
 dam import --dry-run <PATHS...>
@@ -140,7 +140,7 @@ Preview what an import would do:
 - N recipes to attach/update
 - N files to skip (already tracked)
 
-No files written, no catalog changes.
+No files written, no catalog changes. Files are still hashed for duplicate detection. Supports `--json` (includes `dry_run: true` field) and `--log` for per-file details.
 
 #### 2.3 `dam edit` Command — **IMPLEMENTED** (v0.3.1, extended v0.4.4)
 
@@ -235,7 +235,7 @@ Named, manually curated groups of assets (separate from tags). A "Project: Weddi
 | Color labels (CLI, web UI, XMP) | Done | v0.4.4 |
 | XMP write-back (color label) | Done | v0.4.4 |
 | `dam refresh` | Done | v0.4.5 |
-| `dam import --dry-run` | Not started | — |
+| `dam import --dry-run` | Done | v0.5.1 |
 | Web UI name editing | Done | v0.5.1 |
 | Keyboard navigation | Done | v0.4.5 |
 | Saved searches / collections | Not started | — |
@@ -244,10 +244,8 @@ Named, manually curated groups of assets (separate from tags). A "Project: Weddi
 
 ## Priority Recommendation
 
-**Phase 1** is complete. **Phase 4.2** (XMP write-back) was pulled forward and is complete for all metadata fields (rating, tags, description, color label). **Phase 3** (web UI workflow improvements) is complete: multi-select & batch operations (3.1), description & name editing (3.2), and keyboard navigation (3.3). Color labels (v0.4.4) round out the metadata feature set with CaptureOne-compatible 7-color support. Keyboard navigation (v0.4.5) closes the gap for keyboard-driven culling workflows.
+**Phases 1–3** are complete. **Phase 4.2** (XMP write-back) was pulled forward and is complete for all metadata fields (rating, tags, description, color label). **Phase 2** (metadata sync & re-import improvements) is complete: refresh (2.1), import dry-run (2.2), and edit (2.3). **Phase 3** (web UI workflow improvements) is complete: multi-select & batch operations (3.1), description & name editing (3.2), and keyboard navigation (3.3).
 
-The most impactful next steps are:
+The most impactful next step is:
 
-1. **`dam import --dry-run` (2.2)** — Useful safety net for previewing import operations before committing.
-
-2. **Saved searches / collections (3.4, 5)** — Would enable bookmarking filtered views for project workflows.
+1. **Saved searches / collections (3.4, 5)** — Would enable bookmarking filtered views for project workflows.

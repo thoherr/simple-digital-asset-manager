@@ -56,6 +56,10 @@ enum Commands {
         /// Skip default file type groups (e.g. audio, xmp)
         #[arg(long, display_order = 13)]
         skip: Vec<String>,
+
+        /// Show what would be imported without making changes
+        #[arg(long, display_order = 20)]
+        dry_run: bool,
     },
 
     /// Search assets
@@ -426,6 +430,7 @@ fn main() {
             volume,
             include,
             skip,
+            dry_run,
         } => {
             use dam::asset_service::FileTypeFilter;
 
@@ -476,7 +481,7 @@ fn main() {
             let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
             let result = if cli.log {
                 use dam::asset_service::FileStatus;
-                service.import_with_callback(&canonical_paths, &volume, &filter, &config.import.exclude, &config.import.auto_tags, |path, status, elapsed| {
+                service.import_with_callback(&canonical_paths, &volume, &filter, &config.import.exclude, &config.import.auto_tags, dry_run, |path, status, elapsed| {
                     let label = match status {
                         FileStatus::Imported => "imported",
                         FileStatus::LocationAdded => "location added",
@@ -490,7 +495,7 @@ fn main() {
                     eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
                 })?
             } else {
-                service.import_with_callback(&canonical_paths, &volume, &filter, &config.import.exclude, &config.import.auto_tags, |_, _, _| {})?
+                service.import_with_callback(&canonical_paths, &volume, &filter, &config.import.exclude, &config.import.auto_tags, dry_run, |_, _, _| {})?
             };
 
             if cli.json {
@@ -517,6 +522,8 @@ fn main() {
                 }
                 if parts.is_empty() {
                     println!("Import: nothing to import");
+                } else if dry_run {
+                    println!("Dry run — would import: {}", parts.join(", "));
                 } else {
                     println!("Import complete: {}", parts.join(", "));
                 }

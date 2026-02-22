@@ -1293,6 +1293,61 @@ fn import_json_outputs_result() {
 }
 
 #[test]
+fn import_dry_run_reports_without_changes() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let sub = root.join("batch");
+    std::fs::create_dir_all(&sub).unwrap();
+    create_test_file(&sub, "a.jpg", b"dry-run-a");
+    create_test_file(&sub, "b.png", b"dry-run-b");
+
+    // Dry run should report what would happen
+    dam()
+        .current_dir(&root)
+        .args(["import", "--dry-run", sub.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"))
+        .stdout(predicate::str::contains("2 imported"));
+
+    // Search should find nothing — no actual imports happened
+    dam()
+        .current_dir(&root)
+        .args(["search", ""])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No results found"));
+
+    // No sidecar YAML files should have been created
+    let sidecar_count = std::fs::read_dir(root.join("assets"))
+        .map(|rd| rd.flatten().count())
+        .unwrap_or(0);
+    assert_eq!(sidecar_count, 0, "dry run should not create sidecar files");
+}
+
+#[test]
+fn import_dry_run_json_includes_flag() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    create_test_file(&root, "photo.jpg", b"dry-run-json-test");
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "import", "--dry-run", root.to_str().unwrap()])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(parsed["dry_run"].as_bool(), Some(true));
+    assert_eq!(parsed["imported"].as_u64(), Some(1));
+}
+
+#[test]
 fn duplicates_format_json() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
