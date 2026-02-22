@@ -792,6 +792,15 @@ impl Catalog {
         Ok(())
     }
 
+    /// Update a variant's role in the catalog.
+    pub fn update_variant_role(&self, content_hash: &str, role: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE variants SET role = ?1 WHERE content_hash = ?2",
+            rusqlite::params![role, content_hash],
+        )?;
+        Ok(())
+    }
+
     /// Delete an asset row from the catalog.
     pub fn delete_asset(&self, asset_id: &str) -> Result<()> {
         let changed = self.conn.execute(

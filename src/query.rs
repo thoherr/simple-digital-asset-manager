@@ -464,6 +464,10 @@ impl QueryEngine {
             for variant in &donor.variants {
                 let mut moved_variant = variant.clone();
                 moved_variant.asset_id = target_id;
+                // Donor's "original" variants become exports in the target asset
+                if moved_variant.role == crate::models::VariantRole::Original {
+                    moved_variant.role = crate::models::VariantRole::Export;
+                }
                 target.variants.push(moved_variant);
                 variants_moved += 1;
             }
@@ -488,6 +492,10 @@ impl QueryEngine {
                     &variant.content_hash,
                     &target_id.to_string(),
                 )?;
+                // Re-role originals to exports in the catalog too
+                if variant.role == crate::models::VariantRole::Original {
+                    catalog.update_variant_role(&variant.content_hash, "export")?;
+                }
             }
             store.delete(donor.id)?;
             catalog.delete_asset(&donor.id.to_string())?;
@@ -1314,6 +1322,12 @@ mod tests {
         // Target should now have both variants
         let details = engine.show(&id1).unwrap();
         assert_eq!(details.variants.len(), 2);
+
+        // Original variant keeps its role, donor variant becomes export
+        let original = details.variants.iter().find(|v| v.content_hash == "sha256:hash1").unwrap();
+        assert_eq!(original.role, "original");
+        let moved = details.variants.iter().find(|v| v.content_hash == "sha256:hash2").unwrap();
+        assert_eq!(moved.role, "export");
 
         // Donor should be gone
         assert!(engine.show(&id2).is_err());
