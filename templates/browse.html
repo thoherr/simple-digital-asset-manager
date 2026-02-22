@@ -59,7 +59,13 @@
 
 <div class="saved-searches-row" id="saved-searches-row">
     {% for ss in saved_searches %}
-    <a class="saved-search-chip" href="/?{{ ss.url_params }}">{{ ss.name }}</a>
+    <span class="saved-search-chip-wrap">
+        <a class="saved-search-chip" href="/?{{ ss.url_params }}">{{ ss.name }}</a>
+        <span class="saved-search-actions">
+            <button class="ss-rename" data-name="{{ ss.name }}" title="Rename">&hellip;</button>
+            <button class="ss-delete" data-name="{{ ss.name }}" title="Delete">&times;</button>
+        </span>
+    </span>
     {% endfor %}
     <button class="save-search-btn" id="save-search-btn" title="Save current search">&#9733; Save</button>
 </div>
@@ -405,6 +411,49 @@
             .catch(function(err) { console.error('Save search error:', err); });
         });
     }
+
+    // --- Delete saved search ---
+    document.querySelectorAll('.ss-delete').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var name = this.getAttribute('data-name');
+            if (!confirm('Delete saved search "' + name + '"?')) return;
+            fetch('/api/saved-searches/' + encodeURIComponent(name), {method: 'DELETE'})
+                .then(function(r) { return r.json(); })
+                .then(function() { window.location.reload(); })
+                .catch(function(err) { console.error('Delete search error:', err); });
+        });
+    });
+
+    // --- Rename saved search ---
+    document.querySelectorAll('.ss-rename').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var oldName = this.getAttribute('data-name');
+            var newName = prompt('Rename "' + oldName + '" to:', oldName);
+            if (!newName || !newName.trim() || newName.trim() === oldName) return;
+            newName = newName.trim();
+            // Load the existing search, save with new name, delete old
+            fetch('/api/saved-searches')
+                .then(function(r) { return r.json(); })
+                .then(function(searches) {
+                    var ss = searches.find(function(s) { return s.name === oldName; });
+                    if (!ss) return;
+                    return fetch('/api/saved-searches', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({name: newName, query: ss.query, sort: ss.sort || null})
+                    });
+                })
+                .then(function() {
+                    return fetch('/api/saved-searches/' + encodeURIComponent(oldName), {method: 'DELETE'});
+                })
+                .then(function() { window.location.reload(); })
+                .catch(function(err) { console.error('Rename search error:', err); });
+        });
+    });
 })();
 
 // --- Batch selection ---

@@ -105,23 +105,48 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     margin-bottom: 0.75rem;
     min-height: 1.75rem;
 }
-.saved-search-chip {
-    display: inline-block;
-    padding: 0.25rem 0.6rem;
+.saved-search-chip-wrap {
+    display: inline-flex;
+    align-items: center;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 1rem;
+    transition: border-color 0.15s;
+}
+.saved-search-chip-wrap:hover {
+    border-color: var(--primary);
+}
+.saved-search-chip {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
     font-size: 0.8rem;
     color: var(--text);
     text-decoration: none;
     white-space: nowrap;
-    transition: background 0.15s, border-color 0.15s;
 }
 .saved-search-chip:hover {
-    background: var(--accent);
-    color: #fff;
-    border-color: var(--accent);
+    color: var(--primary);
 }
+.saved-search-actions {
+    display: none;
+    align-items: center;
+    gap: 0.1rem;
+    padding-right: 0.3rem;
+}
+.saved-search-chip-wrap:hover .saved-search-actions {
+    display: inline-flex;
+}
+.ss-rename, .ss-delete {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    padding: 0 0.15rem;
+    line-height: 1;
+}
+.ss-rename:hover { color: var(--primary); }
+.ss-delete:hover { color: var(--danger); }
 .save-search-btn {
     padding: 0.2rem 0.5rem;
     font-size: 0.8rem;
@@ -134,8 +159,8 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     transition: border-color 0.15s, color 0.15s;
 }
 .save-search-btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 /* Results grid */
@@ -1206,7 +1231,7 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     transition: border-color 0.15s;
 }
 .collection-card:hover {
-    border-color: var(--accent);
+    border-color: var(--primary);
 }
 .collection-name {
     font-weight: 600;
@@ -1246,7 +1271,7 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     text-decoration: none;
 }
 .collection-chip:hover {
-    background: var(--accent);
+    background: var(--primary);
     color: #fff;
-    border-color: var(--accent);
+    border-color: var(--primary);
 }
