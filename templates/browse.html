@@ -728,20 +728,55 @@
 
     // Batch add to collection
     var colSelect = document.getElementById('batch-collection-select');
-    fetch('/api/collections')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            data.forEach(function(c) {
-                var opt = document.createElement('option');
-                opt.value = c.name;
-                opt.textContent = c.name + ' (' + c.asset_count + ')';
-                colSelect.appendChild(opt);
+
+    function populateCollectionDropdown() {
+        // Keep the first placeholder option, remove the rest
+        while (colSelect.options.length > 1) colSelect.remove(1);
+        return fetch('/api/collections')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                data.forEach(function(c) {
+                    var opt = document.createElement('option');
+                    opt.value = c.name;
+                    opt.textContent = c.name + ' (' + c.asset_count + ')';
+                    colSelect.appendChild(opt);
+                });
+                // Add "New..." option at the end
+                var newOpt = document.createElement('option');
+                newOpt.value = '__new__';
+                newOpt.textContent = 'New\u2026';
+                colSelect.appendChild(newOpt);
             });
-        });
+    }
+    populateCollectionDropdown();
+
+    colSelect.addEventListener('change', function() {
+        if (this.value !== '__new__') return;
+        this.value = ''; // Reset immediately
+        var name = prompt('New collection name:');
+        if (!name || !name.trim()) return;
+        name = name.trim();
+        fetch('/api/collections', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, description: null})
+        })
+        .then(function(r) {
+            if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+            return r.json();
+        })
+        .then(function() {
+            return populateCollectionDropdown();
+        })
+        .then(function() {
+            colSelect.value = name;
+        })
+        .catch(function(err) { alert('Failed to create collection: ' + err.message); });
+    });
 
     document.getElementById('batch-add-collection').addEventListener('click', function() {
         var colName = colSelect.value;
-        if (!colName || selected.size === 0 || batchBusy) return;
+        if (!colName || colName === '__new__' || selected.size === 0 || batchBusy) return;
         setButtonsBusy(true);
         fetch('/api/batch/collection', {
             method: 'POST',
@@ -752,6 +787,7 @@
         .then(function() {
             clearSelection();
             refreshResults();
+            populateCollectionDropdown();
         })
         .catch(function(err) { console.error('Batch collection error:', err); })
         .finally(function() { setButtonsBusy(false); });

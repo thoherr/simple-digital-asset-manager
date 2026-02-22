@@ -112,7 +112,8 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/collections", axum::routing::get(routes::collections_page))
         .route(
             "/api/collections",
-            axum::routing::get(routes::list_collections_api),
+            axum::routing::get(routes::list_collections_api)
+                .post(routes::create_collection_api),
         )
         .route(
             "/api/batch/collection",

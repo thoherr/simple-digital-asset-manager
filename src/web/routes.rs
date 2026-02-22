@@ -1013,6 +1013,52 @@ pub async fn collections_page(State(state): State<Arc<AppState>>) -> Response {
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct CreateCollectionRequest {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+/// POST /api/collections — create a new collection.
+pub async fn create_collection_api(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateCollectionRequest>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let name = req.name.trim().to_string();
+        if name.is_empty() {
+            anyhow::bail!("Collection name cannot be empty");
+        }
+        let description = req.description.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty());
+        let catalog = state.catalog()?;
+        let col_store = crate::collection::CollectionStore::new(catalog.conn());
+        let collection = col_store.create(&name, description)?;
+        // Persist to YAML
+        let yaml = col_store.export_all()?;
+        crate::collection::save_yaml(&state.catalog_root, &yaml)?;
+        Ok::<_, anyhow::Error>(serde_json::json!({
+            "id": collection.id.to_string(),
+            "name": collection.name,
+            "description": collection.description,
+        }))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => (StatusCode::CREATED, Json(json)).into_response(),
+        Ok(Err(e)) => {
+            let msg = format!("{e:#}");
+            if msg.contains("UNIQUE constraint") || msg.contains("already exists") {
+                (StatusCode::CONFLICT, format!("Collection already exists: {msg}")).into_response()
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {msg}")).into_response()
+            }
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
 /// GET /api/collections — list all collections as JSON.
 pub async fn list_collections_api(State(state): State<Arc<AppState>>) -> Response {
     let state = state.clone();

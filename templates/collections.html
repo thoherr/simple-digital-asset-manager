@@ -5,10 +5,11 @@
 {% block content %}
 <div class="collections-header">
     <h1>Collections</h1>
+    <button class="batch-btn batch-btn-primary" id="new-collection-btn">+ New Collection</button>
 </div>
 
 {% if collections.is_empty() %}
-<p class="empty-message">No collections yet. Create one with <code>dam collection create &lt;name&gt;</code>.</p>
+<p class="empty-message">No collections yet. Click "+ New Collection" to create one.</p>
 {% else %}
 <div class="collections-list">
     {% for c in collections %}
@@ -22,4 +23,27 @@
     {% endfor %}
 </div>
 {% endif %}
+
+<script>
+document.getElementById('new-collection-btn').addEventListener('click', function() {
+    var name = prompt('Collection name:');
+    if (!name || !name.trim()) return;
+    name = name.trim();
+    var description = prompt('Description (optional):');
+    if (description) description = description.trim();
+    if (description === '') description = null;
+
+    fetch('/api/collections', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name, description: description})
+    })
+    .then(function(r) {
+        if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+        return r.json();
+    })
+    .then(function() { window.location.reload(); })
+    .catch(function(err) { alert('Failed to create collection: ' + err.message); });
+});
+</script>
 {% endblock %}
