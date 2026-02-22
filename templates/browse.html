@@ -381,6 +381,11 @@
             name = name.trim();
 
             var params = new URLSearchParams(window.location.search);
+            // Quote a filter value if it contains spaces
+            function qv(prefix, val) {
+                if (val.indexOf(' ') >= 0) return prefix + '"' + val + '"';
+                return prefix + val;
+            }
             // Build query string from current filters
             var parts = [];
             var q = params.get('q') || document.querySelector('[name=q]').value || '';
@@ -388,13 +393,13 @@
             var t = params.get('type') || '';
             if (t) parts.push('type:' + t);
             var tag = params.get('tag') || getSelectedTags().join(',');
-            if (tag) parts.push('tag:' + tag);
+            if (tag) parts.push(qv('tag:', tag));
             var fmt = params.get('format') || '';
             if (fmt) parts.push('format:' + fmt);
             var rating = params.get('rating') || getFilterRating();
             if (rating) parts.push('rating:' + rating);
             var lbl = params.get('label') || getFilterLabel();
-            if (lbl) parts.push('label:' + lbl);
+            if (lbl) parts.push(qv('label:', lbl));
             var queryStr = parts.join(' ');
             var sort = params.get('sort') || 'date_desc';
 

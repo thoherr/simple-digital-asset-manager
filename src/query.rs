@@ -71,17 +71,70 @@ impl ParsedSearch {
     }
 }
 
+/// Tokenize a search query respecting double-quoted values.
+///
+/// Splits on whitespace, but `prefix:"multi word value"` stays as a single token
+/// with quotes stripped from the value. Unquoted tokens work as before.
+///
+/// Examples:
+///   `tag:"Fools Theater" rating:4+` → `["tag:Fools Theater", "rating:4+"]`
+///   `tag:landscape type:image`      → `["tag:landscape", "type:image"]`
+///   `hello world`                   → `["hello", "world"]`
+fn tokenize_query(query: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut chars = query.chars().peekable();
+
+    while chars.peek().is_some() {
+        // Skip whitespace
+        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+            chars.next();
+        }
+        if chars.peek().is_none() {
+            break;
+        }
+
+        let mut token = String::new();
+        let mut in_quotes = false;
+
+        while let Some(&c) = chars.peek() {
+            if in_quotes {
+                chars.next();
+                if c == '"' {
+                    in_quotes = false;
+                } else {
+                    token.push(c);
+                }
+            } else if c == '"' {
+                chars.next();
+                in_quotes = true;
+            } else if c.is_whitespace() {
+                break;
+            } else {
+                chars.next();
+                token.push(c);
+            }
+        }
+
+        if !token.is_empty() {
+            tokens.push(token);
+        }
+    }
+
+    tokens
+}
+
 /// Parse a search query string into structured filters.
 ///
 /// Supports prefix filters: `type:image`, `tag:landscape`, `format:jpg`, `rating:3+`,
 /// `camera:fuji`, `lens:56mm`, `iso:3200`, `iso:100-800`, `focal:50`, `focal:35-70`,
 /// `f:2.8`, `f:1.4-2.8`, `width:4000+`, `height:2000+`, `meta:key=value`.
+/// Values with spaces can be quoted: `tag:"Fools Theater"`, `camera:"Canon EOS R5"`.
 /// Remaining tokens are joined as free-text search.
 pub fn parse_search_query(query: &str) -> ParsedSearch {
     let mut parsed = ParsedSearch::default();
     let mut text_parts = Vec::new();
 
-    for token in query.split_whitespace() {
+    for token in tokenize_query(query) {
         if let Some(value) = token.strip_prefix("type:") {
             parsed.asset_type = Some(value.to_string());
         } else if let Some(value) = token.strip_prefix("tag:") {
@@ -101,11 +154,11 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
         } else if let Some(value) = token.strip_prefix("lens:") {
             parsed.lens = Some(value.to_string());
         } else if let Some(value) = token.strip_prefix("iso:") {
-            parse_int_range(value, &mut parsed.iso_min, &mut parsed.iso_max);
+            parse_int_range(&value, &mut parsed.iso_min, &mut parsed.iso_max);
         } else if let Some(value) = token.strip_prefix("focal:") {
-            parse_float_range(value, &mut parsed.focal_min, &mut parsed.focal_max);
+            parse_float_range(&value, &mut parsed.focal_min, &mut parsed.focal_max);
         } else if let Some(value) = token.strip_prefix("f:") {
-            parse_float_range(value, &mut parsed.f_min, &mut parsed.f_max);
+            parse_float_range(&value, &mut parsed.f_min, &mut parsed.f_max);
         } else if let Some(value) = token.strip_prefix("width:") {
             if let Some(num_str) = value.strip_suffix('+') {
                 if let Ok(n) = num_str.parse::<i64>() {
@@ -1276,6 +1329,57 @@ mod tests {
         assert_eq!(p.format.as_deref(), Some("jpg"));
         assert_eq!(p.rating_min, Some(3));
         assert!(p.rating_exact.is_none());
+    }
+
+    #[test]
+    fn parse_quoted_tag_with_spaces() {
+        let p = parse_search_query(r#"tag:"Fools Theater" rating:4+"#);
+        assert_eq!(p.tag.as_deref(), Some("Fools Theater"));
+        assert_eq!(p.rating_min, Some(4));
+        assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_quoted_camera_and_lens() {
+        let p = parse_search_query(r#"camera:"Canon EOS R5" lens:"RF 50mm f/1.2""#);
+        assert_eq!(p.camera.as_deref(), Some("Canon EOS R5"));
+        assert_eq!(p.lens.as_deref(), Some("RF 50mm f/1.2"));
+    }
+
+    #[test]
+    fn parse_quoted_label() {
+        let p = parse_search_query(r#"label:"light blue" type:image"#);
+        assert_eq!(p.color_label.as_deref(), Some("light blue"));
+        assert_eq!(p.asset_type.as_deref(), Some("image"));
+    }
+
+    #[test]
+    fn parse_quoted_collection() {
+        let p = parse_search_query(r#"collection:"My Favorites""#);
+        assert_eq!(p.collection.as_deref(), Some("My Favorites"));
+    }
+
+    #[test]
+    fn parse_mixed_quoted_and_unquoted() {
+        let p = parse_search_query(r#"sunset tag:"Fools Theater" rating:5"#);
+        assert_eq!(p.tag.as_deref(), Some("Fools Theater"));
+        assert_eq!(p.rating_exact, Some(5));
+        assert_eq!(p.text.as_deref(), Some("sunset"));
+    }
+
+    #[test]
+    fn tokenize_basic() {
+        assert_eq!(tokenize_query("hello world"), vec!["hello", "world"]);
+        assert_eq!(tokenize_query(r#"tag:"two words""#), vec!["tag:two words"]);
+        assert_eq!(
+            tokenize_query(r#"tag:"a b" rating:3+"#),
+            vec!["tag:a b", "rating:3+"]
+        );
+        // Unmatched quote: consumes rest of input
+        assert_eq!(tokenize_query(r#"tag:"open"#), vec!["tag:open"]);
+        // Empty input
+        assert!(tokenize_query("").is_empty());
+        assert!(tokenize_query("   ").is_empty());
     }
 
     #[test]
