@@ -13,8 +13,8 @@ use crate::device_registry::DeviceRegistry;
 
 use super::templates::{
     format_size, AssetCard, AssetPage, BrowsePage, DescriptionFragment, FormatOption,
-    LabelFragment, NameFragment, PreviewFragment, RatingFragment, ResultsPartial, StatsPage,
-    TagOption, TagPageEntry, TagsFragment, TagsPage, VolumeOption,
+    LabelFragment, NameFragment, PreviewFragment, RatingFragment, ResultsPartial,
+    SavedSearchChip, StatsPage, TagOption, TagPageEntry, TagsFragment, TagsPage, VolumeOption,
 };
 use super::AppState;
 
@@ -28,6 +28,7 @@ pub struct SearchParams {
     pub volume: Option<String>,
     pub rating: Option<String>,
     pub label: Option<String>,
+    pub collection: Option<String>,
     pub sort: Option<String>,
     pub page: Option<u32>,
 }
@@ -54,11 +55,23 @@ pub async fn browse_page(
         let sort_str = params.sort.as_deref().unwrap_or("date_desc");
         let page = params.page.unwrap_or(1).max(1);
 
+        let collection_str = params.collection.as_deref().unwrap_or("");
+
         let parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
         let mut opts = parsed.to_search_options();
         if !volume.is_empty() {
             opts.volume = Some(volume);
         }
+
+        // Resolve collection filter
+        let collection_ids;
+        if !collection_str.is_empty() {
+            let col_store = crate::collection::CollectionStore::new(catalog.conn());
+            collection_ids = col_store.asset_ids_for_collection(collection_str)
+                .unwrap_or_default();
+            opts.collection_asset_ids = Some(&collection_ids);
+        }
+
         opts.sort = SearchSort::from_str(sort_str);
         opts.page = page;
         opts.per_page = 60;
@@ -103,6 +116,19 @@ pub async fn browse_page(
             .map(|(id, label)| VolumeOption { id, label })
             .collect();
 
+        let saved_searches = crate::saved_search::load(&state.catalog_root)
+            .unwrap_or_default()
+            .searches
+            .into_iter()
+            .map(|ss| {
+                let url_params = ss.to_url_params();
+                SavedSearchChip {
+                    name: ss.name,
+                    url_params,
+                }
+            })
+            .collect();
+
         let tmpl = BrowsePage {
             query: query.to_string(),
             asset_type: asset_type.to_string(),
@@ -120,6 +146,7 @@ pub async fn browse_page(
             all_tags,
             all_formats,
             all_volumes,
+            saved_searches,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
@@ -168,11 +195,23 @@ pub async fn search_api(
         let sort_str = params.sort.as_deref().unwrap_or("date_desc");
         let page = params.page.unwrap_or(1).max(1);
 
+        let collection_str = params.collection.as_deref().unwrap_or("");
+
         let parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
         let mut opts = parsed.to_search_options();
         if !volume.is_empty() {
             opts.volume = Some(volume);
         }
+
+        // Resolve collection filter
+        let collection_ids;
+        if !collection_str.is_empty() {
+            let col_store = crate::collection::CollectionStore::new(catalog.conn());
+            collection_ids = col_store.asset_ids_for_collection(collection_str)
+                .unwrap_or_default();
+            opts.collection_asset_ids = Some(&collection_ids);
+        }
+
         opts.sort = SearchSort::from_str(sort_str);
         opts.page = page;
         opts.per_page = 60;
@@ -230,7 +269,14 @@ pub async fn asset_page(
             }
         });
 
-        let tmpl = AssetPage::from_details(details, preview_url);
+        // Load collections this asset belongs to
+        let collections = {
+            let catalog = state.catalog()?;
+            let col_store = crate::collection::CollectionStore::new(catalog.conn());
+            col_store.collections_for_asset(&asset_id).unwrap_or_default()
+        };
+
+        let tmpl = AssetPage::from_details(details, preview_url, collections);
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
     .await;
@@ -847,6 +893,174 @@ pub async fn batch_set_label(
 
     match result {
         Ok(Ok(batch)) => Json(batch).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+// --- Saved search API ---
+
+/// GET /api/saved-searches — list all saved searches as JSON.
+pub async fn list_saved_searches(State(state): State<Arc<AppState>>) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let file = crate::saved_search::load(&state.catalog_root)?;
+        Ok::<_, anyhow::Error>(file.searches)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(searches)) => Json(searches).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct CreateSavedSearchRequest {
+    pub name: String,
+    pub query: String,
+    pub sort: Option<String>,
+}
+
+/// POST /api/saved-searches — create or update a saved search.
+pub async fn create_saved_search(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateSavedSearchRequest>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut file = crate::saved_search::load(&state.catalog_root)?;
+        let entry = crate::saved_search::SavedSearch {
+            name: req.name.clone(),
+            query: req.query,
+            sort: req.sort,
+        };
+        if let Some(existing) = file.searches.iter_mut().find(|s| s.name == req.name) {
+            *existing = entry;
+        } else {
+            file.searches.push(entry);
+        }
+        crate::saved_search::save(&state.catalog_root, &file)?;
+        Ok::<_, anyhow::Error>(serde_json::json!({"status": "saved", "name": req.name}))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+/// DELETE /api/saved-searches/{name} — delete a saved search.
+pub async fn delete_saved_search(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut file = crate::saved_search::load(&state.catalog_root)?;
+        let before = file.searches.len();
+        file.searches.retain(|s| s.name != name);
+        if file.searches.len() == before {
+            anyhow::bail!("No saved search named '{name}'");
+        }
+        crate::saved_search::save(&state.catalog_root, &file)?;
+        Ok::<_, anyhow::Error>(serde_json::json!({"status": "deleted", "name": name}))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => {
+            if format!("{e:#}").contains("No saved search") {
+                (StatusCode::NOT_FOUND, format!("{e:#}")).into_response()
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+            }
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+// --- Collections ---
+
+/// GET /collections — collections HTML page.
+pub async fn collections_page(State(state): State<Arc<AppState>>) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let col_store = crate::collection::CollectionStore::new(catalog.conn());
+        let collections = col_store.list()?;
+        let tmpl = super::templates::CollectionsPage { collections };
+        Ok::<_, anyhow::Error>(tmpl.render()?)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+/// GET /api/collections — list all collections as JSON.
+pub async fn list_collections_api(State(state): State<Arc<AppState>>) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let col_store = crate::collection::CollectionStore::new(catalog.conn());
+        let collections = col_store.list()?;
+        Ok::<_, anyhow::Error>(collections)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(collections)) => Json(collections).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct BatchCollectionRequest {
+    pub asset_ids: Vec<String>,
+    pub collection: String,
+}
+
+/// POST /api/batch/collection — add assets to a collection.
+pub async fn batch_add_to_collection(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<BatchCollectionRequest>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let col_store = crate::collection::CollectionStore::new(catalog.conn());
+        let added = col_store.add_assets(&req.collection, &req.asset_ids)?;
+        // Persist to YAML
+        let yaml = col_store.export_all()?;
+        crate::collection::save_yaml(&state.catalog_root, &yaml)?;
+        Ok::<_, anyhow::Error>(serde_json::json!({
+            "added": added,
+            "collection": req.collection,
+        }))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
         Ok(Err(e)) => {
             (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
         }

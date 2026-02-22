@@ -35,6 +35,7 @@ pub struct ParsedSearch {
     pub missing: bool,
     pub volume_none: bool,
     pub color_label: Option<String>,
+    pub collection: Option<String>,
 }
 
 impl ParsedSearch {
@@ -137,6 +138,8 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
             parsed.volume_none = true;
         } else if let Some(value) = token.strip_prefix("label:") {
             parsed.color_label = Some(value.to_string());
+        } else if let Some(value) = token.strip_prefix("collection:") {
+            parsed.collection = Some(value.to_string());
         } else {
             text_parts.push(token);
         }
@@ -267,6 +270,14 @@ impl QueryEngine {
             }
             missing_ids = ids.into_iter().collect::<Vec<_>>();
             opts.missing_asset_ids = Some(&missing_ids);
+        }
+
+        // Pre-compute collection asset IDs
+        let collection_ids;
+        if let Some(ref col_name) = parsed.collection {
+            let store = crate::collection::CollectionStore::new(catalog.conn());
+            collection_ids = store.asset_ids_for_collection(col_name)?;
+            opts.collection_asset_ids = Some(&collection_ids);
         }
 
         // Pre-compute online volume IDs for volume:none

@@ -100,6 +100,24 @@ fn build_router(state: Arc<AppState>) -> Router {
             "/api/batch/label",
             axum::routing::put(routes::batch_set_label),
         )
+        .route(
+            "/api/saved-searches",
+            axum::routing::get(routes::list_saved_searches)
+                .post(routes::create_saved_search),
+        )
+        .route(
+            "/api/saved-searches/{name}",
+            axum::routing::delete(routes::delete_saved_search),
+        )
+        .route("/collections", axum::routing::get(routes::collections_page))
+        .route(
+            "/api/collections",
+            axum::routing::get(routes::list_collections_api),
+        )
+        .route(
+            "/api/batch/collection",
+            axum::routing::post(routes::batch_add_to_collection),
+        )
         .route("/static/htmx.min.js", axum::routing::get(static_assets::htmx_js))
         .route("/static/style.css", axum::routing::get(static_assets::style_css))
         .nest_service("/preview", ServeDir::new(preview_dir))

@@ -96,6 +96,48 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     margin-left: auto;
 }
 
+/* Saved searches row */
+.saved-searches-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    min-height: 1.75rem;
+}
+.saved-search-chip {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    font-size: 0.8rem;
+    color: var(--text);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+}
+.saved-search-chip:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+.save-search-btn {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.8rem;
+    border: 1px dashed var(--border);
+    border-radius: 1rem;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.15s, color 0.15s;
+}
+.save-search-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
 /* Results grid */
 .results-grid {
     display: grid;
@@ -1135,3 +1177,76 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     margin-left: 0.15rem;
 }
 .batch-label-clear:hover { color: #fff; }
+.batch-collection-select {
+    padding: 0.25rem 0.4rem;
+    font-size: 0.8rem;
+    border-radius: var(--radius);
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    max-width: 160px;
+}
+
+/* Collections page */
+.collections-header { margin-bottom: 1rem; }
+.collections-header h1 { margin: 0; }
+.collections-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+}
+.collection-card {
+    display: block;
+    padding: 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.15s;
+}
+.collection-card:hover {
+    border-color: var(--accent);
+}
+.collection-name {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+.collection-meta {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+.collection-desc {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}
+
+/* Asset page collection chips */
+.asset-collections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+.collections-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-right: 0.25rem;
+}
+.collection-chip {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    font-size: 0.8rem;
+    color: var(--text);
+    text-decoration: none;
+}
+.collection-chip:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}

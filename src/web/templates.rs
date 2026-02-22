@@ -118,6 +118,12 @@ pub struct RecipeRow {
     pub relative_path: String,
 }
 
+/// A saved search for display in the browse page.
+pub struct SavedSearchChip {
+    pub name: String,
+    pub url_params: String,
+}
+
 #[derive(Template)]
 #[template(path = "browse.html")]
 pub struct BrowsePage {
@@ -137,6 +143,7 @@ pub struct BrowsePage {
     pub all_tags: Vec<TagOption>,
     pub all_formats: Vec<FormatOption>,
     pub all_volumes: Vec<VolumeOption>,
+    pub saved_searches: Vec<SavedSearchChip>,
 }
 
 #[derive(Template)]
@@ -173,10 +180,16 @@ pub struct AssetPage {
     pub primary_preview_url: Option<String>,
     pub variants: Vec<VariantRow>,
     pub recipes: Vec<RecipeRow>,
+    pub collections: Vec<AssetCollectionChip>,
+}
+
+/// Collections the asset belongs to, shown on asset detail page.
+pub struct AssetCollectionChip {
+    pub name: String,
 }
 
 impl AssetPage {
-    pub fn from_details(details: AssetDetails, preview: Option<String>) -> Self {
+    pub fn from_details(details: AssetDetails, preview: Option<String>, collections: Vec<String>) -> Self {
         let fallback_name = details
             .variants
             .first()
@@ -242,6 +255,10 @@ impl AssetPage {
             primary_preview_url: preview,
             variants,
             recipes,
+            collections: collections
+                .into_iter()
+                .map(|name| AssetCollectionChip { name })
+                .collect(),
         }
     }
 }
@@ -306,6 +323,12 @@ pub struct RatingFragment {
 pub struct LabelFragment {
     pub asset_id: String,
     pub color_label: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "collections.html")]
+pub struct CollectionsPage {
+    pub collections: Vec<crate::collection::CollectionSummary>,
 }
 
 /// Custom askama filters for templates.

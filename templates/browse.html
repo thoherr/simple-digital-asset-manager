@@ -57,6 +57,13 @@
     </div>
 </form>
 
+<div class="saved-searches-row" id="saved-searches-row">
+    {% for ss in saved_searches %}
+    <a class="saved-search-chip" href="/?{{ ss.url_params }}">{{ ss.name }}</a>
+    {% endfor %}
+    <button class="save-search-btn" id="save-search-btn" title="Save current search">&#9733; Save</button>
+</div>
+
 <div id="results">
     {% include "results.html" %}
 </div>
@@ -90,6 +97,11 @@
             <span class="batch-label-dot" data-label="Purple" style="background:#9b59b6;" title="Purple"></span>
             <span class="batch-label-clear" id="batch-label-clear" title="Clear label">&times;</span>
         </span>
+        <span class="batch-sep"></span>
+        <select class="batch-collection-select" id="batch-collection-select">
+            <option value="">Collection...</option>
+        </select>
+        <button class="batch-btn" id="batch-add-collection">+ Collection</button>
     </div>
 </div>
 
@@ -353,6 +365,46 @@
             htmx.ajax('GET', window.location.href, {target: '#results', swap: 'innerHTML'});
         }
     });
+
+    // --- Save current search ---
+    var saveBtn = document.getElementById('save-search-btn');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function() {
+            var name = prompt('Name for this saved search:');
+            if (!name || !name.trim()) return;
+            name = name.trim();
+
+            var params = new URLSearchParams(window.location.search);
+            // Build query string from current filters
+            var parts = [];
+            var q = params.get('q') || document.querySelector('[name=q]').value || '';
+            if (q.trim()) parts.push(q.trim());
+            var t = params.get('type') || '';
+            if (t) parts.push('type:' + t);
+            var tag = params.get('tag') || getSelectedTags().join(',');
+            if (tag) parts.push('tag:' + tag);
+            var fmt = params.get('format') || '';
+            if (fmt) parts.push('format:' + fmt);
+            var rating = params.get('rating') || getFilterRating();
+            if (rating) parts.push('rating:' + rating);
+            var lbl = params.get('label') || getFilterLabel();
+            if (lbl) parts.push('label:' + lbl);
+            var queryStr = parts.join(' ');
+            var sort = params.get('sort') || 'date_desc';
+
+            fetch('/api/saved-searches', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name, query: queryStr, sort: sort === 'date_desc' ? null : sort})
+            })
+            .then(function(r) { return r.json(); })
+            .then(function() {
+                // Reload page to show the new chip
+                window.location.reload();
+            })
+            .catch(function(err) { console.error('Save search error:', err); });
+        });
+    }
 })();
 
 // --- Batch selection ---
@@ -617,6 +669,37 @@
             refreshResults();
         })
         .catch(function(err) { console.error('Batch label error:', err); })
+        .finally(function() { setButtonsBusy(false); });
+    });
+
+    // Batch add to collection
+    var colSelect = document.getElementById('batch-collection-select');
+    fetch('/api/collections')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            data.forEach(function(c) {
+                var opt = document.createElement('option');
+                opt.value = c.name;
+                opt.textContent = c.name + ' (' + c.asset_count + ')';
+                colSelect.appendChild(opt);
+            });
+        });
+
+    document.getElementById('batch-add-collection').addEventListener('click', function() {
+        var colName = colSelect.value;
+        if (!colName || selected.size === 0 || batchBusy) return;
+        setButtonsBusy(true);
+        fetch('/api/batch/collection', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({asset_ids: Array.from(selected), collection: colName})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function() {
+            clearSelection();
+            refreshResults();
+        })
+        .catch(function(err) { console.error('Batch collection error:', err); })
         .finally(function() { setButtonsBusy(false); });
     });
 

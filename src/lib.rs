@@ -1,5 +1,6 @@
 pub mod asset_service;
 pub mod catalog;
+pub mod collection;
 pub mod config;
 pub mod content_store;
 pub mod device_registry;
@@ -9,5 +10,6 @@ pub mod metadata_store;
 pub mod models;
 pub mod preview;
 pub mod query;
+pub mod saved_search;
 pub mod web;
 pub mod xmp_reader;

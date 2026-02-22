@@ -47,6 +47,15 @@
             </div>
         </details>
 
+        {% if !collections.is_empty() %}
+        <div class="asset-collections">
+            <span class="collections-label">Collections:</span>
+            {% for c in collections %}
+            <a href="/?collection={{ c.name }}" class="collection-chip">{{ c.name }}</a>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         {% if !variants.is_empty() %}
         <details open>
             <summary>Variants ({{ variants.len() }})</summary>

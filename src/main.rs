@@ -298,6 +298,14 @@ enum Commands {
         bind: Option<String>,
     },
 
+    /// Manage saved searches (smart albums)
+    #[command(subcommand, alias = "ss")]
+    SavedSearch(SavedSearchCommands),
+
+    /// Manage collections (static albums)
+    #[command(subcommand, alias = "col")]
+    Collection(CollectionCommands),
+
     /// Show catalog statistics
     Stats {
         /// Show asset type and format breakdown
@@ -339,6 +347,91 @@ enum VolumeCommands {
 
     /// List all volumes and their status
     List,
+}
+
+#[derive(Subcommand)]
+enum SavedSearchCommands {
+    /// Save a search with a name
+    Save {
+        /// Name for this saved search
+        name: String,
+
+        /// Search query (same format as `dam search`)
+        query: String,
+
+        /// Sort order (e.g. date_desc, name_asc, size_desc)
+        #[arg(long)]
+        sort: Option<String>,
+    },
+
+    /// List all saved searches
+    List,
+
+    /// Run a saved search by name
+    Run {
+        /// Name of the saved search to execute
+        name: String,
+
+        /// Output format: ids, short, full, json, or a custom template
+        #[arg(long)]
+        format: Option<String>,
+    },
+
+    /// Delete a saved search by name
+    Delete {
+        /// Name of the saved search to delete
+        name: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum CollectionCommands {
+    /// Create a new collection
+    Create {
+        /// Collection name
+        name: String,
+
+        /// Optional description
+        #[arg(long)]
+        description: Option<String>,
+    },
+
+    /// List all collections
+    List,
+
+    /// Show collection contents
+    Show {
+        /// Collection name
+        name: String,
+
+        /// Output format: ids, short, full, json, or a custom template
+        #[arg(long)]
+        format: Option<String>,
+    },
+
+    /// Add assets to a collection
+    Add {
+        /// Collection name
+        name: String,
+
+        /// Asset IDs to add
+        asset_ids: Vec<String>,
+    },
+
+    /// Remove assets from a collection
+    Remove {
+        /// Collection name
+        name: String,
+
+        /// Asset IDs to remove
+        asset_ids: Vec<String>,
+    },
+
+    /// Delete a collection
+    Delete {
+        /// Collection name
+        name: String,
+    },
 }
 
 fn main() {
@@ -1593,13 +1686,28 @@ fn main() {
             let store = MetadataStore::new(&catalog_root);
             let result = store.sync_to_catalog(&catalog)?;
 
+            // Restore collections from YAML
+            let collections_restored = {
+                let col_file = dam::collection::load_yaml(&catalog_root).unwrap_or_default();
+                if !col_file.collections.is_empty() {
+                    let col_store = dam::collection::CollectionStore::new(catalog.conn());
+                    col_store.import_from_yaml(&col_file).unwrap_or(0)
+                } else {
+                    0
+                }
+            };
+
             if cli.json {
                 println!("{}", serde_json::json!({
                     "synced": result.synced,
                     "errors": result.errors,
+                    "collections_restored": collections_restored,
                 }));
             } else {
                 println!("Rebuild complete: {} asset(s) synced", result.synced);
+                if collections_restored > 0 {
+                    println!("  {} collection(s) restored", collections_restored);
+                }
                 if result.errors > 0 {
                     println!("  {} error(s) encountered", result.errors);
                 }
@@ -1646,6 +1754,375 @@ fn main() {
                 print_stats_human(&stats);
             }
             Ok(())
+        }
+        Commands::Collection(cmd) => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog = Catalog::open(&catalog_root)?;
+            let store = dam::collection::CollectionStore::new(catalog.conn());
+            match cmd {
+                CollectionCommands::Create { name, description } => {
+                    let col = store.create(&name, description.as_deref())?;
+                    // Persist to YAML
+                    let yaml = store.export_all()?;
+                    dam::collection::save_yaml(&catalog_root, &yaml)?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({
+                            "id": col.id.to_string(),
+                            "name": col.name,
+                        }));
+                    } else {
+                        println!("Created collection '{}'", col.name);
+                    }
+                    Ok(())
+                }
+                CollectionCommands::List => {
+                    let list = store.list()?;
+                    if cli.json {
+                        println!("{}", serde_json::to_string_pretty(&list)?);
+                    } else if list.is_empty() {
+                        println!("No collections.");
+                    } else {
+                        for c in &list {
+                            let desc = c.description.as_deref().unwrap_or("");
+                            if desc.is_empty() {
+                                println!("  {} ({} assets)", c.name, c.asset_count);
+                            } else {
+                                println!("  {} ({} assets) — {}", c.name, c.asset_count, desc);
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                CollectionCommands::Show { name, format } => {
+                    use dam::format::{self, OutputFormat};
+
+                    let col = store.get_by_name(&name)?
+                        .ok_or_else(|| anyhow::anyhow!("No collection named '{name}'"))?;
+
+                    if col.asset_ids.is_empty() {
+                        if cli.json {
+                            println!("{}", serde_json::to_string_pretty(&col)?);
+                        } else {
+                            println!("Collection '{}' is empty.", name);
+                        }
+                        return Ok(());
+                    }
+
+                    // Search with collection filter
+                    let engine = QueryEngine::new(&catalog_root);
+                    let query_str = format!("collection:{}", name);
+                    let results = engine.search(&query_str)?;
+
+                    let output_format = if let Some(fmt) = &format {
+                        format::parse_format(fmt).map_err(|e| anyhow::anyhow!(e))?
+                    } else if cli.json {
+                        OutputFormat::Json
+                    } else {
+                        OutputFormat::Short
+                    };
+
+                    let explicit_format = format.is_some();
+
+                    if results.is_empty() {
+                        match output_format {
+                            OutputFormat::Json => println!("[]"),
+                            _ => {
+                                if !explicit_format {
+                                    println!("Collection '{}': no matching assets.", name);
+                                }
+                            }
+                        }
+                    } else {
+                        match output_format {
+                            OutputFormat::Ids => {
+                                for row in &results {
+                                    println!("{}", row.asset_id);
+                                }
+                            }
+                            OutputFormat::Short => {
+                                if !explicit_format {
+                                    println!("Collection '{}':", name);
+                                }
+                                for row in &results {
+                                    let display_name = row.name.as_deref().unwrap_or(&row.original_filename);
+                                    let short_id = &row.asset_id[..8];
+                                    println!("  {}  {} [{}] ({})", short_id, display_name, row.asset_type, row.format);
+                                }
+                                if !explicit_format {
+                                    println!("\n{} asset(s)", results.len());
+                                }
+                            }
+                            OutputFormat::Full => {
+                                if !explicit_format {
+                                    println!("Collection '{}':", name);
+                                }
+                                for row in &results {
+                                    let display_name = row.name.as_deref().unwrap_or(&row.original_filename);
+                                    let short_id = &row.asset_id[..8];
+                                    let tags = if row.tags.is_empty() {
+                                        String::new()
+                                    } else {
+                                        format!(" tags:{}", row.tags.join(","))
+                                    };
+                                    println!("  {}  {} [{}] ({}){}", short_id, display_name, row.asset_type, row.format, tags);
+                                }
+                                if !explicit_format {
+                                    println!("\n{} asset(s)", results.len());
+                                }
+                            }
+                            OutputFormat::Json => {
+                                println!("{}", serde_json::to_string_pretty(&results)?);
+                            }
+                            OutputFormat::Template(ref tpl) => {
+                                for row in &results {
+                                    let tags_str = row.tags.join(", ");
+                                    let desc = row.description.as_deref().unwrap_or("");
+                                    let label = row.color_label.as_deref().unwrap_or("");
+                                    let values = format::search_row_values(
+                                        &row.asset_id,
+                                        row.name.as_deref(),
+                                        &row.original_filename,
+                                        &row.asset_type,
+                                        &row.format,
+                                        &row.created_at,
+                                        &tags_str,
+                                        desc,
+                                        &row.content_hash,
+                                        label,
+                                    );
+                                    println!("{}", format::render_template(tpl, &values));
+                                }
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                CollectionCommands::Add { name, asset_ids } => {
+                    // Read from stdin if no IDs provided
+                    let ids = if asset_ids.is_empty() {
+                        use std::io::BufRead;
+                        std::io::stdin().lock().lines()
+                            .filter_map(|l| l.ok())
+                            .map(|l| l.trim().to_string())
+                            .filter(|l| !l.is_empty())
+                            .collect()
+                    } else {
+                        asset_ids
+                    };
+                    if ids.is_empty() {
+                        anyhow::bail!("No asset IDs specified.");
+                    }
+                    let added = store.add_assets(&name, &ids)?;
+                    // Persist to YAML
+                    let yaml = store.export_all()?;
+                    dam::collection::save_yaml(&catalog_root, &yaml)?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({
+                            "added": added,
+                            "collection": name,
+                        }));
+                    } else {
+                        println!("Added {} asset(s) to '{}'", added, name);
+                    }
+                    Ok(())
+                }
+                CollectionCommands::Remove { name, asset_ids } => {
+                    if asset_ids.is_empty() {
+                        anyhow::bail!("No asset IDs specified.");
+                    }
+                    let removed = store.remove_assets(&name, &asset_ids)?;
+                    // Persist to YAML
+                    let yaml = store.export_all()?;
+                    dam::collection::save_yaml(&catalog_root, &yaml)?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({
+                            "removed": removed,
+                            "collection": name,
+                        }));
+                    } else {
+                        println!("Removed {} asset(s) from '{}'", removed, name);
+                    }
+                    Ok(())
+                }
+                CollectionCommands::Delete { name } => {
+                    store.delete(&name)?;
+                    // Persist to YAML
+                    let yaml = store.export_all()?;
+                    dam::collection::save_yaml(&catalog_root, &yaml)?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({
+                            "status": "deleted",
+                            "name": name,
+                        }));
+                    } else {
+                        println!("Deleted collection '{name}'");
+                    }
+                    Ok(())
+                }
+            }
+        }
+        Commands::SavedSearch(cmd) => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            match cmd {
+                SavedSearchCommands::Save { name, query, sort } => {
+                    let mut file = dam::saved_search::load(&catalog_root)?;
+                    // Replace existing entry with same name, or append
+                    let entry = dam::saved_search::SavedSearch {
+                        name: name.clone(),
+                        query,
+                        sort,
+                    };
+                    if let Some(existing) = file.searches.iter_mut().find(|s| s.name == name) {
+                        *existing = entry;
+                    } else {
+                        file.searches.push(entry);
+                    }
+                    dam::saved_search::save(&catalog_root, &file)?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({
+                            "status": "saved",
+                            "name": name,
+                        }));
+                    } else {
+                        println!("Saved search '{name}'");
+                    }
+                    Ok(())
+                }
+                SavedSearchCommands::List => {
+                    let file = dam::saved_search::load(&catalog_root)?;
+                    if cli.json {
+                        println!("{}", serde_json::to_string_pretty(&file.searches)?);
+                    } else if file.searches.is_empty() {
+                        println!("No saved searches.");
+                    } else {
+                        for ss in &file.searches {
+                            let sort_info = ss.sort.as_deref().unwrap_or("date_desc");
+                            println!("  {} — {} (sort: {})", ss.name, ss.query, sort_info);
+                        }
+                    }
+                    Ok(())
+                }
+                SavedSearchCommands::Run { name, format } => {
+                    use dam::format::{self, OutputFormat};
+
+                    let file = dam::saved_search::load(&catalog_root)?;
+                    let ss = dam::saved_search::find_by_name(&file, &name)
+                        .ok_or_else(|| anyhow::anyhow!("No saved search named '{name}'"))?;
+
+                    let engine = QueryEngine::new(&catalog_root);
+                    let results = engine.search(&ss.query)?;
+
+                    let output_format = if let Some(fmt) = &format {
+                        format::parse_format(fmt).map_err(|e| anyhow::anyhow!(e))?
+                    } else if cli.json {
+                        OutputFormat::Json
+                    } else {
+                        OutputFormat::Short
+                    };
+
+                    let explicit_format = format.is_some();
+
+                    if results.is_empty() {
+                        match output_format {
+                            OutputFormat::Json => println!("[]"),
+                            _ => {
+                                if !explicit_format {
+                                    println!("No results found.");
+                                }
+                            }
+                        }
+                    } else {
+                        match output_format {
+                            OutputFormat::Ids => {
+                                for row in &results {
+                                    println!("{}", row.asset_id);
+                                }
+                            }
+                            OutputFormat::Short => {
+                                for row in &results {
+                                    let display_name = row
+                                        .name
+                                        .as_deref()
+                                        .unwrap_or(&row.original_filename);
+                                    let short_id = &row.asset_id[..8];
+                                    println!(
+                                        "{}  {} [{}] ({}) — {}",
+                                        short_id, display_name, row.asset_type, row.format, row.created_at
+                                    );
+                                }
+                                if !explicit_format {
+                                    println!("\n{} result(s)", results.len());
+                                }
+                            }
+                            OutputFormat::Full => {
+                                for row in &results {
+                                    let display_name = row
+                                        .name
+                                        .as_deref()
+                                        .unwrap_or(&row.original_filename);
+                                    let short_id = &row.asset_id[..8];
+                                    let tags = if row.tags.is_empty() {
+                                        String::new()
+                                    } else {
+                                        format!(" tags:{}", row.tags.join(","))
+                                    };
+                                    let desc = row.description.as_deref().unwrap_or("");
+                                    println!(
+                                        "{}  {} [{}] ({}) — {}{} {}",
+                                        short_id, display_name, row.asset_type, row.format,
+                                        row.created_at, tags, desc
+                                    );
+                                }
+                                if !explicit_format {
+                                    println!("\n{} result(s)", results.len());
+                                }
+                            }
+                            OutputFormat::Json => {
+                                println!("{}", serde_json::to_string_pretty(&results)?);
+                            }
+                            OutputFormat::Template(ref tpl) => {
+                                for row in &results {
+                                    let tags_str = row.tags.join(", ");
+                                    let desc = row.description.as_deref().unwrap_or("");
+                                    let label = row.color_label.as_deref().unwrap_or("");
+                                    let values = format::search_row_values(
+                                        &row.asset_id,
+                                        row.name.as_deref(),
+                                        &row.original_filename,
+                                        &row.asset_type,
+                                        &row.format,
+                                        &row.created_at,
+                                        &tags_str,
+                                        desc,
+                                        &row.content_hash,
+                                        label,
+                                    );
+                                    println!("{}", format::render_template(tpl, &values));
+                                }
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                SavedSearchCommands::Delete { name } => {
+                    let mut file = dam::saved_search::load(&catalog_root)?;
+                    let before = file.searches.len();
+                    file.searches.retain(|s| s.name != name);
+                    if file.searches.len() == before {
+                        anyhow::bail!("No saved search named '{name}'");
+                    }
+                    dam::saved_search::save(&catalog_root, &file)?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({
+                            "status": "deleted",
+                            "name": name,
+                        }));
+                    } else {
+                        println!("Deleted saved search '{name}'");
+                    }
+                    Ok(())
+                }
+            }
         }
     })();
 

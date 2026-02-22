@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Collections - DAM{% endblock %}
+
+{% block content %}
+<div class="collections-header">
+    <h1>Collections</h1>
+</div>
+
+{% if collections.is_empty() %}
+<p class="empty-message">No collections yet. Create one with <code>dam collection create &lt;name&gt;</code>.</p>
+{% else %}
+<div class="collections-list">
+    {% for c in collections %}
+    <a href="/?collection={{ c.name }}" class="collection-card">
+        <div class="collection-name">{{ c.name }}</div>
+        <div class="collection-meta">{{ c.asset_count }} asset{% if c.asset_count != 1 %}s{% endif %}</div>
+        {% if c.description.is_some() %}
+        <div class="collection-desc">{{ c.description.as_deref().unwrap_or("") }}</div>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

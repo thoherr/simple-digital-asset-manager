@@ -258,6 +258,7 @@ pub struct SearchOptions<'a> {
     pub missing_asset_ids: Option<&'a [String]>,
     pub no_online_locations: Option<&'a [String]>,
     pub color_label: Option<&'a str>,
+    pub collection_asset_ids: Option<&'a [String]>,
     pub sort: SearchSort,
     pub page: u32,
     pub per_page: u32,
@@ -289,6 +290,7 @@ impl<'a> Default for SearchOptions<'a> {
             missing_asset_ids: None,
             no_online_locations: None,
             color_label: None,
+            collection_asset_ids: None,
             sort: SearchSort::DateDesc,
             page: 1,
             per_page: 60,
@@ -329,6 +331,11 @@ impl Catalog {
         Ok(Self { conn })
     }
 
+    /// Access the underlying SQLite connection.
+    pub fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
     /// Run lightweight schema migrations (ADD COLUMN + CREATE INDEX).
     ///
     /// Should be called once at startup (e.g. server init) so that existing
@@ -351,6 +358,8 @@ impl Catalog {
              CREATE INDEX IF NOT EXISTS idx_variants_iso ON variants(iso);
              CREATE INDEX IF NOT EXISTS idx_variants_focal ON variants(focal_length_mm);",
         );
+        // Collection tables
+        let _ = crate::collection::CollectionStore::initialize(&self.conn);
     }
 
     /// Initialize the database schema.
@@ -421,6 +430,9 @@ impl Catalog {
              CREATE INDEX IF NOT EXISTS idx_variants_iso ON variants(iso);
              CREATE INDEX IF NOT EXISTS idx_variants_focal ON variants(focal_length_mm);",
         )?;
+
+        // Collection tables
+        crate::collection::CollectionStore::initialize(&self.conn)?;
 
         // Backfill metadata columns from existing JSON (only rows not yet populated)
         let _ = self.conn.execute_batch(
@@ -1028,7 +1040,9 @@ impl Catalog {
     /// Keeps the volumes table intact. Ensures the schema is up to date.
     pub fn rebuild(&self) -> Result<()> {
         self.conn.execute_batch(
-            "DROP TABLE IF EXISTS file_locations;
+            "DROP TABLE IF EXISTS collection_assets;
+             DROP TABLE IF EXISTS collections;
+             DROP TABLE IF EXISTS file_locations;
              DROP TABLE IF EXISTS recipes;
              DROP TABLE IF EXISTS variants;
              DROP TABLE IF EXISTS assets;",
@@ -1362,6 +1376,19 @@ impl Catalog {
                 }
             }
             // If online_ids is empty, every asset matches volume:none (no clause needed)
+        }
+
+        // Collection filter: restrict to a pre-computed set of asset IDs
+        if let Some(ids) = opts.collection_asset_ids {
+            if ids.is_empty() {
+                clauses.push("0".to_string()); // no matches
+            } else {
+                let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+                clauses.push(format!("a.id IN ({})", placeholders.join(",")));
+                for id in ids {
+                    params.push(Box::new(id.clone()));
+                }
+            }
         }
 
         let where_clause = if clauses.is_empty() {
@@ -2038,7 +2065,7 @@ mod tests {
 
         assert_eq!(
             tables,
-            vec!["assets", "file_locations", "recipes", "variants", "volumes"]
+            vec!["assets", "collection_assets", "collections", "file_locations", "recipes", "variants", "volumes"]
         );
     }
 
