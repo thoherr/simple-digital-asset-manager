@@ -33,7 +33,7 @@ Core layers: CLI → Core Library (Asset Service, Content Store, Metadata Store,
 
 Core CLI is functional. See `specification.md` for full requirements.
 
-**Implemented commands**: `init`, `volume add/list`, `import`, `search`, `show`, `tag`, `edit`, `group`, `duplicates`, `generate-previews`, `rebuild-catalog`, `relocate`, `update-location`, `verify`, `sync`, `refresh`, `cleanup`, `stats`, `serve`
+**Implemented commands**: `init`, `volume add/list`, `import`, `search`, `show`, `tag`, `edit`, `group`, `duplicates`, `generate-previews`, `rebuild-catalog`, `relocate`, `update-location`, `verify`, `sync`, `refresh`, `cleanup`, `stats`, `serve`, `saved-search`, `collection`
 
 **Import behavior**:
 - **Stem-based auto-grouping**: Files sharing the same filename stem in the same directory are grouped into one Asset during import. RAW files take priority as the primary variant (defining asset identity and EXIF data). Additional media files become extra variants on the same asset.
@@ -76,6 +76,10 @@ Core CLI is functional. See `specification.md` for full requirements.
 - **Search location health filters**: `orphan:true` (assets with zero file_location records), `missing:true` (assets where at least one location points to a non-existent file on an online volume — requires disk I/O), `stale:N` (assets with at least one location not verified in N days, or never verified), `volume:none` (assets with no locations on any currently online volume). These filters combine with all other search filters. `orphan:true` and `stale:N` are pure SQL; `missing:true` pre-computes affected asset IDs via disk checks; `volume:none` pre-computes online volume IDs from DeviceRegistry.
 - **`duplicates --format`**: Same presets as search, plus `{locations}` placeholder for templates.
 - **Format module** (`src/format.rs`): Template engine with `{placeholder}` substitution, escape sequences (`\t`, `\n`), preset parsing.
+
+- **Saved searches** (smart albums): Named queries stored in `searches.toml` at the catalog root. `dam saved-search save <NAME> <QUERY> [--sort <SORT>]` saves a search, `dam saved-search list` lists all, `dam saved-search run <NAME> [--format <FMT>]` executes and displays results, `dam saved-search delete <NAME>` removes. Alias: `dam ss`. Supports `--json`. Web UI: clickable chips on the browse page load saved searches into the filter UI. Save button captures current search state. Chips show rename/delete buttons on hover. API: `GET/POST /api/saved-searches`, `DELETE /api/saved-searches/{name}`. Filter values with spaces are supported via quoting: `tag:"Fools Theater"`.
+- **Collections** (static albums): Manually curated lists of asset IDs. Backed by SQLite tables (`collections`, `collection_assets`) for fast queries, plus `collections.yaml` at catalog root for persistence across `rebuild-catalog`. `dam collection create <NAME> [--description <TEXT>]`, `dam collection list`, `dam collection show <NAME> [--format <FMT>]`, `dam collection add <NAME> <ASSET_IDS...>`, `dam collection remove <NAME> <ASSET_IDS...>`, `dam collection delete <NAME>`. Alias: `dam col`. Stdin piping supported for add: `dam search -q "rating:5" | xargs dam col add "Best"`. Search filter: `collection:<name>` restricts results to collection members. Web UI: `/collections` page lists all collections. Asset detail page shows collection membership chips. Browse batch toolbar has collection dropdown with "Add to Collection" button. API: `GET /api/collections`, `POST /api/batch/collection`.
+- **Quoted filter values**: Search query parser supports double-quoted values for multi-word filters: `tag:"Fools Theater"`, `camera:"Canon EOS R5"`, `lens:"RF 50mm f/1.2"`, `collection:"My Favorites"`. Unquoted single-word values continue to work as before.
 
 **Configuration** (`dam.toml`):
 - Parsed via `toml` crate with serde. All sections optional; missing fields use defaults. Validated on load.

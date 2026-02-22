@@ -12,8 +12,9 @@ A command-line digital asset manager built in Rust, designed for large collectio
 - **Preview generation** — thumbnails for images (via `image` crate), RAW files (via dcraw/LibRaw), videos (via ffmpeg), and info cards for audio/documents
 - **Integrity verification** — detect bit rot and corruption by re-hashing files against stored checksums
 - **Asset relocation** — copy or move assets between volumes with integrity verification
+- **Saved searches & collections** — save named search queries (smart albums) and curate static asset lists (collections)
 - **Flexible output** — JSON output on all commands, custom format templates for scripting
-- **Web UI** — browser-based interface for browsing, searching, and editing assets
+- **Web UI** — browser-based interface for browsing, searching, and editing assets with saved search chips and collection management
 
 ## Quick Start
 
@@ -59,6 +60,8 @@ dam serve
 | `dam cleanup` | Remove stale locations, orphaned assets, and orphaned previews |
 | `dam stats` | Show catalog statistics |
 | `dam rebuild-catalog` | Rebuild SQLite index from sidecar files |
+| `dam saved-search` (alias `ss`) | Save, list, run, and delete named searches |
+| `dam collection` (alias `col`) | Create, list, show, add to, remove from, and delete collections |
 | `dam serve` | Start the web UI server |
 
 **Global flags**: `--json` (machine-readable output), `-l`/`--log` (per-file progress for import, verify, sync, refresh, cleanup, generate-previews), `-d`/`--debug` (external tool stderr), `-t`/`--time` (elapsed time). See `dam --help` and `dam <command> --help` for full usage.
