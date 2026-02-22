@@ -506,6 +506,30 @@ impl QueryEngine {
         })
     }
 
+    /// Set the name on an asset. Updates both sidecar YAML and SQLite catalog.
+    /// No XMP write-back needed — name has no XMP equivalent.
+    /// Returns the new name value.
+    pub fn set_name(
+        &self,
+        asset_id_prefix: &str,
+        name: Option<String>,
+    ) -> Result<Option<String>> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let full_id = catalog
+            .resolve_asset_id(asset_id_prefix)?
+            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+
+        let uuid: uuid::Uuid = full_id.parse()?;
+        let store = MetadataStore::new(&self.catalog_root);
+        let mut asset = store.load(uuid)?;
+
+        asset.name = name;
+        store.save(&asset)?;
+        catalog.insert_asset(&asset)?;
+
+        Ok(asset.name)
+    }
+
     /// Set the rating on an asset. Updates both sidecar YAML and SQLite catalog.
     /// Also writes back the rating to any `.xmp` recipe files on disk.
     /// Returns the new rating value.

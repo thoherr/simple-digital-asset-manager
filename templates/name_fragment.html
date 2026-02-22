@@ -1,0 +1,24 @@
+<div class="name-section">
+    <div class="name-display" id="name-display-{{ asset_id }}">
+        {% match name %}
+        {% when Some with (n) %}
+        <span class="name-text">{{ n }}</span>
+        {% when None %}
+        <span class="name-text" style="color: var(--text-muted); font-style: italic;">{{ fallback_name }}</span>
+        {% endmatch %}
+        <button class="edit-pencil"
+                onclick="var d=document.getElementById('name-display-{{ asset_id }}'),e=document.getElementById('name-edit-{{ asset_id }}');d.style.display='none';e.style.display='block';e.querySelector('input').focus();"
+                title="Edit name">&#9998;</button>
+    </div>
+    <div class="name-edit" id="name-edit-{{ asset_id }}" style="display:none;">
+        <form hx-put="/api/asset/{{ asset_id }}/name"
+              hx-target="#name"
+              hx-swap="innerHTML">
+            <input type="text" name="name" value="{% match name %}{% when Some with (n) %}{{ n }}{% when None %}{% endmatch %}" style="width:100%;box-sizing:border-box;font:inherit;" placeholder="{{ fallback_name }}">
+            <div style="margin-top:0.3rem;">
+                <button type="submit">Save</button>
+                <button type="button" onclick="document.getElementById('name-edit-{{ asset_id }}').style.display='none';document.getElementById('name-display-{{ asset_id }}').style.display='block';">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>

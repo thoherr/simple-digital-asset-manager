@@ -162,6 +162,8 @@ pub struct ResultsPartial {
 pub struct AssetPage {
     pub asset_id: String,
     pub display_name: String,
+    pub name: Option<String>,
+    pub fallback_name: String,
     pub asset_type: String,
     pub created_at: String,
     pub description: Option<String>,
@@ -175,16 +177,16 @@ pub struct AssetPage {
 
 impl AssetPage {
     pub fn from_details(details: AssetDetails, preview: Option<String>) -> Self {
+        let fallback_name = details
+            .variants
+            .first()
+            .map(|v| v.original_filename.clone())
+            .unwrap_or_else(|| "Untitled".to_string());
+
         let display_name = details
             .name
             .as_deref()
-            .or_else(|| {
-                details
-                    .variants
-                    .first()
-                    .map(|v| v.original_filename.as_str())
-            })
-            .unwrap_or("Untitled")
+            .unwrap_or(&fallback_name)
             .to_string();
 
         let variants = details
@@ -229,6 +231,8 @@ impl AssetPage {
         Self {
             asset_id: details.id,
             display_name,
+            name: details.name,
+            fallback_name,
             asset_type: details.asset_type,
             created_at: format_date(&details.created_at),
             description: details.description,
@@ -280,6 +284,14 @@ pub struct TagsFragment {
 pub struct DescriptionFragment {
     pub asset_id: String,
     pub description: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "name_fragment.html")]
+pub struct NameFragment {
+    pub asset_id: String,
+    pub name: Option<String>,
+    pub fallback_name: String,
 }
 
 #[derive(Template)]

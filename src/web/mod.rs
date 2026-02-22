@@ -75,6 +75,10 @@ fn build_router(state: Arc<AppState>) -> Router {
             axum::routing::put(routes::set_description),
         )
         .route(
+            "/api/asset/{id}/name",
+            axum::routing::put(routes::set_name),
+        )
+        .route(
             "/api/asset/{id}/label",
             axum::routing::put(routes::set_label),
         )

@@ -13,8 +13,8 @@ use crate::device_registry::DeviceRegistry;
 
 use super::templates::{
     format_size, AssetCard, AssetPage, BrowsePage, DescriptionFragment, FormatOption,
-    LabelFragment, PreviewFragment, RatingFragment, ResultsPartial, StatsPage, TagOption,
-    TagPageEntry, TagsFragment, TagsPage, VolumeOption,
+    LabelFragment, NameFragment, PreviewFragment, RatingFragment, ResultsPartial, StatsPage,
+    TagOption, TagPageEntry, TagsFragment, TagsPage, VolumeOption,
 };
 use super::AppState;
 
@@ -533,6 +533,50 @@ pub async fn set_description(
         let tmpl = DescriptionFragment {
             asset_id,
             description: new_desc,
+        };
+        Ok::<_, anyhow::Error>(tmpl.render()?)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct NameForm {
+    pub name: Option<String>,
+}
+
+/// PUT /api/asset/{id}/name — set name, return name fragment.
+pub async fn set_name(
+    State(state): State<Arc<AppState>>,
+    Path(asset_id): Path<String>,
+    Form(form): Form<NameForm>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let engine = state.query_engine();
+        // Treat empty string as "clear name"
+        let name = form.name.filter(|s| !s.trim().is_empty());
+        let new_name = engine.set_name(&asset_id, name)?;
+
+        // Load fallback name from primary variant's filename
+        let details = engine.show(&asset_id)?;
+        let fallback_name = details
+            .variants
+            .first()
+            .map(|v| v.original_filename.clone())
+            .unwrap_or_else(|| "Untitled".to_string());
+
+        let tmpl = NameFragment {
+            asset_id,
+            name: new_name,
+            fallback_name,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })

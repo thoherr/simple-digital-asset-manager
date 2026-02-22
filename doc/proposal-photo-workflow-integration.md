@@ -148,7 +148,7 @@ Implemented as `dam edit <asset-id> [--name <name>] [--description <text>] [--ra
 
 ---
 
-### Phase 3: Web UI Workflow Improvements — **PARTIALLY COMPLETE**
+### Phase 3: Web UI Workflow Improvements — **COMPLETE**
 
 #### 3.1 Multi-Select & Batch Operations — **IMPLEMENTED** (v0.4.3–v0.4.4)
 
@@ -163,10 +163,10 @@ Implemented as `dam edit <asset-id> [--name <name>] [--description <text>] [--ra
 - Backend: `POST /api/batch/tags`, `PUT /api/batch/rating`, `PUT /api/batch/label`
 - Each individual operation triggers XMP write-back
 
-#### 3.2 Description & Name Editing — **PARTIALLY IMPLEMENTED** (v0.4.3)
+#### 3.2 Description & Name Editing — **IMPLEMENTED** (v0.4.3–v0.5.1)
 
 - ~~Inline-editable description field on asset detail page~~ — **done** (pencil icon, textarea, Save/Cancel, `PUT /api/asset/{id}/description`, XMP write-back)
-- Inline-editable asset name — not yet implemented in web UI (editable via CLI `dam edit --name`)
+- ~~Inline-editable asset name~~ — **done** (pencil icon, text input, Save/Cancel, `PUT /api/asset/{id}/name`; empty clears name, shows filename fallback)
 
 #### 3.3 Keyboard Navigation — **IMPLEMENTED** (v0.4.5)
 
@@ -236,7 +236,7 @@ Named, manually curated groups of assets (separate from tags). A "Project: Weddi
 | XMP write-back (color label) | Done | v0.4.4 |
 | `dam refresh` | Done | v0.4.5 |
 | `dam import --dry-run` | Not started | — |
-| Web UI name editing | Not started | — |
+| Web UI name editing | Done | v0.5.1 |
 | Keyboard navigation | Done | v0.4.5 |
 | Saved searches / collections | Not started | — |
 | Watch mode | Not started | — |
@@ -244,12 +244,10 @@ Named, manually curated groups of assets (separate from tags). A "Project: Weddi
 
 ## Priority Recommendation
 
-**Phase 1** is complete. **Phase 4.2** (XMP write-back) was pulled forward and is complete for all metadata fields (rating, tags, description, color label). **Phase 3.1** (multi-select & batch operations), **Phase 3.2** (description editing), and **Phase 3.3** (keyboard navigation) are complete. Color labels (v0.4.4) round out the metadata feature set with CaptureOne-compatible 7-color support. Keyboard navigation (v0.4.5) closes the gap for keyboard-driven culling workflows.
+**Phase 1** is complete. **Phase 4.2** (XMP write-back) was pulled forward and is complete for all metadata fields (rating, tags, description, color label). **Phase 3** (web UI workflow improvements) is complete: multi-select & batch operations (3.1), description & name editing (3.2), and keyboard navigation (3.3). Color labels (v0.4.4) round out the metadata feature set with CaptureOne-compatible 7-color support. Keyboard navigation (v0.4.5) closes the gap for keyboard-driven culling workflows.
 
 The most impactful next steps are:
 
 1. **`dam import --dry-run` (2.2)** — Useful safety net for previewing import operations before committing.
 
-2. **Web UI name editing** — Minor gap in web UI completeness.
-
-3. **Saved searches / collections (3.4, 5)** — Would enable bookmarking filtered views for project workflows.
+2. **Saved searches / collections (3.4, 5)** — Would enable bookmarking filtered views for project workflows.

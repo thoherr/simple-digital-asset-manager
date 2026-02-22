@@ -11,7 +11,7 @@
         </div>
     </div>
     <div class="asset-info">
-        <h1>{{ display_name }}</h1>
+        <h1 id="name">{% include "name_fragment.html" %}</h1>
 
         <table class="meta-table">
             <tr><th>ID</th><td>{{ asset_id }}</td></tr>
