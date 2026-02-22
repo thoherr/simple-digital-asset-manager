@@ -10,7 +10,6 @@
       hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": getSelectedTags().join(","), "format": document.querySelector("[name=format]").value, "volume": (document.querySelector("[name=volume]") || {value:""}).value, "collection": (document.querySelector("[name=collection]") || {value:""}).value, "path": (document.querySelector("[name=path]") || {value:""}).value, "rating": getFilterRating(), "label": getFilterLabel(), "sort": new URLSearchParams(window.location.search).get("sort") || "date_desc", "page": "1"}'>
     <div class="search-row">
         <input type="text" name="q" placeholder="Search assets..." value="{{ query }}" autocomplete="off">
-        <button type="submit">Search</button>
     </div>
     <div class="filter-row">
         <div class="tag-filter" id="tag-filter">
@@ -184,6 +183,44 @@
         if (form) htmx.trigger(form, 'submit');
     }
 
+    // Debounced auto-search for text inputs
+    var _searchTimer = null;
+    function debouncedSearch() {
+        clearTimeout(_searchTimer);
+        _searchTimer = setTimeout(triggerSearch, 300);
+    }
+
+    // Wire up auto-search on the main query input
+    var qInput = document.querySelector('[name=q]');
+    if (qInput) {
+        qInput.addEventListener('input', debouncedSearch);
+        qInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(_searchTimer);
+                triggerSearch();
+            }
+        });
+    }
+
+    // Wire up auto-search on the path input
+    var pathInput = document.querySelector('[name=path]');
+    if (pathInput) {
+        pathInput.addEventListener('input', debouncedSearch);
+        pathInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(_searchTimer);
+                triggerSearch();
+            }
+        });
+    }
+
+    // Wire up immediate search on dropdown changes
+    document.querySelectorAll('.filter-row select').forEach(function(sel) {
+        sel.addEventListener('change', triggerSearch);
+    });
+
     function showSuggestions(query) {
         var ac = document.getElementById('tag-autocomplete');
         var selected = getSelectedTags();
@@ -256,9 +293,9 @@
         }
     });
 
-    // Prevent form submit on Enter in tag input
+    // Prevent native form submit on Enter — all inputs handle Enter explicitly
     input.closest('form').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && e.target === input) {
+        if (e.key === 'Enter') {
             e.preventDefault();
         }
     });

@@ -67,17 +67,6 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     font-size: 0.95rem;
     background: var(--bg-input);
 }
-.search-row button {
-    padding: 0.5rem 1.25rem;
-    background: var(--primary);
-    color: #fff;
-    border: none;
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-size: 0.95rem;
-    font-weight: 500;
-}
-.search-row button:hover { background: var(--primary-hover); }
 .filter-row {
     display: flex;
     flex-wrap: wrap;
