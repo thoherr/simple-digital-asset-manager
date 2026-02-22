@@ -7,7 +7,7 @@
       hx-get="/"
       hx-target="#results"
       hx-push-url="true"
-      hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": getSelectedTags().join(","), "format": document.querySelector("[name=format]").value, "volume": (document.querySelector("[name=volume]") || {value:""}).value, "rating": getFilterRating(), "label": getFilterLabel(), "sort": new URLSearchParams(window.location.search).get("sort") || "date_desc", "page": "1"}'>
+      hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": getSelectedTags().join(","), "format": document.querySelector("[name=format]").value, "volume": (document.querySelector("[name=volume]") || {value:""}).value, "collection": (document.querySelector("[name=collection]") || {value:""}).value, "rating": getFilterRating(), "label": getFilterLabel(), "sort": new URLSearchParams(window.location.search).get("sort") || "date_desc", "page": "1"}'>
     <div class="search-row">
         <input type="text" name="q" placeholder="Search assets..." value="{{ query }}" autocomplete="off">
         <button type="submit">Search</button>
@@ -51,6 +51,14 @@
             <option value="">All volumes</option>
             {% for v in all_volumes %}
             <option value="{{ v.id }}"{% if volume == v.id %} selected{% endif %}>{{ v.label }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
+        {% if !all_collections.is_empty() %}
+        <select name="collection">
+            <option value="">All collections</option>
+            {% for c in all_collections %}
+            <option value="{{ c.name }}"{% if collection == c.name %} selected{% endif %}>{{ c.name }}</option>
             {% endfor %}
         </select>
         {% endif %}
@@ -358,6 +366,13 @@
     window.addEventListener('popstate', function() {
         var params = new URLSearchParams(window.location.search);
         setLabelFilter(params.get('label') || '');
+    });
+
+    // Handle popstate for collection dropdown
+    window.addEventListener('popstate', function() {
+        var params = new URLSearchParams(window.location.search);
+        var colSel = document.querySelector('[name=collection]');
+        if (colSel) colSel.value = params.get('collection') || '';
     });
 
     // Expose for hx-vals
@@ -810,8 +825,8 @@
             refreshResults();
             populateCollectionDropdown().then(function() {
                 // Re-select the collection if we're browsing it
-                var params = new URLSearchParams(window.location.search);
-                var browsing = params.get('collection') || '';
+                var filterSel = document.querySelector('[name=collection]');
+                var browsing = filterSel ? filterSel.value : '';
                 if (browsing) colSelect.value = browsing;
             });
         })
@@ -824,12 +839,12 @@
     var removeColBtn = document.getElementById('batch-remove-collection');
 
     function updateCollectionButtons() {
-        var params = new URLSearchParams(window.location.search);
-        var browsing = params.get('collection') || '';
+        var filterSel = document.querySelector('[name=collection]');
+        var browsing = filterSel ? filterSel.value : '';
         if (browsing) {
             addColBtn.style.display = 'none';
             removeColBtn.style.display = '';
-            // Auto-select in dropdown once populated
+            // Auto-select in batch dropdown once populated
             var checkInterval = setInterval(function() {
                 for (var i = 0; i < colSelect.options.length; i++) {
                     if (colSelect.options[i].value === browsing) {
@@ -846,6 +861,11 @@
         }
     }
     updateCollectionButtons();
+    // Re-check when filter-row collection dropdown changes
+    var filterColSel = document.querySelector('[name=collection]');
+    if (filterColSel) {
+        filterColSel.addEventListener('change', updateCollectionButtons);
+    }
     window.addEventListener('popstate', updateCollectionButtons);
 
     // Expose for keyboard navigation integration

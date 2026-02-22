@@ -12,8 +12,8 @@ use crate::query::parse_search_query;
 use crate::device_registry::DeviceRegistry;
 
 use super::templates::{
-    format_size, AssetCard, AssetPage, BrowsePage, DescriptionFragment, FormatOption,
-    LabelFragment, NameFragment, PreviewFragment, RatingFragment, ResultsPartial,
+    format_size, AssetCard, AssetPage, BrowsePage, CollectionOption, DescriptionFragment,
+    FormatOption, LabelFragment, NameFragment, PreviewFragment, RatingFragment, ResultsPartial,
     SavedSearchChip, StatsPage, TagOption, TagPageEntry, TagsFragment, TagsPage, VolumeOption,
 };
 use super::AppState;
@@ -116,6 +116,15 @@ pub async fn browse_page(
             .map(|(id, label)| VolumeOption { id, label })
             .collect();
 
+        let all_collections: Vec<CollectionOption> = {
+            let col_store = crate::collection::CollectionStore::new(catalog.conn());
+            col_store.list()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|c| CollectionOption { name: c.name })
+                .collect()
+        };
+
         let saved_searches = crate::saved_search::load(&state.catalog_root)
             .unwrap_or_default()
             .searches
@@ -146,6 +155,8 @@ pub async fn browse_page(
             all_tags,
             all_formats,
             all_volumes,
+            all_collections,
+            collection: collection_str.to_string(),
             saved_searches,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)

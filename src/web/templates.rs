@@ -97,6 +97,11 @@ pub struct VolumeOption {
     pub label: String,
 }
 
+/// Collection option for dropdowns.
+pub struct CollectionOption {
+    pub name: String,
+}
+
 /// Pre-computed variant for template rendering.
 pub struct VariantRow {
     pub role: String,
@@ -143,6 +148,8 @@ pub struct BrowsePage {
     pub all_tags: Vec<TagOption>,
     pub all_formats: Vec<FormatOption>,
     pub all_volumes: Vec<VolumeOption>,
+    pub all_collections: Vec<CollectionOption>,
+    pub collection: String,
     pub saved_searches: Vec<SavedSearchChip>,
 }
 
