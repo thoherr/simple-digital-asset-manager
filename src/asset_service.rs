@@ -2706,7 +2706,7 @@ fn determine_asset_type(ext: &str) -> AssetType {
 }
 
 /// Check if a file extension is a RAW camera format.
-fn is_raw_extension(ext: &str) -> bool {
+pub fn is_raw_extension(ext: &str) -> bool {
     matches!(
         ext.to_lowercase().as_str(),
         "raw" | "cr2" | "cr3" | "nef" | "arw" | "orf" | "rw2" | "dng" | "raf" | "pef" | "srw"

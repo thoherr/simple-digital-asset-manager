@@ -254,6 +254,24 @@ pub struct GroupResult {
     pub donors_removed: usize,
 }
 
+/// One stem group found by `auto_group`.
+#[derive(Debug, serde::Serialize)]
+pub struct StemGroupEntry {
+    pub stem: String,
+    pub target_id: String,
+    pub asset_ids: Vec<String>,
+    pub donor_count: usize,
+}
+
+/// Result of an auto-group operation.
+#[derive(Debug, serde::Serialize)]
+pub struct AutoGroupResult {
+    pub groups: Vec<StemGroupEntry>,
+    pub total_donors_merged: usize,
+    pub total_variants_moved: usize,
+    pub dry_run: bool,
+}
+
 /// Fields to edit on an asset. `None` = no change, `Some(None)` = clear, `Some(Some(x))` = set.
 pub struct EditFields {
     pub name: Option<Option<String>>,
@@ -434,6 +452,9 @@ impl QueryEngine {
                     target.tags.push(tag.clone());
                 }
             }
+            for recipe in &donor.recipes {
+                target.recipes.push(recipe.clone());
+            }
         }
 
         // Step 5: Save target sidecar and update catalog
@@ -458,6 +479,109 @@ impl QueryEngine {
             target_id: target_id.to_string(),
             variants_moved,
             donors_removed,
+        })
+    }
+
+    /// Auto-group assets by filename stem.
+    ///
+    /// Finds assets whose primary variant shares the same stem (case-insensitive),
+    /// picks the best target per group (RAW preferred, then oldest), and merges.
+    pub fn auto_group(&self, asset_ids: &[String], dry_run: bool) -> Result<AutoGroupResult> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+
+        // Deduplicate input IDs
+        let unique_ids: Vec<String> = {
+            let mut seen = HashSet::new();
+            asset_ids
+                .iter()
+                .filter(|id| seen.insert((*id).clone()))
+                .cloned()
+                .collect()
+        };
+
+        // Load details for each asset and extract stem
+        let mut stem_map: HashMap<String, Vec<(String, crate::catalog::AssetDetails)>> =
+            HashMap::new();
+        for id in &unique_ids {
+            let details = match catalog.load_asset_details(id)? {
+                Some(d) => d,
+                None => continue,
+            };
+            // Use primary variant's original_filename to extract stem
+            let stem = if let Some(v) = details.variants.first() {
+                std::path::Path::new(&v.original_filename)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_uppercase())
+                    .unwrap_or_default()
+            } else {
+                continue;
+            };
+            if stem.is_empty() {
+                continue;
+            }
+            stem_map.entry(stem).or_default().push((id.clone(), details));
+        }
+
+        // Filter to groups with >1 distinct asset
+        let mut groups = Vec::new();
+        let mut total_donors_merged = 0;
+        let mut total_variants_moved = 0;
+
+        for (stem, mut entries) in stem_map {
+            if entries.len() < 2 {
+                continue;
+            }
+
+            // Sort: prefer asset with RAW variant, then oldest by created_at
+            entries.sort_by(|a, b| {
+                let a_raw = a.1.variants.iter().any(|v| {
+                    crate::asset_service::is_raw_extension(&v.format)
+                });
+                let b_raw = b.1.variants.iter().any(|v| {
+                    crate::asset_service::is_raw_extension(&v.format)
+                });
+                b_raw.cmp(&a_raw).then_with(|| a.1.created_at.cmp(&b.1.created_at))
+            });
+
+            let target_id = entries[0].0.clone();
+            let all_ids: Vec<String> = entries.iter().map(|e| e.0.clone()).collect();
+            let donor_count = entries.len() - 1;
+
+            if !dry_run {
+                // Collect all variant hashes across all assets in the group
+                let all_hashes: Vec<String> = entries
+                    .iter()
+                    .flat_map(|e| e.1.variants.iter().map(|v| v.content_hash.clone()))
+                    .collect();
+                let result = self.group(&all_hashes)?;
+                total_variants_moved += result.variants_moved;
+                total_donors_merged += result.donors_removed;
+            } else {
+                // In dry-run mode, count what would happen
+                let donor_variants: usize = entries[1..]
+                    .iter()
+                    .map(|e| e.1.variants.len())
+                    .sum();
+                total_variants_moved += donor_variants;
+                total_donors_merged += donor_count;
+            }
+
+            groups.push(StemGroupEntry {
+                stem: stem.clone(),
+                target_id,
+                asset_ids: all_ids,
+                donor_count,
+            });
+        }
+
+        // Sort groups by stem for deterministic output
+        groups.sort_by(|a, b| a.stem.cmp(&b.stem));
+
+        Ok(AutoGroupResult {
+            groups,
+            total_donors_merged,
+            total_variants_moved,
+            dry_run,
         })
     }
 
@@ -1465,5 +1589,137 @@ mod tests {
         assert_eq!(p.rating_min, Some(3));
         assert_eq!(p.tag.as_deref(), Some("landscape"));
         assert!(p.text.is_none());
+    }
+
+    // ── group recipe preservation tests ──────────────────────────────
+
+    #[test]
+    fn group_preserves_recipes() {
+        use crate::models::{Recipe, RecipeType};
+        use crate::models::volume::FileLocation;
+
+        let (dir, hash1, hash2, id1, id2) = setup_group_env();
+
+        // Add a recipe to the donor (asset2)
+        let store = MetadataStore::new(dir.path());
+        let uuid2: uuid::Uuid = id2.parse().unwrap();
+        let mut asset2 = store.load(uuid2).unwrap();
+        asset2.recipes.push(Recipe {
+            id: uuid::Uuid::new_v4(),
+            variant_hash: "sha256:hash2".to_string(),
+            software: "Adobe/CaptureOne".to_string(),
+            recipe_type: RecipeType::Sidecar,
+            content_hash: "sha256:recipe_hash".to_string(),
+            location: FileLocation {
+                volume_id: uuid::Uuid::nil(),
+                relative_path: "DSC_001.xmp".into(),
+                verified_at: None,
+            },
+        });
+        store.save(&asset2).unwrap();
+
+        let engine = QueryEngine::new(dir.path());
+        engine.group(&[hash1, hash2]).unwrap();
+
+        // Verify recipe is on the target sidecar
+        let uuid1: uuid::Uuid = id1.parse().unwrap();
+        let target = store.load(uuid1).unwrap();
+        assert_eq!(target.recipes.len(), 1);
+        assert_eq!(target.recipes[0].variant_hash, "sha256:hash2");
+    }
+
+    // ── auto_group tests ─────────────────────────────────────────────
+
+    #[test]
+    fn auto_group_merges_same_stem() {
+        let (dir, _, _, id1, id2) = setup_group_env();
+        // Both assets have variants with stem DSC_001 (ARW and JPG)
+        let engine = QueryEngine::new(dir.path());
+
+        let result = engine
+            .auto_group(&[id1.clone(), id2.clone()], false)
+            .unwrap();
+
+        assert_eq!(result.groups.len(), 1);
+        assert_eq!(result.total_donors_merged, 1);
+        assert!(!result.dry_run);
+
+        // RAW asset (id1) should be the target
+        assert_eq!(result.groups[0].target_id, id1);
+
+        // Only one asset should remain
+        let details = engine.show(&id1).unwrap();
+        assert_eq!(details.variants.len(), 2);
+        assert!(engine.show(&id2).is_err());
+    }
+
+    #[test]
+    fn auto_group_dry_run_does_not_modify() {
+        let (dir, _, _, id1, id2) = setup_group_env();
+        let engine = QueryEngine::new(dir.path());
+
+        let result = engine
+            .auto_group(&[id1.clone(), id2.clone()], true)
+            .unwrap();
+
+        assert_eq!(result.groups.len(), 1);
+        assert_eq!(result.total_donors_merged, 1);
+        assert!(result.dry_run);
+
+        // Both assets should still exist
+        assert!(engine.show(&id1).is_ok());
+        assert!(engine.show(&id2).is_ok());
+    }
+
+    #[test]
+    fn auto_group_different_stems_no_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let catalog_root = dir.path();
+        let catalog = Catalog::open(catalog_root).unwrap();
+        catalog.initialize().unwrap();
+        let store = MetadataStore::new(catalog_root);
+
+        let mut asset1 = Asset::new(AssetType::Image, "sha256:aaa");
+        let v1 = Variant {
+            content_hash: "sha256:aaa".to_string(),
+            asset_id: asset1.id,
+            role: VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 1000,
+            original_filename: "IMG_001.JPG".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        asset1.variants.push(v1.clone());
+        catalog.insert_asset(&asset1).unwrap();
+        catalog.insert_variant(&v1).unwrap();
+        store.save(&asset1).unwrap();
+
+        let mut asset2 = Asset::new(AssetType::Image, "sha256:bbb");
+        let v2 = Variant {
+            content_hash: "sha256:bbb".to_string(),
+            asset_id: asset2.id,
+            role: VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 2000,
+            original_filename: "IMG_002.JPG".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        asset2.variants.push(v2.clone());
+        catalog.insert_asset(&asset2).unwrap();
+        catalog.insert_variant(&v2).unwrap();
+        store.save(&asset2).unwrap();
+
+        let engine = QueryEngine::new(catalog_root);
+        let result = engine
+            .auto_group(
+                &[asset1.id.to_string(), asset2.id.to_string()],
+                false,
+            )
+            .unwrap();
+
+        assert!(result.groups.is_empty());
+        assert_eq!(result.total_donors_merged, 0);
     }
 }

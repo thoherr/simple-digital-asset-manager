@@ -3551,3 +3551,164 @@ fn search_path_filter() {
         .success()
         .stdout(predicate::str::contains("No results found"));
 }
+
+// ── auto-group tests ─────────────────────────────────────────
+
+#[test]
+fn auto_group_dry_run_reports() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Create two files with the same stem in different directories
+    let sub1 = root.join("raw");
+    let sub2 = root.join("export");
+    std::fs::create_dir_all(&sub1).unwrap();
+    std::fs::create_dir_all(&sub2).unwrap();
+    std::fs::write(sub1.join("DSC_001.ARW"), b"raw-content-for-autogroup").unwrap();
+    std::fs::write(sub2.join("DSC_001.JPG"), b"jpeg-content-for-autogroup").unwrap();
+
+    // Import each directory separately so they become separate assets
+    dam()
+        .current_dir(&root)
+        .args(["import", sub1.to_str().unwrap()])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["import", sub2.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Verify we have 2 assets (search returns one row per variant)
+    dam()
+        .current_dir(&root)
+        .args(["search", ""])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 result(s)"));
+
+    // Dry run should report the match
+    dam()
+        .current_dir(&root)
+        .args(["auto-group"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 stem group"))
+        .stdout(predicate::str::contains("would merge"));
+
+    // Assets should still be separate (dry run)
+    dam()
+        .current_dir(&root)
+        .args(["search", ""])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 result(s)"));
+}
+
+#[test]
+fn auto_group_apply_merges() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let sub1 = root.join("raw");
+    let sub2 = root.join("export");
+    std::fs::create_dir_all(&sub1).unwrap();
+    std::fs::create_dir_all(&sub2).unwrap();
+    std::fs::write(sub1.join("DSC_002.ARW"), b"raw-content-ag-apply").unwrap();
+    std::fs::write(sub2.join("DSC_002.JPG"), b"jpeg-content-ag-apply").unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["import", sub1.to_str().unwrap()])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["import", sub2.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Apply auto-group
+    dam()
+        .current_dir(&root)
+        .args(["auto-group", "--apply"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 stem group"))
+        .stdout(predicate::str::contains("merged"));
+
+    // Should now be 1 unique asset (search -q outputs one ID per variant row)
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", ""])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let unique_ids: std::collections::HashSet<&str> = std::str::from_utf8(&output)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.is_empty())
+        .collect();
+    assert_eq!(unique_ids.len(), 1, "Expected 1 unique asset after auto-group, got {}", unique_ids.len());
+}
+
+#[test]
+fn auto_group_no_matches() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    create_test_file(&root, "IMG_001.JPG", b"content-ag-no-match-1");
+    create_test_file(&root, "IMG_002.JPG", b"content-ag-no-match-2");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    dam()
+        .current_dir(&root)
+        .args(["auto-group"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("No groupable assets"));
+}
+
+#[test]
+fn auto_group_json_output() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let sub1 = root.join("raw2");
+    let sub2 = root.join("export2");
+    std::fs::create_dir_all(&sub1).unwrap();
+    std::fs::create_dir_all(&sub2).unwrap();
+    std::fs::write(sub1.join("DSC_003.ARW"), b"raw-content-ag-json").unwrap();
+    std::fs::write(sub2.join("DSC_003.JPG"), b"jpeg-content-ag-json").unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["import", sub1.to_str().unwrap()])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["import", sub2.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "auto-group"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["dry_run"], true);
+    assert_eq!(json["groups"].as_array().unwrap().len(), 1);
+}

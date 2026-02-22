@@ -13,7 +13,7 @@ use dam::query::QueryEngine;
     after_help = "\
 Quick Reference:
   Setup:      init, volume
-  Ingest:     import, tag, edit, group
+  Ingest:     import, tag, edit, group, auto-group
   Organize:   collection (col), saved-search (ss)
   Retrieve:   search, show, duplicates, stats, serve
   Maintain:   verify, sync, refresh, cleanup, relocate,
@@ -135,6 +135,16 @@ enum Commands {
     Group {
         /// Content hashes of variants to group
         variant_hashes: Vec<String>,
+    },
+
+    /// Auto-group assets by filename stem
+    #[command(display_order = 14)]
+    AutoGroup {
+        /// Search query to scope assets (same syntax as dam search)
+        query: Option<String>,
+        /// Apply grouping (default: report-only)
+        #[arg(long)]
+        apply: bool,
     },
 
     // --- Organize ---
@@ -958,6 +968,53 @@ fn main() {
                     println!("  Merged {} donor asset(s)", result.donors_removed);
                 } else {
                     println!("  Already grouped (no changes)");
+                }
+            }
+            Ok(())
+        }
+        Commands::AutoGroup { query, apply } => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let engine = QueryEngine::new(&catalog_root);
+
+            // Search to get asset IDs, deduplicate (search returns one row per variant)
+            let results = engine.search(query.as_deref().unwrap_or(""))?;
+            let asset_ids: Vec<String> = {
+                let mut seen = std::collections::HashSet::new();
+                results
+                    .iter()
+                    .filter(|r| seen.insert(r.asset_id.clone()))
+                    .map(|r| r.asset_id.clone())
+                    .collect()
+            };
+
+            let result = engine.auto_group(&asset_ids, !apply)?;
+
+            if cli.json {
+                println!("{}", serde_json::to_string(&result)?);
+            } else {
+                if result.groups.is_empty() {
+                    eprintln!("No groupable assets found");
+                } else {
+                    if cli.log {
+                        for group in &result.groups {
+                            let short_id = &group.target_id[..8.min(group.target_id.len())];
+                            eprintln!(
+                                "{} — {} asset(s) → target {short_id}",
+                                group.stem,
+                                group.asset_ids.len(),
+                            );
+                        }
+                    }
+                    println!(
+                        "{} stem group(s), {} donor(s) {}, {} variant(s) moved",
+                        result.groups.len(),
+                        result.total_donors_merged,
+                        if apply { "merged" } else { "would merge" },
+                        result.total_variants_moved,
+                    );
+                }
+                if !apply {
+                    eprintln!("Dry run — use --apply to merge");
                 }
             }
             Ok(())

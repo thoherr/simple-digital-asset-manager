@@ -117,6 +117,8 @@
         </select>
         <button class="batch-btn" id="batch-add-collection" style="display:none">+ Collection</button>
         <button class="batch-btn batch-btn-danger" id="batch-remove-collection" style="display:none">&minus; Collection</button>
+        <span class="batch-sep"></span>
+        <button class="batch-btn" id="batch-auto-group">Group by name</button>
     </div>
 </div>
 
@@ -914,6 +916,25 @@
         filterColSel.addEventListener('change', updateCollectionButtons);
     }
     window.addEventListener('popstate', updateCollectionButtons);
+
+    // Batch auto-group by filename stem
+    document.getElementById('batch-auto-group').addEventListener('click', function() {
+        if (selected.size === 0 || batchBusy) return;
+        if (!confirm('Group ' + selected.size + ' selected asset(s) by filename stem? Assets with the same name will be merged. This cannot be undone.')) return;
+        setButtonsBusy(true);
+        fetch('/api/batch/auto-group', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({asset_ids: Array.from(selected)})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            clearSelection();
+            refreshResults();
+        })
+        .catch(function(err) { console.error('Batch auto-group error:', err); })
+        .finally(function() { setButtonsBusy(false); });
+    });
 
     // Expose for keyboard navigation integration
     window.damBatch = {

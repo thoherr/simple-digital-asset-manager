@@ -1163,3 +1163,34 @@ pub async fn batch_add_to_collection(
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
     }
 }
+
+#[derive(serde::Deserialize)]
+pub struct BatchAutoGroupRequest {
+    pub asset_ids: Vec<String>,
+}
+
+/// POST /api/batch/auto-group — auto-group selected assets by filename stem.
+pub async fn batch_auto_group(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<BatchAutoGroupRequest>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let engine = state.query_engine();
+        let result = engine.auto_group(&req.asset_ids, false)?;
+        Ok::<_, anyhow::Error>(serde_json::json!({
+            "groups_merged": result.groups.len(),
+            "donors_removed": result.total_donors_merged,
+            "variants_moved": result.total_variants_moved,
+        }))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
