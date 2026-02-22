@@ -53,15 +53,15 @@ Addressed by multi-select checkboxes on browse cards, a fixed bottom toolbar wit
 
 ### ~~4. Limited Metadata Editing~~ — **RESOLVED**
 
-Name, description, and rating are editable via CLI (`dam edit`). Rating, tags, and description are editable inline in the web UI. Changes are written back to XMP sidecar files on disk. Name editing in the web UI is the only remaining gap.
+Name, description, rating, and color label are editable via CLI (`dam edit`). All fields are editable inline in the web UI (stars for rating, color dots for label, pencil-icon toggle for name and description). Changes are written back to XMP sidecar files on disk.
 
-### 5. No Saved Searches or Collections
+### ~~5. No Saved Searches or Collections~~ — **RESOLVED**
 
-**The problem:** Tags are the only grouping mechanism. There are no saved searches, smart albums, or manual collections. A photographer working on a project has no way to bookmark a filtered view.
+Addressed by `dam saved-search` (alias `ss`) for saved searches (smart albums) stored in `searches.toml`, and `dam collection` (alias `col`) for static collections backed by SQLite + `collections.yaml`. Web UI includes clickable saved search chips on the browse page and a `/collections` page. Search filter `collection:<name>` restricts results to collection members. Implemented in v0.6.0.
 
-### 6. No Dry-Run Import
+### ~~6. No Dry-Run Import~~ — **RESOLVED**
 
-**The problem:** Before re-importing a directory after external changes, there's no way to preview what would happen — how many new files, how many location additions, how many recipe updates.
+Addressed by `dam import --dry-run` which previews what an import would do (new assets, location additions, recipe updates) without writing to catalog, sidecar, or disk. Files are still hashed for duplicate detection. Supports `--json` and `--log`. Implemented in v0.5.1.
 
 ---
 
@@ -179,12 +179,11 @@ Implemented as `dam edit <asset-id> [--name <name>] [--description <text>] [--ra
 
 Rating and label shortcuts operate on the focused card when no batch selection is active, or on all selected cards when batch selection is active. This turns the web UI into a viable culling/review tool matching CaptureOne's keyboard-driven workflow speed.
 
-#### 3.4 Saved Searches
+#### 3.4 Saved Searches & Collections — **IMPLEMENTED** (v0.6.0)
 
-- "Save this search" button on browse page
-- Saved searches stored in `dam.toml` or a separate file
-- Listed in nav bar or sidebar
-- Smart albums: saved search that auto-updates when catalog changes
+- **Saved searches** (`dam saved-search` / `dam ss`): Named queries stored in `searches.toml` at the catalog root. CLI: `save`, `list`, `run`, `delete` subcommands. Web UI: clickable chips on the browse page load saved searches into filter dropdowns; save button captures current search state; chips show rename (…) and delete (×) buttons on hover. API: `GET/POST /api/saved-searches`, `DELETE /api/saved-searches/{name}`.
+- **Collections** (`dam collection` / `dam col`): Manually curated asset ID lists backed by SQLite tables + `collections.yaml` for persistence across `rebuild-catalog`. CLI: `create`, `list`, `show`, `add`, `remove`, `delete` subcommands. Stdin piping: `dam search -q "rating:5" | xargs dam col add "Best"`. Search filter: `collection:<name>`. Web UI: `/collections` page, collection membership chips on asset detail, batch "Add to Collection" in browse toolbar. API: `GET /api/collections`, `POST /api/batch/collection`.
+- **Quoted filter values**: Search parser supports double-quoted values for multi-word filters (`tag:"Fools Theater"`, `collection:"My Favorites"`).
 
 ---
 
@@ -212,9 +211,9 @@ dam export <query> --target <path> [--format <preset>] [--include-sidecars]
 
 Export matching assets to a directory, optionally with sidecars. Useful for preparing files for delivery or for feeding into another tool.
 
-#### 4.4 Collections
+#### ~~4.4 Collections~~ — **IMPLEMENTED** (v0.6.0)
 
-Named, manually curated groups of assets (separate from tags). A "Project: Wedding 2026" collection that holds specific picks regardless of their tags or location.
+Implemented as `dam collection` (alias `col`) with SQLite-backed storage and YAML persistence. See Phase 3.4 above for details.
 
 ---
 
@@ -238,14 +237,17 @@ Named, manually curated groups of assets (separate from tags). A "Project: Weddi
 | `dam import --dry-run` | Done | v0.5.1 |
 | Web UI name editing | Done | v0.5.1 |
 | Keyboard navigation | Done | v0.4.5 |
-| Saved searches / collections | Not started | — |
+| Saved searches | Done | v0.6.0 |
+| Collections | Done | v0.6.0 |
+| Quoted filter values | Done | v0.6.0 |
 | Watch mode | Not started | — |
 | Export command | Not started | — |
 
 ## Priority Recommendation
 
-**Phases 1–3** are complete. **Phase 4.2** (XMP write-back) was pulled forward and is complete for all metadata fields (rating, tags, description, color label). **Phase 2** (metadata sync & re-import improvements) is complete: refresh (2.1), import dry-run (2.2), and edit (2.3). **Phase 3** (web UI workflow improvements) is complete: multi-select & batch operations (3.1), description & name editing (3.2), and keyboard navigation (3.3).
+**Phases 1–3** are complete. **Phase 4.2** (XMP write-back) and **Phase 4.4** (Collections) were pulled forward and are complete. All identified gaps (1–6) are resolved.
 
-The most impactful next step is:
+The remaining Phase 4 items are longer-term enhancements:
 
-1. **Saved searches / collections (3.4, 5)** — Would enable bookmarking filtered views for project workflows.
+1. **Watch mode (4.1)** — File system watcher for auto-import/sync during active editing sessions.
+2. **Export command (4.3)** — Batch export of matching assets with optional sidecars for delivery or tool handoff.
