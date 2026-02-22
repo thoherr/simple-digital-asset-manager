@@ -240,6 +240,7 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - `GET /api/collections` — list all collections as JSON
 - `POST /api/collections` — create a new collection (JSON: `{name, description?}`)
 - `POST /api/batch/collection` — batch add assets to a collection (JSON: `{asset_ids, collection}`)
+- `DELETE /api/batch/collection` — batch remove assets from a collection (JSON: `{asset_ids, collection}`)
 
 **Catalog extensions** (in `src/catalog.rs`):
 - `SearchOptions` / `SearchSort` / `SearchPage` — paginated search with volume filter and dynamic sort
