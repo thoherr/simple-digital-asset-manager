@@ -3596,6 +3596,25 @@ fn search_path_absolute_normalizes_to_relative() {
         .assert()
         .success()
         .stdout(predicate::str::contains("No results found"));
+
+    // ./ relative to cwd should resolve and normalize
+    dam()
+        .current_dir(root.join("photos"))
+        .args(["search", "path:./"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("DSC_001"))
+        .stdout(predicate::str::contains("DSC_002"))
+        .stdout(predicate::str::contains("2 result"));
+
+    // ../ relative to cwd should resolve and normalize
+    dam()
+        .current_dir(root.join("photos"))
+        .args(["search", "path:../other"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("sunset"))
+        .stdout(predicate::str::contains("1 result"));
 }
 
 // ── auto-group tests ─────────────────────────────────────────

@@ -319,14 +319,46 @@ pub struct TagResult {
     pub current_tags: Vec<String>,
 }
 
-/// If `path` is absolute and matches a volume mount point, returns
-/// (volume-relative path, Some(volume_id)). Otherwise returns (path, None).
+/// Resolve and normalize a `path:` filter value for search.
 ///
-/// Uses longest mount-point prefix match (same logic as `DeviceRegistry::find_volume_for_path()`).
-pub fn normalize_path_for_search(path: &str, volumes: &[Volume]) -> (String, Option<String>) {
-    let p = std::path::Path::new(path);
+/// When `cwd` is provided (CLI context):
+/// - `~` or `~/...` is expanded to the user's home directory
+/// - `./...` or `../...` is resolved relative to `cwd`
+///
+/// After resolution, if the path is absolute and matches a volume mount point
+/// (longest prefix match), returns (volume-relative path, Some(volume_id)).
+/// Otherwise returns (path, None) unchanged.
+pub fn normalize_path_for_search(
+    path: &str,
+    volumes: &[Volume],
+    cwd: Option<&std::path::Path>,
+) -> (String, Option<String>) {
+    // Step 1: Expand ~ and resolve ./ ../ when cwd is available
+    let resolved = if let Some(cwd) = cwd {
+        if path == "~" {
+            std::env::var("HOME")
+                .map(|h| h.to_string())
+                .unwrap_or_else(|_| path.to_string())
+        } else if let Some(rest) = path.strip_prefix("~/") {
+            std::env::var("HOME")
+                .map(|h| std::path::PathBuf::from(h).join(rest).to_string_lossy().to_string())
+                .unwrap_or_else(|_| path.to_string())
+        } else if path.starts_with("./") || path.starts_with("../") {
+            let joined = cwd.join(path);
+            // Clean the path components (handle ./ and ../) without requiring
+            // the path to exist on disk (unlike canonicalize)
+            clean_path(&joined)
+        } else {
+            path.to_string()
+        }
+    } else {
+        path.to_string()
+    };
+
+    // Step 2: If absolute, try to match a volume mount point
+    let p = std::path::Path::new(&resolved);
     if !p.is_absolute() {
-        return (path.to_string(), None);
+        return (resolved, None);
     }
 
     let mut best: Option<&Volume> = None;
@@ -351,8 +383,25 @@ pub fn normalize_path_for_search(path: &str, volumes: &[Volume]) -> (String, Opt
                 .to_string();
             (relative, Some(vol.id.to_string()))
         }
-        None => (path.to_string(), None),
+        None => (resolved, None),
     }
+}
+
+/// Logically clean a path by resolving `.` and `..` components without
+/// touching the filesystem (unlike `canonicalize` which requires the path to exist).
+fn clean_path(path: &std::path::Path) -> String {
+    let mut parts: Vec<&std::ffi::OsStr> = Vec::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {} // skip .
+            std::path::Component::ParentDir => {
+                parts.pop(); // go up
+            }
+            other => parts.push(other.as_os_str()),
+        }
+    }
+    let result: std::path::PathBuf = parts.iter().collect();
+    result.to_string_lossy().to_string()
 }
 
 /// Search and filter assets via the SQLite catalog.
@@ -376,14 +425,16 @@ impl QueryEngine {
     pub fn search(&self, query: &str) -> Result<Vec<SearchRow>> {
         let mut parsed = parse_search_query(query);
 
-        // Normalize absolute path: /Volumes/X/subdir → subdir + volume filter
+        // Normalize path: ~, ./, ../, /absolute → volume-relative + volume filter
         let path_volume_id: Option<String>;
         if parsed.path_prefix.is_some() {
             let registry = DeviceRegistry::new(&self.catalog_root);
             let volumes = registry.list()?;
+            let cwd = std::env::current_dir().ok();
             let (normalized, vol_id) = normalize_path_for_search(
                 parsed.path_prefix.as_deref().unwrap(),
                 &volumes,
+                cwd.as_deref(),
             );
             parsed.path_prefix = Some(normalized);
             path_volume_id = vol_id;
@@ -2034,7 +2085,9 @@ mod tests {
     #[test]
     fn normalize_absolute_path_matching_volume() {
         let vol = make_volume("Photos", "/Volumes/Photos");
-        let (rel, vid) = normalize_path_for_search("/Volumes/Photos/Capture/2026", &[vol.clone()]);
+        let (rel, vid) = normalize_path_for_search(
+            "/Volumes/Photos/Capture/2026", &[vol.clone()], None,
+        );
         assert_eq!(rel, "Capture/2026");
         assert_eq!(vid, Some(vol.id.to_string()));
     }
@@ -2042,7 +2095,7 @@ mod tests {
     #[test]
     fn normalize_absolute_path_no_match() {
         let vol = make_volume("Photos", "/Volumes/Photos");
-        let (rel, vid) = normalize_path_for_search("/mnt/other/data", &[vol]);
+        let (rel, vid) = normalize_path_for_search("/mnt/other/data", &[vol], None);
         assert_eq!(rel, "/mnt/other/data");
         assert!(vid.is_none());
     }
@@ -2050,7 +2103,7 @@ mod tests {
     #[test]
     fn normalize_relative_path_unchanged() {
         let vol = make_volume("Photos", "/Volumes/Photos");
-        let (rel, vid) = normalize_path_for_search("Capture/2026", &[vol]);
+        let (rel, vid) = normalize_path_for_search("Capture/2026", &[vol], None);
         assert_eq!(rel, "Capture/2026");
         assert!(vid.is_none());
     }
@@ -2060,8 +2113,79 @@ mod tests {
         let vol_parent = make_volume("Root", "/Volumes");
         let vol_child = make_volume("Photos", "/Volumes/Photos");
         let volumes = vec![vol_parent, vol_child.clone()];
-        let (rel, vid) = normalize_path_for_search("/Volumes/Photos/Capture/2026", &volumes);
+        let (rel, vid) = normalize_path_for_search(
+            "/Volumes/Photos/Capture/2026", &volumes, None,
+        );
         assert_eq!(rel, "Capture/2026");
         assert_eq!(vid, Some(vol_child.id.to_string()));
+    }
+
+    #[test]
+    fn normalize_tilde_expands_to_home() {
+        let home = std::env::var("HOME").unwrap();
+        let vol = make_volume("Home", &home);
+        let cwd = std::path::Path::new("/tmp");
+
+        let (rel, vid) = normalize_path_for_search(
+            "~/Photos/2026", &[vol.clone()], Some(cwd),
+        );
+        assert_eq!(rel, "Photos/2026");
+        assert_eq!(vid, Some(vol.id.to_string()));
+    }
+
+    #[test]
+    fn normalize_tilde_alone() {
+        let home = std::env::var("HOME").unwrap();
+        let vol = make_volume("Home", &home);
+        let cwd = std::path::Path::new("/tmp");
+
+        let (rel, vid) = normalize_path_for_search("~", &[vol.clone()], Some(cwd));
+        assert_eq!(rel, "");
+        assert_eq!(vid, Some(vol.id.to_string()));
+    }
+
+    #[test]
+    fn normalize_tilde_without_cwd_unchanged() {
+        let vol = make_volume("Photos", "/Volumes/Photos");
+        let (rel, vid) = normalize_path_for_search("~/Photos", &[vol], None);
+        assert_eq!(rel, "~/Photos");
+        assert!(vid.is_none());
+    }
+
+    #[test]
+    fn normalize_dot_slash_resolves_relative_to_cwd() {
+        let vol = make_volume("Photos", "/Volumes/Photos");
+        let cwd = std::path::Path::new("/Volumes/Photos/Capture");
+
+        let (rel, vid) = normalize_path_for_search(
+            "./2026-02-22", &[vol.clone()], Some(cwd),
+        );
+        assert_eq!(rel, "Capture/2026-02-22");
+        assert_eq!(vid, Some(vol.id.to_string()));
+    }
+
+    #[test]
+    fn normalize_dotdot_resolves_relative_to_cwd() {
+        let vol = make_volume("Photos", "/Volumes/Photos");
+        let cwd = std::path::Path::new("/Volumes/Photos/Capture/2026");
+
+        let (rel, vid) = normalize_path_for_search(
+            "../2025", &[vol.clone()], Some(cwd),
+        );
+        assert_eq!(rel, "Capture/2025");
+        assert_eq!(vid, Some(vol.id.to_string()));
+    }
+
+    #[test]
+    fn normalize_plain_relative_unchanged_even_with_cwd() {
+        let vol = make_volume("Photos", "/Volumes/Photos");
+        let cwd = std::path::Path::new("/Volumes/Photos/Capture");
+
+        let (rel, vid) = normalize_path_for_search(
+            "Capture/2026", &[vol], Some(cwd),
+        );
+        // Plain relative paths stay as volume-relative prefix matches
+        assert_eq!(rel, "Capture/2026");
+        assert!(vid.is_none());
     }
 }

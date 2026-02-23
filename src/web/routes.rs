@@ -63,7 +63,7 @@ pub async fn browse_page(
         let (normalized_path, path_volume_id) = if !path_str.is_empty() {
             let registry = DeviceRegistry::new(&state.catalog_root);
             let vols = registry.list().unwrap_or_default();
-            normalize_path_for_search(path_str, &vols)
+            normalize_path_for_search(path_str, &vols, None)
         } else {
             (String::new(), None)
         };
@@ -235,7 +235,7 @@ pub async fn search_api(
         let (normalized_path, path_volume_id) = if !path_str.is_empty() {
             let registry = DeviceRegistry::new(&state.catalog_root);
             let vols = registry.list().unwrap_or_default();
-            normalize_path_for_search(path_str, &vols)
+            normalize_path_for_search(path_str, &vols, None)
         } else {
             (String::new(), None)
         };
