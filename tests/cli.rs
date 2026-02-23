@@ -4462,3 +4462,330 @@ fn generate_previews_upgrade_flag() {
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert!(parsed["upgraded"].is_number(), "JSON should include upgraded field");
 }
+
+#[test]
+fn import_jpeg_with_embedded_xmp_extracts_metadata() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+
+    // Build a minimal JPEG with embedded XMP in APP1
+    let xmp_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="5"
+    xmp:Label="Green">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>architecture</rdf:li>
+     <rdf:li>urban</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+   <dc:description>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default">City skyline at dusk</rdf:li>
+    </rdf:Alt>
+   </dc:description>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+    let xmp_namespace = b"http://ns.adobe.com/xap/1.0/\0";
+    let mut jpeg_data: Vec<u8> = Vec::new();
+    // SOI
+    jpeg_data.extend_from_slice(&[0xFF, 0xD8]);
+    // APP1 with XMP
+    jpeg_data.extend_from_slice(&[0xFF, 0xE1]);
+    let payload_len = xmp_namespace.len() + xmp_xml.len();
+    let segment_len = (payload_len + 2) as u16;
+    jpeg_data.extend_from_slice(&segment_len.to_be_bytes());
+    jpeg_data.extend_from_slice(xmp_namespace);
+    jpeg_data.extend_from_slice(xmp_xml.as_bytes());
+    // EOI
+    jpeg_data.extend_from_slice(&[0xFF, 0xD9]);
+
+    let jpeg_path = photos.join("skyline.jpg");
+    std::fs::write(&jpeg_path, &jpeg_data).unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 imported"));
+
+    // Get asset ID via search
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "skyline"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let short_id = stdout.split_whitespace().next().expect("search returned an ID");
+
+    // Verify embedded XMP metadata appears in show output
+    dam()
+        .current_dir(&root)
+        .args(["show", short_id])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("architecture")
+                .and(predicate::str::contains("urban"))
+                .and(predicate::str::contains("5"))
+                .and(predicate::str::contains("Green"))
+                .and(predicate::str::contains("City skyline at dusk")),
+        );
+}
+
+/// Helper: build a minimal JPEG with embedded XMP metadata.
+fn build_test_jpeg_with_xmp(xmp_xml: &str) -> Vec<u8> {
+    let xmp_namespace = b"http://ns.adobe.com/xap/1.0/\0";
+    let mut jpeg_data: Vec<u8> = Vec::new();
+    // SOI
+    jpeg_data.extend_from_slice(&[0xFF, 0xD8]);
+    // APP1 with XMP
+    jpeg_data.extend_from_slice(&[0xFF, 0xE1]);
+    let payload_len = xmp_namespace.len() + xmp_xml.len();
+    let segment_len = (payload_len + 2) as u16;
+    jpeg_data.extend_from_slice(&segment_len.to_be_bytes());
+    jpeg_data.extend_from_slice(xmp_namespace);
+    jpeg_data.extend_from_slice(xmp_xml.as_bytes());
+    // EOI
+    jpeg_data.extend_from_slice(&[0xFF, 0xD9]);
+    jpeg_data
+}
+
+#[test]
+fn refresh_media_extracts_embedded_xmp() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+
+    let xmp_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="4">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>nature</rdf:li>
+     <rdf:li>forest</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+    let jpeg_data = build_test_jpeg_with_xmp(xmp_xml);
+    std::fs::write(photos.join("forest.jpg"), &jpeg_data).unwrap();
+
+    // Import — metadata should be extracted
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 imported"));
+
+    // Get asset ID
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .output()
+        .unwrap();
+    let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Verify initial metadata
+    dam()
+        .current_dir(&root)
+        .args(["show", &asset_id])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("nature")
+                .and(predicate::str::contains("forest"))
+                .and(predicate::str::contains("4")),
+        );
+
+    // Clear the metadata
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--clear-rating"])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["tag", &asset_id, "--remove", "nature", "forest"])
+        .assert()
+        .success();
+
+    // Verify tags are cleared
+    dam()
+        .current_dir(&root)
+        .args(["show", &asset_id])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Tags:").not()
+                .and(predicate::str::contains("Rating:").not()),
+        );
+
+    // Run refresh --media to re-extract embedded XMP
+    dam()
+        .current_dir(&root)
+        .args(["refresh", "--media"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 refreshed"));
+
+    // Verify metadata is restored
+    dam()
+        .current_dir(&root)
+        .args(["show", &asset_id])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Tags:")
+                .and(predicate::str::contains("Rating:")),
+        );
+}
+
+#[test]
+fn refresh_media_dry_run_does_not_apply() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+
+    let xmp_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="3"/>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+    let jpeg_data = build_test_jpeg_with_xmp(xmp_xml);
+    std::fs::write(photos.join("drytest.jpg"), &jpeg_data).unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .output()
+        .unwrap();
+    let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Clear rating
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--clear-rating"])
+        .assert()
+        .success();
+
+    // Dry run — should report but not apply
+    dam()
+        .current_dir(&root)
+        .args(["refresh", "--media", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 refreshed"))
+        .stderr(predicate::str::contains("Dry run"));
+
+    // Verify rating is still cleared (not restored)
+    dam()
+        .current_dir(&root)
+        .args(["show", &asset_id])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Rating: 3").not());
+}
+
+#[test]
+fn refresh_without_media_ignores_jpeg() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+
+    let xmp_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="5">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>mountain</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+    let jpeg_data = build_test_jpeg_with_xmp(xmp_xml);
+    std::fs::write(photos.join("mountain.jpg"), &jpeg_data).unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .output()
+        .unwrap();
+    let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Clear metadata
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--clear-rating"])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["tag", &asset_id, "--remove", "mountain"])
+        .assert()
+        .success();
+
+    // Regular refresh (no --media) — no recipes, nothing to check
+    dam()
+        .current_dir(&root)
+        .args(["refresh"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("nothing to check"));
+
+    // Verify metadata is NOT restored (no Tags: or Rating: lines)
+    dam()
+        .current_dir(&root)
+        .args(["show", &asset_id])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Tags:").not()
+                .and(predicate::str::contains("Rating:").not()),
+        );
+}

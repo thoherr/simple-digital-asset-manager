@@ -17,7 +17,7 @@ pub struct XmpData {
 }
 
 impl XmpData {
-    fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             keywords: Vec::new(),
             description: None,
@@ -446,7 +446,7 @@ fn xml_escape(s: &str) -> String {
 }
 
 /// Parse XMP metadata from an XML string.
-fn parse_xmp(xml: &str) -> XmpData {
+pub(crate) fn parse_xmp(xml: &str) -> XmpData {
     let mut data = XmpData::empty();
     let mut reader = Reader::from_str(xml);
 

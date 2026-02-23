@@ -517,6 +517,15 @@ impl AssetService {
                     asset.variants.push(variant.clone());
                     primary_variant_hash = Some(content_hash.clone());
 
+                    // Extract embedded XMP from JPEG/TIFF
+                    let embedded_xmp = crate::embedded_xmp::extract_embedded_xmp(file_path);
+                    if !embedded_xmp.keywords.is_empty()
+                        || embedded_xmp.description.is_some()
+                        || !embedded_xmp.source_metadata.is_empty()
+                    {
+                        apply_xmp_data(&embedded_xmp, &mut asset, &content_hash);
+                    }
+
                     if !dry_run {
                         // Write sidecar + catalog immediately for first variant
                         metadata_store.save(&asset).with_context(|| {
@@ -563,6 +572,15 @@ impl AssetService {
 
                     if !dry_run {
                         asset.variants.push(variant.clone());
+
+                        // Extract embedded XMP from JPEG/TIFF
+                        let embedded_xmp = crate::embedded_xmp::extract_embedded_xmp(file_path);
+                        if !embedded_xmp.keywords.is_empty()
+                            || embedded_xmp.description.is_some()
+                            || !embedded_xmp.source_metadata.is_empty()
+                        {
+                            apply_xmp_data(&embedded_xmp, asset, &content_hash);
+                        }
 
                         metadata_store.save(asset).with_context(|| {
                             format!("Failed to write sidecar for {}", file_path.display())
@@ -2441,13 +2459,15 @@ impl AssetService {
         Ok(result)
     }
 
-    /// Re-read metadata from changed recipe/sidecar files without scanning media files.
+    /// Re-read metadata from changed recipe/sidecar files, and optionally
+    /// re-extract embedded XMP from JPEG/TIFF media files (`--media`).
     pub fn refresh(
         &self,
         paths: &[PathBuf],
         volume: Option<&Volume>,
         asset_id: Option<&str>,
         dry_run: bool,
+        media: bool,
         exclude_patterns: &[String],
         on_file: impl Fn(&Path, RefreshStatus, Duration),
     ) -> Result<RefreshResult> {
@@ -2585,6 +2605,145 @@ impl AssetService {
                         continue;
                     }
                 }
+                result.refreshed += 1;
+                on_file(&full_path, RefreshStatus::Refreshed, file_start.elapsed());
+            }
+        }
+
+        // --- Media file processing (embedded XMP re-extraction) ---
+        if media {
+            // Collect media file locations: (content_hash, relative_path, volume_id)
+            let media_entries: Vec<(String, String, String)>;
+
+            if let Some(aid) = asset_id {
+                media_entries = catalog.list_file_locations_for_asset(aid)?;
+            } else if !paths.is_empty() {
+                let files = resolve_files(paths, exclude_patterns);
+                let vol = volume.ok_or_else(|| anyhow::anyhow!("No volume resolved for path mode"))?;
+                let vol_id = vol.id.to_string();
+
+                let mut entries = Vec::new();
+                for file_path in &files {
+                    let ext = file_path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("");
+                    if !is_embedded_xmp_extension(ext) {
+                        continue;
+                    }
+                    let relative_path = match file_path.strip_prefix(&vol.mount_point) {
+                        Ok(rp) => rp.to_string_lossy().to_string(),
+                        Err(_) => continue,
+                    };
+                    if let Some((content_hash, _format)) =
+                        catalog.find_variant_by_volume_and_path(&vol_id, &relative_path)?
+                    {
+                        entries.push((content_hash, relative_path, vol_id.clone()));
+                    }
+                }
+                media_entries = entries;
+            } else if let Some(vol) = volume {
+                let vol_id = vol.id.to_string();
+                media_entries = catalog
+                    .list_locations_for_volume_under_prefix(&vol_id, "")?
+                    .into_iter()
+                    .map(|(ch, rp)| (ch, rp, vol_id.clone()))
+                    .collect();
+            } else {
+                let volumes = registry.list()?;
+                let mut entries = Vec::new();
+                for vol in &volumes {
+                    if !vol.is_online {
+                        continue;
+                    }
+                    let vol_id = vol.id.to_string();
+                    for (ch, rp) in
+                        catalog.list_locations_for_volume_under_prefix(&vol_id, "")?
+                    {
+                        entries.push((ch, rp, vol_id.clone()));
+                    }
+                }
+                media_entries = entries;
+            }
+
+            for (content_hash, relative_path, volume_id_str) in &media_entries {
+                // Filter to JPEG/TIFF only
+                let ext = Path::new(relative_path)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+                if !is_embedded_xmp_extension(ext) {
+                    continue;
+                }
+
+                let file_start = Instant::now();
+
+                // Find the volume
+                let vol = match all_volumes.iter().find(|v| v.id.to_string() == *volume_id_str) {
+                    Some(v) => v,
+                    None => {
+                        result.skipped += 1;
+                        on_file(Path::new(&relative_path), RefreshStatus::Offline, file_start.elapsed());
+                        continue;
+                    }
+                };
+
+                if !vol.is_online {
+                    result.skipped += 1;
+                    on_file(
+                        &vol.mount_point.join(relative_path),
+                        RefreshStatus::Offline,
+                        file_start.elapsed(),
+                    );
+                    continue;
+                }
+
+                let full_path = vol.mount_point.join(relative_path);
+
+                if !full_path.exists() {
+                    result.missing += 1;
+                    on_file(&full_path, RefreshStatus::Missing, file_start.elapsed());
+                    continue;
+                }
+
+                let embedded_xmp = crate::embedded_xmp::extract_embedded_xmp(&full_path);
+
+                // Check if XMP data is non-empty
+                if embedded_xmp.keywords.is_empty()
+                    && embedded_xmp.description.is_none()
+                    && embedded_xmp.source_metadata.is_empty()
+                {
+                    result.unchanged += 1;
+                    on_file(&full_path, RefreshStatus::Unchanged, file_start.elapsed());
+                    continue;
+                }
+
+                // Load asset and re-apply embedded XMP
+                let asset_id_str = match catalog.find_asset_id_by_variant(content_hash)? {
+                    Some(id) => id,
+                    None => {
+                        result.errors.push(format!(
+                            "{}: no asset found for variant {}",
+                            full_path.display(),
+                            content_hash
+                        ));
+                        continue;
+                    }
+                };
+
+                let uuid: Uuid = asset_id_str.parse()?;
+                let mut asset = metadata_store.load(uuid)?;
+
+                reapply_xmp_data(&embedded_xmp, &mut asset, content_hash);
+
+                if !dry_run {
+                    metadata_store.save(&asset)?;
+                    catalog.insert_asset(&asset)?;
+                    if let Some(v) = asset.variants.iter().find(|v| v.content_hash == *content_hash) {
+                        catalog.insert_variant(v)?;
+                    }
+                }
+
                 result.refreshed += 1;
                 on_file(&full_path, RefreshStatus::Refreshed, file_start.elapsed());
             }
@@ -2854,6 +3013,11 @@ fn reapply_xmp_data(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, variant
             variant.source_metadata.insert(key.clone(), val.clone());
         }
     }
+}
+
+/// Check if a file extension supports embedded XMP extraction (JPEG/TIFF).
+fn is_embedded_xmp_extension(ext: &str) -> bool {
+    matches!(ext.to_lowercase().as_str(), "jpg" | "jpeg" | "tif" | "tiff")
 }
 
 /// Determine the asset type from a file extension.

@@ -1149,6 +1149,32 @@ impl Catalog {
         Ok(result)
     }
 
+    /// List all file locations for an asset's variants.
+    /// Returns (content_hash, relative_path, volume_id).
+    pub fn list_file_locations_for_asset(
+        &self,
+        asset_id: &str,
+    ) -> Result<Vec<(String, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT fl.content_hash, fl.relative_path, fl.volume_id \
+             FROM file_locations fl \
+             JOIN variants v ON fl.content_hash = v.content_hash \
+             WHERE v.asset_id = ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![asset_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
     /// Update the relative_path for a file location (variant moved on disk).
     pub fn update_file_location_path(
         &self,
@@ -2377,6 +2403,56 @@ mod tests {
 
         let missing = catalog.find_asset_id_by_variant("sha256:nope").unwrap();
         assert!(missing.is_none());
+    }
+
+    #[test]
+    fn list_file_locations_for_asset_works() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:loctest");
+        let asset_id = asset.id.to_string();
+        catalog.insert_asset(&asset).unwrap();
+
+        let variant = crate::models::Variant {
+            content_hash: "sha256:loctest".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 1000,
+            original_filename: "test.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        catalog.insert_variant(&variant).unwrap();
+
+        let volume = crate::models::Volume::new(
+            "test-vol".to_string(),
+            std::path::PathBuf::from("/mnt/test"),
+            crate::models::VolumeType::Local,
+        );
+        catalog.ensure_volume(&volume).unwrap();
+
+        let loc = crate::models::FileLocation {
+            volume_id: volume.id,
+            relative_path: std::path::PathBuf::from("photos/test.jpg"),
+            verified_at: None,
+        };
+        catalog
+            .insert_file_location("sha256:loctest", &loc)
+            .unwrap();
+
+        let locs = catalog.list_file_locations_for_asset(&asset_id).unwrap();
+        assert_eq!(locs.len(), 1);
+        assert_eq!(locs[0].0, "sha256:loctest");
+        assert_eq!(locs[0].1, "photos/test.jpg");
+        assert_eq!(locs[0].2, volume.id.to_string());
+
+        // Non-existent asset returns empty
+        let empty = catalog
+            .list_file_locations_for_asset("nonexistent")
+            .unwrap();
+        assert!(empty.is_empty());
     }
 
     #[test]

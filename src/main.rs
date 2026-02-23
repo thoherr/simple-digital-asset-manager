@@ -294,6 +294,10 @@ enum Commands {
         /// Preview what would change without applying
         #[arg(long, display_order = 20)]
         dry_run: bool,
+
+        /// Also re-extract embedded XMP from JPEG/TIFF media files
+        #[arg(long, display_order = 21)]
+        media: bool,
     },
 
     /// Remove stale file location records (files no longer on disk)
@@ -1284,7 +1288,7 @@ fn main() {
 
             Ok(())
         }
-        Commands::Refresh { paths, volume, asset, dry_run } => {
+        Commands::Refresh { paths, volume, asset, dry_run, media } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let registry = DeviceRegistry::new(&catalog_root);
@@ -1325,6 +1329,7 @@ fn main() {
                     resolved_volume.as_ref(),
                     resolved_asset_id.as_deref(),
                     dry_run,
+                    media,
                     &config.import.exclude,
                     |path, status, elapsed| {
                         let label = match status {
@@ -1345,6 +1350,7 @@ fn main() {
                     resolved_volume.as_ref(),
                     resolved_asset_id.as_deref(),
                     dry_run,
+                    media,
                     &config.import.exclude,
                     |_, _, _| {},
                 )?
@@ -1375,7 +1381,7 @@ fn main() {
                     parts.push(format!("{} skipped (offline)", result.skipped));
                 }
                 if parts.is_empty() {
-                    println!("Refresh: no recipes to check");
+                    println!("Refresh: nothing to check");
                 } else {
                     println!("Refresh complete: {}", parts.join(", "));
                 }
