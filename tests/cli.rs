@@ -3789,3 +3789,433 @@ fn auto_group_fuzzy_rejects_numeric_continuation() {
         .success()
         .stderr(predicate::str::contains("No groupable assets"));
 }
+
+#[test]
+fn group_merges_two_assets() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Create two separate assets (different stems in different dirs)
+    let sub1 = root.join("raw");
+    let sub2 = root.join("export");
+    std::fs::create_dir_all(&sub1).unwrap();
+    std::fs::create_dir_all(&sub2).unwrap();
+    std::fs::write(sub1.join("IMG_100.ARW"), b"raw-group-test").unwrap();
+    std::fs::write(sub2.join("IMG_100_edit.JPG"), b"jpg-group-test").unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["import", sub1.to_str().unwrap()])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["import", sub2.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Should be 2 separate assets
+    dam()
+        .current_dir(&root)
+        .args(["search", ""])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 result(s)"));
+
+    // Get variant hashes from show --json
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", ""])
+        .output()
+        .unwrap();
+    let ids: Vec<&str> = std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.is_empty())
+        .collect();
+    assert_eq!(ids.len(), 2);
+
+    let mut hashes = Vec::new();
+    for id in &ids {
+        let output = dam()
+            .current_dir(&root)
+            .args(["--json", "show", id])
+            .output()
+            .unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("valid JSON");
+        let hash = parsed["variants"][0]["content_hash"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        hashes.push(hash);
+    }
+
+    // Group them
+    dam()
+        .current_dir(&root)
+        .args(["group", &hashes[0], &hashes[1]])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Grouped 2 variant(s)"));
+
+    // Should now be 1 asset
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", ""])
+        .output()
+        .unwrap();
+    let unique_ids: std::collections::HashSet<&str> = std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.is_empty())
+        .collect();
+    assert_eq!(unique_ids.len(), 1);
+}
+
+#[test]
+fn group_json_output() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let sub1 = root.join("a");
+    let sub2 = root.join("b");
+    std::fs::create_dir_all(&sub1).unwrap();
+    std::fs::create_dir_all(&sub2).unwrap();
+    std::fs::write(sub1.join("GRP_001.ARW"), b"raw-grp-json").unwrap();
+    std::fs::write(sub2.join("GRP_001_v2.JPG"), b"jpg-grp-json").unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["import", sub1.to_str().unwrap()])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["import", sub2.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", ""])
+        .output()
+        .unwrap();
+    let ids: Vec<&str> = std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    let mut hashes = Vec::new();
+    for id in &ids {
+        let output = dam()
+            .current_dir(&root)
+            .args(["--json", "show", id])
+            .output()
+            .unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("valid JSON");
+        hashes.push(
+            parsed["variants"][0]["content_hash"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        );
+    }
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "group", &hashes[0], &hashes[1]])
+        .output()
+        .unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert!(parsed["target_id"].is_string());
+    assert!(parsed["variants_moved"].is_number());
+    assert!(parsed["donors_removed"].is_number());
+}
+
+#[test]
+fn fix_roles_dry_run_reports() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    create_test_file(&root, "photos/DSC_100.ARW", b"raw-fixroles-1");
+    create_test_file(&root, "photos/DSC_100.JPG", b"jpg-fixroles-1");
+    dam()
+        .current_dir(&root)
+        .args(["import", root.join("photos").to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Since auto-grouping now sets roles correctly, fix-roles should report already correct
+    dam()
+        .current_dir(&root)
+        .args(["fix-roles"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("already correct"));
+}
+
+#[test]
+fn fix_roles_apply_corrects_roles() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Import RAW and JPG from separate directories → 2 separate assets, both Original
+    let raw_dir = root.join("raw");
+    let jpg_dir = root.join("jpg");
+    std::fs::create_dir_all(&raw_dir).unwrap();
+    std::fs::create_dir_all(&jpg_dir).unwrap();
+    std::fs::write(raw_dir.join("DSC_200.ARW"), b"raw-fixroles-apply").unwrap();
+    std::fs::write(jpg_dir.join("DSC_200.JPG"), b"jpg-fixroles-apply").unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["import", raw_dir.to_str().unwrap()])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["import", jpg_dir.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Auto-group to merge them into one asset
+    dam()
+        .current_dir(&root)
+        .args(["auto-group", "--apply"])
+        .assert()
+        .success();
+
+    // After auto-group the JPG should already be Export — fix-roles reports 0 fixed
+    dam()
+        .current_dir(&root)
+        .args(["fix-roles"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0 fixed"));
+}
+
+#[test]
+fn fix_roles_json_output() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    create_test_file(&root, "photos/DSC_300.ARW", b"raw-fixroles-json");
+    create_test_file(&root, "photos/DSC_300.JPG", b"jpg-fixroles-json");
+    dam()
+        .current_dir(&root)
+        .args(["import", root.join("photos").to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "fix-roles"])
+        .output()
+        .unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert!(parsed["checked"].is_number());
+    assert!(parsed["fixed"].is_number());
+    assert!(parsed["variants_fixed"].is_number());
+    assert!(parsed["already_correct"].is_number());
+    assert_eq!(parsed["dry_run"].as_bool(), Some(true));
+}
+
+#[test]
+fn refresh_detects_unchanged_recipes() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    create_test_file(&root, "photos/DSC_400.ARW", b"raw-refresh-test");
+    create_test_file(
+        &root,
+        "photos/DSC_400.xmp",
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"3\"/></rdf:RDF></x:xmpmeta>",
+    );
+    dam()
+        .current_dir(&root)
+        .args(["import", root.join("photos").to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Refresh without changes — should report unchanged
+    dam()
+        .current_dir(&root)
+        .args(["refresh"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 unchanged"));
+}
+
+#[test]
+fn refresh_detects_modified_recipe() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let xmp_path = root.join("photos/DSC_500.xmp");
+    create_test_file(&root, "photos/DSC_500.ARW", b"raw-refresh-modify");
+    create_test_file(
+        &root,
+        "photos/DSC_500.xmp",
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"2\"/></rdf:RDF></x:xmpmeta>",
+    );
+    dam()
+        .current_dir(&root)
+        .args(["import", root.join("photos").to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Modify the XMP file externally
+    std::fs::write(
+        &xmp_path,
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"5\"/></rdf:RDF></x:xmpmeta>",
+    )
+    .unwrap();
+
+    // Refresh should detect the change
+    dam()
+        .current_dir(&root)
+        .args(["refresh"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 refreshed"));
+}
+
+#[test]
+fn refresh_dry_run_does_not_apply() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let xmp_path = root.join("photos/DSC_600.xmp");
+    create_test_file(&root, "photos/DSC_600.ARW", b"raw-refresh-dry");
+    create_test_file(
+        &root,
+        "photos/DSC_600.xmp",
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"1\"/></rdf:RDF></x:xmpmeta>",
+    );
+    dam()
+        .current_dir(&root)
+        .args(["import", root.join("photos").to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Modify the XMP file
+    std::fs::write(
+        &xmp_path,
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"4\"/></rdf:RDF></x:xmpmeta>",
+    )
+    .unwrap();
+
+    // Dry run — should report but not apply
+    dam()
+        .current_dir(&root)
+        .args(["refresh", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 refreshed"))
+        .stderr(predicate::str::contains("Dry run"));
+
+    // Run again without dry-run — should still see the change (wasn't applied)
+    dam()
+        .current_dir(&root)
+        .args(["refresh"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 refreshed"));
+}
+
+#[test]
+fn edit_sets_and_clears_label() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "labeled.jpg", b"label test data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .output()
+        .unwrap();
+    let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Set label
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--label", "Red"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Label: Red"));
+
+    // Verify via show --json
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "show", &asset_id])
+        .output()
+        .unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert_eq!(parsed["color_label"].as_str(), Some("Red"));
+
+    // Change to another label (case-insensitive)
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--label", "blue"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Label: Blue"));
+
+    // Clear label
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--clear-label"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Label: (none)"));
+
+    // Verify cleared
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "show", &asset_id])
+        .output()
+        .unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert!(parsed["color_label"].is_null());
+}
+
+#[test]
+fn edit_label_validates_color() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "badlabel.jpg", b"bad label test");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "type:image"])
+        .output()
+        .unwrap();
+    let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Invalid label should fail
+    dam()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--label", "Magenta"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Unknown color label"));
+}

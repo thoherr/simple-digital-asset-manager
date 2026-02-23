@@ -156,6 +156,9 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - `find_duplicates() -> Vec<DuplicateGroup>` — find variants with same hash on multiple locations.
 - `verify(paths, volume, asset) -> VerifyResult` — re-hash files on disk and compare against stored content hashes. Reports `Ok`, `Mismatch`, `Modified` (recipe with changed hash), `Missing`, `Skipped`, or `Untracked`. Modified recipes are not treated as failures — their stored hash is updated. Supports path mode (verify specific files/dirs), catalog mode (verify all locations), `--volume`, `--asset`, and `--include`/`--skip` filters.
 - `refresh(paths, volume, asset_id, dry_run) -> RefreshResult` — re-read metadata from changed recipe/sidecar files. Iterates recipe file locations, compares on-disk hash to stored hash, and for changed files re-extracts XMP metadata and updates catalog + sidecar. Reports `Unchanged`, `Refreshed`, `Missing`, or `Offline`. Lighter than `sync` — only touches metadata, never file locations.
+- `fix_roles(paths, volume, asset, apply) -> FixRolesResult` — scan multi-variant assets with a RAW variant and re-role non-RAW variants from `Original` to `Export`. Assets with only non-RAW variants are untouched. Dry-run by default; `--apply` writes changes to both sidecar YAML and SQLite catalog.
+- `cleanup(volume, apply) -> CleanupResult` — remove stale location/recipe records, orphaned assets, and orphaned previews.
+- `sync(paths, volume, apply, remove_stale) -> SyncResult` — reconcile catalog with disk after external file moves/renames/modifications.
 
 ### 6. Query Engine
 
@@ -167,6 +170,12 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - Full-text search over name, filename, description, and source metadata
 - Sort by: date, name, file size, import date
 - Output: asset list with summary info, or detailed asset view
+
+**Editing capabilities**:
+- `tag(asset_id, tags, remove)` — add or remove tags, with XMP write-back
+- `edit(asset_id, fields)` — set/clear name, description, rating, color label via `EditFields` (triple-option pattern: `None` = no change, `Some(None)` = clear, `Some(Some(x))` = set). Rating, description, and label changes trigger XMP write-back.
+- `set_rating(asset_id, rating)` / `set_color_label(asset_id, label)` — individual field setters used by web UI and batch operations
+- `auto_group(asset_ids, apply)` — group assets by filename stem using fuzzy prefix matching
 
 ### 7. Preview Generator
 
@@ -241,6 +250,11 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - `POST /api/collections` — create a new collection (JSON: `{name, description?}`)
 - `POST /api/batch/collection` — batch add assets to a collection (JSON: `{asset_ids, collection}`)
 - `DELETE /api/batch/collection` — batch remove assets from a collection (JSON: `{asset_ids, collection}`)
+- `POST /api/batch/auto-group` — batch auto-group selected assets by stem (JSON: `{asset_ids}`)
+- `PUT /api/asset/{id}/name` — set/clear asset name (form: `name=text`), returns name fragment
+- `GET /api/saved-searches` — list all saved searches as JSON
+- `POST /api/saved-searches` — save a new search (JSON: `{name, query, sort?}`)
+- `DELETE /api/saved-searches/{name}` — delete a saved search
 
 **Catalog extensions** (in `src/catalog.rs`):
 - `SearchOptions` / `SearchSort` / `SearchPage` — paginated search with volume filter and dynamic sort
@@ -249,7 +263,72 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - `list_all_formats()` — distinct variant formats
 - `list_volumes()` — volume IDs and labels
 
-### 11. CLI
+### 11. Config Module
+
+**Responsibility**: parse and provide catalog configuration from `dam.toml`.
+
+**Module**: `src/config.rs` — `CatalogConfig` struct with sub-structs `PreviewConfig`, `ServeConfig`, `ImportConfig`.
+
+**Sections**:
+- `[preview]`: `max_edge` (default 800), `format` ("jpeg"/"webp", default "jpeg"), `quality` (1–100, default 85)
+- `[serve]`: `port` (default 8080), `bind` (default "127.0.0.1"). CLI flags override.
+- `[import]`: `exclude` (glob patterns matched against filenames), `auto_tags` (merged into new assets)
+- `default_volume`: fallback volume UUID for import
+
+All sections and fields are optional — missing fields use defaults.
+
+### 12. EXIF Reader
+
+**Responsibility**: extract EXIF metadata from image files at import time.
+
+**Module**: `src/exif_reader.rs` — uses `kamadak-exif` crate.
+
+**Extracted fields**: camera model, lens model, ISO, focal length, aperture (f-number), image dimensions (width/height), date/time original. All stored in the variant's `source_metadata` map.
+
+### 13. XMP Reader
+
+**Responsibility**: extract and write back XMP metadata for bidirectional sync with photo editing tools.
+
+**Module**: `src/xmp_reader.rs` — uses `quick-xml` crate for parsing, string-based find/replace for write-back.
+
+**Read operations**: `extract_xmp_metadata(path)` — parses `dc:subject` (keywords/tags), `dc:description`, `xmp:Rating`, `xmp:Label`, `dc:creator`, `dc:rights` from XMP sidecar files.
+
+**Write operations** (all preserve existing XMP structure):
+- `update_rating(path, rating)` — write `xmp:Rating` value
+- `update_tags(path, added, removed)` — delta-based `dc:subject`/`rdf:Bag` editing (preserves externally-added tags)
+- `update_description(path, description)` — write/clear/inject `dc:description`/`rdf:Alt`/`rdf:li`
+- `update_label(path, label)` — write/clear `xmp:Label`
+
+After each write, the file is re-hashed and the recipe's `content_hash` is updated in both catalog and sidecar.
+
+### 14. Collection Store
+
+**Responsibility**: manage static album collections.
+
+**Module**: `src/collection_store.rs` — dual storage: SQLite tables (`collections`, `collection_assets`) for fast queries + `collections.yaml` at catalog root for persistence across `rebuild-catalog`.
+
+**Operations**:
+- `create(name, description)` — create a new collection
+- `list()` — list all collections with asset counts
+- `show(name)` — list asset IDs in a collection
+- `add(name, asset_ids)` — add assets to a collection
+- `remove(name, asset_ids)` — remove assets from a collection
+- `delete(name)` — delete a collection
+- `restore_from_yaml()` — rebuild SQLite tables from YAML (used during `rebuild-catalog`)
+
+### 15. Saved Search Store
+
+**Responsibility**: manage named search queries (smart albums).
+
+**Module**: `src/saved_search_store.rs` — stored in `searches.toml` at catalog root.
+
+**Operations**:
+- `save(name, query, sort)` — save or replace a named search
+- `list()` — list all saved searches with query and sort
+- `run(name)` — execute a saved search and return results
+- `delete(name)` — delete a saved search
+
+### 16. CLI
 
 **Global flags**:
 - `--json` — output machine-readable JSON
@@ -277,6 +356,10 @@ dam cleanup [--volume V] [--list] [--apply]       # remove stale locations, orph
 dam duplicates [--format F]                       # find duplicates
 dam generate-previews [PATHS...] [--asset ID] [--volume V] [--include G] [--skip G] [--force]  # generate thumbnails
 dam stats [--types] [--volumes] [--tags] [--verified] [--all] [--limit N]  # catalog statistics
+dam auto-group [QUERY] [--apply]                  # group assets by filename stem
+dam fix-roles [PATHS...] [--volume V] [--asset ID] [--apply]  # fix variant roles in RAW+non-RAW groups
+dam saved-search save|list|run|delete             # manage saved searches (alias: ss)
+dam collection create|list|show|add|remove|delete # manage collections (alias: col)
 dam rebuild-catalog                               # rebuild SQLite from sidecars
 dam serve [--port P] [--bind ADDR]                # start web UI server
 ```
@@ -287,6 +370,8 @@ dam serve [--port P] [--bind ADDR]                # start web UI server
 <catalog_root>/                       # e.g. ~/dam/ or wherever `dam init` was run
   dam.toml                            # catalog configuration (default volume, preferences)
   catalog.db                          # SQLite index (derived, rebuildable)
+  searches.toml                       # saved search definitions
+  collections.yaml                    # collection membership (persists across rebuild-catalog)
   metadata/
     55/
       550e8400-e29b-41d4-...yaml      # asset sidecar files, sharded by UUID prefix

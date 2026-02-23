@@ -9,13 +9,18 @@ The system is organized in four layers, from top to bottom:
 - **Web UI** — browser-based interface via `dam serve`. Uses axum (HTTP), askama (templates), htmx (interactivity). Opens fresh SQLite connections per request via `spawn_blocking`. Serves preview images from the catalog's `previews/` directory.
 
 ### 2. Core Library
-- **Asset Service** — orchestrates import, grouping, relocation, verification, deduplication. Main business logic.
+- **Asset Service** — orchestrates import, grouping, relocation, verification, deduplication, role fixing. Main business logic.
 - **Content Store** — SHA-256 hashing, deduplication, mapping hash → physical location(s). A file *is* its hash.
 - **Metadata Store** — text-based sidecar files (YAML). Stores tags, descriptions, variant groupings, processing recipes. Human-readable and diffable.
 - **Device Registry** — tracks volumes, mount points, online/offline status. Allows referencing files on unmounted media.
-- **Query Engine** — searches the local catalog by metadata fields, dates, tags, file types, etc.
+- **Query Engine** — searches the local catalog and performs metadata editing (tags, rating, color label, grouping, auto-grouping).
 - **Preview Generator** — creates thumbnails/previews using external tools (dcraw/libraw, ffmpeg). Caches in local catalog.
 - **Format Module** — template engine for flexible CLI output (presets, custom templates, JSON serialization).
+- **Config Module** — parses `dam.toml` configuration (preview settings, serve settings, import exclusions/auto-tags).
+- **EXIF Reader** — extracts EXIF metadata from image files (camera, lens, ISO, focal length, aperture, dimensions, dates).
+- **XMP Reader** — extracts and writes back XMP metadata (keywords, rating, description, color label) for bidirectional sync with CaptureOne/Lightroom.
+- **Collection Store** — manages static album collections (dual storage: SQLite for queries + YAML for rebuild persistence).
+- **Saved Search Store** — manages named search queries (stored in TOML).
 
 ### 3. Storage Layer
 - **Local Catalog** — always available on local disk. Contains asset index, cached metadata, thumbnails, volume registry. Small compared to originals.
