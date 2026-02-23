@@ -214,10 +214,10 @@ impl SearchSort {
         match self {
             SearchSort::DateDesc => "a.created_at DESC",
             SearchSort::DateAsc => "a.created_at ASC",
-            SearchSort::NameAsc => "COALESCE(a.name, v.original_filename) ASC",
-            SearchSort::NameDesc => "COALESCE(a.name, v.original_filename) DESC",
-            SearchSort::SizeDesc => "v.file_size DESC",
-            SearchSort::SizeAsc => "v.file_size ASC",
+            SearchSort::NameAsc => "COALESCE(a.name, bv.original_filename) ASC",
+            SearchSort::NameDesc => "COALESCE(a.name, bv.original_filename) DESC",
+            SearchSort::SizeDesc => "bv.file_size DESC",
+            SearchSort::SizeAsc => "bv.file_size ASC",
         }
     }
 
@@ -360,6 +360,24 @@ impl Catalog {
              CREATE INDEX IF NOT EXISTS idx_variants_iso ON variants(iso);
              CREATE INDEX IF NOT EXISTS idx_variants_focal ON variants(focal_length_mm);",
         );
+        // best_variant_hash denormalization
+        let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN best_variant_hash TEXT");
+        let _ = self.conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_variants_asset_id ON variants(asset_id)",
+        );
+        // Backfill best_variant_hash for existing rows (runs once, idempotent)
+        let _ = self.conn.execute_batch(
+            "UPDATE assets SET best_variant_hash = (
+                SELECT content_hash FROM variants WHERE asset_id = assets.id
+                ORDER BY
+                    CASE role WHEN 'export' THEN 300 WHEN 'processed' THEN 200
+                        WHEN 'original' THEN 100 ELSE 0 END +
+                    CASE WHEN LOWER(format) IN ('jpg','jpeg','png','tiff','tif','webp')
+                        THEN 50 ELSE 0 END +
+                    MIN(file_size / 1000000, 49)
+                DESC LIMIT 1
+            ) WHERE best_variant_hash IS NULL",
+        );
         // Collection tables
         let _ = crate::collection::CollectionStore::initialize(&self.conn);
     }
@@ -373,7 +391,8 @@ impl Catalog {
                 created_at TEXT NOT NULL,
                 asset_type TEXT NOT NULL,
                 tags TEXT NOT NULL DEFAULT '[]',
-                description TEXT
+                description TEXT,
+                best_variant_hash TEXT
             );
 
             CREATE TABLE IF NOT EXISTS variants (
@@ -430,8 +449,12 @@ impl Catalog {
             "CREATE INDEX IF NOT EXISTS idx_variants_camera ON variants(camera_model);
              CREATE INDEX IF NOT EXISTS idx_variants_lens ON variants(lens_model);
              CREATE INDEX IF NOT EXISTS idx_variants_iso ON variants(iso);
-             CREATE INDEX IF NOT EXISTS idx_variants_focal ON variants(focal_length_mm);",
+             CREATE INDEX IF NOT EXISTS idx_variants_focal ON variants(focal_length_mm);
+             CREATE INDEX IF NOT EXISTS idx_variants_asset_id ON variants(asset_id);",
         )?;
+
+        // Migration: best_variant_hash denormalization
+        let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN best_variant_hash TEXT");
 
         // Collection tables
         crate::collection::CollectionStore::initialize(&self.conn)?;
@@ -449,15 +472,30 @@ impl Catalog {
             WHERE camera_model IS NULL AND source_metadata != '{}'"
         );
 
+        // Backfill best_variant_hash for existing rows (runs once, idempotent)
+        let _ = self.conn.execute_batch(
+            "UPDATE assets SET best_variant_hash = (
+                SELECT content_hash FROM variants WHERE asset_id = assets.id
+                ORDER BY
+                    CASE role WHEN 'export' THEN 300 WHEN 'processed' THEN 200
+                        WHEN 'original' THEN 100 ELSE 0 END +
+                    CASE WHEN LOWER(format) IN ('jpg','jpeg','png','tiff','tif','webp')
+                        THEN 50 ELSE 0 END +
+                    MIN(file_size / 1000000, 49)
+                DESC LIMIT 1
+            ) WHERE best_variant_hash IS NULL",
+        );
+
         Ok(())
     }
 
     /// Insert an asset into the catalog.
     pub fn insert_asset(&self, asset: &Asset) -> Result<()> {
         let tags_json = serde_json::to_string(&asset.tags)?;
+        let best_hash = crate::models::variant::compute_best_variant_hash(&asset.variants);
         self.conn.execute(
-            "INSERT OR REPLACE INTO assets (id, name, created_at, asset_type, tags, description, rating, color_label) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT OR REPLACE INTO assets (id, name, created_at, asset_type, tags, description, rating, color_label, best_variant_hash) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![
                 asset.id.to_string(),
                 asset.name,
@@ -467,6 +505,7 @@ impl Catalog {
                 asset.description,
                 asset.rating.map(|r| r as i64),
                 asset.color_label,
+                best_hash,
             ],
         )?;
         Ok(())
@@ -486,6 +525,15 @@ impl Catalog {
         self.conn.execute(
             "UPDATE assets SET color_label = ?1 WHERE id = ?2",
             rusqlite::params![color_label, asset_id],
+        )?;
+        Ok(())
+    }
+
+    /// Update the denormalized best_variant_hash for an asset.
+    pub fn update_best_variant_hash(&self, asset_id: &str, hash: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE assets SET best_variant_hash = ?1 WHERE id = ?2",
+            rusqlite::params![hash, asset_id],
         )?;
         Ok(())
     }
@@ -1259,16 +1307,20 @@ impl Catalog {
     }
 
     /// Build the WHERE clause and parameters for search queries.
-    /// Returns (where_clause, params, needs_file_locations_join).
-    fn build_search_where(opts: &SearchOptions) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>, bool) {
+    /// Returns (where_clause, params, needs_fl_join, needs_v_join).
+    /// `needs_v_join`: true when any filter references the `v` (variants) table directly.
+    /// `needs_fl_join`: true when any filter references `fl` (file_locations); implies `needs_v_join`.
+    fn build_search_where(opts: &SearchOptions) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>, bool, bool) {
         let mut clauses = Vec::new();
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         let mut needs_fl_join = opts.volume.is_some();
+        let mut needs_v_join = false;
 
         if let Some(text) = opts.text {
             if !text.is_empty() {
+                // Text search uses bv (best variant) — no v join needed
                 clauses.push(
-                    "(a.name LIKE ? OR v.original_filename LIKE ? OR a.description LIKE ? OR v.source_metadata LIKE ?)".to_string(),
+                    "(a.name LIKE ? OR bv.original_filename LIKE ? OR a.description LIKE ? OR bv.source_metadata LIKE ?)".to_string(),
                 );
                 let pattern = format!("%{text}%");
                 params.push(Box::new(pattern.clone()));
@@ -1298,6 +1350,7 @@ impl Catalog {
             if !format_filter.is_empty() {
                 clauses.push("v.format = ?".to_string());
                 params.push(Box::new(format_filter.to_lowercase()));
+                needs_v_join = true;
             }
         }
         if let Some(volume) = opts.volume {
@@ -1328,62 +1381,74 @@ impl Catalog {
             }
         }
 
-        // Metadata column filters
+        // Metadata column filters — these reference v.* so need v join
         if let Some(camera) = opts.camera {
             if !camera.is_empty() {
                 clauses.push("v.camera_model LIKE ?".to_string());
                 params.push(Box::new(format!("%{camera}%")));
+                needs_v_join = true;
             }
         }
         if let Some(lens) = opts.lens {
             if !lens.is_empty() {
                 clauses.push("v.lens_model LIKE ?".to_string());
                 params.push(Box::new(format!("%{lens}%")));
+                needs_v_join = true;
             }
         }
         if let Some(min) = opts.iso_min {
             clauses.push("v.iso >= ?".to_string());
             params.push(Box::new(min));
+            needs_v_join = true;
         }
         if let Some(max) = opts.iso_max {
             clauses.push("v.iso <= ?".to_string());
             params.push(Box::new(max));
+            needs_v_join = true;
         }
         if let Some(min) = opts.focal_min {
             clauses.push("v.focal_length_mm >= ?".to_string());
             params.push(Box::new(min));
+            needs_v_join = true;
         }
         if let Some(max) = opts.focal_max {
             clauses.push("v.focal_length_mm <= ?".to_string());
             params.push(Box::new(max));
+            needs_v_join = true;
         }
         if let Some(min) = opts.f_min {
             clauses.push("v.f_number >= ?".to_string());
             params.push(Box::new(min));
+            needs_v_join = true;
         }
         if let Some(max) = opts.f_max {
             clauses.push("v.f_number <= ?".to_string());
             params.push(Box::new(max));
+            needs_v_join = true;
         }
         if let Some(min) = opts.width_min {
             clauses.push("v.image_width >= ?".to_string());
             params.push(Box::new(min));
+            needs_v_join = true;
         }
         if let Some(min) = opts.height_min {
             clauses.push("v.image_height >= ?".to_string());
             params.push(Box::new(min));
+            needs_v_join = true;
         }
 
         // JSON fallback filters (meta:key=value)
         for (key, value) in &opts.meta_filters {
             clauses.push(format!("json_extract(v.source_metadata, '$.{key}') LIKE ?"));
             params.push(Box::new(format!("%{value}%")));
+            needs_v_join = true;
         }
 
         // Location health filters
         if opts.orphan {
+            // Use subquery referencing variants table directly (no v alias needed)
             clauses.push(
-                "NOT EXISTS (SELECT 1 FROM file_locations fl2 WHERE fl2.content_hash = v.content_hash)"
+                "NOT EXISTS (SELECT 1 FROM file_locations fl2 JOIN variants v2 ON fl2.content_hash = v2.content_hash WHERE v2.asset_id = a.id)"
                     .to_string(),
             );
         }
@@ -1409,10 +1474,12 @@ impl Catalog {
         }
         if let Some(online_ids) = opts.no_online_locations {
             if !online_ids.is_empty() {
+                // Use subquery — no v alias needed
                 let placeholders: Vec<&str> = online_ids.iter().map(|_| "?").collect();
                 clauses.push(format!(
                     "NOT EXISTS (SELECT 1 FROM file_locations fl2 \
-                     WHERE fl2.content_hash = v.content_hash AND fl2.volume_id IN ({}))",
+                     JOIN variants v2 ON fl2.content_hash = v2.content_hash \
+                     WHERE v2.asset_id = a.id AND fl2.volume_id IN ({}))",
                     placeholders.join(",")
                 ));
                 for id in online_ids {
@@ -1441,30 +1508,38 @@ impl Catalog {
             format!(" WHERE {}", clauses.join(" AND "))
         };
 
-        // If any metadata column filter references fl., we need the join
-        // (already handled by opts.volume check above, but be safe)
-        if !needs_fl_join {
-            needs_fl_join = where_clause.contains("fl.");
+        // fl join implies v join (fl joins through v)
+        if needs_fl_join {
+            needs_v_join = true;
         }
 
-        (where_clause, params, needs_fl_join)
+        (where_clause, params, needs_fl_join, needs_v_join)
     }
 
     /// Paginated search with dynamic filters and sorting.
     pub fn search_paginated(&self, opts: &SearchOptions) -> Result<Vec<SearchRow>> {
-        let (where_clause, mut params, needs_fl_join) = Self::build_search_where(opts);
+        let (where_clause, mut params, needs_fl_join, needs_v_join) = Self::build_search_where(opts);
 
         let mut sql = String::from(
-            "SELECT a.id, a.name, a.asset_type, a.created_at, v.original_filename, v.format, \
-             a.tags, a.description, v.content_hash, a.rating, a.color_label \
-             FROM assets a JOIN variants v ON a.id = v.asset_id",
+            "SELECT a.id, a.name, a.asset_type, a.created_at, bv.original_filename, bv.format, \
+             a.tags, a.description, bv.content_hash, a.rating, a.color_label \
+             FROM assets a \
+             JOIN variants bv ON bv.content_hash = a.best_variant_hash",
         );
 
+        if needs_v_join {
+            sql.push_str(" JOIN variants v ON v.asset_id = a.id");
+        }
         if needs_fl_join {
             sql.push_str(" JOIN file_locations fl ON v.content_hash = fl.content_hash");
         }
 
         sql.push_str(&where_clause);
+
+        if needs_v_join {
+            sql.push_str(" GROUP BY a.id");
+        }
+
         sql.push_str(&format!(" ORDER BY {}", opts.sort.to_sql()));
 
         let page = opts.page.max(1);
@@ -1504,12 +1579,18 @@ impl Catalog {
 
     /// Count total results matching the same filters as search_paginated (without LIMIT/OFFSET).
     pub fn search_count(&self, opts: &SearchOptions) -> Result<u64> {
-        let (where_clause, params, needs_fl_join) = Self::build_search_where(opts);
+        let (where_clause, params, needs_fl_join, needs_v_join) = Self::build_search_where(opts);
 
-        let mut sql = String::from(
-            "SELECT COUNT(*) FROM assets a JOIN variants v ON a.id = v.asset_id",
+        let count_expr = if needs_v_join { "COUNT(DISTINCT a.id)" } else { "COUNT(*)" };
+        let mut sql = format!(
+            "SELECT {} FROM assets a \
+             JOIN variants bv ON bv.content_hash = a.best_variant_hash",
+            count_expr
         );
 
+        if needs_v_join {
+            sql.push_str(" JOIN variants v ON v.asset_id = a.id");
+        }
         if needs_fl_join {
             sql.push_str(" JOIN file_locations fl ON v.content_hash = fl.content_hash");
         }
@@ -2174,7 +2255,6 @@ mod tests {
         asset.name = Some("sunset photo".to_string());
         asset.description = Some("A beautiful sunset over the ocean".to_string());
         asset.tags = vec!["landscape".to_string(), "nature".to_string()];
-        catalog.insert_asset(&asset).unwrap();
 
         let variant = crate::models::Variant {
             content_hash: "sha256:search1".to_string(),
@@ -2186,12 +2266,13 @@ mod tests {
             source_metadata: Default::default(),
             locations: vec![],
         };
+        asset.variants.push(variant.clone());
+        catalog.insert_asset(&asset).unwrap();
         catalog.insert_variant(&variant).unwrap();
 
         // Add a second asset of different type
         let mut asset2 = crate::models::Asset::new(crate::models::AssetType::Video, "sha256:search2");
         asset2.name = Some("holiday clip".to_string());
-        catalog.insert_asset(&asset2).unwrap();
 
         let variant2 = crate::models::Variant {
             content_hash: "sha256:search2".to_string(),
@@ -2203,6 +2284,8 @@ mod tests {
             source_metadata: Default::default(),
             locations: vec![],
         };
+        asset2.variants.push(variant2.clone());
+        catalog.insert_asset(&asset2).unwrap();
         catalog.insert_variant(&variant2).unwrap();
 
         catalog
@@ -3256,8 +3339,7 @@ mod tests {
         catalog.initialize().unwrap();
 
         // Asset 1: Fuji camera
-        let asset1 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:meta1");
-        catalog.insert_asset(&asset1).unwrap();
+        let mut asset1 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:meta1");
 
         let mut meta1 = HashMap::new();
         meta1.insert("camera_model".to_string(), "X-T5".to_string());
@@ -3279,11 +3361,12 @@ mod tests {
             source_metadata: meta1,
             locations: vec![],
         };
+        asset1.variants.push(variant1.clone());
+        catalog.insert_asset(&asset1).unwrap();
         catalog.insert_variant(&variant1).unwrap();
 
         // Asset 2: Nikon camera
-        let asset2 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:meta2");
-        catalog.insert_asset(&asset2).unwrap();
+        let mut asset2 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:meta2");
 
         let mut meta2 = HashMap::new();
         meta2.insert("camera_model".to_string(), "Z 6II".to_string());
@@ -3306,6 +3389,8 @@ mod tests {
             source_metadata: meta2,
             locations: vec![],
         };
+        asset2.variants.push(variant2.clone());
+        catalog.insert_asset(&asset2).unwrap();
         catalog.insert_variant(&variant2).unwrap();
 
         catalog

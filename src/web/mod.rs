@@ -20,15 +20,17 @@ pub struct AppState {
     catalog_root: PathBuf,
     preview_config: PreviewConfig,
     pub preview_ext: String,
+    pub log_requests: bool,
 }
 
 impl AppState {
-    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig) -> Self {
+    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig, log_requests: bool) -> Self {
         let preview_ext = preview_config.format.extension().to_string();
         Self {
             catalog_root,
             preview_config,
             preview_ext,
+            log_requests,
         }
     }
 
@@ -127,12 +129,29 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/static/htmx.min.js", axum::routing::get(static_assets::htmx_js))
         .route("/static/style.css", axum::routing::get(static_assets::style_css))
         .nest_service("/preview", ServeDir::new(preview_dir))
+        .layer(axum::middleware::from_fn_with_state(state.clone(), log_request))
         .with_state(state)
 }
 
+async fn log_request(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    if !state.log_requests {
+        return next.run(req).await;
+    }
+    let method = req.method().clone();
+    let uri = req.uri().clone();
+    let start = std::time::Instant::now();
+    let response = next.run(req).await;
+    eprintln!("{method} {uri} -> {} ({:.1?})", response.status(), start.elapsed());
+    response
+}
+
 /// Start the web server.
-pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig) -> Result<()> {
-    let state = Arc::new(AppState::new(catalog_root, preview_config));
+pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool) -> Result<()> {
+    let state = Arc::new(AppState::new(catalog_root, preview_config, log));
 
     // Verify catalog is accessible and run schema migrations once at startup
     Catalog::open(&state.catalog_root)?;

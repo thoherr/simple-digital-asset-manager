@@ -75,6 +75,12 @@ pub fn best_preview_index(variants: &[Variant]) -> Option<usize> {
         .map(|(i, _)| i)
 }
 
+/// Return the content hash of the best variant for display (browse grid, search results).
+/// Reuses the same scoring as `best_preview_index()`.
+pub fn compute_best_variant_hash(variants: &[Variant]) -> Option<String> {
+    best_preview_index(variants).map(|i| variants[i].content_hash.clone())
+}
+
 /// Return the index of the best preview variant from catalog `VariantDetails` (role is a String).
 pub fn best_preview_index_details(variants: &[VariantDetails]) -> Option<usize> {
     if variants.is_empty() {

@@ -585,6 +585,7 @@ impl AssetService {
                         metadata_store.save(asset).with_context(|| {
                             format!("Failed to write sidecar for {}", file_path.display())
                         })?;
+                        catalog.insert_asset(asset)?;
                         catalog.insert_variant(&variant)?;
                         catalog.insert_file_location(&content_hash, &location)?;
 
@@ -2884,6 +2885,8 @@ impl AssetService {
                     )?;
                 }
                 metadata_store.save(&asset)?;
+                let best_hash = crate::models::variant::compute_best_variant_hash(&asset.variants);
+                catalog.update_best_variant_hash(&asset.id.to_string(), best_hash.as_deref())?;
             }
 
             result.fixed += 1;

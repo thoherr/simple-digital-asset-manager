@@ -1919,7 +1919,7 @@ fn main() {
             let port = port.unwrap_or(config.serve.port);
             let bind = bind.unwrap_or_else(|| config.serve.bind.clone());
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(dam::web::serve(catalog_root, &bind, port, config.preview))?;
+            rt.block_on(dam::web::serve(catalog_root, &bind, port, config.preview, cli.log))?;
             Ok(())
         }
         Commands::Stats { types, volumes, tags, verified, all, limit } => {
