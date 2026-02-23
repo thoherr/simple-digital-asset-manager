@@ -164,6 +164,8 @@ pub struct ResultsPartial {
     pub volume: String,
     pub rating: String,
     pub label: String,
+    pub collection: String,
+    pub path: String,
     pub sort: String,
     pub cards: Vec<AssetCard>,
     pub total: u64,

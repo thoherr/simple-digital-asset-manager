@@ -1,8 +1,8 @@
-{% macro page_url(p) %}/?q={{ query|urlencode }}&type={{ asset_type|urlencode }}&tag={{ tag|urlencode }}&format={{ format_filter|urlencode }}&volume={{ volume|urlencode }}&rating={{ rating|urlencode }}&label={{ label|urlencode }}&sort={{ sort }}&page={{ p }}{% endmacro %}
-{% macro sort_url(s) %}/?q={{ query|urlencode }}&type={{ asset_type|urlencode }}&tag={{ tag|urlencode }}&format={{ format_filter|urlencode }}&volume={{ volume|urlencode }}&rating={{ rating|urlencode }}&label={{ label|urlencode }}&sort={{ s }}&page=1{% endmacro %}
+{% macro page_url(p) %}/?q={{ query|urlencode }}&type={{ asset_type|urlencode }}&tag={{ tag|urlencode }}&format={{ format_filter|urlencode }}&volume={{ volume|urlencode }}&rating={{ rating|urlencode }}&label={{ label|urlencode }}&collection={{ collection|urlencode }}&path={{ path|urlencode }}&sort={{ sort }}&page={{ p }}{% endmacro %}
+{% macro sort_url(s) %}/?q={{ query|urlencode }}&type={{ asset_type|urlencode }}&tag={{ tag|urlencode }}&format={{ format_filter|urlencode }}&volume={{ volume|urlencode }}&rating={{ rating|urlencode }}&label={{ label|urlencode }}&collection={{ collection|urlencode }}&path={{ path|urlencode }}&sort={{ s }}&page=1{% endmacro %}
 {% if cards.is_empty() %}
 <div class="no-results">
-    {% if query.is_empty() && asset_type.is_empty() && tag.is_empty() && format_filter.is_empty() && volume.is_empty() && rating.is_empty() && label.is_empty() %}
+    {% if query.is_empty() && asset_type.is_empty() && tag.is_empty() && format_filter.is_empty() && volume.is_empty() && rating.is_empty() && label.is_empty() && collection.is_empty() && path.is_empty() %}
     No assets in catalog. Import some files to get started.
     {% else %}
     No results found.
