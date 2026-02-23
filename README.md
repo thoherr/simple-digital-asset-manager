@@ -57,7 +57,7 @@ dam serve
 | `dam relocate <id> <volume>` | Copy or move an asset to another volume |
 | `dam verify` | Re-hash files to detect corruption |
 | `dam sync <paths...>` | Reconcile catalog with moved/modified/missing files |
-| `dam refresh` | Re-read metadata from changed sidecar/recipe files |
+| `dam refresh` | Re-read metadata from changed sidecar/recipe files (`--media` for embedded XMP) |
 | `dam cleanup` | Remove stale locations, orphaned assets, and orphaned previews |
 | `dam stats` | Show catalog statistics |
 | `dam fix-roles` | Fix variant roles in RAW+non-RAW asset groups |
