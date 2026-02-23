@@ -51,6 +51,7 @@ dam serve
 | `dam edit <id> [flags]` | Edit name, description, rating, color label |
 | `dam tag <id> <tags...>` | Add or remove tags |
 | `dam group <hashes...>` | Manually group variants into one asset |
+| `dam auto-group [query]` | Auto-group assets by filename stem (fuzzy prefix matching) |
 | `dam duplicates` | Find files with identical content across locations |
 | `dam generate-previews` | Generate or regenerate preview thumbnails |
 | `dam relocate <id> <volume>` | Copy or move an asset to another volume |
