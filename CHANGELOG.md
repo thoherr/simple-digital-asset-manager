@@ -2,6 +2,24 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v1.0.0
+
+First stable release. All planned features are implemented, all tests pass, documentation is complete. Ready for production use.
+
+### Highlights
+
+- **22 CLI commands** covering the full asset management lifecycle: import, search, browse, edit, group, relocate, verify, sync, refresh, cleanup, and more
+- **Web UI** with search, filtering, inline editing, batch operations, keyboard navigation, saved searches, and collections
+- **Bidirectional XMP sync** with CaptureOne, Lightroom, and other photo editing tools
+- **Content-addressable storage** with SHA-256 deduplication and integrity verification across multiple offline volumes
+- **Stem-based auto-grouping** for RAW+JPEG+sidecar bundles, with fuzzy cross-directory grouping for exports
+
+### Changes since v0.7.1
+
+- Add 10 integration tests (group, fix-roles, refresh, edit --label)
+- Complete documentation: architecture overview, component specification, specification
+- Move specification into doc/ directory
+
 ## v0.7.1
 
 ### New Features
