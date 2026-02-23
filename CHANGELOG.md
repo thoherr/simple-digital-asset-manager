@@ -2,6 +2,12 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v0.7.1
+
+### New Features
+- **`dam fix-roles` command** — scan multi-variant assets and re-role non-RAW variants from Original to Export when a RAW variant exists. Fixes assets imported before the auto-grouping role fix. Dry-run by default (`--apply` to execute). Supports `--volume`, `--asset`, `--json`, `--log`, `--time`.
+- **Import auto-grouping role fix** — newly imported RAW+non-RAW pairs now correctly assign Export role to non-RAW variants (previously both were marked Original)
+
 ## v0.7.0
 
 ### New Features

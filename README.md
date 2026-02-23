@@ -60,6 +60,7 @@ dam serve
 | `dam refresh` | Re-read metadata from changed sidecar/recipe files |
 | `dam cleanup` | Remove stale locations, orphaned assets, and orphaned previews |
 | `dam stats` | Show catalog statistics |
+| `dam fix-roles` | Fix variant roles in RAW+non-RAW asset groups |
 | `dam rebuild-catalog` | Rebuild SQLite index from sidecar files |
 | `dam saved-search` (alias `ss`) | Save, list, run, and delete named searches |
 | `dam collection` (alias `col`) | Create, list, show, add to, remove from, and delete collections |
