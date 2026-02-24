@@ -2078,6 +2078,7 @@ mod tests {
             label: label.to_string(),
             mount_point: std::path::PathBuf::from(mount),
             volume_type: VolumeType::External,
+            purpose: None,
             is_online: true,
         }
     }

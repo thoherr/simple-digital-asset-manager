@@ -4408,10 +4408,10 @@ mod tests {
 
         let registry = crate::device_registry::DeviceRegistry::new(catalog_dir.path());
         let vol1 = registry
-            .register("vol1", vol1_dir.path(), crate::models::VolumeType::Local)
+            .register("vol1", vol1_dir.path(), crate::models::VolumeType::Local, None)
             .unwrap();
         let vol2 = registry
-            .register("vol2", vol2_dir.path(), crate::models::VolumeType::Local)
+            .register("vol2", vol2_dir.path(), crate::models::VolumeType::Local, None)
             .unwrap();
 
         // Ensure volumes are in the catalog DB too
@@ -4630,6 +4630,7 @@ mod tests {
                 "offline-vol",
                 std::path::Path::new("/nonexistent/mount"),
                 crate::models::VolumeType::External,
+                None,
             )
             .unwrap();
 
@@ -5030,7 +5031,7 @@ mod tests {
 
         // Register volume so fix_dates can find it
         let registry = DeviceRegistry::new(catalog_dir.path());
-        let volume = registry.register("test-vol", vol_dir.path(), crate::models::VolumeType::Local).unwrap();
+        let volume = registry.register("test-vol", vol_dir.path(), crate::models::VolumeType::Local, None).unwrap();
 
         let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service.import(
@@ -5084,7 +5085,7 @@ mod tests {
         std::fs::write(&photo_path, "content for date_taken metadata test").unwrap();
 
         let registry = DeviceRegistry::new(catalog_dir.path());
-        let volume = registry.register("test-vol", vol_dir.path(), crate::models::VolumeType::Local).unwrap();
+        let volume = registry.register("test-vol", vol_dir.path(), crate::models::VolumeType::Local, None).unwrap();
 
         let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service.import(&[photo_path], &volume, &default_filter()).unwrap();
@@ -5125,7 +5126,7 @@ mod tests {
         std::fs::write(&photo_path, "correct date test content").unwrap();
 
         let registry = DeviceRegistry::new(catalog_dir.path());
-        let volume = registry.register("test-vol", vol_dir.path(), crate::models::VolumeType::Local).unwrap();
+        let volume = registry.register("test-vol", vol_dir.path(), crate::models::VolumeType::Local, None).unwrap();
 
         let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
         service.import(&[photo_path], &volume, &default_filter()).unwrap();

@@ -71,6 +71,7 @@ erDiagram
         string label "human-readable name"
         string mount_point "filesystem path"
         string volume_type "local, external, network"
+        string purpose "working, archive, backup, cloud (optional)"
         bool is_online "computed: does mount_point exist on disk"
     }
 
@@ -196,6 +197,7 @@ A registered storage device. Volumes give dam a stable reference to storage that
 | `label` | String | Human-readable name (e.g. "Photos SSD", "Archive NAS"). |
 | `mount_point` | PathBuf | Filesystem path where the volume is mounted (e.g. `/Volumes/Photos`). |
 | `volume_type` | VolumeType | One of: `local`, `external`, `network`. |
+| `purpose` | Option\<VolumePurpose\> | Logical role: `working` (active editing), `archive` (long-term primary), `backup` (redundancy), `cloud` (sync folder). Optional — unclassified if not set. Used by duplicate analysis and backup coverage commands. |
 | `is_online` | bool | Computed at runtime -- `true` if `mount_point` exists on disk. Not persisted. |
 
 ### Collection

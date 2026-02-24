@@ -1272,6 +1272,140 @@ fn volume_list_json() {
 }
 
 #[test]
+fn volume_add_with_purpose() {
+    let dir = tempdir().unwrap();
+    let canonical = dir.path().canonicalize().unwrap();
+    dam().current_dir(&canonical).arg("init").assert().success();
+
+    dam()
+        .current_dir(&canonical)
+        .args([
+            "volume", "add", "backup-drive",
+            canonical.to_str().unwrap(),
+            "--purpose", "backup",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("backup-drive"))
+        .stdout(predicate::str::contains("Purpose: backup"));
+
+    // Verify it shows in list
+    dam()
+        .current_dir(&canonical)
+        .args(["volume", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[backup]"));
+}
+
+#[test]
+fn volume_add_purpose_invalid() {
+    let dir = tempdir().unwrap();
+    dam().current_dir(dir.path()).arg("init").assert().success();
+
+    dam()
+        .current_dir(dir.path())
+        .args([
+            "volume", "add", "test",
+            dir.path().to_str().unwrap(),
+            "--purpose", "invalid",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Invalid purpose"));
+}
+
+#[test]
+fn volume_set_purpose() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Volume starts with no purpose
+    dam()
+        .current_dir(&root)
+        .args(["volume", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[online]"))
+        .stdout(predicate::str::is_match(r"\[backup\]|\[archive\]|\[working\]|\[cloud\]").unwrap().not());
+
+    // Set purpose
+    dam()
+        .current_dir(&root)
+        .args(["volume", "set-purpose", "test-vol", "archive"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("purpose set to: archive"));
+
+    // Verify in list
+    dam()
+        .current_dir(&root)
+        .args(["volume", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[archive]"));
+
+    // Clear purpose
+    dam()
+        .current_dir(&root)
+        .args(["volume", "set-purpose", "test-vol", "none"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("purpose cleared"));
+}
+
+#[test]
+fn volume_set_purpose_json() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "volume", "set-purpose", "test-vol", "backup"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(parsed["label"].as_str(), Some("test-vol"));
+    assert_eq!(parsed["purpose"].as_str(), Some("backup"));
+}
+
+#[test]
+fn volume_purpose_in_list_json() {
+    let dir = tempdir().unwrap();
+    let canonical = dir.path().canonicalize().unwrap();
+    dam().current_dir(&canonical).arg("init").assert().success();
+
+    dam()
+        .current_dir(&canonical)
+        .args([
+            "volume", "add", "my-archive",
+            canonical.to_str().unwrap(),
+            "--purpose", "archive",
+        ])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&canonical)
+        .args(["--json", "volume", "list"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8(output).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    let arr = parsed.as_array().expect("should be array");
+    assert_eq!(arr[0]["purpose"].as_str(), Some("archive"));
+}
+
+#[test]
 fn import_json_outputs_result() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());

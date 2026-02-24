@@ -6,4 +6,4 @@ pub mod volume;
 pub use asset::{Asset, AssetType};
 pub use recipe::{Recipe, RecipeType};
 pub use variant::{Variant, VariantRole};
-pub use volume::{FileLocation, Volume, VolumeType};
+pub use volume::{FileLocation, Volume, VolumePurpose, VolumeType};

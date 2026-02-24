@@ -453,10 +453,23 @@ enum VolumeCommands {
 
         /// Mount point path
         path: String,
+
+        /// Volume purpose (working, archive, backup, cloud)
+        #[arg(long)]
+        purpose: Option<String>,
     },
 
     /// List all volumes and their status
     List,
+
+    /// Set or clear the purpose of a volume
+    SetPurpose {
+        /// Volume label or UUID
+        volume: String,
+
+        /// Purpose (working, archive, backup, cloud) or "none" to clear
+        purpose: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -581,23 +594,35 @@ fn main() {
             Ok(())
         }
         Commands::Volume(cmd) => match cmd {
-            VolumeCommands::Add { label, path } => {
+            VolumeCommands::Add { label, path, purpose } => {
                 let catalog_root = dam::config::find_catalog_root()?;
                 let registry = DeviceRegistry::new(&catalog_root);
+                let parsed_purpose = if let Some(ref p) = purpose {
+                    Some(dam::models::VolumePurpose::parse(p).ok_or_else(|| {
+                        anyhow::anyhow!("Invalid purpose '{}'. Valid values: working, archive, backup, cloud", p)
+                    })?)
+                } else {
+                    None
+                };
                 let volume = registry.register(
                     &label,
                     std::path::Path::new(&path),
                     dam::models::VolumeType::Local,
+                    parsed_purpose,
                 )?;
                 if cli.json {
                     println!("{}", serde_json::json!({
                         "id": volume.id.to_string(),
                         "label": volume.label,
                         "path": volume.mount_point.display().to_string(),
+                        "purpose": volume.purpose.as_ref().map(|p| p.as_str()),
                     }));
                 } else {
                     println!("Registered volume '{}' ({})", volume.label, volume.id);
                     println!("  Path: {}", volume.mount_point.display());
+                    if let Some(ref p) = volume.purpose {
+                        println!("  Purpose: {}", p);
+                    }
                 }
                 Ok(())
             }
@@ -612,6 +637,7 @@ fn main() {
                             "label": v.label,
                             "path": v.mount_point.display().to_string(),
                             "volume_type": format!("{:?}", v.volume_type).to_lowercase(),
+                            "purpose": v.purpose.as_ref().map(|p| p.as_str()),
                             "is_online": v.is_online,
                         })
                     }).collect();
@@ -621,9 +647,39 @@ fn main() {
                 } else {
                     for v in &volumes {
                         let status = if v.is_online { "online" } else { "offline" };
-                        println!("{} ({}) [{}]", v.label, v.id, status);
+                        let purpose_tag = v.purpose.as_ref()
+                            .map(|p| format!(" [{}]", p))
+                            .unwrap_or_default();
+                        println!("{} ({}) [{}]{}", v.label, v.id, status, purpose_tag);
                         println!("  Path: {}", v.mount_point.display());
                     }
+                }
+                Ok(())
+            }
+            VolumeCommands::SetPurpose { volume, purpose } => {
+                let catalog_root = dam::config::find_catalog_root()?;
+                let registry = DeviceRegistry::new(&catalog_root);
+                let parsed_purpose = if purpose == "none" || purpose == "clear" {
+                    None
+                } else {
+                    Some(dam::models::VolumePurpose::parse(&purpose).ok_or_else(|| {
+                        anyhow::anyhow!("Invalid purpose '{}'. Valid values: working, archive, backup, cloud, none", purpose)
+                    })?)
+                };
+                let vol = registry.set_purpose(&volume, parsed_purpose)?;
+                // Update the SQLite cache too
+                let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+                catalog.ensure_volume(&vol)?;
+                if cli.json {
+                    println!("{}", serde_json::json!({
+                        "id": vol.id.to_string(),
+                        "label": vol.label,
+                        "purpose": vol.purpose.as_ref().map(|p| p.as_str()),
+                    }));
+                } else if let Some(ref p) = vol.purpose {
+                    println!("Volume '{}' purpose set to: {}", vol.label, p);
+                } else {
+                    println!("Volume '{}' purpose cleared.", vol.label);
                 }
                 Ok(())
             }

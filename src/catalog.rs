@@ -492,6 +492,9 @@ impl Catalog {
         // Collection tables
         crate::collection::CollectionStore::initialize(&self.conn)?;
 
+        // Migration: add purpose column to volumes
+        let _ = self.conn.execute_batch("ALTER TABLE volumes ADD COLUMN purpose TEXT");
+
         // Backfill metadata columns from existing JSON (only rows not yet populated)
         let _ = self.conn.execute_batch(
             "UPDATE variants SET
@@ -709,13 +712,15 @@ impl Catalog {
     /// Ensure a volume record exists in the SQLite cache.
     pub fn ensure_volume(&self, volume: &crate::models::Volume) -> Result<()> {
         self.conn.execute(
-            "INSERT OR IGNORE INTO volumes (id, label, mount_point, volume_type) \
-             VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO volumes (id, label, mount_point, volume_type, purpose) \
+             VALUES (?1, ?2, ?3, ?4, ?5) \
+             ON CONFLICT(id) DO UPDATE SET purpose = excluded.purpose",
             rusqlite::params![
                 volume.id.to_string(),
                 volume.label,
                 volume.mount_point.to_string_lossy().to_string(),
                 format!("{:?}", volume.volume_type).to_lowercase(),
+                volume.purpose.as_ref().map(|p| p.as_str()),
             ],
         )?;
         Ok(())

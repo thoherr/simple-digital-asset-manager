@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use uuid::Uuid;
 
-use crate::models::{Volume, VolumeType};
+use crate::models::{Volume, VolumePurpose, VolumeType};
 
 /// Manages volume registration and online/offline detection.
 pub struct DeviceRegistry {
@@ -46,6 +46,7 @@ impl DeviceRegistry {
         label: &str,
         mount_point: &Path,
         volume_type: VolumeType,
+        purpose: Option<VolumePurpose>,
     ) -> Result<Volume> {
         let mut volumes = self.load()?;
 
@@ -53,11 +54,34 @@ impl DeviceRegistry {
             anyhow::bail!("A volume with label '{}' already exists", label);
         }
 
-        let volume = Volume::new(label.to_string(), mount_point.to_path_buf(), volume_type);
+        let mut volume = Volume::new(label.to_string(), mount_point.to_path_buf(), volume_type);
+        volume.purpose = purpose;
         volumes.push(volume.clone());
         self.save(&volumes)?;
 
         Ok(volume)
+    }
+
+    /// Set or clear the purpose of an existing volume.
+    pub fn set_purpose(&self, label_or_id: &str, purpose: Option<VolumePurpose>) -> Result<Volume> {
+        let mut volumes = self.load()?;
+
+        let vol = volumes.iter_mut().find(|v| {
+            v.label == label_or_id
+                || uuid::Uuid::parse_str(label_or_id)
+                    .map(|u| v.id == u)
+                    .unwrap_or(false)
+        });
+
+        match vol {
+            Some(v) => {
+                v.purpose = purpose;
+                let result = v.clone();
+                self.save(&volumes)?;
+                Ok(result)
+            }
+            None => anyhow::bail!("No volume found matching '{}'", label_or_id),
+        }
     }
 
     /// List all volumes with online/offline status.
@@ -150,7 +174,7 @@ mod tests {
         let registry = DeviceRegistry::new(dir.path());
 
         let vol = registry
-            .register("Photos", Path::new("/mnt/photos"), VolumeType::Local)
+            .register("Photos", Path::new("/mnt/photos"), VolumeType::Local, None)
             .unwrap();
 
         assert_eq!(vol.label, "Photos");
@@ -169,11 +193,11 @@ mod tests {
         let registry = DeviceRegistry::new(dir.path());
 
         registry
-            .register("Backup", Path::new("/mnt/backup"), VolumeType::External)
+            .register("Backup", Path::new("/mnt/backup"), VolumeType::External, None)
             .unwrap();
 
         let err = registry
-            .register("Backup", Path::new("/mnt/other"), VolumeType::Local)
+            .register("Backup", Path::new("/mnt/other"), VolumeType::Local, None)
             .unwrap_err();
 
         assert!(err.to_string().contains("already exists"));
@@ -185,10 +209,10 @@ mod tests {
         let registry = DeviceRegistry::new(dir.path());
 
         let v1 = registry
-            .register("Drive A", Path::new("/mnt/a"), VolumeType::Local)
+            .register("Drive A", Path::new("/mnt/a"), VolumeType::Local, None)
             .unwrap();
         let v2 = registry
-            .register("Drive B", Path::new("/mnt/b"), VolumeType::External)
+            .register("Drive B", Path::new("/mnt/b"), VolumeType::External, None)
             .unwrap();
 
         assert_ne!(v1.id, v2.id);
@@ -202,7 +226,7 @@ mod tests {
         let dir = setup();
         let registry = DeviceRegistry::new(dir.path());
         registry
-            .register("Photos", Path::new("/mnt/photos"), VolumeType::Local)
+            .register("Photos", Path::new("/mnt/photos"), VolumeType::Local, None)
             .unwrap();
 
         let vol = registry.resolve_volume("Photos").unwrap();
@@ -214,7 +238,7 @@ mod tests {
         let dir = setup();
         let registry = DeviceRegistry::new(dir.path());
         let registered = registry
-            .register("Photos", Path::new("/mnt/photos"), VolumeType::Local)
+            .register("Photos", Path::new("/mnt/photos"), VolumeType::Local, None)
             .unwrap();
 
         let vol = registry
@@ -229,7 +253,7 @@ mod tests {
         let dir = setup();
         let registry = DeviceRegistry::new(dir.path());
         registry
-            .register("Photos", Path::new("/mnt/photos"), VolumeType::Local)
+            .register("Photos", Path::new("/mnt/photos"), VolumeType::Local, None)
             .unwrap();
 
         let err = registry.resolve_volume("Nonexistent").unwrap_err();
@@ -245,12 +269,12 @@ mod tests {
         let online_path = dir.path().join("online-vol");
         std::fs::create_dir(&online_path).unwrap();
         registry
-            .register("Online", &online_path, VolumeType::Local)
+            .register("Online", &online_path, VolumeType::Local, None)
             .unwrap();
 
         // Register a volume pointing at a path that doesn't exist
         registry
-            .register("Offline", Path::new("/nonexistent/volume"), VolumeType::External)
+            .register("Offline", Path::new("/nonexistent/volume"), VolumeType::External, None)
             .unwrap();
 
         let volumes = registry.list().unwrap();
@@ -259,5 +283,93 @@ mod tests {
 
         assert!(online.is_online);
         assert!(!offline.is_online);
+    }
+
+    #[test]
+    fn register_with_purpose() {
+        let dir = setup();
+        let registry = DeviceRegistry::new(dir.path());
+
+        let vol = registry
+            .register(
+                "Backup",
+                Path::new("/mnt/backup"),
+                VolumeType::External,
+                Some(VolumePurpose::Backup),
+            )
+            .unwrap();
+
+        assert_eq!(vol.purpose, Some(VolumePurpose::Backup));
+
+        // Verify persisted
+        let volumes = registry.load().unwrap();
+        assert_eq!(volumes[0].purpose, Some(VolumePurpose::Backup));
+    }
+
+    #[test]
+    fn register_without_purpose() {
+        let dir = setup();
+        let registry = DeviceRegistry::new(dir.path());
+
+        let vol = registry
+            .register("Local", Path::new("/mnt/local"), VolumeType::Local, None)
+            .unwrap();
+
+        assert_eq!(vol.purpose, None);
+    }
+
+    #[test]
+    fn set_purpose_by_label() {
+        let dir = setup();
+        let registry = DeviceRegistry::new(dir.path());
+
+        registry
+            .register("Photos", Path::new("/mnt/photos"), VolumeType::Local, None)
+            .unwrap();
+
+        let vol = registry.set_purpose("Photos", Some(VolumePurpose::Archive)).unwrap();
+        assert_eq!(vol.purpose, Some(VolumePurpose::Archive));
+
+        // Verify persisted
+        let volumes = registry.load().unwrap();
+        assert_eq!(volumes[0].purpose, Some(VolumePurpose::Archive));
+    }
+
+    #[test]
+    fn set_purpose_clear() {
+        let dir = setup();
+        let registry = DeviceRegistry::new(dir.path());
+
+        registry
+            .register(
+                "Backup",
+                Path::new("/mnt/backup"),
+                VolumeType::External,
+                Some(VolumePurpose::Backup),
+            )
+            .unwrap();
+
+        let vol = registry.set_purpose("Backup", None).unwrap();
+        assert_eq!(vol.purpose, None);
+    }
+
+    #[test]
+    fn set_purpose_unknown_volume_errors() {
+        let dir = setup();
+        let registry = DeviceRegistry::new(dir.path());
+
+        let err = registry
+            .set_purpose("Nonexistent", Some(VolumePurpose::Working))
+            .unwrap_err();
+        assert!(err.to_string().contains("No volume found"));
+    }
+
+    #[test]
+    fn volume_purpose_parse() {
+        assert_eq!(VolumePurpose::parse("working"), Some(VolumePurpose::Working));
+        assert_eq!(VolumePurpose::parse("Archive"), Some(VolumePurpose::Archive));
+        assert_eq!(VolumePurpose::parse("BACKUP"), Some(VolumePurpose::Backup));
+        assert_eq!(VolumePurpose::parse("cloud"), Some(VolumePurpose::Cloud));
+        assert_eq!(VolumePurpose::parse("invalid"), None);
     }
 }
