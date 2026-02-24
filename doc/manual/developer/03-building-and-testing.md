@@ -76,6 +76,20 @@ cargo doc --no-deps --open
 
 Generates HTML documentation from doc comments and opens it in your browser. The `--no-deps` flag skips building docs for third-party dependencies, which speeds up the build considerably. Output is at `target/doc/dam/`.
 
+### PDF Manual
+
+```bash
+bash doc/manual/build-pdf.sh
+```
+
+Generates `doc/manual/dam-manual.pdf` from the 21 Markdown source files. The script concatenates all sections in order, renders mermaid diagrams to PNG, and produces a PDF with table of contents, headers/footers, and syntax-highlighted code blocks. The version number is read from `Cargo.toml`.
+
+**Prerequisites** (not required for building or running dam itself):
+
+- **pandoc** -- Document conversion. `brew install pandoc`
+- **XeLaTeX** -- PDF typesetting with Unicode support. `brew install --cask mactex-no-gui`
+- **mermaid-cli** (`mmdc`) -- Diagram rendering. `brew install mermaid-cli`
+
 ## Release Process
 
 1. **Update documentation**: User manual, README, CHANGELOG, and any other docs affected by the release.
