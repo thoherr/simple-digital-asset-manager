@@ -678,6 +678,95 @@ dam fix-roles --volume "Photos" --apply --log --time
 
 ---
 
+## dam fix-dates
+
+### NAME
+
+dam-fix-dates -- fix asset dates from variant EXIF metadata and file modification times
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] fix-dates [OPTIONS]
+```
+
+### DESCRIPTION
+
+Scans assets and corrects their `created_at` date by examining the EXIF DateTimeOriginal metadata and file modification times of their variants. This fixes assets that were imported with the wrong date (e.g., import timestamp instead of capture date).
+
+For each asset, the command collects candidate dates from all variants:
+
+1. **Stored EXIF date**: The `date_taken` field in the variant's `source_metadata` (stored since v1.3.1).
+2. **Re-extracted EXIF**: For variants imported before `date_taken` was stored, re-reads the file on disk and extracts EXIF DateTimeOriginal. Requires the volume to be online.
+3. **File modification time**: The filesystem mtime of the variant file on disk. Requires the volume to be online.
+
+The oldest date found across all variants is used as the corrected `created_at`. A 1-second tolerance is applied when comparing to the current date (to handle rounding).
+
+Without `--apply`, runs in **report-only mode** and shows what dates would change. With `--apply`, updates both YAML sidecar files and the SQLite catalog. When applying, also backfills `date_taken` into variant `source_metadata` so future runs work from metadata alone without needing the volume online.
+
+**Offline volume handling**: Assets whose only file locations are on offline volumes cannot be fixed (no file access for EXIF re-extraction or mtime). These are counted separately as "skipped (volume offline)" and a warning is printed for each offline volume. Mount the volume and re-run to fix these assets.
+
+### ARGUMENTS
+
+None.
+
+### OPTIONS
+
+**--volume \<LABEL\>**
+: Limit to assets with locations on a specific volume.
+
+**--asset \<ID\>**
+: Fix only a specific asset. Supports prefix matching.
+
+**--apply**
+: Apply date corrections. Without this flag, only reports what would change.
+
+`--json` outputs a `FixDatesResult` with `checked`, `fixed`, `already_correct`, `no_date`, `skipped_offline` counters and `offline_volumes` list.
+
+`--log` prints per-asset status to stderr.
+
+`--time` shows elapsed wall-clock time.
+
+### EXAMPLES
+
+Preview what dates would be corrected:
+
+```bash
+dam fix-dates
+```
+
+Preview with per-asset detail:
+
+```bash
+dam fix-dates --log
+```
+
+Apply date corrections:
+
+```bash
+dam fix-dates --apply --log
+```
+
+Fix dates for a specific volume:
+
+```bash
+dam fix-dates --volume "Photos 2024" --apply --log
+```
+
+Fix a single asset:
+
+```bash
+dam fix-dates --asset a1b2c3d4 --apply
+```
+
+### SEE ALSO
+
+[fix-roles](#dam-fix-roles) -- fix variant roles in multi-variant assets.
+[refresh](#dam-refresh) -- re-read metadata from changed recipe files.
+[import](02-ingest-commands.md#dam-import) -- import now uses EXIF date → file mtime → current time fallback chain.
+
+---
+
 ## dam rebuild-catalog
 
 ### NAME

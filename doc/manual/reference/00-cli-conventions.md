@@ -204,6 +204,7 @@ Commands that modify or delete data use conservative defaults:
 | `cleanup` | Report-only (no changes) | `--apply` |
 | `auto-group` | Report-only (no changes) | `--apply` |
 | `fix-roles` | Report-only (no changes) | `--apply` |
+| `fix-dates` | Report-only (no changes) | `--apply` |
 | `import` | Imports immediately | `--dry-run` to preview |
 | `relocate` | Copies immediately | `--dry-run` to preview |
 
@@ -220,7 +221,7 @@ Quick reference of all dam commands, organized by workflow stage:
 | **Ingest** | `import`, `tag`, `edit`, `group`, `auto-group` | Bring files in, apply metadata, merge variants |
 | **Organize** | `collection` (`col`), `saved-search` (`ss`) | Curate static and smart albums |
 | **Retrieve** | `search`, `show`, `duplicates`, `stats`, `serve` | Find assets, inspect details, browse in web UI |
-| **Maintain** | `verify`, `sync`, `refresh`, `cleanup`, `relocate`, `update-location`, `generate-previews`, `fix-roles`, `rebuild-catalog` | Integrity checks, disk reconciliation, housekeeping |
+| **Maintain** | `verify`, `sync`, `refresh`, `cleanup`, `relocate`, `update-location`, `generate-previews`, `fix-roles`, `fix-dates`, `rebuild-catalog` | Integrity checks, disk reconciliation, housekeeping |
 
 Commands with aliases are shown with the alias in parentheses. For example, `dam col add` is equivalent to `dam collection add`, and `dam ss run` is equivalent to `dam saved-search run`.
 

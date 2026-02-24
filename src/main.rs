@@ -18,7 +18,7 @@ Quick Reference:
   Retrieve:   search, show, duplicates, stats, serve
   Maintain:   verify, sync, refresh, cleanup, relocate,
               update-location, generate-previews, fix-roles,
-              rebuild-catalog"
+              fix-dates, rebuild-catalog"
 )]
 struct Cli {
     /// Output machine-readable JSON (valid JSON on stdout, messages on stderr)
@@ -403,8 +403,24 @@ enum Commands {
         apply: bool,
     },
 
-    /// Rebuild SQLite catalog from sidecar files
+    /// Fix asset dates from variant EXIF metadata and file modification times
     #[command(display_order = 48)]
+    FixDates {
+        /// Limit to a specific volume
+        #[arg(long, display_order = 10)]
+        volume: Option<String>,
+
+        /// Fix only a specific asset
+        #[arg(long, display_order = 11)]
+        asset: Option<String>,
+
+        /// Apply changes (default: report-only dry run)
+        #[arg(long, display_order = 20)]
+        apply: bool,
+    },
+
+    /// Rebuild SQLite catalog from sidecar files
+    #[command(display_order = 49)]
     RebuildCatalog,
 }
 
@@ -1862,6 +1878,78 @@ fn main() {
 
                 if !apply && result.fixed > 0 {
                     println!("  Run with --apply to make changes.");
+                }
+            }
+
+            Ok(())
+        }
+        Commands::FixDates { volume, asset, apply } => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let config = CatalogConfig::load(&catalog_root)?;
+            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+
+            let show_log = cli.log;
+            let result = service.fix_dates(
+                volume.as_deref(),
+                asset.as_deref(),
+                apply,
+                |name, status, detail| {
+                    if show_log {
+                        let label = match status {
+                            dam::asset_service::FixDatesStatus::AlreadyCorrect => "ok".to_string(),
+                            dam::asset_service::FixDatesStatus::NoDate => "no date available".to_string(),
+                            dam::asset_service::FixDatesStatus::SkippedOffline => "skipped (volume offline)".to_string(),
+                            dam::asset_service::FixDatesStatus::Fixed => {
+                                let action = if apply { "fixed" } else { "would fix" };
+                                if let Some(d) = detail {
+                                    format!("{action}: {d}")
+                                } else {
+                                    action.to_string()
+                                }
+                            }
+                        };
+                        eprintln!("  {} — {}", name, label);
+                    }
+                },
+            )?;
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                // Print offline volume warnings
+                if !result.offline_volumes.is_empty() {
+                    for vol_label in &result.offline_volumes {
+                        eprintln!("Warning: volume '{}' is offline — cannot read files for date extraction", vol_label);
+                    }
+                }
+
+                for err in &result.errors {
+                    eprintln!("  {err}");
+                }
+
+                if !apply && result.fixed > 0 {
+                    eprint!("Dry run — ");
+                }
+
+                let mut parts = vec![
+                    format!("{} checked", result.checked),
+                    format!("{} fixed", result.fixed),
+                    format!("{} already correct", result.already_correct),
+                ];
+                if result.skipped_offline > 0 {
+                    parts.push(format!("{} skipped (volume offline)", result.skipped_offline));
+                }
+                if result.no_date > 0 {
+                    parts.push(format!("{} no date available", result.no_date));
+                }
+
+                println!("Fix-dates: {}", parts.join(", "));
+
+                if !apply && result.fixed > 0 {
+                    println!("  Run with --apply to make changes.");
+                }
+                if result.skipped_offline > 0 {
+                    println!("  Mount offline volumes and re-run to fix remaining assets.");
                 }
             }
 

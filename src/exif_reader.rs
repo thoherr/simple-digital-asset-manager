@@ -123,6 +123,11 @@ pub fn extract(path: &Path) -> ExifData {
         })
         .map(|ndt| ndt.and_utc());
 
+    // Store date_taken in source_metadata so it's available for fix-dates repair
+    if let Some(ref dt) = date_taken {
+        meta.insert("date_taken".to_string(), dt.to_rfc3339());
+    }
+
     ExifData {
         source_metadata: meta,
         date_taken,

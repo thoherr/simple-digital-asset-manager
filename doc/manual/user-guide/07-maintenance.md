@@ -415,6 +415,58 @@ Rebuild complete: 1847 assets, 2914 variants, 312 recipes, 3 collections
 This is a safe operation -- only the derived cache (SQLite) is rebuilt. No files on disk are modified or deleted.
 
 
+## Fix Dates
+
+`dam fix-dates` corrects asset dates that were set incorrectly during import. This commonly happens when files lack EXIF metadata (e.g., old JPEGs without DateTimeOriginal) — the import timestamp was used instead of the capture date.
+
+### How it works
+
+For each asset, `fix-dates` collects candidate dates from all variants:
+
+1. **EXIF DateTimeOriginal** from stored `source_metadata` (for assets imported since v1.3.1)
+2. **Re-extracted EXIF** from the file on disk (for older assets without stored date)
+3. **File modification time** on disk
+
+The oldest date across all variants becomes the corrected `created_at`.
+
+### Report mode (safe default)
+
+```bash
+dam fix-dates
+```
+
+Shows what would be changed:
+
+```
+Warning: volume 'Archive' is offline — cannot read files for date extraction
+Fix-dates: 5000 checked, 3200 fixed, 800 already correct, 1000 skipped (volume offline)
+  Run with --apply to make changes.
+  Mount offline volumes and re-run to fix remaining assets.
+```
+
+### Apply fixes
+
+```bash
+dam fix-dates --apply --log
+```
+
+Updates both the SQLite catalog and sidecar YAML files. Also backfills EXIF dates into variant metadata so future runs work without needing the volume online.
+
+### Offline volumes
+
+`fix-dates` needs file access for EXIF re-extraction and file modification times. Assets on offline volumes are skipped with a clear message. Mount the volume and re-run to fix them.
+
+### Scope to a volume or asset
+
+```bash
+# Fix dates for assets on a specific volume
+dam fix-dates --volume "Photos 2024" --apply --log
+
+# Fix a single asset
+dam fix-dates --asset a1b2c3d4 --apply
+```
+
+
 ## Fix Roles
 
 `dam fix-roles` corrects variant roles in assets that have both RAW and non-RAW variants. In these groups, the RAW variant should be the Original and non-RAW variants should be Exports. If roles are incorrect (e.g., both marked as Original), this command fixes them.

@@ -311,6 +311,34 @@ pub struct FixRolesResult {
     pub errors: Vec<String>,
 }
 
+/// Status of a single asset during fix-dates.
+pub enum FixDatesStatus {
+    AlreadyCorrect,
+    Fixed,
+    NoDate,
+    SkippedOffline,
+}
+
+/// Result of a fix-dates operation.
+#[derive(Debug, serde::Serialize)]
+pub struct FixDatesResult {
+    pub checked: usize,
+    pub fixed: usize,
+    pub already_correct: usize,
+    pub no_date: usize,
+    pub skipped_offline: usize,
+    pub dry_run: bool,
+    pub offline_volumes: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+/// Get file modification time as DateTime<Utc>. Returns None on any error.
+fn file_mtime(path: &Path) -> Option<chrono::DateTime<chrono::Utc>> {
+    let metadata = std::fs::metadata(path).ok()?;
+    let modified = metadata.modified().ok()?;
+    Some(chrono::DateTime::<chrono::Utc>::from(modified))
+}
+
 /// High-level operations that orchestrate the other components.
 pub struct AssetService {
     catalog_root: PathBuf,
@@ -491,8 +519,11 @@ impl AssetService {
                     let exif_data = crate::exif_reader::extract(file_path);
 
                     let mut asset = Asset::new(asset_type, &content_hash);
+                    // Date fallback chain: EXIF DateTimeOriginal → file mtime → Utc::now()
                     if let Some(date_taken) = exif_data.date_taken {
                         asset.created_at = date_taken;
+                    } else if let Some(mtime) = file_mtime(file_path) {
+                        asset.created_at = mtime;
                     }
                     asset.name = Some(group.stem.clone());
 
@@ -548,6 +579,14 @@ impl AssetService {
                     // Additional media file → add variant to existing group asset
                     let asset = group_asset.as_mut().unwrap();
                     let exif_data = crate::exif_reader::extract(file_path);
+
+                    // If this variant has an older date, update the asset's created_at
+                    let variant_date = exif_data.date_taken.or_else(|| file_mtime(file_path));
+                    if let Some(vd) = variant_date {
+                        if vd < asset.created_at {
+                            asset.created_at = vd;
+                        }
+                    }
 
                     // If the primary variant is RAW and this file is not, it's a derivative
                     let primary_is_raw = asset.variants.first()
@@ -2898,6 +2937,210 @@ impl AssetService {
 
         Ok(result)
     }
+
+    /// Fix asset dates by examining variant metadata and file modification times.
+    ///
+    /// For each asset, finds the oldest plausible date from:
+    /// 1. EXIF DateTimeOriginal stored in variant `source_metadata["date_taken"]`
+    /// 2. Re-extracted EXIF from files on disk (for assets imported before date_taken was stored)
+    /// 3. File modification time on disk
+    ///
+    /// Sources 2 and 3 require the volume to be online. Assets whose only locations
+    /// are on offline volumes are counted as `skipped_offline`.
+    ///
+    /// When applying, also backfills `date_taken` into variant source_metadata so
+    /// future runs work from metadata alone without needing the volume online.
+    ///
+    /// Report-only by default; pass `apply=true` to update sidecars and catalog.
+    pub fn fix_dates(
+        &self,
+        volume_filter: Option<&str>,
+        asset_filter: Option<&str>,
+        apply: bool,
+        on_asset: impl Fn(&str, FixDatesStatus, Option<&str>),
+    ) -> Result<FixDatesResult> {
+        use chrono::{DateTime, NaiveDateTime, Utc};
+
+        let metadata_store = MetadataStore::new(&self.catalog_root);
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let registry = DeviceRegistry::new(&self.catalog_root);
+        let volumes = registry.list()?;
+
+        // Collect offline volume labels for warnings
+        let offline_volumes: Vec<String> = volumes.iter()
+            .filter(|v| !v.is_online)
+            .map(|v| v.label.clone())
+            .collect();
+
+        let mut result = FixDatesResult {
+            checked: 0,
+            fixed: 0,
+            already_correct: 0,
+            no_date: 0,
+            skipped_offline: 0,
+            dry_run: !apply,
+            offline_volumes: offline_volumes.clone(),
+            errors: Vec::new(),
+        };
+
+        // Resolve asset list
+        let assets = if let Some(asset_id) = asset_filter {
+            let full_id = catalog
+                .resolve_asset_id(asset_id)?
+                .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+            let uuid: Uuid = full_id.parse()?;
+            vec![metadata_store.load(uuid)?]
+        } else {
+            let summaries = metadata_store.list()?;
+            let mut assets = Vec::new();
+            for s in &summaries {
+                assets.push(metadata_store.load(s.id)?);
+            }
+            assets
+        };
+
+        // Optional volume filter
+        let volume_filter_resolved = match volume_filter {
+            Some(label) => Some(registry.resolve_volume(label)?),
+            None => None,
+        };
+
+        for mut asset in assets {
+            // Volume filter: skip assets without a location on the target volume
+            if let Some(ref vol) = volume_filter_resolved {
+                let has_location = asset.variants.iter().any(|v| {
+                    v.locations.iter().any(|loc| loc.volume_id == vol.id)
+                });
+                if !has_location {
+                    continue;
+                }
+            }
+
+            result.checked += 1;
+            let asset_name = asset.name.clone()
+                .unwrap_or_else(|| asset.variants.first()
+                    .map(|v| v.original_filename.clone())
+                    .unwrap_or_else(|| asset.id.to_string()));
+
+            // Collect candidate dates from all variants
+            let mut candidates: Vec<DateTime<Utc>> = Vec::new();
+            let mut has_metadata_date = false;
+            let mut all_offline = true;
+            let mut backfill_dates: Vec<(usize, DateTime<Utc>)> = Vec::new();
+
+            for (vi, variant) in asset.variants.iter().enumerate() {
+                // 1. Check source_metadata for stored date_taken
+                if let Some(date_str) = variant.source_metadata.get("date_taken") {
+                    if let Ok(dt) = DateTime::parse_from_rfc3339(date_str) {
+                        candidates.push(dt.with_timezone(&Utc));
+                        has_metadata_date = true;
+                    } else {
+                        let s = date_str.trim_matches('"');
+                        if let Ok(ndt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+                            .or_else(|_| NaiveDateTime::parse_from_str(s, "%Y:%m:%d %H:%M:%S"))
+                        {
+                            candidates.push(ndt.and_utc());
+                            has_metadata_date = true;
+                        }
+                    }
+                }
+
+                // 2. Check files on disk for online volumes
+                for loc in &variant.locations {
+                    if let Some(vol) = volumes.iter().find(|v| v.id == loc.volume_id) {
+                        if vol.is_online {
+                            all_offline = false;
+                            let full_path = vol.mount_point.join(&loc.relative_path);
+
+                            // Re-extract EXIF if no date_taken in metadata
+                            if !has_metadata_date {
+                                let exif_data = crate::exif_reader::extract(&full_path);
+                                if let Some(dt) = exif_data.date_taken {
+                                    candidates.push(dt);
+                                    // Remember to backfill this date into source_metadata
+                                    backfill_dates.push((vi, dt));
+                                }
+                            }
+
+                            // File mtime as fallback
+                            if let Some(mtime) = file_mtime(&full_path) {
+                                candidates.push(mtime);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If no metadata date and all locations are offline, skip with specific status
+            if candidates.is_empty() && all_offline && !asset.variants.is_empty() {
+                // Check if the asset actually has locations on offline volumes
+                let has_offline_locations = asset.variants.iter().any(|v| {
+                    v.locations.iter().any(|loc| {
+                        volumes.iter().any(|vol| vol.id == loc.volume_id && !vol.is_online)
+                    })
+                });
+                if has_offline_locations {
+                    result.skipped_offline += 1;
+                    on_asset(&asset_name, FixDatesStatus::SkippedOffline, None);
+                    continue;
+                }
+            }
+
+            if candidates.is_empty() {
+                result.no_date += 1;
+                on_asset(&asset_name, FixDatesStatus::NoDate, None);
+                continue;
+            }
+
+            // Pick the oldest date
+            let oldest = candidates.into_iter().min().unwrap();
+
+            // Compare with current created_at (allow 1 second tolerance for rounding)
+            let diff = (asset.created_at - oldest).num_seconds().abs();
+            if diff <= 1 {
+                // Even if date is correct, backfill date_taken into source_metadata if missing
+                if apply && !backfill_dates.is_empty() {
+                    for (vi, dt) in &backfill_dates {
+                        asset.variants[*vi].source_metadata.insert(
+                            "date_taken".to_string(),
+                            dt.to_rfc3339(),
+                        );
+                    }
+                    metadata_store.save(&asset)?;
+                    catalog.insert_asset(&asset)?;
+                }
+                result.already_correct += 1;
+                on_asset(&asset_name, FixDatesStatus::AlreadyCorrect, None);
+                continue;
+            }
+
+            let old_date = asset.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
+            let new_date = oldest.format("%Y-%m-%d %H:%M:%S").to_string();
+            let detail = format!("{old_date} → {new_date}");
+
+            if apply {
+                asset.created_at = oldest;
+                // Backfill date_taken into source_metadata
+                for (vi, dt) in &backfill_dates {
+                    asset.variants[*vi].source_metadata.insert(
+                        "date_taken".to_string(),
+                        dt.to_rfc3339(),
+                    );
+                }
+                metadata_store.save(&asset)?;
+                catalog.update_asset_created_at(&asset.id.to_string(), &oldest)?;
+                // Also update catalog variant metadata if we backfilled
+                if !backfill_dates.is_empty() {
+                    catalog.insert_asset(&asset)?;
+                }
+            }
+
+            result.fixed += 1;
+            on_asset(&asset_name, FixDatesStatus::Fixed, Some(&detail));
+        }
+
+        Ok(result)
+    }
 }
 
 /// Compute directory prefixes from scanned paths relative to the volume mount point.
@@ -4392,5 +4635,232 @@ mod tests {
         let asset = metadata_store.load(summaries[0].id).unwrap();
         let jpg = asset.variants.iter().find(|v| v.format == "jpg").unwrap();
         assert_eq!(jpg.role, VariantRole::Original, "dry run should not modify sidecar");
+    }
+
+    #[test]
+    fn import_uses_mtime_fallback_when_no_exif() {
+        use chrono::Utc;
+
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+
+        let vol_dir = tempfile::tempdir().unwrap();
+        let photo_path = vol_dir.path().join("plain.jpg");
+        // Write a file with no EXIF data
+        std::fs::write(&photo_path, "no exif data here just plain bytes").unwrap();
+
+        // Set a specific mtime in the past (2020-01-15)
+        let target_time = std::time::SystemTime::UNIX_EPOCH
+            + std::time::Duration::from_secs(1579046400); // 2020-01-15 00:00:00 UTC
+        let file_times = std::fs::FileTimes::new()
+            .set_modified(target_time);
+        let file = std::fs::File::options().write(true).open(&photo_path).unwrap();
+        file.set_times(file_times).unwrap();
+
+        let volume = crate::models::Volume::new(
+            "test-vol".into(),
+            vol_dir.path().to_path_buf(),
+            crate::models::VolumeType::Local,
+        );
+
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let result = service.import(
+            &[photo_path],
+            &volume,
+            &default_filter(),
+        ).unwrap();
+        assert_eq!(result.imported, 1);
+
+        let metadata_store = crate::metadata_store::MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let asset = metadata_store.load(summaries[0].id).unwrap();
+
+        // Should use mtime, not current time
+        let now = Utc::now();
+        let diff_from_now = (now - asset.created_at).num_hours();
+        assert!(diff_from_now > 24, "created_at should be in 2020, not near now; got {}", asset.created_at);
+
+        // Check it's close to our target mtime (2020-01-15)
+        let expected = chrono::DateTime::<Utc>::from(target_time);
+        let diff_from_target = (asset.created_at - expected).num_seconds().abs();
+        assert!(diff_from_target <= 1, "created_at should match file mtime; got {} vs expected {}", asset.created_at, expected);
+    }
+
+    #[test]
+    fn import_second_variant_updates_date_if_older() {
+        use chrono::Utc;
+
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+
+        let vol_dir = tempfile::tempdir().unwrap();
+
+        // Create two files with the same stem (will be grouped)
+        let raw_path = vol_dir.path().join("photo.arw");
+        let jpg_path = vol_dir.path().join("photo.jpg");
+        std::fs::write(&raw_path, "fake raw content for date test").unwrap();
+        std::fs::write(&jpg_path, "fake jpg content for date test").unwrap();
+
+        // Set RAW to newer mtime (2024), JPG to older mtime (2020)
+        let newer_time = std::time::SystemTime::UNIX_EPOCH
+            + std::time::Duration::from_secs(1704067200); // 2024-01-01
+        let older_time = std::time::SystemTime::UNIX_EPOCH
+            + std::time::Duration::from_secs(1579046400); // 2020-01-15
+
+        let raw_file = std::fs::File::options().write(true).open(&raw_path).unwrap();
+        raw_file.set_times(std::fs::FileTimes::new().set_modified(newer_time)).unwrap();
+        let jpg_file = std::fs::File::options().write(true).open(&jpg_path).unwrap();
+        jpg_file.set_times(std::fs::FileTimes::new().set_modified(older_time)).unwrap();
+
+        let volume = crate::models::Volume::new(
+            "test-vol".into(),
+            vol_dir.path().to_path_buf(),
+            crate::models::VolumeType::Local,
+        );
+
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let result = service.import(
+            &[vol_dir.path().to_path_buf()],
+            &volume,
+            &default_filter(),
+        ).unwrap();
+        assert_eq!(result.imported, 2); // RAW + JPG grouped into one asset
+
+        let metadata_store = crate::metadata_store::MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        assert_eq!(summaries.len(), 1, "should be one asset (grouped)");
+        let asset = metadata_store.load(summaries[0].id).unwrap();
+
+        // Asset date should be the older of the two mtimes (2020-01-15)
+        let expected = chrono::DateTime::<Utc>::from(older_time);
+        let diff = (asset.created_at - expected).num_seconds().abs();
+        assert!(diff <= 1, "created_at should be the older variant date; got {} vs expected {}", asset.created_at, expected);
+    }
+
+    #[test]
+    fn fix_dates_corrects_wrong_date() {
+        use chrono::{DateTime, Utc, TimeZone};
+
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+        DeviceRegistry::init(catalog_dir.path()).unwrap();
+
+        let vol_dir = tempfile::tempdir().unwrap();
+        let photo_path = vol_dir.path().join("photo.jpg");
+        std::fs::write(&photo_path, "content for fix-dates test").unwrap();
+
+        // Set mtime to 2020
+        let old_time = std::time::SystemTime::UNIX_EPOCH
+            + std::time::Duration::from_secs(1579046400); // 2020-01-15
+        let file = std::fs::File::options().write(true).open(&photo_path).unwrap();
+        file.set_times(std::fs::FileTimes::new().set_modified(old_time)).unwrap();
+
+        // Register volume so fix_dates can find it
+        let registry = DeviceRegistry::new(catalog_dir.path());
+        let volume = registry.register("test-vol", vol_dir.path(), crate::models::VolumeType::Local).unwrap();
+
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        service.import(
+            &[photo_path],
+            &volume,
+            &default_filter(),
+        ).unwrap();
+
+        // Manually set asset date to "now" (simulating the old bug)
+        let metadata_store = MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let mut asset = metadata_store.load(summaries[0].id).unwrap();
+        let wrong_date = Utc.with_ymd_and_hms(2026, 2, 23, 12, 0, 0).unwrap();
+        asset.created_at = wrong_date;
+        metadata_store.save(&asset).unwrap();
+        let catalog = crate::catalog::Catalog::open(catalog_dir.path()).unwrap();
+        catalog.insert_asset(&asset).unwrap();
+
+        // Run fix_dates in dry-run mode
+        let result = service.fix_dates(None, None, false, |_, _, _| {}).unwrap();
+        assert_eq!(result.fixed, 1);
+        assert!(result.dry_run);
+
+        // Verify date NOT changed (dry run)
+        let asset = metadata_store.load(summaries[0].id).unwrap();
+        let diff = (asset.created_at - wrong_date).num_seconds().abs();
+        assert!(diff <= 1, "dry run should not change date");
+
+        // Run fix_dates with apply
+        let result = service.fix_dates(None, None, true, |_, _, _| {}).unwrap();
+        assert_eq!(result.fixed, 1);
+        assert!(!result.dry_run);
+
+        // Verify date IS changed to the older mtime
+        let asset = metadata_store.load(summaries[0].id).unwrap();
+        let expected = DateTime::<Utc>::from(old_time);
+        let diff = (asset.created_at - expected).num_seconds().abs();
+        assert!(diff <= 1, "fix_dates should correct date to file mtime; got {} vs {}", asset.created_at, expected);
+    }
+
+    #[test]
+    fn fix_dates_uses_source_metadata_date_taken() {
+        use chrono::{Utc, TimeZone};
+
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+        DeviceRegistry::init(catalog_dir.path()).unwrap();
+
+        let vol_dir = tempfile::tempdir().unwrap();
+        let photo_path = vol_dir.path().join("photo.jpg");
+        std::fs::write(&photo_path, "content for date_taken metadata test").unwrap();
+
+        let registry = DeviceRegistry::new(catalog_dir.path());
+        let volume = registry.register("test-vol", vol_dir.path(), crate::models::VolumeType::Local).unwrap();
+
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        service.import(&[photo_path], &volume, &default_filter()).unwrap();
+
+        // Manually set a date_taken in source_metadata and a wrong created_at
+        let metadata_store = MetadataStore::new(catalog_dir.path());
+        let summaries = metadata_store.list().unwrap();
+        let mut asset = metadata_store.load(summaries[0].id).unwrap();
+        let exif_date = Utc.with_ymd_and_hms(2019, 6, 15, 10, 30, 0).unwrap();
+        asset.variants[0].source_metadata.insert(
+            "date_taken".to_string(),
+            exif_date.to_rfc3339(),
+        );
+        let wrong_date = Utc.with_ymd_and_hms(2026, 2, 23, 12, 0, 0).unwrap();
+        asset.created_at = wrong_date;
+        metadata_store.save(&asset).unwrap();
+        let catalog = crate::catalog::Catalog::open(catalog_dir.path()).unwrap();
+        catalog.insert_asset(&asset).unwrap();
+
+        // Run fix_dates with apply
+        let result = service.fix_dates(None, None, true, |_, _, _| {}).unwrap();
+        assert_eq!(result.fixed, 1);
+
+        // Should pick the EXIF date (2019) which is older than file mtime
+        let asset = metadata_store.load(summaries[0].id).unwrap();
+        let diff = (asset.created_at - exif_date).num_seconds().abs();
+        assert!(diff <= 1, "fix_dates should use source_metadata date_taken; got {} vs {}", asset.created_at, exif_date);
+    }
+
+    #[test]
+    fn fix_dates_already_correct_no_change() {
+        let catalog_dir = tempfile::tempdir().unwrap();
+        setup_catalog(catalog_dir.path());
+        DeviceRegistry::init(catalog_dir.path()).unwrap();
+
+        let vol_dir = tempfile::tempdir().unwrap();
+        let photo_path = vol_dir.path().join("photo.jpg");
+        std::fs::write(&photo_path, "correct date test content").unwrap();
+
+        let registry = DeviceRegistry::new(catalog_dir.path());
+        let volume = registry.register("test-vol", vol_dir.path(), crate::models::VolumeType::Local).unwrap();
+
+        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        service.import(&[photo_path], &volume, &default_filter()).unwrap();
+
+        // The import now uses mtime fallback, so created_at should already be correct.
+        // fix_dates should report it as already correct.
+        let result = service.fix_dates(None, None, false, |_, _, _| {}).unwrap();
+        assert_eq!(result.already_correct, 1);
+        assert_eq!(result.fixed, 0);
     }
 }

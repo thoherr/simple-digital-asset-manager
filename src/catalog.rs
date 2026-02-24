@@ -582,6 +582,15 @@ impl Catalog {
         Ok(())
     }
 
+    /// Update just the created_at date for an asset in the catalog.
+    pub fn update_asset_created_at(&self, asset_id: &str, created_at: &chrono::DateTime<chrono::Utc>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE assets SET created_at = ?1 WHERE id = ?2",
+            rusqlite::params![created_at.to_rfc3339(), asset_id],
+        )?;
+        Ok(())
+    }
+
     /// Update denormalized variant columns for an asset.
     pub fn update_best_variant_hash(&self, asset_id: &str, hash: Option<&str>) -> Result<()> {
         self.conn.execute(
