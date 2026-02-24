@@ -409,6 +409,8 @@ impl Catalog {
         );
         // Collection tables
         let _ = crate::collection::CollectionStore::initialize(&self.conn);
+        // Volume purpose
+        let _ = self.conn.execute_batch("ALTER TABLE volumes ADD COLUMN purpose TEXT");
     }
 
     /// Initialize the database schema.
