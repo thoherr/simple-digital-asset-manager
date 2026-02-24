@@ -165,6 +165,12 @@ pub struct ImportResult {
     pub recipes_attached: usize,
     pub recipes_updated: usize,
     pub previews_generated: usize,
+    /// Asset IDs created during this import (for post-import auto-grouping).
+    #[serde(skip)]
+    pub new_asset_ids: Vec<String>,
+    /// Volume-relative directory paths of imported files (for neighborhood scoping).
+    #[serde(skip)]
+    pub imported_directories: Vec<String>,
 }
 
 /// Result of a relocate operation.
@@ -395,6 +401,8 @@ impl AssetService {
         let mut recipes_attached = 0;
         let mut recipes_updated = 0;
         let mut previews_generated = 0;
+        let mut new_asset_ids = Vec::new();
+        let mut imported_dirs: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for group in &groups {
             // Track the asset created/found for this group's primary variant
@@ -404,6 +412,13 @@ impl AssetService {
             // Pass 1: Process media files (RAW first due to sorting in group_by_stem)
             for file_path in &group.media_files {
                 let file_start = Instant::now();
+
+                // Track volume-relative directory for auto-group neighborhood
+                if let Ok(rel) = file_path.strip_prefix(&volume.mount_point) {
+                    if let Some(parent) = rel.parent() {
+                        imported_dirs.insert(parent.to_string_lossy().to_string());
+                    }
+                }
 
                 let content_hash = content_store
                     .ingest(file_path, volume)
@@ -574,6 +589,7 @@ impl AssetService {
                         }
                     }
 
+                    new_asset_ids.push(asset.id.to_string());
                     group_asset = Some(asset);
                 } else {
                     // Additional media file → add variant to existing group asset
@@ -844,6 +860,7 @@ impl AssetService {
                         catalog.insert_variant(&variant)?;
                         catalog.insert_file_location(&content_hash, &location)?;
                     }
+                    new_asset_ids.push(asset.id.to_string());
                     imported += 1;
                     on_file(file_path, FileStatus::Imported, file_start.elapsed());
                     continue;
@@ -963,6 +980,8 @@ impl AssetService {
             recipes_attached,
             recipes_updated,
             previews_generated,
+            new_asset_ids,
+            imported_directories: imported_dirs.into_iter().collect(),
         })
     }
 

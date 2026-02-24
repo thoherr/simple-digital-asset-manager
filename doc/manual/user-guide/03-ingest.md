@@ -123,6 +123,52 @@ Asset: Z91_8561
 
 For more advanced grouping across different directories or after the fact, see the [auto-group command](04-organize.md) and [group command](04-organize.md).
 
+### Cross-Directory Grouping with --auto-group
+
+Standard auto-grouping only matches files within the same directory. But photo tools like CaptureOne often place RAW originals and exports in separate folders:
+
+```
+2026-02-22/
+  Capture/
+    DSC_0042.ARW
+  Output/
+    DSC_0042.JPG
+    DSC_0042-1-HighRes.tif
+```
+
+Without `--auto-group`, importing both directories creates separate assets for the RAW and exports. The `--auto-group` flag runs a post-import grouping step scoped to the "neighborhood" of the imported files:
+
+```
+dam import --auto-group /Volumes/Photos/2026-02-22/Capture /Volumes/Photos/2026-02-22/Output
+```
+
+```
+Import complete: 3 imported, 1 recipe(s) attached, 3 preview(s) generated
+Auto-group: 1 stem group(s), 2 donor(s) merged, 2 variant(s) moved
+```
+
+**How the neighborhood is determined**: For each imported file's directory (e.g., `2026-02-22/Capture/`), dam goes up one level to find the "session root" (`2026-02-22/`). It then searches the catalog for all assets under those session roots on the same volume. Only those assets participate in grouping.
+
+This scoping prevents false positives from restarting camera counters -- `DSC_0001` from a January shoot won't be grouped with `DSC_0001` from a June shoot because they live under different session roots.
+
+**Incremental workflow**: You can also use `--auto-group` when adding exports to a previously imported shoot:
+
+```
+# First import: RAW originals only
+dam import /Volumes/Photos/2026-02-22/Capture
+
+# Later: CaptureOne exports are ready
+dam import --auto-group /Volumes/Photos/2026-02-22/Output
+```
+
+The second import detects the existing RAW assets in the sibling `Capture/` directory and groups the exports with them.
+
+Combine with `--dry-run` to preview what would be grouped without making changes:
+
+```
+dam import --auto-group --dry-run /Volumes/Photos/2026-02-22/Capture /Volumes/Photos/2026-02-22/Output
+```
+
 ## Recipe Handling
 
 Processing sidecars are files created by RAW processors and image editors to store non-destructive edit settings. dam recognizes the following recipe formats:
@@ -316,6 +362,7 @@ Auto-tags are merged with any tags extracted from XMP metadata (deduplicated).
 |---|---|
 | `--volume <label>` | Use a specific volume instead of auto-detecting from the file path |
 | `--dry-run` | Show what would happen without writing to catalog, sidecar, or disk |
+| `--auto-group` | After import, group new assets with nearby catalog assets by filename stem |
 | `--include <group>` | Enable an additional file type group (repeatable) |
 | `--skip <group>` | Disable a default file type group (repeatable) |
 | `--json` | Structured JSON output to stdout |

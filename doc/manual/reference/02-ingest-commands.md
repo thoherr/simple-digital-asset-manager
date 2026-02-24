@@ -53,7 +53,10 @@ The volume is auto-detected from the first path by matching against registered v
 **--dry-run**
 : Show what would be imported without writing to catalog, sidecar, or disk. Files are still hashed to detect duplicates. Reports the same counters as a real import (imported, skipped, locations added, recipes attached/updated).
 
-`--json` outputs an `ImportResult` object with `imported`, `skipped`, `locations_added`, `recipes_attached`, `recipes_updated` counters and a `dry_run` boolean.
+**--auto-group**
+: After importing, automatically group newly imported assets with nearby catalog assets by filename stem. "Nearby" means assets on the same volume whose files are under sibling directories of the imported files (one level up from each import directory). This handles the common CaptureOne/Lightroom pattern where RAW originals live in `Capture/` and exports in `Output/` under a shared session folder. Uses the same fuzzy prefix matching as `dam auto-group`. When combined with `--dry-run`, the auto-group phase also runs in dry-run mode.
+
+`--json` outputs an `ImportResult` object with `imported`, `skipped`, `locations_added`, `recipes_attached`, `recipes_updated` counters and a `dry_run` boolean. When `--auto-group` produces matches, an `auto_group` key is added with the full `AutoGroupResult`.
 
 ### EXAMPLES
 
@@ -79,6 +82,12 @@ Import only image files, skipping audio and XMP sidecars:
 
 ```bash
 dam import --skip audio --skip xmp /Volumes/Photos/Mixed
+```
+
+Import a CaptureOne session and auto-group RAW+exports:
+
+```bash
+dam import --auto-group /Volumes/Photos/2026-02-22/Capture /Volumes/Photos/2026-02-22/Output
 ```
 
 Import with JSON output for scripting:

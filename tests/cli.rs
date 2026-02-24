@@ -3617,6 +3617,187 @@ fn search_path_absolute_normalizes_to_relative() {
         .stdout(predicate::str::contains("1 result"));
 }
 
+// ── import --auto-group tests ────────────────────────────────
+
+#[test]
+fn import_auto_group_sibling_dirs() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // CaptureOne-style: RAW in Capture/, export in Output/ under a session root
+    let capture = root.join("session/Capture");
+    let output = root.join("session/Output");
+    std::fs::create_dir_all(&capture).unwrap();
+    std::fs::create_dir_all(&output).unwrap();
+    std::fs::write(capture.join("DSC_100.ARW"), b"raw-auto-group-sibling").unwrap();
+    std::fs::write(output.join("DSC_100.JPG"), b"jpeg-auto-group-sibling").unwrap();
+
+    // Import both directories at once with --auto-group
+    dam()
+        .current_dir(&root)
+        .args([
+            "import",
+            "--auto-group",
+            capture.to_str().unwrap(),
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 imported"))
+        .stdout(predicate::str::contains("Auto-group"))
+        .stdout(predicate::str::contains("merged"));
+
+    // Should be 1 asset with 2 variants
+    dam()
+        .current_dir(&root)
+        .args(["search", ""])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 result(s)"));
+}
+
+#[test]
+fn import_auto_group_incremental() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // First import: RAW file only, no --auto-group
+    let capture = root.join("session2/Capture");
+    std::fs::create_dir_all(&capture).unwrap();
+    std::fs::write(capture.join("DSC_200.ARW"), b"raw-incr-auto-group").unwrap();
+    dam()
+        .current_dir(&root)
+        .args(["import", capture.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Second import: export with --auto-group
+    let output = root.join("session2/Output");
+    std::fs::create_dir_all(&output).unwrap();
+    std::fs::write(output.join("DSC_200.JPG"), b"jpeg-incr-auto-group").unwrap();
+    dam()
+        .current_dir(&root)
+        .args(["import", "--auto-group", output.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Auto-group"));
+
+    // Should be 1 asset (existing RAW picked up the export)
+    dam()
+        .current_dir(&root)
+        .args(["search", ""])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 result(s)"));
+}
+
+#[test]
+fn import_auto_group_fuzzy_prefix() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // CaptureOne-style export with suffix appended
+    let capture = root.join("session3/Capture");
+    let output = root.join("session3/Output");
+    std::fs::create_dir_all(&capture).unwrap();
+    std::fs::create_dir_all(&output).unwrap();
+    std::fs::write(capture.join("Z91_8561.ARW"), b"raw-fuzzy-prefix").unwrap();
+    std::fs::write(
+        output.join("Z91_8561-1-HighRes.tif"),
+        b"tif-fuzzy-prefix",
+    )
+    .unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args([
+            "import",
+            "--auto-group",
+            capture.to_str().unwrap(),
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Auto-group"));
+
+    // Should be 1 asset
+    dam()
+        .current_dir(&root)
+        .args(["search", ""])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 result(s)"));
+}
+
+#[test]
+fn import_auto_group_no_false_positives() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Files in unrelated session directories (different session roots)
+    let session_a = root.join("2024-01-01/Capture");
+    let session_b = root.join("2024-06-15/Capture");
+    std::fs::create_dir_all(&session_a).unwrap();
+    std::fs::create_dir_all(&session_b).unwrap();
+    std::fs::write(session_a.join("DSC_001.ARW"), b"raw-session-a-001").unwrap();
+    std::fs::write(session_b.join("DSC_001.ARW"), b"raw-session-b-001").unwrap();
+
+    // Import session A first (no --auto-group)
+    dam()
+        .current_dir(&root)
+        .args(["import", session_a.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Import session B with --auto-group — should NOT merge with session A
+    // because they are under different session roots
+    dam()
+        .current_dir(&root)
+        .args(["import", "--auto-group", session_b.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Should still be 2 separate assets
+    dam()
+        .current_dir(&root)
+        .args(["search", ""])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 result(s)"));
+}
+
+#[test]
+fn import_auto_group_json() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let capture = root.join("session4/Capture");
+    let output = root.join("session4/Output");
+    std::fs::create_dir_all(&capture).unwrap();
+    std::fs::create_dir_all(&output).unwrap();
+    std::fs::write(capture.join("IMG_001.ARW"), b"raw-json-auto-group").unwrap();
+    std::fs::write(output.join("IMG_001.JPG"), b"jpeg-json-auto-group").unwrap();
+
+    let out = dam()
+        .current_dir(&root)
+        .args([
+            "--json",
+            "import",
+            "--auto-group",
+            capture.to_str().unwrap(),
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["imported"], 2);
+    assert!(json["auto_group"].is_object(), "auto_group key should be present");
+    assert!(json["auto_group"]["groups"].is_array());
+    assert_eq!(json["auto_group"]["groups"].as_array().unwrap().len(), 1);
+}
+
 // ── auto-group tests ─────────────────────────────────────────
 
 #[test]

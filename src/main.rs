@@ -76,6 +76,10 @@ enum Commands {
         /// Show what would be imported without making changes
         #[arg(long, display_order = 20)]
         dry_run: bool,
+
+        /// Auto-group imported files with nearby catalog assets by filename stem
+        #[arg(long, display_order = 21)]
+        auto_group: bool,
     },
 
     /// Add or remove tags on an asset
@@ -614,6 +618,7 @@ fn main() {
             include,
             skip,
             dry_run,
+            auto_group,
         } => {
             use dam::asset_service::FileTypeFilter;
 
@@ -681,8 +686,65 @@ fn main() {
                 service.import_with_callback(&canonical_paths, &volume, &filter, &config.import.exclude, &config.import.auto_tags, dry_run, |_, _, _| {})?
             };
 
+            // Post-import auto-group phase
+            let auto_group_result = if auto_group
+                && (result.imported > 0 || result.locations_added > 0)
+            {
+                use dam::catalog::Catalog;
+                use std::path::Path;
+
+                let catalog = Catalog::open(&catalog_root)?;
+                let volume_id = volume.id.to_string();
+
+                // Compute neighborhood prefixes: go up one level from each
+                // imported directory to get the "session root"
+                let session_roots: std::collections::HashSet<String> = result
+                    .imported_directories
+                    .iter()
+                    .map(|dir| {
+                        Path::new(dir)
+                            .parent()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_default()
+                    })
+                    .collect();
+                let prefixes: Vec<String> = session_roots.into_iter().collect();
+
+                // Find all existing catalog assets in the neighborhood
+                let neighbor_ids = catalog
+                    .find_asset_ids_by_volume_and_path_prefixes(&volume_id, &prefixes)?;
+
+                // Merge with newly imported asset IDs and deduplicate
+                let mut all_ids: Vec<String> = result.new_asset_ids.clone();
+                let existing: std::collections::HashSet<String> =
+                    all_ids.iter().cloned().collect();
+                for id in neighbor_ids {
+                    if !existing.contains(&id) {
+                        all_ids.push(id);
+                    }
+                }
+
+                if all_ids.len() > 1 {
+                    let engine = QueryEngine::new(&catalog_root);
+                    let ag_result = engine.auto_group(&all_ids, dry_run)?;
+                    if !ag_result.groups.is_empty() {
+                        Some(ag_result)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             if cli.json {
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                let mut json_val = serde_json::to_value(&result)?;
+                if let Some(ref ag) = auto_group_result {
+                    json_val["auto_group"] = serde_json::to_value(ag)?;
+                }
+                println!("{}", serde_json::to_string_pretty(&json_val)?);
             } else {
                 let mut parts: Vec<String> = Vec::new();
                 if result.imported > 0 {
@@ -709,6 +771,26 @@ fn main() {
                     println!("Dry run — would import: {}", parts.join(", "));
                 } else {
                     println!("Import complete: {}", parts.join(", "));
+                }
+
+                if let Some(ref ag) = auto_group_result {
+                    if cli.log {
+                        for group in &ag.groups {
+                            let short_id = &group.target_id[..8.min(group.target_id.len())];
+                            eprintln!(
+                                "  {} — {} asset(s) → target {short_id}",
+                                group.stem,
+                                group.asset_ids.len(),
+                            );
+                        }
+                    }
+                    println!(
+                        "Auto-group: {} stem group(s), {} donor(s) {}, {} variant(s) moved",
+                        ag.groups.len(),
+                        ag.total_donors_merged,
+                        if dry_run { "would merge" } else { "merged" },
+                        ag.total_variants_moved,
+                    );
                 }
             }
             Ok(())

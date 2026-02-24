@@ -1169,6 +1169,50 @@ impl Catalog {
         }
     }
 
+    /// Find all asset IDs that have file locations on a given volume under any of
+    /// the given path prefixes. Used by `import --auto-group` to scope auto-grouping
+    /// to the "neighborhood" of imported files.
+    pub fn find_asset_ids_by_volume_and_path_prefixes(
+        &self,
+        volume_id: &str,
+        prefixes: &[String],
+    ) -> Result<Vec<String>> {
+        if prefixes.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build dynamic OR clause: one `fl.relative_path LIKE ?N` per prefix
+        let mut conditions = Vec::new();
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        params.push(Box::new(volume_id.to_string()));
+
+        for (i, prefix) in prefixes.iter().enumerate() {
+            conditions.push(format!("fl.relative_path LIKE ?{}", i + 2));
+            if prefix.is_empty() {
+                params.push(Box::new("%".to_string()));
+            } else {
+                params.push(Box::new(format!("{prefix}/%")));
+            }
+        }
+
+        let sql = format!(
+            "SELECT DISTINCT v.asset_id FROM variants v \
+             JOIN file_locations fl ON v.content_hash = fl.content_hash \
+             WHERE fl.volume_id = ?1 AND ({})",
+            conditions.join(" OR ")
+        );
+
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(param_refs.as_slice(), |row| row.get::<_, String>(0))?;
+
+        let mut ids = Vec::new();
+        for row in rows {
+            ids.push(row?);
+        }
+        Ok(ids)
+    }
+
     /// Drop and recreate data tables (assets, variants, file_locations, recipes).
     /// Keeps the volumes table intact. Ensures the schema is up to date.
     pub fn rebuild(&self) -> Result<()> {
@@ -3690,5 +3734,156 @@ mod tests {
         let results = catalog.search_paginated(&opts).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].original_filename, "DSC_0001.NEF");
+    }
+
+    // ── find_asset_ids_by_volume_and_path_prefixes tests ─────────
+
+    #[test]
+    fn find_asset_ids_by_volume_and_path_prefixes_basic() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let volume = crate::models::Volume::new(
+            "vol1".to_string(),
+            std::path::PathBuf::from("/mnt/vol1"),
+            crate::models::VolumeType::Local,
+        );
+        catalog.ensure_volume(&volume).unwrap();
+
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:aaa");
+        asset.variants.push(crate::models::Variant {
+            content_hash: "sha256:aaa".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "arw".to_string(),
+            file_size: 1000,
+            original_filename: "DSC_001.ARW".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        });
+        catalog.insert_asset(&asset).unwrap();
+        catalog.insert_variant(&asset.variants[0]).unwrap();
+        catalog
+            .insert_file_location(
+                "sha256:aaa",
+                &crate::models::FileLocation {
+                    volume_id: volume.id,
+                    relative_path: std::path::PathBuf::from("session/Capture/DSC_001.ARW"),
+                    verified_at: None,
+                },
+            )
+            .unwrap();
+
+        // Prefix "session" should match
+        let ids = catalog
+            .find_asset_ids_by_volume_and_path_prefixes(
+                &volume.id.to_string(),
+                &["session".to_string()],
+            )
+            .unwrap();
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids[0], asset.id.to_string());
+
+        // Prefix "other" should not match
+        let ids = catalog
+            .find_asset_ids_by_volume_and_path_prefixes(
+                &volume.id.to_string(),
+                &["other".to_string()],
+            )
+            .unwrap();
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn find_asset_ids_by_volume_and_path_prefixes_wrong_volume() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let volume = crate::models::Volume::new(
+            "vol1".to_string(),
+            std::path::PathBuf::from("/mnt/vol1"),
+            crate::models::VolumeType::Local,
+        );
+        catalog.ensure_volume(&volume).unwrap();
+
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:bbb");
+        asset.variants.push(crate::models::Variant {
+            content_hash: "sha256:bbb".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 500,
+            original_filename: "photo.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        });
+        catalog.insert_asset(&asset).unwrap();
+        catalog.insert_variant(&asset.variants[0]).unwrap();
+        catalog
+            .insert_file_location(
+                "sha256:bbb",
+                &crate::models::FileLocation {
+                    volume_id: volume.id,
+                    relative_path: std::path::PathBuf::from("photos/photo.jpg"),
+                    verified_at: None,
+                },
+            )
+            .unwrap();
+
+        // Query with a fake volume ID — should return empty
+        let ids = catalog
+            .find_asset_ids_by_volume_and_path_prefixes(
+                "00000000-0000-0000-0000-000000000000",
+                &["photos".to_string()],
+            )
+            .unwrap();
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn find_asset_ids_by_volume_and_path_prefixes_empty_prefix() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let volume = crate::models::Volume::new(
+            "vol1".to_string(),
+            std::path::PathBuf::from("/mnt/vol1"),
+            crate::models::VolumeType::Local,
+        );
+        catalog.ensure_volume(&volume).unwrap();
+
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:ccc");
+        asset.variants.push(crate::models::Variant {
+            content_hash: "sha256:ccc".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 500,
+            original_filename: "photo.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        });
+        catalog.insert_asset(&asset).unwrap();
+        catalog.insert_variant(&asset.variants[0]).unwrap();
+        catalog
+            .insert_file_location(
+                "sha256:ccc",
+                &crate::models::FileLocation {
+                    volume_id: volume.id,
+                    relative_path: std::path::PathBuf::from("deep/nested/photo.jpg"),
+                    verified_at: None,
+                },
+            )
+            .unwrap();
+
+        // Empty prefix matches everything on the volume
+        let ids = catalog
+            .find_asset_ids_by_volume_and_path_prefixes(
+                &volume.id.to_string(),
+                &[String::new()],
+            )
+            .unwrap();
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids[0], asset.id.to_string());
     }
 }
