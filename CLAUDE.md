@@ -33,7 +33,7 @@ Core layers: CLI → Core Library (Asset Service, Content Store, Metadata Store,
 
 Core CLI is functional. See `doc/specification.md` for full requirements.
 
-**Implemented commands**: `init`, `volume add/list`, `import`, `search`, `show`, `tag`, `edit`, `group`, `auto-group`, `duplicates`, `generate-previews`, `fix-roles`, `fix-dates`, `rebuild-catalog`, `relocate`, `update-location`, `verify`, `sync`, `refresh`, `cleanup`, `stats`, `serve`, `saved-search`, `collection`
+**Implemented commands**: `init`, `volume add/list`, `import`, `search`, `show`, `tag`, `edit`, `group`, `auto-group`, `duplicates`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `relocate`, `update-location`, `verify`, `sync`, `refresh`, `cleanup`, `stats`, `serve`, `saved-search`, `collection`
 
 **Import behavior**:
 - **Stem-based auto-grouping**: Files sharing the same filename stem in the same directory are grouped into one Asset during import. RAW files take priority as the primary variant (defining asset identity and EXIF data). Additional media files become extra variants on the same asset.

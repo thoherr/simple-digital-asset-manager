@@ -5035,3 +5035,238 @@ fn refresh_without_media_ignores_jpeg() {
                 .and(predicate::str::contains("Rating:").not()),
         );
 }
+
+// ── fix-recipes tests ─────────────────────────────────────────────
+
+#[test]
+fn fix_recipes_reattaches_xmp() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+
+    // Create an XMP file and import it first (becomes standalone since no media yet)
+    let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="4">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>landscape</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+    create_test_file(&photos, "DSC_001.xmp", xmp.as_bytes());
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.join("DSC_001.xmp").to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 imported"));
+
+    // Now create and import the NRW media file
+    create_test_file(&photos, "DSC_001.NRW", b"raw-nrw-fix-recipes-test");
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.join("DSC_001.NRW").to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 imported"));
+
+    // Verify we have 2 assets (standalone XMP + NRW)
+    dam()
+        .current_dir(&root)
+        .args(["stats"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Assets:    2"));
+
+    // Run fix-recipes --apply
+    dam()
+        .current_dir(&root)
+        .args(["fix-recipes", "--apply"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 reattached"));
+
+    // Should be down to 1 asset now
+    dam()
+        .current_dir(&root)
+        .args(["stats"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Assets:    1"));
+
+    // Get the NRW asset's ID via search --format ids
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "--format", "ids", "type:image"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let asset_id = stdout.trim();
+    assert!(!asset_id.is_empty(), "should have the NRW image asset");
+
+    // The remaining asset should have the recipe attached and XMP metadata applied
+    dam()
+        .current_dir(&root)
+        .args(["show", asset_id])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Recipe")
+                .and(predicate::str::contains("Rating:"))
+                .and(predicate::str::contains("landscape")),
+        );
+}
+
+#[test]
+fn fix_recipes_dry_run() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+
+    create_test_file(&photos, "DSC_002.xmp", b"xmp-dry-run-test");
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.join("DSC_002.xmp").to_str().unwrap()])
+        .assert()
+        .success();
+
+    create_test_file(&photos, "DSC_002.NRW", b"nrw-dry-run-test");
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.join("DSC_002.NRW").to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Dry run (no --apply) — reports what would happen
+    dam()
+        .current_dir(&root)
+        .args(["fix-recipes"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("1 reattached")
+                .and(predicate::str::contains("--apply")),
+        );
+
+    // Still 2 assets — nothing changed
+    dam()
+        .current_dir(&root)
+        .args(["stats"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Assets:    2"));
+}
+
+#[test]
+fn fix_recipes_compound_extension() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+
+    // Create DSC_003.NRW.xmp (compound extension) and import as standalone
+    create_test_file(&photos, "DSC_003.NRW.xmp", b"xmp-compound-test");
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.join("DSC_003.NRW.xmp").to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 imported"));
+
+    // Import the NRW media file
+    create_test_file(&photos, "DSC_003.NRW", b"nrw-compound-test");
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.join("DSC_003.NRW").to_str().unwrap()])
+        .assert()
+        .success();
+
+    // fix-recipes should match via compound stem stripping
+    dam()
+        .current_dir(&root)
+        .args(["fix-recipes", "--apply"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 reattached"));
+
+    // Only 1 asset remains
+    dam()
+        .current_dir(&root)
+        .args(["stats"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Assets:    1"));
+}
+
+#[test]
+fn fix_recipes_no_parent() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+
+    // Import an XMP with no matching media file
+    create_test_file(&photos, "ORPHAN.xmp", b"xmp-orphan-test");
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.join("ORPHAN.xmp").to_str().unwrap()])
+        .assert()
+        .success();
+
+    // fix-recipes reports no parent found
+    dam()
+        .current_dir(&root)
+        .args(["fix-recipes"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 no parent found"));
+}
+
+#[test]
+fn fix_recipes_json() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+
+    create_test_file(&photos, "DSC_004.xmp", b"xmp-json-test");
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.join("DSC_004.xmp").to_str().unwrap()])
+        .assert()
+        .success();
+
+    create_test_file(&photos, "DSC_004.NRW", b"nrw-json-test");
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.join("DSC_004.NRW").to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "fix-recipes"])
+        .output()
+        .unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert_eq!(parsed["checked"].as_u64(), Some(1));
+    assert_eq!(parsed["reattached"].as_u64(), Some(1));
+    assert_eq!(parsed["no_parent"].as_u64(), Some(0));
+    assert_eq!(parsed["skipped"].as_u64(), Some(0));
+    assert_eq!(parsed["dry_run"].as_bool(), Some(true));
+}

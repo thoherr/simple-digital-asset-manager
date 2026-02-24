@@ -423,8 +423,24 @@ enum Commands {
         apply: bool,
     },
 
-    /// Rebuild SQLite catalog from sidecar files
+    /// Re-attach recipe files that were imported as standalone assets
     #[command(display_order = 49)]
+    FixRecipes {
+        /// Limit to a specific volume
+        #[arg(long, display_order = 10)]
+        volume: Option<String>,
+
+        /// Fix only a specific asset
+        #[arg(long, display_order = 11)]
+        asset: Option<String>,
+
+        /// Apply changes (default: report-only dry run)
+        #[arg(long, display_order = 20)]
+        apply: bool,
+    },
+
+    /// Rebuild SQLite catalog from sidecar files
+    #[command(display_order = 50)]
     RebuildCatalog,
 }
 
@@ -2032,6 +2048,61 @@ fn main() {
                 }
                 if result.skipped_offline > 0 {
                     println!("  Mount offline volumes and re-run to fix remaining assets.");
+                }
+            }
+
+            Ok(())
+        }
+        Commands::FixRecipes { volume, asset, apply } => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let config = CatalogConfig::load(&catalog_root)?;
+            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+
+            let show_log = cli.log;
+            let result = service.fix_recipes(
+                volume.as_deref(),
+                asset.as_deref(),
+                apply,
+                |name, status| {
+                    if show_log {
+                        let label = match status {
+                            dam::asset_service::FixRecipesStatus::Reattached => {
+                                if apply { "reattached" } else { "would reattach" }
+                            }
+                            dam::asset_service::FixRecipesStatus::NoParentFound => "no parent found",
+                            dam::asset_service::FixRecipesStatus::Skipped => "skipped",
+                        };
+                        eprintln!("  {} — {}", name, label);
+                    }
+                },
+            )?;
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                for err in &result.errors {
+                    eprintln!("  {err}");
+                }
+
+                if !apply && result.reattached > 0 {
+                    eprint!("Dry run — ");
+                }
+
+                let mut parts = vec![
+                    format!("{} checked", result.checked),
+                    format!("{} reattached", result.reattached),
+                ];
+                if result.no_parent > 0 {
+                    parts.push(format!("{} no parent found", result.no_parent));
+                }
+                if result.skipped > 0 {
+                    parts.push(format!("{} skipped", result.skipped));
+                }
+
+                println!("Fix-recipes: {}", parts.join(", "));
+
+                if !apply && result.reattached > 0 {
+                    println!("  Run with --apply to make changes.");
                 }
             }
 

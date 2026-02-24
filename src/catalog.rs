@@ -1143,11 +1143,14 @@ impl Catalog {
 
     /// Find a variant whose file location on the given volume shares the same
     /// directory prefix and filename stem. Returns `(content_hash, asset_id)`.
+    /// Optionally excludes a specific asset ID from results (used by fix-recipes
+    /// to avoid self-matching the standalone recipe asset).
     pub fn find_variant_hash_by_stem_and_directory(
         &self,
         stem: &str,
         directory_prefix: &str,
         volume_id: &str,
+        exclude_asset_id: Option<&str>,
     ) -> Result<Option<(String, String)>> {
         // Match file_locations where: same volume, path starts with directory_prefix,
         // and the filename (without extension) matches the stem.
@@ -1156,17 +1159,94 @@ impl Catalog {
         } else {
             format!("{directory_prefix}/{stem}.%")
         };
-        let mut stmt = self.conn.prepare(
-            "SELECT fl.content_hash, v.asset_id FROM file_locations fl \
-             JOIN variants v ON fl.content_hash = v.content_hash \
-             WHERE fl.volume_id = ?1 AND fl.relative_path LIKE ?2 \
-             LIMIT 1",
-        )?;
-        let mut rows = stmt.query(rusqlite::params![volume_id, path_pattern])?;
+        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(exclude) = exclude_asset_id {
+            (
+                "SELECT fl.content_hash, v.asset_id FROM file_locations fl \
+                 JOIN variants v ON fl.content_hash = v.content_hash \
+                 WHERE fl.volume_id = ?1 AND fl.relative_path LIKE ?2 AND v.asset_id != ?3 \
+                 LIMIT 1".to_string(),
+                vec![
+                    Box::new(volume_id.to_string()),
+                    Box::new(path_pattern),
+                    Box::new(exclude.to_string()),
+                ],
+            )
+        } else {
+            (
+                "SELECT fl.content_hash, v.asset_id FROM file_locations fl \
+                 JOIN variants v ON fl.content_hash = v.content_hash \
+                 WHERE fl.volume_id = ?1 AND fl.relative_path LIKE ?2 \
+                 LIMIT 1".to_string(),
+                vec![
+                    Box::new(volume_id.to_string()),
+                    Box::new(path_pattern),
+                ],
+            )
+        };
+        let mut stmt = self.conn.prepare(&sql)?;
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut rows = stmt.query(param_refs.as_slice())?;
         match rows.next()? {
             Some(row) => Ok(Some((row.get(0)?, row.get(1)?))),
             None => Ok(None),
         }
+    }
+
+    /// List assets that have exactly one variant whose format is a recipe extension
+    /// (xmp, cos, cot, cop, pp3, dop, on1) and asset_type = 'other'.
+    /// Returns `(asset_id, content_hash, format)` for each match.
+    /// Optionally scoped by volume or asset ID.
+    pub fn list_recipe_only_assets(
+        &self,
+        volume_id: Option<&str>,
+        asset_id: Option<&str>,
+    ) -> Result<Vec<(String, String, String)>> {
+        let recipe_extensions: &[&str] = &["xmp", "cos", "cot", "cop", "pp3", "dop", "on1"];
+
+        let mut sql = String::from(
+            "SELECT a.id, v.content_hash, v.format \
+             FROM assets a \
+             JOIN variants v ON v.asset_id = a.id \
+             WHERE a.asset_type = 'other'",
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        let mut param_idx = 1;
+
+        if let Some(aid) = asset_id {
+            sql.push_str(&format!(" AND a.id = ?{param_idx}"));
+            params.push(Box::new(aid.to_string()));
+            param_idx += 1;
+        }
+
+        if let Some(vid) = volume_id {
+            sql.push_str(&format!(
+                " AND v.content_hash IN (SELECT content_hash FROM file_locations WHERE volume_id = ?{param_idx})"
+            ));
+            params.push(Box::new(vid.to_string()));
+            param_idx += 1;
+        }
+        let _ = param_idx;
+
+        sql.push_str(" GROUP BY a.id HAVING COUNT(v.content_hash) = 1");
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let rows = stmt.query_map(param_refs.as_slice(), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            let (aid, hash, fmt) = row?;
+            if recipe_extensions.contains(&fmt.to_lowercase().as_str()) {
+                results.push((aid, hash, fmt));
+            }
+        }
+        Ok(results)
     }
 
     /// Find all asset IDs that have file locations on a given volume under any of
@@ -3218,6 +3298,7 @@ mod tests {
                 "photo",
                 "photos",
                 &volume.id.to_string(),
+                None,
             )
             .unwrap();
         assert!(result.is_some());
@@ -3230,6 +3311,7 @@ mod tests {
                 "other",
                 "photos",
                 &volume.id.to_string(),
+                None,
             )
             .unwrap();
         assert!(result.is_none());
@@ -3240,9 +3322,98 @@ mod tests {
                 "photo",
                 "other_dir",
                 &volume.id.to_string(),
+                None,
             )
             .unwrap();
         assert!(result.is_none());
+    }
+
+    // ── list_recipe_only_assets tests ────────────────────────────
+
+    #[test]
+    fn list_recipe_only_assets_finds_standalone_xmp() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        // Create an "other" asset with a single xmp variant
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Other, "sha256:xmponly");
+        asset.variants.push(crate::models::Variant {
+            content_hash: "sha256:xmponly".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "xmp".to_string(),
+            file_size: 1000,
+            original_filename: "DSC_001.xmp".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        });
+        catalog.insert_asset(&asset).unwrap();
+        catalog.insert_variant(&asset.variants[0]).unwrap();
+
+        let results = catalog.list_recipe_only_assets(None, None).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, asset.id.to_string());
+        assert_eq!(results[0].1, "sha256:xmponly");
+        assert_eq!(results[0].2, "xmp");
+    }
+
+    #[test]
+    fn list_recipe_only_assets_ignores_multi_variant() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        // Asset with 2 variants should not be returned
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Other, "sha256:multi1");
+        asset.variants.push(crate::models::Variant {
+            content_hash: "sha256:multi1".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "xmp".to_string(),
+            file_size: 1000,
+            original_filename: "DSC_001.xmp".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        });
+        asset.variants.push(crate::models::Variant {
+            content_hash: "sha256:multi2".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Export,
+            format: "jpg".to_string(),
+            file_size: 5000,
+            original_filename: "DSC_001.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        });
+        catalog.insert_asset(&asset).unwrap();
+        catalog.insert_variant(&asset.variants[0]).unwrap();
+        catalog.insert_variant(&asset.variants[1]).unwrap();
+
+        let results = catalog.list_recipe_only_assets(None, None).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn list_recipe_only_assets_ignores_non_recipe() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        // Single-variant asset with jpg format should not be returned
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:jpgonly");
+        asset.variants.push(crate::models::Variant {
+            content_hash: "sha256:jpgonly".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 5000,
+            original_filename: "photo.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        });
+        catalog.insert_asset(&asset).unwrap();
+        catalog.insert_variant(&asset.variants[0]).unwrap();
+
+        let results = catalog.list_recipe_only_assets(None, None).unwrap();
+        assert!(results.is_empty());
     }
 
     // ── Stats tests ──────────────────────────────────────────────

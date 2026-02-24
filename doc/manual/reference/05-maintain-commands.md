@@ -762,8 +762,100 @@ dam fix-dates --asset a1b2c3d4 --apply
 ### SEE ALSO
 
 [fix-roles](#dam-fix-roles) -- fix variant roles in multi-variant assets.
+[fix-recipes](#dam-fix-recipes) -- re-attach recipe files imported as standalone assets.
 [refresh](#dam-refresh) -- re-read metadata from changed recipe files.
 [import](02-ingest-commands.md#dam-import) -- import now uses EXIF date → file mtime → current time fallback chain.
+
+---
+
+## dam fix-recipes
+
+### NAME
+
+dam-fix-recipes -- re-attach recipe files that were imported as standalone assets
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] fix-recipes [OPTIONS]
+```
+
+### DESCRIPTION
+
+Finds assets that consist of a single variant with a recipe-type extension (xmp, cos, cot, cop, pp3, dop, on1) and `asset_type = other`, then tries to re-attach them as recipe records on a matching parent variant.
+
+This fixes a situation where recipe files were imported before their corresponding media files, or when a media format wasn't recognized at import time (e.g., NRW before extension support was added). In both cases, the recipe file ends up as a standalone asset instead of being attached to the media asset.
+
+**Matching logic**: For each standalone recipe asset, the command extracts the filename stem and directory from the recipe's file location, then searches for a media variant with the same stem in the same directory on the same volume. Compound extensions are handled: if `DSC_001.NRW.xmp` doesn't match directly (stem = `DSC_001.NRW`), the last extension is stripped and `DSC_001` is tried as the stem.
+
+When a parent is found and `--apply` is specified:
+
+1. A `Recipe` record is created on the parent variant.
+2. For XMP files, metadata (keywords, rating, description, color label) is extracted and applied to the parent asset.
+3. The parent asset's denormalized columns are updated.
+4. The standalone recipe asset is fully deleted (recipes, file locations, variants, asset row, and sidecar YAML).
+
+Without `--apply`, runs in **report-only mode** and shows what would change.
+
+### ARGUMENTS
+
+None.
+
+### OPTIONS
+
+**--volume \<LABEL\>**
+: Limit to assets with locations on a specific volume.
+
+**--asset \<ID\>**
+: Fix only a specific asset. Supports prefix matching.
+
+**--apply**
+: Apply the changes. Without this flag, only reports what would change.
+
+`--json` outputs a `FixRecipesResult` with `checked`, `reattached`, `no_parent`, `skipped` counters.
+
+`--log` prints per-asset status to stderr.
+
+`--time` shows elapsed wall-clock time.
+
+### EXAMPLES
+
+Preview what would be reattached:
+
+```bash
+dam fix-recipes
+```
+
+Preview with per-asset detail:
+
+```bash
+dam fix-recipes --log
+```
+
+Apply the fixes:
+
+```bash
+dam fix-recipes --apply --log
+```
+
+Fix a specific asset:
+
+```bash
+dam fix-recipes --asset a1b2c3d4 --apply
+```
+
+Fix recipes on a specific volume:
+
+```bash
+dam fix-recipes --volume "Photos" --apply --log --time
+```
+
+### SEE ALSO
+
+[fix-roles](#dam-fix-roles) -- fix variant roles in multi-variant assets.
+[fix-dates](#dam-fix-dates) -- fix asset dates from EXIF metadata.
+[refresh](#dam-refresh) -- re-read metadata from changed recipe files.
+[import](02-ingest-commands.md#dam-import) -- import with recipe attachment logic.
 
 ---
 

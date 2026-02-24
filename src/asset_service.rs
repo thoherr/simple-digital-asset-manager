@@ -340,6 +340,24 @@ pub struct FixDatesResult {
     pub errors: Vec<String>,
 }
 
+/// Status of a single asset during fix-recipes.
+pub enum FixRecipesStatus {
+    Reattached,
+    NoParentFound,
+    Skipped,
+}
+
+/// Result of a fix-recipes operation.
+#[derive(Debug, serde::Serialize)]
+pub struct FixRecipesResult {
+    pub checked: usize,
+    pub reattached: usize,
+    pub no_parent: usize,
+    pub skipped: usize,
+    pub dry_run: bool,
+    pub errors: Vec<String>,
+}
+
 /// Get file modification time as DateTime<Utc>. Returns None on any error.
 fn file_mtime(path: &Path) -> Option<chrono::DateTime<chrono::Utc>> {
     let metadata = std::fs::metadata(path).ok()?;
@@ -755,6 +773,7 @@ impl AssetService {
                             stem,
                             &dir_prefix,
                             &volume.id.to_string(),
+                            None,
                         )?
                     {
                         // Found parent variant — attach recipe to it
@@ -3158,6 +3177,197 @@ impl AssetService {
 
             result.fixed += 1;
             on_asset(&asset_name, FixDatesStatus::Fixed, Some(&detail));
+        }
+
+        Ok(result)
+    }
+
+    /// Re-attach recipe files that were imported as standalone assets.
+    /// Finds single-variant assets with recipe extensions, tries to match them
+    /// to a parent variant by stem + directory, and converts them to Recipe records.
+    pub fn fix_recipes(
+        &self,
+        volume_filter: Option<&str>,
+        asset_filter: Option<&str>,
+        apply: bool,
+        on_asset: impl Fn(&str, FixRecipesStatus),
+    ) -> Result<FixRecipesResult> {
+        let metadata_store = MetadataStore::new(&self.catalog_root);
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let registry = DeviceRegistry::new(&self.catalog_root);
+
+        let mut result = FixRecipesResult {
+            checked: 0,
+            reattached: 0,
+            no_parent: 0,
+            skipped: 0,
+            dry_run: !apply,
+            errors: Vec::new(),
+        };
+
+        // Resolve optional volume filter
+        let volume_id = match volume_filter {
+            Some(label) => Some(registry.resolve_volume(label)?.id.to_string()),
+            None => None,
+        };
+
+        // Resolve optional asset filter
+        let asset_id = match asset_filter {
+            Some(prefix) => Some(
+                catalog
+                    .resolve_asset_id(prefix)?
+                    .ok_or_else(|| anyhow::anyhow!("No asset found matching '{prefix}'"))?,
+            ),
+            None => None,
+        };
+
+        let candidates = catalog.list_recipe_only_assets(
+            volume_id.as_deref(),
+            asset_id.as_deref(),
+        )?;
+
+        for (standalone_id, content_hash, format) in &candidates {
+            result.checked += 1;
+
+            // Load the standalone asset
+            let standalone_uuid: Uuid = standalone_id.parse()?;
+            let standalone = match metadata_store.load(standalone_uuid) {
+                Ok(a) => a,
+                Err(e) => {
+                    result.errors.push(format!("{standalone_id}: {e}"));
+                    continue;
+                }
+            };
+
+            let asset_name = standalone
+                .name
+                .clone()
+                .unwrap_or_else(|| {
+                    standalone
+                        .variants
+                        .first()
+                        .map(|v| v.original_filename.clone())
+                        .unwrap_or_else(|| standalone_id.clone())
+                });
+
+            // Get the variant's file location to determine stem + directory
+            let variant = match standalone.variants.first() {
+                Some(v) => v,
+                None => {
+                    result.skipped += 1;
+                    on_asset(&asset_name, FixRecipesStatus::Skipped);
+                    continue;
+                }
+            };
+
+            let location = match variant.locations.first() {
+                Some(l) => l,
+                None => {
+                    // No file location — can't determine stem/directory
+                    result.skipped += 1;
+                    on_asset(&asset_name, FixRecipesStatus::Skipped);
+                    continue;
+                }
+            };
+
+            let rel_path = &location.relative_path;
+            let stem = rel_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            let dir_prefix = rel_path
+                .parent()
+                .unwrap_or_else(|| Path::new(""))
+                .to_string_lossy();
+            let vol_id_str = location.volume_id.to_string();
+
+            // Try to find parent variant by stem + directory (exclude self)
+            let exclude = Some(standalone_id.as_str());
+            let mut parent = catalog.find_variant_hash_by_stem_and_directory(
+                stem,
+                &dir_prefix,
+                &vol_id_str,
+                exclude,
+            )?;
+
+            // If not found and stem contains a dot (compound extension like DSC_001.NRW.xmp),
+            // strip the last extension and retry
+            if parent.is_none() {
+                if let Some(dot_pos) = stem.rfind('.') {
+                    let stripped_stem = &stem[..dot_pos];
+                    parent = catalog.find_variant_hash_by_stem_and_directory(
+                        stripped_stem,
+                        &dir_prefix,
+                        &vol_id_str,
+                        exclude,
+                    )?;
+                }
+            }
+
+            let (parent_hash, parent_asset_id) = match parent {
+                Some(p) => p,
+                None => {
+                    result.no_parent += 1;
+                    on_asset(&asset_name, FixRecipesStatus::NoParentFound);
+                    continue;
+                }
+            };
+
+            if apply {
+                // Load parent asset
+                let parent_uuid: Uuid = parent_asset_id.parse()?;
+                let mut parent_asset = metadata_store.load(parent_uuid)?;
+
+                // Create recipe record
+                let recipe = Recipe {
+                    id: Uuid::new_v4(),
+                    variant_hash: parent_hash.clone(),
+                    software: determine_recipe_software(format).to_string(),
+                    recipe_type: RecipeType::Sidecar,
+                    content_hash: content_hash.clone(),
+                    location: location.clone(),
+                };
+
+                // Apply XMP metadata if this is an XMP file
+                if format.eq_ignore_ascii_case("xmp") {
+                    // Find the file on disk to extract XMP
+                    let volumes = registry.list()?;
+                    let vol = volumes.iter().find(|v| v.id == location.volume_id);
+                    if let Some(vol) = vol {
+                        if vol.is_online {
+                            let file_path = vol.mount_point.join(rel_path);
+                            if file_path.exists() {
+                                let xmp = crate::xmp_reader::extract(&file_path);
+                                apply_xmp_data(&xmp, &mut parent_asset, &parent_hash);
+                            }
+                        }
+                    }
+                }
+
+                parent_asset.recipes.push(recipe.clone());
+                metadata_store.save(&parent_asset)?;
+                catalog.insert_asset(&parent_asset)?;
+                if let Some(v) = parent_asset
+                    .variants
+                    .iter()
+                    .find(|v| v.content_hash == parent_hash)
+                {
+                    catalog.insert_variant(v)?;
+                }
+                catalog.insert_recipe(&recipe)?;
+                catalog.update_denormalized_variant_columns(&parent_asset)?;
+
+                // Delete standalone asset: recipes → locations → variants → asset → sidecar
+                let id_str = standalone_id.as_str();
+                catalog.delete_recipes_for_asset(id_str)?;
+                catalog.delete_file_locations_for_asset(id_str)?;
+                catalog.delete_variants_for_asset(id_str)?;
+                catalog.delete_asset(id_str)?;
+                metadata_store.delete(standalone_uuid)?;
+            }
+
+            result.reattached += 1;
+            on_asset(&asset_name, FixRecipesStatus::Reattached);
         }
 
         Ok(result)
