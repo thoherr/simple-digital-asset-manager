@@ -38,6 +38,8 @@ pub struct ParsedSearch {
     pub color_label: Option<String>,
     pub collection: Option<String>,
     pub path_prefix: Option<String>,
+    pub copies_exact: Option<u64>,
+    pub copies_min: Option<u64>,
 }
 
 impl ParsedSearch {
@@ -69,6 +71,8 @@ impl ParsedSearch {
             stale_days: self.stale_days,
             color_label: self.color_label.as_deref(),
             path_prefix: self.path_prefix.as_deref(),
+            copies_exact: self.copies_exact,
+            copies_min: self.copies_min,
             ..Default::default()
         }
     }
@@ -198,6 +202,12 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
             parsed.collection = Some(value.to_string());
         } else if let Some(value) = token.strip_prefix("path:") {
             parsed.path_prefix = Some(value.to_string());
+        } else if let Some(value) = token.strip_prefix("copies:") {
+            if let Some(num_str) = value.strip_suffix('+') {
+                parsed.copies_min = num_str.parse().ok();
+            } else {
+                parsed.copies_exact = value.parse().ok();
+            }
         } else {
             text_parts.push(token);
         }
@@ -1780,6 +1790,32 @@ mod tests {
         assert_eq!(p.rating_min, Some(3));
         assert_eq!(p.tag.as_deref(), Some("landscape"));
         assert!(p.text.is_none());
+    }
+
+    // ── copies filter parse tests ─────────────────────────────────
+
+    #[test]
+    fn parse_copies_exact() {
+        let p = parse_search_query("copies:2");
+        assert_eq!(p.copies_exact, Some(2));
+        assert!(p.copies_min.is_none());
+        assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_copies_min() {
+        let p = parse_search_query("copies:2+");
+        assert_eq!(p.copies_min, Some(2));
+        assert!(p.copies_exact.is_none());
+        assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_copies_with_other_filters() {
+        let p = parse_search_query("copies:3+ rating:4+ tag:landscape");
+        assert_eq!(p.copies_min, Some(3));
+        assert_eq!(p.rating_min, Some(4));
+        assert_eq!(p.tag.as_deref(), Some("landscape"));
     }
 
     // ── group recipe preservation tests ──────────────────────────────

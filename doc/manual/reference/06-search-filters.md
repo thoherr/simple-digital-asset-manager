@@ -395,6 +395,33 @@ dam search "stale:90 type:image"
 
 ---
 
+## copies
+
+**Syntax:** `copies:<N>` (exact) or `copies:<N>+` (minimum)
+
+**Values:** Non-negative integer
+
+**Description:** Filters by the total number of file locations across all variants of an asset. This counts every stored copy of every variant — a file on 3 volumes has 3 copies. Useful for finding assets with insufficient backup coverage or identifying heavily-duplicated files.
+
+Common patterns:
+- `copies:1` — assets with only a single copy on disk (no backup)
+- `copies:2+` — assets with at least two copies (backed up)
+- `copies:0` — equivalent to `orphan:true` (no file locations at all)
+
+**Examples:**
+
+```
+dam search "copies:1"              # single-copy assets (backup risk)
+dam search "copies:2"              # exactly 2 copies
+dam search "copies:3+"             # 3 or more copies
+dam search "copies:1 rating:4+"    # highly-rated assets with no backup
+dam search "copies:2+ type:video"  # backed-up videos
+```
+
+**SQL behavior:** Scalar subquery: `(SELECT COUNT(*) FROM file_locations fl2 JOIN variants v2 ON fl2.content_hash = v2.content_hash WHERE v2.asset_id = a.id) = N` (or `>= N` for minimum). Self-contained, no outer JOIN flags needed.
+
+---
+
 ## Combining Filters
 
 All filters are combined with AND logic. Every specified filter must match for an asset to appear in results. Free-text terms are also AND-combined with all prefix filters.
@@ -422,6 +449,12 @@ dam search "orphan:true type:video"
 
 # Everything labeled Red with 4+ stars
 dam search "label:Red rating:4+"
+
+# Single-copy RAW files (backup risk)
+dam search "copies:1 format:nef"
+
+# Well-backed-up 5-star images
+dam search "copies:2+ rating:5 type:image"
 ```
 
 ---
@@ -469,6 +502,7 @@ dam search "camera:fuji"
 | `collection:` | yes | yes (dropdown) | yes |
 | `volume:` | dropdown only | yes (dropdown) | yes |
 | `volume:none` | yes | no | yes |
+| `copies:` | yes | no | yes |
 | `orphan:true` | yes | no | yes |
 | `missing:true` | yes | no | yes |
 | `stale:` | yes | no | yes |

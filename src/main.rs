@@ -195,6 +195,18 @@ enum Commands {
         /// Output format: ids, short, full, json, or a custom template (e.g. '{hash}\t{filename}')
         #[arg(long)]
         format: Option<String>,
+
+        /// Show only same-volume duplicates (likely unwanted copies)
+        #[arg(long, display_order = 10)]
+        same_volume: bool,
+
+        /// Show only cross-volume copies (wanted backups)
+        #[arg(long, display_order = 11)]
+        cross_volume: bool,
+
+        /// Filter results to entries involving this volume
+        #[arg(long, display_order = 12)]
+        volume: Option<String>,
     },
 
     /// Show catalog statistics
@@ -1687,12 +1699,31 @@ fn main() {
             }
             Ok(())
         }
-        Commands::Duplicates { format } => {
+        Commands::Duplicates { format, same_volume, cross_volume, volume } => {
             use dam::format::{self, OutputFormat};
+
+            if same_volume && cross_volume {
+                anyhow::bail!("--same-volume and --cross-volume are mutually exclusive");
+            }
 
             let catalog_root = dam::config::find_catalog_root()?;
             let catalog = Catalog::open(&catalog_root)?;
-            let entries = catalog.find_duplicates()?;
+
+            let mut entries = if same_volume {
+                catalog.find_duplicates_same_volume()?
+            } else if cross_volume {
+                catalog.find_duplicates_cross_volume()?
+            } else {
+                catalog.find_duplicates()?
+            };
+
+            // Post-filter by volume if specified
+            if let Some(ref vol_label) = volume {
+                entries.retain(|e| {
+                    e.locations.iter().any(|l| l.volume_label == *vol_label)
+                });
+            }
+
             let explicit_format = format.is_some();
 
             let output_format = if let Some(fmt) = &format {
@@ -1708,7 +1739,13 @@ fn main() {
                     OutputFormat::Json => println!("[]"),
                     _ => {
                         if !explicit_format {
-                            println!("No duplicates found.");
+                            if same_volume {
+                                println!("No same-volume duplicates found.");
+                            } else if cross_volume {
+                                println!("No cross-volume copies found.");
+                            } else {
+                                println!("No duplicates found.");
+                            }
                         }
                     }
                 }
@@ -1720,29 +1757,66 @@ fn main() {
                         }
                     }
                     OutputFormat::Short | OutputFormat::Full => {
+                        let is_full = matches!(output_format, OutputFormat::Full);
                         for entry in &entries {
                             let display_name = entry
                                 .asset_name
                                 .as_deref()
                                 .unwrap_or(&entry.original_filename);
+                            let vol_info = if entry.volume_count > 1 {
+                                format!(" [{} volumes]", entry.volume_count)
+                            } else {
+                                String::new()
+                            };
                             println!(
-                                "{} ({}, {})",
+                                "{} ({}, {}){}",
                                 display_name,
                                 entry.format,
-                                format_size(entry.file_size)
+                                format_size(entry.file_size),
+                                vol_info,
                             );
                             println!("  Hash: {}", entry.content_hash);
                             for loc in &entry.locations {
+                                let purpose = loc
+                                    .volume_purpose
+                                    .as_deref()
+                                    .map(|p| format!(" [{}]", p))
+                                    .unwrap_or_default();
+                                if is_full {
+                                    let verified = loc
+                                        .verified_at
+                                        .as_deref()
+                                        .unwrap_or("never");
+                                    println!(
+                                        "    {}{} \u{2192} {} (verified: {})",
+                                        loc.volume_label, purpose, loc.relative_path, verified
+                                    );
+                                } else {
+                                    println!(
+                                        "    {}{} \u{2192} {}",
+                                        loc.volume_label, purpose, loc.relative_path
+                                    );
+                                }
+                            }
+                            if !entry.same_volume_groups.is_empty() {
                                 println!(
-                                    "    {} \u{2192} {}",
-                                    loc.volume_label, loc.relative_path
+                                    "  \u{26a0} same-volume duplicates on: {}",
+                                    entry.same_volume_groups.join(", ")
                                 );
                             }
                         }
                         if !explicit_format {
+                            let label = if same_volume {
+                                "same-volume duplicate(s)"
+                            } else if cross_volume {
+                                "cross-volume copie(s)"
+                            } else {
+                                "file(s) with duplicate locations"
+                            };
                             println!(
-                                "\n{} file(s) with duplicate locations",
-                                entries.len()
+                                "\n{} {}",
+                                entries.len(),
+                                label,
                             );
                         }
                     }
@@ -1759,9 +1833,15 @@ fn main() {
                             values.insert("name", entry.asset_name.as_deref()
                                 .unwrap_or(&entry.original_filename).to_string());
                             let locs: Vec<String> = entry.locations.iter()
-                                .map(|l| format!("{}:{}", l.volume_label, l.relative_path))
+                                .map(|l| {
+                                    let purpose = l.volume_purpose.as_deref()
+                                        .map(|p| format!("[{}]", p))
+                                        .unwrap_or_default();
+                                    format!("{}{}:{}", l.volume_label, purpose, l.relative_path)
+                                })
                                 .collect();
                             values.insert("locations", locs.join(", "));
+                            values.insert("volumes", entry.volume_count.to_string());
                             println!("{}", format::render_template(tpl, &values));
                         }
                     }

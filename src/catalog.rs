@@ -61,10 +61,15 @@ pub struct VariantDetails {
 }
 
 /// File location details within a `VariantDetails`.
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct LocationDetails {
     pub volume_label: String,
+    pub volume_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume_purpose: Option<String>,
     pub relative_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verified_at: Option<String>,
 }
 
 /// A variant that exists in multiple file locations.
@@ -76,6 +81,10 @@ pub struct DuplicateEntry {
     pub file_size: u64,
     pub asset_name: Option<String>,
     pub locations: Vec<LocationDetails>,
+    /// Number of distinct volumes this variant exists on.
+    pub volume_count: usize,
+    /// Volume labels that have 2+ locations for this variant (same-volume dupes).
+    pub same_volume_groups: Vec<String>,
 }
 
 /// Recipe details within an `AssetDetails`.
@@ -275,6 +284,8 @@ pub struct SearchOptions<'a> {
     pub color_label: Option<&'a str>,
     pub path_prefix: Option<&'a str>,
     pub collection_asset_ids: Option<&'a [String]>,
+    pub copies_exact: Option<u64>,
+    pub copies_min: Option<u64>,
     pub sort: SearchSort,
     pub page: u32,
     pub per_page: u32,
@@ -308,6 +319,8 @@ impl<'a> Default for SearchOptions<'a> {
             color_label: None,
             path_prefix: None,
             collection_asset_ids: None,
+            copies_exact: None,
+            copies_min: None,
             sort: SearchSort::DateDesc,
             page: 1,
             per_page: 60,
@@ -841,9 +854,9 @@ impl Catalog {
 
         // Load locations for each variant
         let mut lstmt = self.conn.prepare(
-            "SELECT fl.relative_path, v.label \
+            "SELECT fl.relative_path, vol.label, vol.id, vol.purpose, fl.verified_at \
              FROM file_locations fl \
-             JOIN volumes v ON fl.volume_id = v.id \
+             JOIN volumes vol ON fl.volume_id = vol.id \
              WHERE fl.content_hash = ?1",
         )?;
 
@@ -853,8 +866,11 @@ impl Catalog {
                 let locs: Vec<LocationDetails> = lstmt
                     .query_map(rusqlite::params![v.content_hash], |lrow| {
                         Ok(LocationDetails {
-                            volume_label: lrow.get(1)?,
                             relative_path: lrow.get(0)?,
+                            volume_label: lrow.get(1)?,
+                            volume_id: lrow.get(2)?,
+                            volume_purpose: lrow.get(3)?,
+                            verified_at: lrow.get(4)?,
                         })
                     })
                     .unwrap_or_else(|_| {
@@ -946,18 +962,50 @@ impl Catalog {
         Ok(())
     }
 
-    /// Find variants that have more than one file location (duplicates).
-    pub fn find_duplicates(&self) -> Result<Vec<DuplicateEntry>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT v.content_hash, v.original_filename, v.format, v.file_size, a.name \
-             FROM variants v \
-             JOIN assets a ON v.asset_id = a.id \
-             WHERE v.content_hash IN ( \
-                 SELECT content_hash FROM file_locations \
-                 GROUP BY content_hash HAVING COUNT(*) > 1 \
-             ) \
-             ORDER BY v.file_size DESC",
-        )?;
+    /// Load enriched location details for a variant hash.
+    fn load_locations_for_hash(
+        lstmt: &mut rusqlite::Statement,
+        content_hash: &str,
+    ) -> Vec<LocationDetails> {
+        lstmt
+            .query_map(rusqlite::params![content_hash], |lrow| {
+                Ok(LocationDetails {
+                    relative_path: lrow.get(0)?,
+                    volume_label: lrow.get(1)?,
+                    volume_id: lrow.get(2)?,
+                    volume_purpose: lrow.get(3)?,
+                    verified_at: lrow.get(4)?,
+                })
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect()
+    }
+
+    /// Compute `volume_count` and `same_volume_groups` from locations.
+    fn compute_duplicate_stats(entry: &mut DuplicateEntry) {
+        let mut vol_counts: HashMap<String, usize> = HashMap::new();
+        for loc in &entry.locations {
+            *vol_counts.entry(loc.volume_id.clone()).or_insert(0) += 1;
+        }
+        entry.volume_count = vol_counts.len();
+        // Find volume labels where the same volume has 2+ locations
+        let mut same_vol: Vec<String> = Vec::new();
+        for loc in &entry.locations {
+            let count = vol_counts.get(&loc.volume_id).copied().unwrap_or(0);
+            if count > 1 && !same_vol.contains(&loc.volume_label) {
+                same_vol.push(loc.volume_label.clone());
+            }
+        }
+        entry.same_volume_groups = same_vol;
+    }
+
+    /// Load duplicate entries from a variant query and enrich with locations.
+    fn load_duplicate_entries(
+        &self,
+        variant_query: &str,
+    ) -> Result<Vec<DuplicateEntry>> {
+        let mut stmt = self.conn.prepare(variant_query)?;
 
         let entries: Vec<DuplicateEntry> = stmt
             .query_map([], |row| {
@@ -968,13 +1016,14 @@ impl Catalog {
                     file_size: row.get(3)?,
                     asset_name: row.get(4)?,
                     locations: Vec::new(),
+                    volume_count: 0,
+                    same_volume_groups: Vec::new(),
                 })
             })?
             .collect::<std::result::Result<_, _>>()?;
 
-        // Load locations for each duplicate
         let mut lstmt = self.conn.prepare(
-            "SELECT fl.relative_path, vol.label \
+            "SELECT fl.relative_path, vol.label, vol.id, vol.purpose, fl.verified_at \
              FROM file_locations fl \
              JOIN volumes vol ON fl.volume_id = vol.id \
              WHERE fl.content_hash = ?1",
@@ -983,22 +1032,55 @@ impl Catalog {
         let entries: Vec<DuplicateEntry> = entries
             .into_iter()
             .map(|mut e| {
-                let locs: Vec<LocationDetails> = lstmt
-                    .query_map(rusqlite::params![e.content_hash], |lrow| {
-                        Ok(LocationDetails {
-                            volume_label: lrow.get(1)?,
-                            relative_path: lrow.get(0)?,
-                        })
-                    })
-                    .unwrap()
-                    .filter_map(|r| r.ok())
-                    .collect();
-                e.locations = locs;
+                e.locations = Self::load_locations_for_hash(&mut lstmt, &e.content_hash);
+                Self::compute_duplicate_stats(&mut e);
                 e
             })
             .collect();
 
         Ok(entries)
+    }
+
+    /// Find variants that have more than one file location (duplicates).
+    pub fn find_duplicates(&self) -> Result<Vec<DuplicateEntry>> {
+        self.load_duplicate_entries(
+            "SELECT v.content_hash, v.original_filename, v.format, v.file_size, a.name \
+             FROM variants v \
+             JOIN assets a ON v.asset_id = a.id \
+             WHERE v.content_hash IN ( \
+                 SELECT content_hash FROM file_locations \
+                 GROUP BY content_hash HAVING COUNT(*) > 1 \
+             ) \
+             ORDER BY v.file_size DESC",
+        )
+    }
+
+    /// Find variants with 2+ locations on the **same** volume.
+    pub fn find_duplicates_same_volume(&self) -> Result<Vec<DuplicateEntry>> {
+        self.load_duplicate_entries(
+            "SELECT v.content_hash, v.original_filename, v.format, v.file_size, a.name \
+             FROM variants v \
+             JOIN assets a ON v.asset_id = a.id \
+             WHERE v.content_hash IN ( \
+                 SELECT content_hash FROM file_locations \
+                 GROUP BY content_hash, volume_id HAVING COUNT(*) > 1 \
+             ) \
+             ORDER BY v.file_size DESC",
+        )
+    }
+
+    /// Find variants with locations on 2+ **different** volumes.
+    pub fn find_duplicates_cross_volume(&self) -> Result<Vec<DuplicateEntry>> {
+        self.load_duplicate_entries(
+            "SELECT v.content_hash, v.original_filename, v.format, v.file_size, a.name \
+             FROM variants v \
+             JOIN assets a ON v.asset_id = a.id \
+             WHERE v.content_hash IN ( \
+                 SELECT content_hash FROM file_locations \
+                 GROUP BY content_hash HAVING COUNT(DISTINCT volume_id) > 1 \
+             ) \
+             ORDER BY v.file_size DESC",
+        )
     }
 
     /// Delete a specific file location row. Returns true if a row was deleted.
@@ -1709,6 +1791,24 @@ impl Catalog {
                     params.push(Box::new(id.clone()));
                 }
             }
+        }
+
+        // Copies filter: count file_locations across all variants of an asset
+        if let Some(n) = opts.copies_exact {
+            clauses.push(format!(
+                "(SELECT COUNT(*) FROM file_locations fl2 \
+                 JOIN variants v2 ON fl2.content_hash = v2.content_hash \
+                 WHERE v2.asset_id = a.id) = {}",
+                n
+            ));
+        }
+        if let Some(n) = opts.copies_min {
+            clauses.push(format!(
+                "(SELECT COUNT(*) FROM file_locations fl2 \
+                 JOIN variants v2 ON fl2.content_hash = v2.content_hash \
+                 WHERE v2.asset_id = a.id) >= {}",
+                n
+            ));
         }
 
         let where_clause = if clauses.is_empty() {
@@ -2946,6 +3046,147 @@ mod tests {
     }
 
     #[test]
+    fn find_duplicates_same_volume() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let vol1 = crate::models::Volume::new(
+            "vol-a".to_string(),
+            std::path::PathBuf::from("/mnt/a"),
+            crate::models::VolumeType::Local,
+        );
+        let vol2 = crate::models::Volume::new(
+            "vol-b".to_string(),
+            std::path::PathBuf::from("/mnt/b"),
+            crate::models::VolumeType::Local,
+        );
+        catalog.ensure_volume(&vol1).unwrap();
+        catalog.ensure_volume(&vol2).unwrap();
+
+        // Variant with 2 locations on SAME volume (same-volume dup)
+        let asset1 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:sv1");
+        catalog.insert_asset(&asset1).unwrap();
+        let v1 = crate::models::Variant {
+            content_hash: "sha256:sv1".to_string(),
+            asset_id: asset1.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 5000,
+            original_filename: "same_vol.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        catalog.insert_variant(&v1).unwrap();
+        catalog.insert_file_location(&v1.content_hash, &crate::models::FileLocation {
+            volume_id: vol1.id,
+            relative_path: std::path::PathBuf::from("photos/same_vol.jpg"),
+            verified_at: None,
+        }).unwrap();
+        catalog.insert_file_location(&v1.content_hash, &crate::models::FileLocation {
+            volume_id: vol1.id,
+            relative_path: std::path::PathBuf::from("backup/same_vol.jpg"),
+            verified_at: None,
+        }).unwrap();
+
+        // Variant with locations on DIFFERENT volumes (cross-volume)
+        let asset2 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:cv1");
+        catalog.insert_asset(&asset2).unwrap();
+        let v2 = crate::models::Variant {
+            content_hash: "sha256:cv1".to_string(),
+            asset_id: asset2.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 3000,
+            original_filename: "cross_vol.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        catalog.insert_variant(&v2).unwrap();
+        catalog.insert_file_location(&v2.content_hash, &crate::models::FileLocation {
+            volume_id: vol1.id,
+            relative_path: std::path::PathBuf::from("photos/cross_vol.jpg"),
+            verified_at: None,
+        }).unwrap();
+        catalog.insert_file_location(&v2.content_hash, &crate::models::FileLocation {
+            volume_id: vol2.id,
+            relative_path: std::path::PathBuf::from("backup/cross_vol.jpg"),
+            verified_at: None,
+        }).unwrap();
+
+        // same-volume should only return sv1
+        let same = catalog.find_duplicates_same_volume().unwrap();
+        assert_eq!(same.len(), 1);
+        assert_eq!(same[0].content_hash, "sha256:sv1");
+        assert!(!same[0].same_volume_groups.is_empty());
+
+        // cross-volume should only return cv1
+        let cross = catalog.find_duplicates_cross_volume().unwrap();
+        assert_eq!(cross.len(), 1);
+        assert_eq!(cross[0].content_hash, "sha256:cv1");
+        assert_eq!(cross[0].volume_count, 2);
+    }
+
+    #[test]
+    fn find_duplicates_location_details_enriched() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let mut vol = crate::models::Volume::new(
+            "work".to_string(),
+            std::path::PathBuf::from("/mnt/work"),
+            crate::models::VolumeType::Local,
+        );
+        vol.purpose = Some(crate::models::volume::VolumePurpose::Working);
+        catalog.ensure_volume(&vol).unwrap();
+
+        let mut vol2 = crate::models::Volume::new(
+            "backup".to_string(),
+            std::path::PathBuf::from("/mnt/backup"),
+            crate::models::VolumeType::External,
+        );
+        vol2.purpose = Some(crate::models::volume::VolumePurpose::Backup);
+        catalog.ensure_volume(&vol2).unwrap();
+
+        let asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:enr1");
+        catalog.insert_asset(&asset).unwrap();
+        let variant = crate::models::Variant {
+            content_hash: "sha256:enr1".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 5000,
+            original_filename: "photo.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        catalog.insert_variant(&variant).unwrap();
+        catalog.insert_file_location(&variant.content_hash, &crate::models::FileLocation {
+            volume_id: vol.id,
+            relative_path: std::path::PathBuf::from("photos/photo.jpg"),
+            verified_at: None,
+        }).unwrap();
+        catalog.insert_file_location(&variant.content_hash, &crate::models::FileLocation {
+            volume_id: vol2.id,
+            relative_path: std::path::PathBuf::from("backup/photo.jpg"),
+            verified_at: None,
+        }).unwrap();
+
+        let dupes = catalog.find_duplicates().unwrap();
+        assert_eq!(dupes.len(), 1);
+        assert_eq!(dupes[0].volume_count, 2);
+        assert!(dupes[0].same_volume_groups.is_empty());
+
+        // Check enriched location details
+        let work_loc = dupes[0].locations.iter().find(|l| l.volume_label == "work").unwrap();
+        assert_eq!(work_loc.volume_id, vol.id.to_string());
+        assert_eq!(work_loc.volume_purpose.as_deref(), Some("working"));
+
+        let backup_loc = dupes[0].locations.iter().find(|l| l.volume_label == "backup").unwrap();
+        assert_eq!(backup_loc.volume_id, vol2.id.to_string());
+        assert_eq!(backup_loc.volume_purpose.as_deref(), Some("backup"));
+    }
+
+    #[test]
     fn delete_file_location_removes_row() {
         let catalog = Catalog::open_in_memory().unwrap();
         catalog.initialize().unwrap();
@@ -3918,6 +4159,240 @@ mod tests {
         let results = catalog.search_paginated(&opts).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].original_filename, "DSC_0001.NEF");
+    }
+
+    // ── copies filter search tests ────────────────────────────────
+
+    #[test]
+    fn search_copies_exact() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let vol1 = crate::models::Volume::new(
+            "vol-a".to_string(),
+            std::path::PathBuf::from("/mnt/a"),
+            crate::models::VolumeType::Local,
+        );
+        let vol2 = crate::models::Volume::new(
+            "vol-b".to_string(),
+            std::path::PathBuf::from("/mnt/b"),
+            crate::models::VolumeType::Local,
+        );
+        catalog.ensure_volume(&vol1).unwrap();
+        catalog.ensure_volume(&vol2).unwrap();
+
+        // Asset with 1 location
+        let mut a1 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:cop1");
+        let v1 = crate::models::Variant {
+            content_hash: "sha256:cop1".to_string(),
+            asset_id: a1.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 1000,
+            original_filename: "one.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        a1.variants.push(v1.clone());
+        catalog.insert_asset(&a1).unwrap();
+        catalog.insert_variant(&v1).unwrap();
+        catalog.insert_file_location(&v1.content_hash, &crate::models::FileLocation {
+            volume_id: vol1.id,
+            relative_path: std::path::PathBuf::from("one.jpg"),
+            verified_at: None,
+        }).unwrap();
+
+        // Asset with 2 locations
+        let mut a2 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:cop2");
+        let v2 = crate::models::Variant {
+            content_hash: "sha256:cop2".to_string(),
+            asset_id: a2.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 2000,
+            original_filename: "two.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        a2.variants.push(v2.clone());
+        catalog.insert_asset(&a2).unwrap();
+        catalog.insert_variant(&v2).unwrap();
+        catalog.insert_file_location(&v2.content_hash, &crate::models::FileLocation {
+            volume_id: vol1.id,
+            relative_path: std::path::PathBuf::from("two.jpg"),
+            verified_at: None,
+        }).unwrap();
+        catalog.insert_file_location(&v2.content_hash, &crate::models::FileLocation {
+            volume_id: vol2.id,
+            relative_path: std::path::PathBuf::from("two.jpg"),
+            verified_at: None,
+        }).unwrap();
+
+        // Asset with 3 locations
+        let mut a3 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:cop3");
+        let v3 = crate::models::Variant {
+            content_hash: "sha256:cop3".to_string(),
+            asset_id: a3.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 3000,
+            original_filename: "three.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        a3.variants.push(v3.clone());
+        catalog.insert_asset(&a3).unwrap();
+        catalog.insert_variant(&v3).unwrap();
+        catalog.insert_file_location(&v3.content_hash, &crate::models::FileLocation {
+            volume_id: vol1.id,
+            relative_path: std::path::PathBuf::from("three_a.jpg"),
+            verified_at: None,
+        }).unwrap();
+        catalog.insert_file_location(&v3.content_hash, &crate::models::FileLocation {
+            volume_id: vol1.id,
+            relative_path: std::path::PathBuf::from("three_b.jpg"),
+            verified_at: None,
+        }).unwrap();
+        catalog.insert_file_location(&v3.content_hash, &crate::models::FileLocation {
+            volume_id: vol2.id,
+            relative_path: std::path::PathBuf::from("three.jpg"),
+            verified_at: None,
+        }).unwrap();
+
+        // copies:2 → only the 2-location asset
+        let results = catalog.search_paginated(&SearchOptions {
+            copies_exact: Some(2),
+            per_page: u32::MAX,
+            ..Default::default()
+        }).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].original_filename, "two.jpg");
+
+        // copies:1 → only the 1-location asset
+        let results = catalog.search_paginated(&SearchOptions {
+            copies_exact: Some(1),
+            per_page: u32::MAX,
+            ..Default::default()
+        }).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].original_filename, "one.jpg");
+    }
+
+    #[test]
+    fn search_copies_min() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let vol1 = crate::models::Volume::new(
+            "vol-a".to_string(),
+            std::path::PathBuf::from("/mnt/a"),
+            crate::models::VolumeType::Local,
+        );
+        let vol2 = crate::models::Volume::new(
+            "vol-b".to_string(),
+            std::path::PathBuf::from("/mnt/b"),
+            crate::models::VolumeType::Local,
+        );
+        catalog.ensure_volume(&vol1).unwrap();
+        catalog.ensure_volume(&vol2).unwrap();
+
+        // Asset with 1 location
+        let mut a1 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:cpm1");
+        let v1 = crate::models::Variant {
+            content_hash: "sha256:cpm1".to_string(),
+            asset_id: a1.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 1000,
+            original_filename: "one.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        a1.variants.push(v1.clone());
+        catalog.insert_asset(&a1).unwrap();
+        catalog.insert_variant(&v1).unwrap();
+        catalog.insert_file_location(&v1.content_hash, &crate::models::FileLocation {
+            volume_id: vol1.id,
+            relative_path: std::path::PathBuf::from("one.jpg"),
+            verified_at: None,
+        }).unwrap();
+
+        // Asset with 2 locations
+        let mut a2 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:cpm2");
+        let v2 = crate::models::Variant {
+            content_hash: "sha256:cpm2".to_string(),
+            asset_id: a2.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 2000,
+            original_filename: "two.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        a2.variants.push(v2.clone());
+        catalog.insert_asset(&a2).unwrap();
+        catalog.insert_variant(&v2).unwrap();
+        catalog.insert_file_location(&v2.content_hash, &crate::models::FileLocation {
+            volume_id: vol1.id,
+            relative_path: std::path::PathBuf::from("two.jpg"),
+            verified_at: None,
+        }).unwrap();
+        catalog.insert_file_location(&v2.content_hash, &crate::models::FileLocation {
+            volume_id: vol2.id,
+            relative_path: std::path::PathBuf::from("two.jpg"),
+            verified_at: None,
+        }).unwrap();
+
+        // Asset with 3 locations
+        let mut a3 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:cpm3");
+        let v3 = crate::models::Variant {
+            content_hash: "sha256:cpm3".to_string(),
+            asset_id: a3.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 3000,
+            original_filename: "three.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        a3.variants.push(v3.clone());
+        catalog.insert_asset(&a3).unwrap();
+        catalog.insert_variant(&v3).unwrap();
+        catalog.insert_file_location(&v3.content_hash, &crate::models::FileLocation {
+            volume_id: vol1.id,
+            relative_path: std::path::PathBuf::from("three_a.jpg"),
+            verified_at: None,
+        }).unwrap();
+        catalog.insert_file_location(&v3.content_hash, &crate::models::FileLocation {
+            volume_id: vol2.id,
+            relative_path: std::path::PathBuf::from("three_b.jpg"),
+            verified_at: None,
+        }).unwrap();
+        catalog.insert_file_location(&v3.content_hash, &crate::models::FileLocation {
+            volume_id: vol2.id,
+            relative_path: std::path::PathBuf::from("three_c.jpg"),
+            verified_at: None,
+        }).unwrap();
+
+        // copies:2+ → assets with 2 or 3 locations
+        let results = catalog.search_paginated(&SearchOptions {
+            copies_min: Some(2),
+            per_page: u32::MAX,
+            ..Default::default()
+        }).unwrap();
+        assert_eq!(results.len(), 2);
+        let names: Vec<&str> = results.iter().map(|r| r.original_filename.as_str()).collect();
+        assert!(names.contains(&"two.jpg"));
+        assert!(names.contains(&"three.jpg"));
+
+        // copies:3+ → only the 3-location asset
+        let results = catalog.search_paginated(&SearchOptions {
+            copies_min: Some(3),
+            per_page: u32::MAX,
+            ..Default::default()
+        }).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].original_filename, "three.jpg");
     }
 
     // ── find_asset_ids_by_volume_and_path_prefixes tests ─────────

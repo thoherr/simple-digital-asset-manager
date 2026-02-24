@@ -42,6 +42,8 @@ Searches the catalog for assets matching the given query. The query string suppo
 | `meta:` | Source metadata key=value | `meta:Copyright=2026` |
 | `path:` | File location path prefix | `path:Capture/2026-02`, `path:/Volumes/Photos/2026` |
 | `collection:` | Collection membership | `collection:Favorites`, `collection:"My Picks"` |
+| `copies:` | File location count (exact) | `copies:1`, `copies:2` |
+| `copies:N+` | File location count (minimum) | `copies:2+`, `copies:3+` |
 | `orphan:true` | Assets with zero file locations | `orphan:true` |
 | `missing:true` | Assets with files missing on disk | `missing:true` |
 | `stale:N` | Not verified in N days | `stale:30`, `stale:90` |
@@ -114,6 +116,18 @@ Find assets with files missing on disk:
 
 ```bash
 dam search "missing:true"
+```
+
+Find assets with no backup (only one copy):
+
+```bash
+dam search "copies:1"
+```
+
+Find highly-rated assets with at least two copies:
+
+```bash
+dam search "copies:2+ rating:4+"
 ```
 
 Find orphaned assets (no file locations):
@@ -208,14 +222,22 @@ dam-duplicates -- find files with identical content at multiple locations
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] duplicates [--format <FMT>]
+dam [GLOBAL FLAGS] duplicates [--format <FMT>] [--same-volume] [--cross-volume] [--volume <LABEL>]
 ```
 
 ### DESCRIPTION
 
 Finds variants whose content hash appears at more than one file location. This detects files that exist on multiple volumes or at multiple paths, helping identify redundant copies or verify backup coverage.
 
-Each result shows the content hash, filename, and all locations where the identical file exists.
+Each result shows the content hash, filename, volume count, and all locations where the identical file exists. The `short` and `full` formats annotate locations with the volume's purpose (if set) and flag same-volume duplicate groups. The `full` format additionally shows the last verification timestamp for each location.
+
+**Duplicate modes**:
+
+- **Default** (no flag): All variants with 2+ file locations, regardless of volume layout.
+- **`--same-volume`**: Only variants with 2+ locations on the **same** volume. These are likely unwanted copies (e.g., accidentally imported twice from different paths on the same drive).
+- **`--cross-volume`**: Only variants with locations on 2+ **different** volumes. These represent intentional backups or copies across drives.
+
+The `--volume` flag post-filters any mode's results to entries that involve the specified volume.
 
 ### ARGUMENTS
 
@@ -224,9 +246,18 @@ None.
 ### OPTIONS
 
 **--format \<FMT\>**
-: Output format. Same presets as `dam search`: `ids`, `short` (default), `full`, `json`. Custom templates support all search placeholders plus `{locations}` for listing duplicate file locations.
+: Output format. Same presets as `dam search`: `ids`, `short` (default), `full`, `json`. Custom templates support all search placeholders plus `{locations}` and `{volumes}` (distinct volume count). Location strings include the volume purpose in brackets (e.g., `Photos[working]:Capture/photo.jpg`).
 
-`--json` outputs an array of `DuplicateEntry` objects.
+**--same-volume**
+: Show only same-volume duplicates. Mutually exclusive with `--cross-volume`.
+
+**--cross-volume**
+: Show only cross-volume copies. Mutually exclusive with `--same-volume`.
+
+**--volume \<LABEL\>**
+: Filter results to entries involving this volume. Combines with any mode.
+
+`--json` outputs an array of `DuplicateEntry` objects (includes `volume_count` and `same_volume_groups` fields).
 
 ### EXAMPLES
 
@@ -236,7 +267,25 @@ Find all duplicates:
 dam duplicates
 ```
 
-Show duplicates with location details:
+Find likely unwanted same-volume duplicates:
+
+```bash
+dam duplicates --same-volume
+```
+
+Show cross-volume copies (backup verification):
+
+```bash
+dam duplicates --cross-volume
+```
+
+Filter to duplicates involving a specific volume:
+
+```bash
+dam duplicates --volume "Backup Drive"
+```
+
+Show full details with verification timestamps:
 
 ```bash
 dam duplicates --format full
@@ -248,16 +297,23 @@ List duplicates as JSON:
 dam duplicates --json | jq '.[].locations'
 ```
 
+Cross-volume copies as JSON for a specific volume:
+
+```bash
+dam duplicates --cross-volume --volume Photos --json
+```
+
 Custom format showing hash and locations:
 
 ```bash
-dam duplicates --format '{hash}\t{filename}\t{locations}'
+dam duplicates --format '{hash}\t{filename}\t{volumes} volumes\t{locations}'
 ```
 
 ### SEE ALSO
 
 [verify](05-maintain-commands.md#dam-verify) -- verify file integrity on disk.
 [cleanup](05-maintain-commands.md#dam-cleanup) -- remove stale location records.
+[search](#dam-search) -- use `copies:` filter for location-count-based queries.
 
 ---
 

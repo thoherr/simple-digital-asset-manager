@@ -6,6 +6,13 @@ All notable changes to the Digital Asset Manager are documented here.
 
 ### New Features
 - **Volume purpose** — volumes can now be assigned a logical purpose (`working`, `archive`, `backup`, `cloud`) describing their role in the storage hierarchy. `dam volume add --purpose <purpose>` sets purpose at registration, `dam volume set-purpose <volume> <purpose>` changes it later. Purpose is shown in `dam volume list` and included in `--json` output. This metadata lays the groundwork for smart duplicate analysis and backup coverage reporting (see storage workflow proposal).
+- **Enhanced `dam duplicates`** — three new flags for targeted duplicate analysis:
+  - `--same-volume` — find variants with 2+ locations on the same volume (likely unwanted copies)
+  - `--cross-volume` — find variants on 2+ different volumes (intentional backups)
+  - `--volume <label>` — post-filter results to entries involving a specific volume
+  - Output now shows volume purpose (e.g. `[backup]`), volume count, same-volume warnings, and verification timestamps (in `--format full`)
+  - `DuplicateEntry` JSON output includes `volume_count`, `same_volume_groups`, and enriched `LocationDetails` with `volume_id`, `volume_purpose`, `verified_at`
+- **`copies:` search filter** — find assets by total file location count. `copies:1` finds single-copy assets (no backup), `copies:2+` finds assets with at least two copies. Same syntax pattern as `rating:`. Works in CLI, saved searches, and web UI.
 
 ## v1.3.2
 

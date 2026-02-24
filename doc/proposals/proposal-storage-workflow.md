@@ -35,7 +35,7 @@ The right abstraction is **volume purpose** — metadata on the volume itself th
 
 ---
 
-## Part 1: Volume Purpose
+## Part 1: Volume Purpose ✅ *Implemented in v1.4.0*
 
 ### Data Model
 
@@ -91,7 +91,7 @@ Stored in `volumes.yaml` (source of truth) and `volumes` table in SQLite. Schema
 
 ---
 
-## Part 2: Smart Duplicate Analysis
+## Part 2: Smart Duplicate Analysis ✅ *Implemented in v1.4.0*
 
 ### Enhanced `dam duplicates` Command
 
@@ -285,7 +285,7 @@ dam backup-status --volume "Master Media" --at-risk -q "rating:3+" \
 dam backup-status --at-risk -q | xargs dam collection add "Needs Backup"
 ```
 
-### Search Filter: `copies`
+### Search Filter: `copies` ✅ *Implemented in v1.4.0*
 
 Add a new search filter for location count:
 
@@ -327,35 +327,28 @@ Implementation: `copies:N` is a pure SQL filter on a COUNT of `file_locations` g
 
 ## Implementation Plan
 
-### Phase 1: Volume Purpose (foundation)
+### Phase 1: Volume Purpose (foundation) ✅ *v1.4.0*
 
-**Files to modify:**
-- `src/models/volume.rs` — add `VolumePurpose` enum, `purpose` field to `Volume`
-- `src/device_registry.rs` — serialize/deserialize purpose, add `set_purpose()` method
-- `src/catalog.rs` — schema migration for `purpose` column on `volumes` table, update insert/load queries
-- `src/main.rs` — add `--purpose` flag to `volume add`, add `volume set-purpose` subcommand
-- `doc/manual/reference/01-setup-commands.md` — document new flags/subcommand
+**Files modified:**
+- `src/models/volume.rs` — added `VolumePurpose` enum, `purpose` field to `Volume`
+- `src/device_registry.rs` — serialize/deserialize purpose, added `set_purpose()` method
+- `src/catalog.rs` — schema migration for `purpose` column on `volumes` table, updated insert/load queries
+- `src/main.rs` — added `--purpose` flag to `volume add`, added `volume set-purpose` subcommand
+- `doc/manual/reference/01-setup-commands.md` — documented new flags/subcommand
 
-**Estimated scope:** ~150 lines of code, small and self-contained. No breaking changes.
+### Phase 2: Enhanced Duplicates ✅ *v1.4.0*
 
-### Phase 2: Enhanced Duplicates
+**Files modified:**
+- `src/catalog.rs` — added `find_duplicates_same_volume()`, `find_duplicates_cross_volume()` with shared `load_duplicate_entries()` helper; enriched `LocationDetails` with `volume_id`, `volume_purpose`, `verified_at`; enriched `DuplicateEntry` with `volume_count`, `same_volume_groups`
+- `src/main.rs` — added `--same-volume`, `--cross-volume`, `--volume` flags to `duplicates` subcommand; enhanced output with purpose tags, volume counts, same-volume warnings, verification timestamps
+- `doc/manual/reference/04-retrieve-commands.md` — documented new flags
 
-**Files to modify:**
-- `src/catalog.rs` — add `find_same_volume_duplicates()`, `find_cross_volume_duplicates()` queries
-- `src/query.rs` or `src/main.rs` — add `--same-volume`, `--cross-volume`, `--volume` flags to `duplicates` subcommand
-- `src/format.rs` — enhanced duplicate formatting with volume purpose context
-- `doc/manual/reference/04-retrieve-commands.md` — document new flags
+### Phase 3: `copies` Search Filter ✅ *v1.4.0*
 
-**Estimated scope:** ~200 lines. Builds on existing `find_duplicates()` infrastructure.
-
-### Phase 3: `copies` Search Filter
-
-**Files to modify:**
+**Files modified:**
 - `src/query.rs` — parse `copies:N` and `copies:N+` filter syntax
-- `src/catalog.rs` — `build_search_where()` adds HAVING clause on location count (needs a subquery or CTE since the current search uses `assets` table as base)
-- `doc/manual/reference/06-search-filters.md` — document new filter
-
-**Estimated scope:** ~80 lines. Follows the pattern of existing range filters like `rating:N+`.
+- `src/catalog.rs` — `build_search_where()` adds scalar subquery on location count (self-contained, no outer JOIN needed)
+- `doc/manual/reference/06-search-filters.md` — documented new filter
 
 ### Phase 4: `dam dedup` Command
 
@@ -441,13 +434,13 @@ dam backup-status --min-copies 2 "rating:3+"
 
 ## Summary
 
-| Feature | What it solves | Effort |
-|---------|---------------|--------|
-| Volume purpose | Semantic context for duplicate analysis | Small |
-| Enhanced duplicates | Distinguish unwanted from wanted copies | Small |
-| `copies:N` filter | Find under-backed-up assets in search | Small |
-| `dam dedup` | Clean up same-volume duplicates safely | Medium |
-| `dam backup-status` | At-a-glance backup health overview | Medium |
-| Web UI integration | Visual backup dashboard | Medium |
+| Feature | What it solves | Effort | Status |
+|---------|---------------|--------|--------|
+| Volume purpose | Semantic context for duplicate analysis | Small | ✅ v1.4.0 |
+| Enhanced duplicates | Distinguish unwanted from wanted copies | Small | ✅ v1.4.0 |
+| `copies:N` filter | Find under-backed-up assets in search | Small | ✅ v1.4.0 |
+| `dam dedup` | Clean up same-volume duplicates safely | Medium | Planned |
+| `dam backup-status` | At-a-glance backup health overview | Medium | Planned |
+| Web UI integration | Visual backup dashboard | Medium | Planned |
 
-Total estimated effort: ~1,100 lines of Rust across 5 phases, plus documentation. Each phase is independently useful and can be released separately.
+Phases 1–3 shipped in v1.4.0. Each remaining phase is independently useful and can be released separately.

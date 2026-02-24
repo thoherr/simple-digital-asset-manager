@@ -5404,3 +5404,238 @@ fn fix_recipes_json() {
     assert_eq!(parsed["skipped"].as_u64(), Some(0));
     assert_eq!(parsed["dry_run"].as_bool(), Some(true));
 }
+
+// ─── Duplicates flag tests ──────────────────────────────────────
+
+#[test]
+fn duplicates_same_volume_flag() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Import the same content twice on the same volume (different paths)
+    let content = b"same volume dup content";
+    let file1 = create_test_file(&root, "copy_a.jpg", content);
+    let file2 = create_test_file(&root, "subdir/copy_b.jpg", content);
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file1.to_str().unwrap()])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["import", file2.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // --same-volume should find the duplicate
+    dam()
+        .current_dir(&root)
+        .args(["duplicates", "--same-volume"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("same-volume duplicate"));
+
+    // --cross-volume should NOT find anything (both on same volume)
+    dam()
+        .current_dir(&root)
+        .args(["duplicates", "--cross-volume"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No cross-volume copies found"));
+}
+
+#[test]
+fn duplicates_cross_volume_flag() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Set up a second volume
+    let dir2 = tempdir().unwrap();
+    let vol2_path = dir2.path().canonicalize().unwrap();
+    dam()
+        .current_dir(&root)
+        .args(["volume", "add", "vol2", vol2_path.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Import the same content on two different volumes
+    let content = b"cross volume copy content";
+    let file1 = create_test_file(&root, "original.jpg", content);
+    let file2 = create_test_file(&vol2_path, "backup.jpg", content);
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file1.to_str().unwrap()])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["import", "--volume", "vol2", file2.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // --cross-volume should find the cross-volume copy
+    dam()
+        .current_dir(&root)
+        .args(["duplicates", "--cross-volume"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 volumes"));
+
+    // --same-volume should NOT find it (each volume has only 1 copy)
+    dam()
+        .current_dir(&root)
+        .args(["duplicates", "--same-volume"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No same-volume duplicates found"));
+}
+
+#[test]
+fn duplicates_volume_filter() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Set up a second volume
+    let dir2 = tempdir().unwrap();
+    let vol2_path = dir2.path().canonicalize().unwrap();
+    dam()
+        .current_dir(&root)
+        .args(["volume", "add", "vol2", vol2_path.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Import same content on both volumes
+    let content = b"volume filter dup content";
+    let file1 = create_test_file(&root, "vf_orig.jpg", content);
+    let file2 = create_test_file(&vol2_path, "vf_backup.jpg", content);
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file1.to_str().unwrap()])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["import", "--volume", "vol2", file2.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // --volume test-vol should show the duplicate
+    dam()
+        .current_dir(&root)
+        .args(["duplicates", "--volume", "test-vol"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("duplicate locations"));
+
+    // --volume nonexistent should find nothing
+    dam()
+        .current_dir(&root)
+        .args(["duplicates", "--volume", "nonexistent"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No duplicates found"));
+}
+
+#[test]
+fn duplicates_mutually_exclusive_flags() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    dam()
+        .current_dir(&root)
+        .args(["duplicates", "--same-volume", "--cross-volume"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("mutually exclusive"));
+}
+
+// ─── Copies search filter tests ─────────────────────────────────
+
+#[test]
+fn search_copies_filter() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Set up a second volume
+    let dir2 = tempdir().unwrap();
+    let vol2_path = dir2.path().canonicalize().unwrap();
+    dam()
+        .current_dir(&root)
+        .args(["volume", "add", "vol2", vol2_path.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // File A: only on one volume (1 copy)
+    let file_a = create_test_file(&root, "single.jpg", b"single copy data");
+    dam()
+        .current_dir(&root)
+        .args(["import", file_a.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // File B: on both volumes (2 copies)
+    let content_b = b"two copy data bytes";
+    let file_b1 = create_test_file(&root, "multi_orig.jpg", content_b);
+    let file_b2 = create_test_file(&vol2_path, "multi_backup.jpg", content_b);
+    dam()
+        .current_dir(&root)
+        .args(["import", file_b1.to_str().unwrap()])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["import", "--volume", "vol2", file_b2.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // copies:1 should only return the single-copy asset
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "search", "copies:1"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let results: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(results.len(), 1, "copies:1 should return exactly 1 result");
+    assert_eq!(results[0]["original_filename"], "single.jpg");
+
+    // copies:2 should only return the two-copy asset
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "search", "copies:2"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let results: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(results.len(), 1, "copies:2 should return exactly 1 result");
+    assert_eq!(results[0]["original_filename"], "multi_orig.jpg");
+
+    // copies:2+ should return the two-copy asset
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "search", "copies:2+"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let results: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(results.len(), 1, "copies:2+ should return exactly 1 result");
+    assert_eq!(results[0]["original_filename"], "multi_orig.jpg");
+
+    // copies:1+ should return both
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "search", "copies:1+"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let results: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(results.len(), 2, "copies:1+ should return 2 results");
+    let filenames: Vec<&str> = results.iter()
+        .map(|r| r["original_filename"].as_str().unwrap())
+        .collect();
+    assert!(filenames.contains(&"single.jpg"));
+    assert!(filenames.contains(&"multi_orig.jpg"));
+}
