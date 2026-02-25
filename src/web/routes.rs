@@ -122,30 +122,22 @@ pub async fn browse_page(
             return Ok::<_, anyhow::Error>(tmpl.render()?);
         }
 
-        let all_tags: Vec<TagOption> = catalog
-            .list_all_tags()?
+        let all_tags: Vec<TagOption> = state.dropdown_cache.get_tags(&catalog)
             .into_iter()
             .map(|(name, count)| TagOption { name, count })
             .collect();
-        let all_formats: Vec<FormatOption> = catalog
-            .list_all_formats()?
+        let all_formats: Vec<FormatOption> = state.dropdown_cache.get_formats(&catalog)
             .into_iter()
             .map(|name| FormatOption { name })
             .collect();
-        let all_volumes: Vec<VolumeOption> = catalog
-            .list_volumes()?
+        let all_volumes: Vec<VolumeOption> = state.dropdown_cache.get_volumes(&catalog)
             .into_iter()
             .map(|(id, label)| VolumeOption { id, label })
             .collect();
-
-        let all_collections: Vec<CollectionOption> = {
-            let col_store = crate::collection::CollectionStore::new(catalog.conn());
-            col_store.list()
-                .unwrap_or_default()
-                .into_iter()
-                .map(|c| CollectionOption { name: c.name })
-                .collect()
-        };
+        let all_collections: Vec<CollectionOption> = state.dropdown_cache.get_collections(&catalog)
+            .into_iter()
+            .map(|name| CollectionOption { name })
+            .collect();
 
         let saved_searches = crate::saved_search::load(&state.catalog_root)
             .unwrap_or_default()
@@ -376,6 +368,7 @@ pub async fn add_tags(
             .filter(|t| !t.is_empty())
             .collect();
         let result = engine.tag(&asset_id, &tags, false)?;
+        state.dropdown_cache.invalidate_tags();
         let tmpl = TagsFragment {
             asset_id,
             tags: result.current_tags,
@@ -402,6 +395,7 @@ pub async fn remove_tag(
     let result = tokio::task::spawn_blocking(move || {
         let engine = state.query_engine();
         let result = engine.tag(&asset_id, &[tag], true)?;
+        state.dropdown_cache.invalidate_tags();
         let tmpl = TagsFragment {
             asset_id,
             tags: result.current_tags,
@@ -424,7 +418,7 @@ pub async fn tags_api(State(state): State<Arc<AppState>>) -> Response {
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
         let catalog = state.catalog()?;
-        let tags = catalog.list_all_tags()?;
+        let tags = state.dropdown_cache.get_tags(&catalog);
         Ok::<_, anyhow::Error>(tags)
     })
     .await;
@@ -817,6 +811,9 @@ pub async fn batch_tags(
                 }),
             }
         }
+        if succeeded > 0 {
+            state.dropdown_cache.invalidate_tags();
+        }
         let failed = errors.len() as u32;
         Ok::<_, anyhow::Error>(BatchResult {
             succeeded,
@@ -1132,6 +1129,7 @@ pub async fn create_collection_api(
         // Persist to YAML
         let yaml = col_store.export_all()?;
         crate::collection::save_yaml(&state.catalog_root, &yaml)?;
+        state.dropdown_cache.invalidate_collections();
         Ok::<_, anyhow::Error>(serde_json::json!({
             "id": collection.id.to_string(),
             "name": collection.name,
@@ -1193,6 +1191,7 @@ pub async fn batch_remove_from_collection(
         // Persist to YAML
         let yaml = col_store.export_all()?;
         crate::collection::save_yaml(&state.catalog_root, &yaml)?;
+        state.dropdown_cache.invalidate_collections();
         Ok::<_, anyhow::Error>(serde_json::json!({
             "removed": removed,
             "collection": req.collection,
@@ -1222,6 +1221,7 @@ pub async fn batch_add_to_collection(
         // Persist to YAML
         let yaml = col_store.export_all()?;
         crate::collection::save_yaml(&state.catalog_root, &yaml)?;
+        state.dropdown_cache.invalidate_collections();
         Ok::<_, anyhow::Error>(serde_json::json!({
             "added": added,
             "collection": req.collection,

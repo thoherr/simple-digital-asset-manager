@@ -4,7 +4,7 @@ pub mod templates;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use anyhow::Result;
 use axum::Router;
@@ -15,12 +15,105 @@ use crate::config::PreviewConfig;
 use crate::preview::PreviewGenerator;
 use crate::query::QueryEngine;
 
+/// Cached dropdown data for the browse page filter controls.
+/// Populated lazily on first access, invalidated by write endpoints.
+struct DropdownCacheInner {
+    tags: Option<Vec<(String, u64)>>,
+    formats: Option<Vec<String>>,
+    volumes: Option<Vec<(String, String)>>,
+    collections: Option<Vec<String>>,
+}
+
+pub struct DropdownCache {
+    inner: RwLock<DropdownCacheInner>,
+}
+
+impl DropdownCache {
+    fn new() -> Self {
+        Self {
+            inner: RwLock::new(DropdownCacheInner {
+                tags: None,
+                formats: None,
+                volumes: None,
+                collections: None,
+            }),
+        }
+    }
+
+    pub fn get_tags(&self, catalog: &Catalog) -> Vec<(String, u64)> {
+        if let Some(cached) = self.inner.read().unwrap().tags.as_ref() {
+            return cached.clone();
+        }
+        let mut w = self.inner.write().unwrap();
+        if let Some(cached) = w.tags.as_ref() {
+            return cached.clone();
+        }
+        let tags = catalog.list_all_tags().unwrap_or_default();
+        w.tags = Some(tags.clone());
+        tags
+    }
+
+    pub fn get_formats(&self, catalog: &Catalog) -> Vec<String> {
+        if let Some(cached) = self.inner.read().unwrap().formats.as_ref() {
+            return cached.clone();
+        }
+        let mut w = self.inner.write().unwrap();
+        if let Some(cached) = w.formats.as_ref() {
+            return cached.clone();
+        }
+        let formats = catalog.list_all_formats().unwrap_or_default();
+        w.formats = Some(formats.clone());
+        formats
+    }
+
+    pub fn get_volumes(&self, catalog: &Catalog) -> Vec<(String, String)> {
+        if let Some(cached) = self.inner.read().unwrap().volumes.as_ref() {
+            return cached.clone();
+        }
+        let mut w = self.inner.write().unwrap();
+        if let Some(cached) = w.volumes.as_ref() {
+            return cached.clone();
+        }
+        let volumes = catalog.list_volumes().unwrap_or_default();
+        w.volumes = Some(volumes.clone());
+        volumes
+    }
+
+    pub fn get_collections(&self, catalog: &Catalog) -> Vec<String> {
+        if let Some(cached) = self.inner.read().unwrap().collections.as_ref() {
+            return cached.clone();
+        }
+        let mut w = self.inner.write().unwrap();
+        if let Some(cached) = w.collections.as_ref() {
+            return cached.clone();
+        }
+        let col_store = crate::collection::CollectionStore::new(catalog.conn());
+        let collections: Vec<String> = col_store
+            .list()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        w.collections = Some(collections.clone());
+        collections
+    }
+
+    pub fn invalidate_tags(&self) {
+        self.inner.write().unwrap().tags = None;
+    }
+
+    pub fn invalidate_collections(&self) {
+        self.inner.write().unwrap().collections = None;
+    }
+}
+
 /// Shared application state for the web server.
 pub struct AppState {
     catalog_root: PathBuf,
     preview_config: PreviewConfig,
     pub preview_ext: String,
     pub log_requests: bool,
+    pub dropdown_cache: DropdownCache,
 }
 
 impl AppState {
@@ -31,6 +124,7 @@ impl AppState {
             preview_config,
             preview_ext,
             log_requests,
+            dropdown_cache: DropdownCache::new(),
         }
     }
 
