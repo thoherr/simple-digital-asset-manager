@@ -222,6 +222,61 @@ pub struct VolumeVerificationStats {
     pub oldest_verified_at: Option<String>,
 }
 
+/// Top-level result for `dam backup-status`.
+#[derive(Debug, serde::Serialize)]
+pub struct BackupStatusResult {
+    pub scope: String,
+    pub total_assets: u64,
+    pub total_variants: u64,
+    pub total_file_locations: u64,
+    pub min_copies: u64,
+    pub at_risk_count: u64,
+    pub purpose_coverage: Vec<PurposeCoverage>,
+    pub location_distribution: Vec<LocationBucket>,
+    pub volume_gaps: Vec<VolumeGap>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume_detail: Option<VolumeGapDetail>,
+}
+
+/// Coverage of assets by volume purpose.
+#[derive(Debug, serde::Serialize)]
+pub struct PurposeCoverage {
+    pub purpose: String,
+    pub volume_count: u64,
+    pub asset_count: u64,
+    pub asset_percentage: f64,
+}
+
+/// A bucket in the volume-count distribution histogram.
+#[derive(Debug, serde::Serialize)]
+pub struct LocationBucket {
+    pub volume_count: String,
+    pub asset_count: u64,
+}
+
+/// Summary of how many scoped assets are missing from a volume.
+#[derive(Debug, serde::Serialize)]
+pub struct VolumeGap {
+    pub volume_label: String,
+    pub volume_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub purpose: Option<String>,
+    pub missing_count: u64,
+}
+
+/// Detailed coverage info for a specific target volume.
+#[derive(Debug, serde::Serialize)]
+pub struct VolumeGapDetail {
+    pub volume_label: String,
+    pub volume_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub purpose: Option<String>,
+    pub present_count: u64,
+    pub missing_count: u64,
+    pub total_scoped: u64,
+    pub coverage_pct: f64,
+}
+
 /// Sort order for paginated search.
 #[derive(Debug, Clone, Copy)]
 pub enum SearchSort {
@@ -2381,6 +2436,314 @@ impl Catalog {
             tags,
             verified,
         })
+    }
+
+    /// Build a backup-status overview for the given scope of assets.
+    ///
+    /// - `scope_ids`: `None` = all assets, `Some(ids)` = specific assets
+    /// - `volumes_info`: `(label, volume_id, is_online, purpose)` from DeviceRegistry
+    /// - `min_copies`: threshold for "at risk"
+    /// - `target_volume_id`: optional volume to compute `VolumeGapDetail` for
+    pub fn backup_status_overview(
+        &self,
+        scope_ids: Option<&[String]>,
+        volumes_info: &[(String, String, bool, Option<String>)],
+        min_copies: u64,
+        target_volume_id: Option<&str>,
+    ) -> Result<BackupStatusResult> {
+        let scoped = scope_ids.is_some();
+
+        // Create temp table for scoped queries
+        if let Some(ids) = scope_ids {
+            self.conn.execute_batch("CREATE TEMP TABLE IF NOT EXISTS _bs_scope (asset_id TEXT PRIMARY KEY)")?;
+            self.conn.execute_batch("DELETE FROM _bs_scope")?;
+
+            // Batch insert in chunks of 500
+            for chunk in ids.chunks(500) {
+                let placeholders: Vec<&str> = chunk.iter().map(|_| "(?)").collect();
+                let sql = format!("INSERT OR IGNORE INTO _bs_scope (asset_id) VALUES {}", placeholders.join(","));
+                let params: Vec<&dyn rusqlite::types::ToSql> = chunk.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
+                self.conn.execute(&sql, params.as_slice())?;
+            }
+        }
+
+        let scope_filter = if scoped {
+            "JOIN _bs_scope bs ON bs.asset_id = a.id"
+        } else {
+            ""
+        };
+        let scope_filter_v = if scoped {
+            "JOIN _bs_scope bs ON bs.asset_id = v.asset_id"
+        } else {
+            ""
+        };
+
+        // Total counts
+        let total_assets: u64 = self.conn.query_row(
+            &format!("SELECT COUNT(*) FROM assets a {}", scope_filter),
+            [],
+            |r| r.get(0),
+        )?;
+        let total_variants: u64 = self.conn.query_row(
+            &format!("SELECT COUNT(*) FROM variants v {}", scope_filter_v),
+            [],
+            |r| r.get(0),
+        )?;
+        let total_file_locations: u64 = self.conn.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM file_locations fl \
+                 JOIN variants v ON fl.content_hash = v.content_hash {}",
+                scope_filter_v
+            ),
+            [],
+            |r| r.get(0),
+        )?;
+
+        // Volume distribution: per-asset distinct volume count → bucket into 0, 1, 2, 3+
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT vol_count, COUNT(*) FROM ( \
+                SELECT a.id, COUNT(DISTINCT fl.volume_id) as vol_count \
+                FROM assets a {} \
+                LEFT JOIN variants v2 ON v2.asset_id = a.id \
+                LEFT JOIN file_locations fl ON fl.content_hash = v2.content_hash \
+                GROUP BY a.id \
+            ) GROUP BY vol_count ORDER BY vol_count",
+            scope_filter,
+        ))?;
+        let mut raw_dist: Vec<(u64, u64)> = Vec::new();
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, u64>(0)?, r.get::<_, u64>(1)?)))?;
+        for row in rows {
+            raw_dist.push(row?);
+        }
+
+        // Bucket: 0, 1, 2, 3+
+        let mut buckets = [0u64; 4]; // [0, 1, 2, 3+]
+        for (loc_count, asset_count) in &raw_dist {
+            match *loc_count {
+                0 => buckets[0] += asset_count,
+                1 => buckets[1] += asset_count,
+                2 => buckets[2] += asset_count,
+                _ => buckets[3] += asset_count,
+            }
+        }
+        let location_distribution = vec![
+            LocationBucket { volume_count: "0".to_string(), asset_count: buckets[0] },
+            LocationBucket { volume_count: "1".to_string(), asset_count: buckets[1] },
+            LocationBucket { volume_count: "2".to_string(), asset_count: buckets[2] },
+            LocationBucket { volume_count: "3+".to_string(), asset_count: buckets[3] },
+        ];
+
+        // At-risk count: assets on fewer than min_copies distinct volumes
+        let at_risk_count: u64 = self.conn.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM ( \
+                    SELECT a.id FROM assets a {} \
+                    LEFT JOIN variants v2 ON v2.asset_id = a.id \
+                    LEFT JOIN file_locations fl ON fl.content_hash = v2.content_hash \
+                    GROUP BY a.id HAVING COUNT(DISTINCT fl.volume_id) < ?1 \
+                )",
+                scope_filter,
+            ),
+            [min_copies],
+            |r| r.get(0),
+        )?;
+
+        // Purpose coverage: COUNT(DISTINCT asset_id) per volume purpose
+        // Group volumes by purpose, then count distinct assets across all volumes of each purpose
+        let mut purpose_coverage = Vec::new();
+        let mut purpose_groups: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        for (_label, vid, _online, purpose) in volumes_info {
+            let purpose_str = purpose.as_deref().unwrap_or("(none)");
+            purpose_groups.entry(purpose_str.to_string()).or_default().push(vid.clone());
+        }
+        for (purpose_str, vol_ids) in &purpose_groups {
+            let placeholders: Vec<String> = vol_ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect();
+            let sql = format!(
+                "SELECT COUNT(DISTINCT v.asset_id) FROM file_locations fl \
+                 JOIN variants v ON fl.content_hash = v.content_hash \
+                 {} \
+                 WHERE fl.volume_id IN ({})",
+                scope_filter_v,
+                placeholders.join(","),
+            );
+            let params: Vec<&dyn rusqlite::types::ToSql> = vol_ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
+            let asset_count: u64 = self.conn.query_row(&sql, params.as_slice(), |r| r.get(0))?;
+            let pct = if total_assets > 0 { (asset_count as f64 / total_assets as f64) * 100.0 } else { 0.0 };
+            purpose_coverage.push(PurposeCoverage {
+                purpose: purpose_str.clone(),
+                volume_count: vol_ids.len() as u64,
+                asset_count,
+                asset_percentage: pct,
+            });
+        }
+        purpose_coverage.sort_by(|a, b| b.asset_count.cmp(&a.asset_count));
+
+        // Volume gaps: per volume, count present and missing
+        let mut volume_gaps = Vec::new();
+        for (label, vid, _online, purpose) in volumes_info {
+            let present: u64 = self.conn.query_row(
+                &format!(
+                    "SELECT COUNT(DISTINCT v.asset_id) FROM file_locations fl \
+                     JOIN variants v ON fl.content_hash = v.content_hash \
+                     {} \
+                     WHERE fl.volume_id = ?1",
+                    scope_filter_v,
+                ),
+                [vid],
+                |r| r.get(0),
+            )?;
+            let missing = total_assets.saturating_sub(present);
+            if missing > 0 {
+                volume_gaps.push(VolumeGap {
+                    volume_label: label.clone(),
+                    volume_id: vid.clone(),
+                    purpose: purpose.clone(),
+                    missing_count: missing,
+                });
+            }
+        }
+        volume_gaps.sort_by(|a, b| a.missing_count.cmp(&b.missing_count));
+
+        // Volume detail: for --volume target
+        let volume_detail = if let Some(target_vid) = target_volume_id {
+            let present: u64 = self.conn.query_row(
+                &format!(
+                    "SELECT COUNT(DISTINCT v.asset_id) FROM file_locations fl \
+                     JOIN variants v ON fl.content_hash = v.content_hash \
+                     {} \
+                     WHERE fl.volume_id = ?1",
+                    scope_filter_v,
+                ),
+                [target_vid],
+                |r| r.get(0),
+            )?;
+            let missing = total_assets.saturating_sub(present);
+            let pct = if total_assets > 0 { (present as f64 / total_assets as f64) * 100.0 } else { 0.0 };
+            let vol_info = volumes_info.iter().find(|v| v.1 == target_vid);
+            Some(VolumeGapDetail {
+                volume_label: vol_info.map(|v| v.0.clone()).unwrap_or_default(),
+                volume_id: target_vid.to_string(),
+                purpose: vol_info.and_then(|v| v.3.clone()),
+                present_count: present,
+                missing_count: missing,
+                total_scoped: total_assets,
+                coverage_pct: pct,
+            })
+        } else {
+            None
+        };
+
+        let scope = if scoped { "filtered" } else { "all assets" }.to_string();
+
+        // Cleanup temp table
+        if scoped {
+            let _ = self.conn.execute_batch("DROP TABLE IF EXISTS _bs_scope");
+        }
+
+        Ok(BackupStatusResult {
+            scope,
+            total_assets,
+            total_variants,
+            total_file_locations,
+            min_copies,
+            at_risk_count,
+            purpose_coverage,
+            location_distribution,
+            volume_gaps,
+            volume_detail,
+        })
+    }
+
+    /// Return asset IDs on fewer than `min_copies` distinct volumes.
+    pub fn backup_status_at_risk_ids(
+        &self,
+        scope_ids: Option<&[String]>,
+        min_copies: u64,
+    ) -> Result<Vec<String>> {
+        let scoped = scope_ids.is_some();
+
+        if let Some(ids) = scope_ids {
+            self.conn.execute_batch("CREATE TEMP TABLE IF NOT EXISTS _bs_scope (asset_id TEXT PRIMARY KEY)")?;
+            self.conn.execute_batch("DELETE FROM _bs_scope")?;
+            for chunk in ids.chunks(500) {
+                let placeholders: Vec<&str> = chunk.iter().map(|_| "(?)").collect();
+                let sql = format!("INSERT OR IGNORE INTO _bs_scope (asset_id) VALUES {}", placeholders.join(","));
+                let params: Vec<&dyn rusqlite::types::ToSql> = chunk.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
+                self.conn.execute(&sql, params.as_slice())?;
+            }
+        }
+
+        let scope_filter = if scoped {
+            "JOIN _bs_scope bs ON bs.asset_id = a.id"
+        } else {
+            ""
+        };
+
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT a.id FROM assets a {} \
+             LEFT JOIN variants v ON v.asset_id = a.id \
+             LEFT JOIN file_locations fl ON fl.content_hash = v.content_hash \
+             GROUP BY a.id HAVING COUNT(DISTINCT fl.volume_id) < ?1",
+            scope_filter,
+        ))?;
+        let rows = stmt.query_map([min_copies], |r| r.get::<_, String>(0))?;
+        let mut ids = Vec::new();
+        for row in rows {
+            ids.push(row?);
+        }
+
+        if scoped {
+            let _ = self.conn.execute_batch("DROP TABLE IF EXISTS _bs_scope");
+        }
+
+        Ok(ids)
+    }
+
+    /// Return asset IDs that have no file_location on the given volume.
+    pub fn backup_status_missing_from_volume(
+        &self,
+        scope_ids: Option<&[String]>,
+        volume_id: &str,
+    ) -> Result<Vec<String>> {
+        let scoped = scope_ids.is_some();
+
+        if let Some(ids) = scope_ids {
+            self.conn.execute_batch("CREATE TEMP TABLE IF NOT EXISTS _bs_scope (asset_id TEXT PRIMARY KEY)")?;
+            self.conn.execute_batch("DELETE FROM _bs_scope")?;
+            for chunk in ids.chunks(500) {
+                let placeholders: Vec<&str> = chunk.iter().map(|_| "(?)").collect();
+                let sql = format!("INSERT OR IGNORE INTO _bs_scope (asset_id) VALUES {}", placeholders.join(","));
+                let params: Vec<&dyn rusqlite::types::ToSql> = chunk.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
+                self.conn.execute(&sql, params.as_slice())?;
+            }
+        }
+
+        let scope_filter = if scoped {
+            "JOIN _bs_scope bs ON bs.asset_id = a.id"
+        } else {
+            ""
+        };
+
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT a.id FROM assets a {} \
+             WHERE NOT EXISTS ( \
+                SELECT 1 FROM variants v \
+                JOIN file_locations fl ON fl.content_hash = v.content_hash \
+                WHERE v.asset_id = a.id AND fl.volume_id = ?1 \
+             )",
+            scope_filter,
+        ))?;
+        let rows = stmt.query_map([volume_id], |r| r.get::<_, String>(0))?;
+        let mut ids = Vec::new();
+        for row in rows {
+            ids.push(row?);
+        }
+
+        if scoped {
+            let _ = self.conn.execute_batch("DROP TABLE IF EXISTS _bs_scope");
+        }
+
+        Ok(ids)
     }
 
     /// Return asset IDs where all variants have zero file_locations.

@@ -15,7 +15,7 @@ Quick Reference:
   Setup:      init, volume
   Ingest:     import, tag, edit, group, auto-group
   Organize:   collection (col), saved-search (ss)
-  Retrieve:   search, show, duplicates, stats, serve
+  Retrieve:   search, show, duplicates, stats, backup-status, serve
   Maintain:   verify, sync, refresh, cleanup, dedup, relocate,
               update-location, generate-previews, fix-roles,
               fix-dates, rebuild-catalog"
@@ -237,8 +237,35 @@ enum Commands {
         limit: usize,
     },
 
+    /// Check backup coverage and find under-backed-up assets
+    #[command(name = "backup-status", display_order = 35)]
+    BackupStatus {
+        /// Search query to scope the asset universe (same syntax as dam search)
+        query: Option<String>,
+
+        /// List under-backed-up assets (fewer than --min-copies locations)
+        #[arg(long, display_order = 10)]
+        at_risk: bool,
+
+        /// Minimum copies for adequate backup (default: 2)
+        #[arg(long, default_value = "2", display_order = 11)]
+        min_copies: u64,
+
+        /// Show which scoped assets are missing from this volume
+        #[arg(long, display_order = 12)]
+        volume: Option<String>,
+
+        /// Output format for --at-risk listings (ids, short, full, json, or template)
+        #[arg(long, display_order = 20)]
+        format: Option<String>,
+
+        /// Shorthand for --format=ids (one asset ID per line, for scripting)
+        #[arg(short = 'q', long = "quiet", display_order = 21)]
+        quiet: bool,
+    },
+
     /// Start the web UI server
-    #[command(display_order = 34)]
+    #[command(display_order = 36)]
     Serve {
         /// Port to listen on (default: 8080, or from dam.toml [serve] port)
         #[arg(long, display_order = 10)]
@@ -2418,6 +2445,164 @@ fn main() {
             }
             Ok(())
         }
+        Commands::BackupStatus { query, at_risk, min_copies, volume, format, quiet } => {
+            use dam::format::{self, OutputFormat};
+
+            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog = Catalog::open(&catalog_root)?;
+            let registry = DeviceRegistry::new(&catalog_root);
+            let vol_list = registry.list()?;
+
+            let volumes_info: Vec<(String, String, bool, Option<String>)> = vol_list
+                .iter()
+                .map(|v| (v.label.clone(), v.id.to_string(), v.is_online, v.purpose.as_ref().map(|p| p.as_str().to_string())))
+                .collect();
+
+            // Resolve target volume if specified
+            let target_volume = if let Some(ref vol_label) = volume {
+                Some(registry.resolve_volume(vol_label)?)
+            } else {
+                None
+            };
+            let target_volume_id = target_volume.as_ref().map(|v| v.id.to_string());
+
+            // Scope: optional query → asset IDs
+            let scope_ids: Option<Vec<String>> = if let Some(ref q) = query {
+                let engine = QueryEngine::new(&catalog_root);
+                let results = engine.search(q)?;
+                let ids: Vec<String> = results.iter().map(|r| r.asset_id.clone()).collect();
+                Some(ids)
+            } else {
+                None
+            };
+            let scope_refs = scope_ids.as_deref();
+
+            // Determine mode: at-risk listing vs overview
+            let listing_mode = at_risk || quiet || format.is_some();
+
+            if listing_mode {
+                // Get at-risk IDs
+                let risk_ids = if let Some(ref tvid) = target_volume_id {
+                    catalog.backup_status_missing_from_volume(scope_refs, tvid)?
+                } else {
+                    catalog.backup_status_at_risk_ids(scope_refs, min_copies)?
+                };
+
+                // Fetch full SearchRow data for output formatting
+                let results = if risk_ids.is_empty() {
+                    Vec::new()
+                } else {
+                    let opts = dam::catalog::SearchOptions {
+                        collection_asset_ids: Some(&risk_ids),
+                        per_page: u32::MAX,
+                        ..Default::default()
+                    };
+                    catalog.search_paginated(&opts)?
+                };
+
+                let output_format = if quiet {
+                    OutputFormat::Ids
+                } else if let Some(fmt) = &format {
+                    format::parse_format(fmt).map_err(|e| anyhow::anyhow!(e))?
+                } else if cli.json {
+                    OutputFormat::Json
+                } else {
+                    OutputFormat::Short
+                };
+
+                let explicit_format = quiet || format.is_some();
+
+                if results.is_empty() {
+                    match output_format {
+                        OutputFormat::Json => println!("[]"),
+                        _ => {
+                            if !explicit_format {
+                                println!("No at-risk assets found.");
+                            }
+                        }
+                    }
+                } else {
+                    match output_format {
+                        OutputFormat::Ids => {
+                            for row in &results {
+                                println!("{}", row.asset_id);
+                            }
+                        }
+                        OutputFormat::Short => {
+                            for row in &results {
+                                let display_name = row.name.as_deref().unwrap_or(&row.original_filename);
+                                let short_id = &row.asset_id[..8];
+                                println!(
+                                    "{}  {} [{}] ({}) — {}",
+                                    short_id, display_name, row.asset_type, row.display_format(), row.created_at
+                                );
+                            }
+                            if !explicit_format {
+                                println!("\n{} at-risk asset(s)", results.len());
+                            }
+                        }
+                        OutputFormat::Full => {
+                            for row in &results {
+                                let display_name = row.name.as_deref().unwrap_or(&row.original_filename);
+                                let short_id = &row.asset_id[..8];
+                                let tags = if row.tags.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(" tags:{}", row.tags.join(","))
+                                };
+                                let desc = row.description.as_deref().unwrap_or("");
+                                println!(
+                                    "{}  {} [{}] ({}) — {}{} {}",
+                                    short_id, display_name, row.asset_type, row.display_format(),
+                                    row.created_at, tags, desc
+                                );
+                            }
+                            if !explicit_format {
+                                println!("\n{} at-risk asset(s)", results.len());
+                            }
+                        }
+                        OutputFormat::Json => {
+                            println!("{}", serde_json::to_string_pretty(&results)?);
+                        }
+                        OutputFormat::Template(ref tpl) => {
+                            for row in &results {
+                                let tags_str = row.tags.join(", ");
+                                let desc = row.description.as_deref().unwrap_or("");
+                                let label = row.color_label.as_deref().unwrap_or("");
+                                let values = format::search_row_values(
+                                    &row.asset_id,
+                                    row.name.as_deref(),
+                                    &row.original_filename,
+                                    &row.asset_type,
+                                    row.display_format(),
+                                    &row.created_at,
+                                    &tags_str,
+                                    desc,
+                                    &row.content_hash,
+                                    label,
+                                );
+                                println!("{}", format::render_template(tpl, &values));
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Overview mode
+                let result = catalog.backup_status_overview(
+                    scope_refs,
+                    &volumes_info,
+                    min_copies,
+                    target_volume_id.as_deref(),
+                )?;
+
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                } else {
+                    print_backup_status_human(&result);
+                }
+            }
+            Ok(())
+        }
         Commands::Collection(cmd) => {
             let catalog_root = dam::config::find_catalog_root()?;
             let catalog = Catalog::open(&catalog_root)?;
@@ -2915,6 +3100,94 @@ fn print_stats_human(stats: &dam::catalog::CatalogStats) {
                     pv.label, status, purpose_tag, pv.verified, pv.locations, pv.coverage_pct
                 );
             }
+        }
+    }
+}
+
+fn print_backup_status_human(result: &dam::catalog::BackupStatusResult) {
+    println!("Backup Status ({})", result.scope);
+    println!("{}", "=".repeat(40));
+    println!();
+    println!("Total assets:          {:>8}", result.total_assets);
+    println!("Total variants:        {:>8}", result.total_variants);
+    println!("Total file locations:  {:>8}", result.total_file_locations);
+
+    if !result.purpose_coverage.is_empty() {
+        println!();
+        println!("Coverage by volume purpose:");
+        for pc in &result.purpose_coverage {
+            // Capitalize first letter for display
+            let display_purpose = {
+                let mut chars = pc.purpose.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+                }
+            };
+            println!(
+                "  {:<10} ({} volume{}):  {:>6} assets ({:.1}%)",
+                display_purpose,
+                pc.volume_count,
+                if pc.volume_count == 1 { "" } else { "s" },
+                pc.asset_count,
+                pc.asset_percentage,
+            );
+        }
+    }
+
+    println!();
+    println!("Volume distribution:");
+    for bucket in &result.location_distribution {
+        if bucket.asset_count == 0 {
+            continue;
+        }
+        let label = match bucket.volume_count.as_str() {
+            "0" => "0 volumes (orphaned):",
+            "1" => "1 volume only:",
+            "2" => "2 volumes:",
+            _ => "3+ volumes:",
+        };
+        let at_risk = if bucket.volume_count == "0" || bucket.volume_count == "1" {
+            "  <- AT RISK"
+        } else {
+            ""
+        };
+        println!("  {:<26} {:>6} assets{}", label, bucket.asset_count, at_risk);
+    }
+
+    if result.at_risk_count > 0 {
+        println!();
+        println!(
+            "At-risk assets ({} on fewer than {} volume{}):",
+            result.at_risk_count,
+            result.min_copies,
+            if result.min_copies == 1 { "" } else { "s" },
+        );
+        println!("  Use 'dam backup-status --at-risk' to list them");
+        println!("  Use 'dam backup-status --at-risk -q' for asset IDs (pipeable)");
+    } else {
+        println!();
+        println!(
+            "All assets exist on {} or more volume{}. No at-risk assets.",
+            result.min_copies,
+            if result.min_copies == 1 { "" } else { "s" },
+        );
+    }
+
+    if let Some(ref detail) = result.volume_detail {
+        println!();
+        let purpose_tag = detail.purpose.as_ref().map(|p| format!(" [{}]", p)).unwrap_or_default();
+        println!("Volume detail: {}{}", detail.volume_label, purpose_tag);
+        println!("  Present: {} / {} ({:.1}%)", detail.present_count, detail.total_scoped, detail.coverage_pct);
+        println!("  Missing: {}", detail.missing_count);
+    }
+
+    if !result.volume_gaps.is_empty() {
+        println!();
+        println!("Volume gaps:");
+        for gap in &result.volume_gaps {
+            let purpose_tag = gap.purpose.as_ref().map(|p| format!(" [{}]", p)).unwrap_or_default();
+            println!("  {}{}:  missing {} assets", gap.volume_label, purpose_tag, gap.missing_count);
         }
     }
 }

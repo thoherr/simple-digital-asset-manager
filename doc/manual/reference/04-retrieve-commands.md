@@ -401,6 +401,118 @@ dam stats --verified
 
 ---
 
+## dam backup-status
+
+### NAME
+
+dam-backup-status -- check backup coverage and find under-backed-up assets
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] backup-status [QUERY] [OPTIONS]
+```
+
+### DESCRIPTION
+
+Answers the question: "Are my important assets safely backed up?"
+
+In **overview mode** (default), displays aggregate statistics about backup coverage:
+
+- **Totals**: asset count, variant count, file location count.
+- **Coverage by volume purpose**: how many assets exist on volumes of each purpose (Working, Archive, Backup, Cloud), with percentages.
+- **Volume distribution**: histogram of assets by number of distinct volumes they exist on (0, 1, 2, 3+), with "AT RISK" markers for assets below the threshold. Multiple variants or locations on the same volume count as one — what matters for backup safety is how many distinct volumes hold the asset.
+- **At-risk summary**: count of assets with fewer than `--min-copies` locations, with hints for listing them.
+- **Volume gaps**: per-volume count of missing assets (assets in scope but not on that volume).
+
+In **at-risk listing mode** (`--at-risk`, `-q`, or `--format`), outputs a list of under-backed-up assets using the same output formats as `dam search`. When `--volume` is specified, lists assets missing from that specific volume instead of those with fewer than `--min-copies` locations overall.
+
+An optional positional `QUERY` argument scopes the analysis to matching assets (same syntax as `dam search`).
+
+### ARGUMENTS
+
+**QUERY** (optional)
+: Search query to scope the asset universe. Same syntax as `dam search`. When omitted, all catalog assets are analyzed.
+
+### OPTIONS
+
+**--at-risk**
+: Switch to listing mode. Output under-backed-up assets instead of the overview.
+
+**--min-copies \<N\>**
+: Threshold for "adequately backed up" (default: 2). Assets on fewer than N distinct volumes are considered at-risk.
+
+**--volume \<LABEL\>**
+: In overview mode, adds a detailed volume coverage section for this volume. In at-risk listing mode, lists assets missing from this specific volume.
+
+**--format \<FMT\>**
+: Output format for at-risk listings. Same presets as `dam search`: `ids`, `short`, `full`, `json`, or a custom template.
+
+**-q** / **--quiet**
+: Shorthand for `--format=ids`. Prints one asset ID per line, ideal for piping to other commands.
+
+`--json` (global flag) outputs a structured `BackupStatusResult` object in overview mode, or a JSON array of `SearchRow` objects in at-risk listing mode.
+
+### EXAMPLES
+
+Quick overview of backup coverage:
+
+```bash
+dam backup-status
+```
+
+Scope to highly-rated images:
+
+```bash
+dam backup-status "rating:3+ type:image"
+```
+
+Require 3 copies and check coverage:
+
+```bash
+dam backup-status --min-copies 3
+```
+
+List at-risk asset IDs for scripting:
+
+```bash
+dam backup-status --at-risk -q
+```
+
+Find assets missing from a specific volume:
+
+```bash
+dam backup-status --volume "Master Media" --at-risk -q
+```
+
+Pipe at-risk assets to relocate:
+
+```bash
+dam backup-status --volume "Master Media" --at-risk -q "rating:3+" \
+  | xargs -I{} dam relocate {} "Master Media"
+```
+
+Add at-risk assets to a collection for review:
+
+```bash
+dam backup-status --at-risk -q | xargs dam collection add "Needs Backup"
+```
+
+JSON output for scripting:
+
+```bash
+dam --json backup-status | jq '.at_risk_count'
+```
+
+### SEE ALSO
+
+[search](#dam-search) -- use `copies:` filter for location-count-based queries.
+[duplicates](#dam-duplicates) -- find duplicate files across volumes.
+[stats](#dam-stats) -- general catalog statistics.
+[verify](05-maintain-commands.md#dam-verify) -- verify file integrity.
+
+---
+
 ## dam serve
 
 ### NAME

@@ -5833,3 +5833,213 @@ fn dedup_volume_filter() {
         .stdout(predicate::str::contains("1 duplicate groups"))
         .stdout(predicate::str::contains("1 files deleted"));
 }
+
+// ==========================================================================
+// backup-status
+// ==========================================================================
+
+#[test]
+fn backup_status_overview() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let file1 = create_test_file(&root, "photo1.jpg", b"backup status photo 1");
+    let file2 = create_test_file(&root, "photo2.jpg", b"backup status photo 2");
+
+    dam().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
+    dam().current_dir(&root).args(["import", file2.to_str().unwrap()]).assert().success();
+
+    dam()
+        .current_dir(&root)
+        .args(["backup-status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Total assets:"))
+        .stdout(predicate::str::contains("1 volume only:"))
+        .stdout(predicate::str::contains("AT RISK"));
+}
+
+#[test]
+fn backup_status_at_risk() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let file1 = create_test_file(&root, "risk1.jpg", b"at risk content 1");
+    let file2 = create_test_file(&root, "risk2.jpg", b"at risk content 2");
+
+    dam().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
+    dam().current_dir(&root).args(["import", file2.to_str().unwrap()]).assert().success();
+
+    // --at-risk -q should output 2 asset IDs (one per line)
+    let output = dam()
+        .current_dir(&root)
+        .args(["backup-status", "--at-risk", "-q"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let lines: Vec<&str> = std::str::from_utf8(&output)
+        .unwrap()
+        .trim()
+        .lines()
+        .collect();
+    assert_eq!(lines.len(), 2, "expected 2 at-risk asset IDs, got: {:?}", lines);
+    // Each line should look like a UUID
+    for line in &lines {
+        assert!(line.len() >= 36, "expected UUID, got: {}", line);
+    }
+}
+
+#[test]
+fn backup_status_min_copies() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Set up a second volume
+    let dir2 = tempdir().unwrap();
+    let vol2_path = dir2.path().canonicalize().unwrap();
+    dam()
+        .current_dir(&root)
+        .args(["volume", "add", "vol2", vol2_path.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Import same file on both volumes (2 distinct volumes)
+    let content = b"min copies content";
+    let file1 = create_test_file(&root, "orig.jpg", content);
+    let file2 = create_test_file(&vol2_path, "copy.jpg", content);
+
+    dam().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
+    dam().current_dir(&root).args(["import", "--volume", "vol2", file2.to_str().unwrap()]).assert().success();
+
+    // With --min-copies 1, the asset is on 2 volumes so it's not at risk
+    dam()
+        .current_dir(&root)
+        .args(["backup-status", "--min-copies", "1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No at-risk assets"));
+
+    // With --min-copies 3, the asset is on only 2 volumes so it IS at risk
+    dam()
+        .current_dir(&root)
+        .args(["backup-status", "--min-copies", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("AT RISK").or(predicate::str::contains("at-risk")));
+}
+
+#[test]
+fn backup_status_with_query() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let img = create_test_file(&root, "scene.jpg", b"backup query image");
+    let aud = create_test_file(&root, "track.mp3", b"backup query audio");
+
+    dam().current_dir(&root).args(["import", "--include", "audio", img.to_str().unwrap()]).assert().success();
+    dam().current_dir(&root).args(["import", "--include", "audio", aud.to_str().unwrap()]).assert().success();
+
+    // Scope to images only — should show 1 total asset
+    dam()
+        .current_dir(&root)
+        .args(["backup-status", "type:image"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Total assets:").and(predicate::str::contains("1")));
+}
+
+#[test]
+fn backup_status_volume_gap() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Second volume
+    let dir2 = tempdir().unwrap();
+    let vol2_path = dir2.path().canonicalize().unwrap();
+    dam()
+        .current_dir(&root)
+        .args(["volume", "add", "vol2", vol2_path.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Import file on test-vol only
+    let file1 = create_test_file(&root, "gap_test.jpg", b"volume gap content");
+    dam().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
+
+    // --volume vol2 --at-risk -q should list the asset (missing from vol2)
+    let output = dam()
+        .current_dir(&root)
+        .args(["backup-status", "--volume", "vol2", "--at-risk", "-q"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let lines: Vec<&str> = std::str::from_utf8(&output)
+        .unwrap()
+        .trim()
+        .lines()
+        .collect();
+    assert_eq!(lines.len(), 1, "expected 1 asset missing from vol2, got: {:?}", lines);
+}
+
+#[test]
+fn backup_status_json() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let file1 = create_test_file(&root, "json_test.jpg", b"backup json content");
+    dam().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "backup-status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value = serde_json::from_slice(&output).expect("valid JSON output");
+    assert!(json.get("total_assets").is_some());
+    assert!(json.get("at_risk_count").is_some());
+    assert!(json.get("location_distribution").is_some());
+    assert!(json.get("purpose_coverage").is_some());
+    assert!(json.get("volume_gaps").is_some());
+    assert!(json.get("min_copies").is_some());
+    // Verify distribution uses volume_count not location_count
+    let dist = json["location_distribution"].as_array().unwrap();
+    assert!(dist[0].get("volume_count").is_some());
+}
+
+#[test]
+fn backup_status_purpose_coverage() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Re-register volume with a purpose
+    // First we need to add a volume with --purpose
+    let dir2 = tempdir().unwrap();
+    let vol2_path = dir2.path().canonicalize().unwrap();
+    dam()
+        .current_dir(&root)
+        .args(["volume", "add", "working-vol", vol2_path.to_str().unwrap(), "--purpose", "working"])
+        .assert()
+        .success();
+
+    let file1 = create_test_file(&vol2_path, "purpose_test.jpg", b"purpose coverage content");
+    dam()
+        .current_dir(&root)
+        .args(["import", "--volume", "working-vol", file1.to_str().unwrap()])
+        .assert()
+        .success();
+
+    dam()
+        .current_dir(&root)
+        .args(["backup-status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Coverage by volume purpose:"))
+        .stdout(predicate::str::contains("Working"));
+}

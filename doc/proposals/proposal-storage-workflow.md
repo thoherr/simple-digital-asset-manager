@@ -219,7 +219,7 @@ dam dedup --volume "Photos SSD" --prefer Selects --apply
 
 ## Part 4: Backup Coverage
 
-### `dam backup-status` Command
+### `dam backup-status` Command ✅ *Implemented in v1.4.1*
 
 Answers the question: "Are my important assets safely backed up?"
 
