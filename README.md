@@ -13,7 +13,7 @@ A command-line digital asset manager built in Rust, designed for large collectio
 - **Preview generation** — thumbnails for images, RAW files (via dcraw/LibRaw), videos (via ffmpeg), and info cards for audio/documents
 - **Integrity verification** — detect bit rot and corruption by re-hashing files against stored checksums
 - **Saved searches & collections** — smart albums (dynamic queries) and static albums (curated lists)
-- **Web UI** — browser-based interface with search, inline editing, batch operations, and keyboard navigation
+- **Web UI** — browser-based interface with search, inline editing, batch operations, keyboard navigation, lightbox viewer, dark mode, and grid density controls
 - **Flexible output** — JSON on all commands, custom format templates, quiet mode for scripting
 
 ## Quick Start

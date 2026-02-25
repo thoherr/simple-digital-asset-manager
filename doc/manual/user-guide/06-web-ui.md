@@ -60,6 +60,13 @@ bind = "127.0.0.1"
 Command-line flags always override `dam.toml` settings. See the [Configuration Reference](../reference/08-configuration.md) for details.
 
 
+## Dark Mode
+
+The web UI supports dark mode. A toggle button (sun/moon icon) in the navigation bar switches between light and dark themes. Your preference is saved in the browser and applied instantly on every page load.
+
+If you haven't chosen a theme explicitly, the UI follows your operating system preference automatically (via `prefers-color-scheme`). Dark mode covers all pages: browse, asset detail, tags, collections, stats, and backup status.
+
+
 ## Browse Page
 
 The browse page is the main entry point for the web UI. It shows a searchable, filterable grid of asset thumbnails.
@@ -98,6 +105,16 @@ Below the search bar, results appear as a grid of thumbnail cards. Each card sho
 
 Click a card to open the [asset detail page](#asset-detail-page).
 
+### Grid density
+
+Next to the sort controls, three grid density buttons let you adjust the thumbnail size:
+
+- **Compact** (3×3 grid icon): smaller thumbnails, metadata and star ratings hidden, tighter spacing. Good for scanning many images quickly.
+- **Normal** (2×2 grid icon): the default layout with full metadata.
+- **Large** (1×2 grid icon): bigger thumbnails with room for two-line titles. Good for detailed visual comparison.
+
+Your density preference is saved in the browser and preserved across page reloads and navigation.
+
 ### Sorting
 
 Above the results grid, sort toggle buttons let you order results by **Name**, **Date**, or **Size**. Each button toggles between ascending and descending. The active sort shows a direction arrow. Clicking a sort button updates results immediately.
@@ -130,9 +147,54 @@ The web UI uses [htmx](https://htmx.org/) for partial page updates. When you sea
 Because the URL updates with every search (via `hx-push-url`), the browser back button, forward button, reload, and bookmarks all work correctly. Navigating back from an asset detail page also refreshes results to reflect any edits you made.
 
 
+## Lightbox
+
+Clicking a thumbnail in the browse grid opens a full-screen lightbox overlay for previewing assets without leaving the page.
+
+### Navigation
+
+- **Arrow buttons**: click the left (‹) or right (›) side panels to move to the previous or next asset
+- **Keyboard**: Left and Right arrow keys navigate between assets
+- **Counter**: the top bar shows your position (e.g., "3 / 156")
+- **Close**: click the × button or press Escape to return to the browse grid
+
+### Info panel
+
+Click the ℹ button in the top bar (or press `i`) to toggle a side panel showing:
+
+- **Metadata**: asset type, format, date, and variant count
+- **Rating**: interactive stars — click to set a rating (1-5), click × to clear
+- **Color label**: interactive color dots — click to set a label, click × to clear
+
+Rating and label changes made in the lightbox are saved immediately via the API and reflected in the browse grid behind the lightbox.
+
+The info panel has its own × close button.
+
+### Detail page link
+
+Click the "↗ Detail" link in the top bar to navigate to the full asset detail page for the current asset.
+
+### Keyboard shortcuts
+
+All browse keyboard shortcuts for rating and label work inside the lightbox:
+
+| Key | Action |
+|-----|--------|
+| Left / Right arrow | Previous / next asset |
+| Escape | Close lightbox |
+| i | Toggle info panel |
+| 1-5 | Set rating |
+| 0 | Clear rating |
+| Alt+1 through Alt+7 | Set color label |
+| Alt+0, x | Clear color label |
+| r/o/y/g/b/p/u | Set label by color initial |
+
+When the lightbox is open, browse keyboard navigation (arrow keys for card focus, Enter, Space) is suppressed.
+
+
 ## Asset Detail Page
 
-Click any card in the browse grid to open the asset detail page.
+Click the "↗ Detail" link in the lightbox top bar, or press Enter on a focused card when the lightbox is closed, to open the asset detail page.
 
 ![Asset detail page with preview, metadata editing, and variants](../screenshots/asset-detail.png)
 
@@ -240,7 +302,7 @@ The focused card has a blue outline, visually distinct from the selection highli
 
 | Key | Action |
 |-----|--------|
-| Enter | Open the focused card's asset detail page |
+| Enter | Open the focused card in the lightbox |
 | Space | Toggle selection of the focused card |
 | 1-5 | Set rating (applies to focused card, or to all selected if a batch selection is active) |
 | 0 | Clear rating |

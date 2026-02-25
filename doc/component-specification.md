@@ -233,7 +233,7 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - Preview images are served directly from the catalog's `previews/` directory via `tower-http::ServeDir`.
 
 **Routes**:
-- `GET /` — browse page with search, filter dropdowns (type, tag, format, volume, collection, rating), color label filter dots, sort, pagination, thumbnail grid with star ratings and color label dots. Batch operations toolbar with tag, rating, and label editing.
+- `GET /` — browse page with search, filter dropdowns (type, tag, format, volume, collection, rating), color label filter dots, sort, pagination, grid density controls (compact/normal/large), thumbnail grid with star ratings and color label dots. Lightbox overlay on card click (prev/next navigation, info panel with rating/label editing). Batch operations toolbar with tag, rating, and label editing. Dark mode toggle in nav bar (persisted in localStorage, follows OS preference).
 - `GET /asset/{id}` — asset detail with preview, metadata, editable tags, inline editable star rating, inline color label picker (7 color dots), variants, recipes
 - `GET /tags` — tags page with sortable columns (name/count), live text filter, multi-column layout
 - `GET /api/search` — results partial (htmx target) with pagination
