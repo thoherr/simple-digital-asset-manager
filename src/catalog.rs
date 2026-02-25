@@ -1629,19 +1629,15 @@ impl Catalog {
 
     /// Core overview counts: (assets, variants, recipes, total_size).
     pub fn stats_overview(&self) -> Result<(u64, u64, u64, u64)> {
-        let assets: u64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM assets", [], |r| r.get(0),
-        )?;
-        let variants: u64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM variants", [], |r| r.get(0),
-        )?;
-        let recipes: u64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM recipes", [], |r| r.get(0),
-        )?;
-        let total_size: u64 = self.conn.query_row(
-            "SELECT COALESCE(SUM(file_size), 0) FROM variants", [], |r| r.get(0),
-        )?;
-        Ok((assets, variants, recipes, total_size))
+        self.conn.query_row(
+            "SELECT \
+                (SELECT COUNT(*) FROM assets), \
+                (SELECT COUNT(*) FROM variants), \
+                (SELECT COUNT(*) FROM recipes), \
+                (SELECT COALESCE(SUM(file_size), 0) FROM variants)",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        ).map_err(Into::into)
     }
 
     /// Asset type breakdown: Vec<(type_name, count)>.
@@ -1662,12 +1658,18 @@ impl Catalog {
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    /// All recipe relative paths (for extension extraction in Rust).
-    pub fn stats_recipe_paths(&self) -> Result<Vec<String>> {
+    /// Recipe format counts: extract file extension in SQL and aggregate.
+    pub fn stats_recipe_formats(&self, limit: usize) -> Result<Vec<(String, u64)>> {
         let mut stmt = self.conn.prepare(
-            "SELECT relative_path FROM recipes WHERE relative_path IS NOT NULL",
+            "SELECT LOWER(REPLACE(relative_path, \
+                RTRIM(relative_path, REPLACE(relative_path, '.', '')), '')) as ext, \
+             COUNT(*) as cnt \
+             FROM recipes WHERE relative_path IS NOT NULL \
+             GROUP BY ext ORDER BY cnt DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map([], |r| r.get(0))?;
+        let rows = stmt.query_map(rusqlite::params![limit as u64], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?))
+        })?;
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
     }
 
@@ -1992,18 +1994,18 @@ impl Catalog {
 
     /// List all unique tags with their usage counts, sorted by count descending.
     pub fn list_all_tags(&self) -> Result<Vec<(String, u64)>> {
-        let all_tags_json = self.stats_all_tags_json()?;
-        let mut tag_freq: HashMap<String, u64> = HashMap::new();
-        for tags_str in &all_tags_json {
-            if let Ok(tags) = serde_json::from_str::<Vec<String>>(tags_str) {
-                for tag in tags {
-                    *tag_freq.entry(tag).or_default() += 1;
-                }
-            }
-        }
-        let mut sorted: Vec<(String, u64)> = tag_freq.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-        Ok(sorted)
+        // Use json_each() for SQL-side aggregation — avoids loading all 150k+ tag JSON blobs
+        let mut stmt = self.conn.prepare(
+            "SELECT je.value, COUNT(*) as cnt \
+             FROM assets, json_each(assets.tags) AS je \
+             WHERE assets.tags != '[]' \
+             GROUP BY je.value \
+             ORDER BY cnt DESC, je.value ASC",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?))
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     /// List all distinct variant formats.
@@ -2026,13 +2028,18 @@ impl Catalog {
 
     /// Per-volume statistics (before merging device registry).
     fn stats_per_volume(&self) -> Result<Vec<VolumeStatsRaw>> {
-        // 1. Core counts per volume
-        let mut core: HashMap<String, (String, u64, u64, u64)> = HashMap::new();
+        // Combined query: core counts + variant counts + verification — single pass over file_locations
+        #[allow(clippy::type_complexity)]
+        let mut core: HashMap<String, (String, u64, u64, u64, u64, u64, Option<String>)> = HashMap::new();
         {
             let mut stmt = self.conn.prepare(
-                "SELECT fl.volume_id, v.label, COUNT(*) AS loc_count, \
+                "SELECT fl.volume_id, v.label, \
+                 COUNT(*) AS loc_count, \
                  COUNT(DISTINCT va.asset_id) AS asset_count, \
-                 COALESCE(SUM(va.file_size), 0) AS total_size \
+                 COALESCE(SUM(va.file_size), 0) AS total_size, \
+                 COUNT(DISTINCT fl.content_hash) AS variant_count, \
+                 SUM(CASE WHEN fl.verified_at IS NOT NULL THEN 1 ELSE 0 END) AS verified_count, \
+                 MIN(fl.verified_at) AS oldest_verified \
                  FROM file_locations fl \
                  JOIN volumes v ON fl.volume_id = v.id \
                  JOIN variants va ON fl.content_hash = va.content_hash \
@@ -2045,49 +2052,35 @@ impl Catalog {
                     r.get::<_, u64>(2)?,
                     r.get::<_, u64>(3)?,
                     r.get::<_, u64>(4)?,
+                    r.get::<_, u64>(5)?,
+                    r.get::<_, u64>(6)?,
+                    r.get::<_, Option<String>>(7)?,
                 ))
             })?;
             for row in rows {
-                let (vid, label, loc_count, asset_count, size) = row?;
-                core.insert(vid, (label, loc_count, asset_count, size));
+                let (vid, label, loc_count, asset_count, size, variants, verified, oldest) = row?;
+                core.insert(vid, (label, loc_count, asset_count, size, variants, verified, oldest));
             }
         }
 
-        // 2. Unique variant count per volume
-        let mut variant_counts: HashMap<String, u64> = HashMap::new();
+        // Directory counting — SQL-side using RTRIM trick for parent path extraction
+        let mut dirs_per_vol: HashMap<String, u64> = HashMap::new();
         {
             let mut stmt = self.conn.prepare(
-                "SELECT volume_id, COUNT(DISTINCT content_hash) FROM file_locations GROUP BY volume_id",
+                "SELECT volume_id, COUNT(*) FROM ( \
+                    SELECT DISTINCT volume_id, \
+                        RTRIM(RTRIM(relative_path, REPLACE(relative_path, '/', '')), '/') AS parent_dir \
+                    FROM file_locations \
+                 ) GROUP BY volume_id",
             )?;
             let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?)))?;
             for row in rows {
                 let (vid, count) = row?;
-                variant_counts.insert(vid, count);
+                dirs_per_vol.insert(vid, count);
             }
         }
 
-        // 3. Paths per volume (for directory counting)
-        let mut dirs_per_vol: HashMap<String, u64> = HashMap::new();
-        {
-            let mut stmt = self.conn.prepare(
-                "SELECT volume_id, relative_path FROM file_locations",
-            )?;
-            let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
-            let mut vol_dirs: HashMap<String, std::collections::HashSet<String>> = HashMap::new();
-            for row in rows {
-                let (vid, path) = row?;
-                let parent = std::path::Path::new(&path)
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                vol_dirs.entry(vid).or_default().insert(parent);
-            }
-            for (vid, dirs) in vol_dirs {
-                dirs_per_vol.insert(vid, dirs.len() as u64);
-            }
-        }
-
-        // 4. Formats per volume
+        // Formats per volume
         let mut formats_per_vol: HashMap<String, Vec<String>> = HashMap::new();
         {
             let mut stmt = self.conn.prepare(
@@ -2103,7 +2096,7 @@ impl Catalog {
             }
         }
 
-        // 5. Recipe count per volume
+        // Recipe count per volume
         let mut recipes_per_vol: HashMap<String, u64> = HashMap::new();
         {
             let mut stmt = self.conn.prepare(
@@ -2116,31 +2109,7 @@ impl Catalog {
             }
         }
 
-        // 6. Verification per volume
-        let mut verif_per_vol: HashMap<String, (u64, u64, Option<String>)> = HashMap::new();
-        {
-            let mut stmt = self.conn.prepare(
-                "SELECT volume_id, \
-                 COUNT(*) AS total, \
-                 SUM(CASE WHEN verified_at IS NOT NULL THEN 1 ELSE 0 END) AS verified, \
-                 MIN(verified_at) AS oldest \
-                 FROM file_locations GROUP BY volume_id",
-            )?;
-            let rows = stmt.query_map([], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, u64>(1)?,
-                    r.get::<_, u64>(2)?,
-                    r.get::<_, Option<String>>(3)?,
-                ))
-            })?;
-            for row in rows {
-                let (vid, total, verified, oldest) = row?;
-                verif_per_vol.insert(vid, (total, verified, oldest));
-            }
-        }
-
-        // Also include volumes from the volumes table that have no file_locations
+        // All volumes (including those with no file_locations)
         let mut all_volume_ids: HashMap<String, String> = HashMap::new();
         {
             let mut stmt = self.conn.prepare("SELECT id, label FROM volumes")?;
@@ -2154,19 +2123,13 @@ impl Catalog {
         // Merge all data
         let mut result = Vec::new();
         for (vid, label) in &all_volume_ids {
-            let (core_label, loc_count, asset_count, size) = core
+            let (_, loc_count, asset_count, size, variants, verified, oldest) = core
                 .get(vid)
                 .cloned()
-                .unwrap_or_else(|| (label.clone(), 0, 0, 0));
-            let _ = core_label; // use label from volumes table
-            let variants = *variant_counts.get(vid).unwrap_or(&0);
+                .unwrap_or_else(|| (label.clone(), 0, 0, 0, 0, 0, None));
             let dirs = *dirs_per_vol.get(vid).unwrap_or(&0);
             let formats = formats_per_vol.remove(vid).unwrap_or_default();
             let recipes = *recipes_per_vol.get(vid).unwrap_or(&0);
-            let (total_locs, verified, oldest) = verif_per_vol
-                .get(vid)
-                .cloned()
-                .unwrap_or((0, 0, None));
 
             result.push(VolumeStatsRaw {
                 volume_id: vid.clone(),
@@ -2178,7 +2141,7 @@ impl Catalog {
                 directories: dirs,
                 size,
                 verified_count: verified,
-                total_locations: total_locs.max(loc_count),
+                total_locations: loc_count,
                 oldest_verified_at: oldest,
             });
         }
@@ -2187,40 +2150,58 @@ impl Catalog {
         Ok(result)
     }
 
-    /// All tags JSON strings from assets table (for parsing + counting in Rust).
-    pub fn stats_all_tags_json(&self) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare("SELECT tags FROM assets")?;
-        let rows = stmt.query_map([], |r| r.get(0))?;
+    /// Tag frequency counts: uses json_each() to expand and aggregate in SQL.
+    /// Returns Vec<(tag, count)> sorted by count descending.
+    pub fn stats_tag_frequencies(&self, limit: usize) -> Result<Vec<(String, u64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT je.value, COUNT(*) as cnt \
+             FROM assets, json_each(assets.tags) AS je \
+             WHERE assets.tags != '[]' \
+             GROUP BY je.value \
+             ORDER BY cnt DESC, je.value ASC \
+             LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![limit as u64], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?))
+        })?;
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Count of unique tags (uses json_each for SQL-side aggregation).
+    pub fn stats_unique_tag_count(&self) -> Result<u64> {
+        self.conn.query_row(
+            "SELECT COUNT(DISTINCT je.value) \
+             FROM assets, json_each(assets.tags) AS je \
+             WHERE assets.tags != '[]'",
+            [],
+            |r| r.get(0),
+        ).map_err(Into::into)
     }
 
     /// Tag coverage: (tagged_count, untagged_count).
     pub fn stats_tag_coverage(&self) -> Result<(u64, u64)> {
-        let tagged: u64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM assets WHERE tags != '[]'", [], |r| r.get(0),
-        )?;
-        let untagged: u64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM assets WHERE tags = '[]'", [], |r| r.get(0),
-        )?;
-        Ok((tagged, untagged))
+        self.conn.query_row(
+            "SELECT \
+                COALESCE(SUM(CASE WHEN tags != '[]' THEN 1 ELSE 0 END), 0), \
+                COALESCE(SUM(CASE WHEN tags = '[]' THEN 1 ELSE 0 END), 0) \
+             FROM assets",
+            [],
+            |r| Ok((r.get::<_, u64>(0)?, r.get::<_, u64>(1)?)),
+        ).map_err(Into::into)
     }
 
     /// Verification overview for file_locations:
     /// (total, verified, oldest_verified_at, newest_verified_at).
     pub fn stats_verification_overview(&self) -> Result<(u64, u64, Option<String>, Option<String>)> {
-        let total: u64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM file_locations", [], |r| r.get(0),
-        )?;
-        let verified: u64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM file_locations WHERE verified_at IS NOT NULL", [], |r| r.get(0),
-        )?;
-        let oldest: Option<String> = self.conn.query_row(
-            "SELECT MIN(verified_at) FROM file_locations WHERE verified_at IS NOT NULL", [], |r| r.get(0),
-        )?;
-        let newest: Option<String> = self.conn.query_row(
-            "SELECT MAX(verified_at) FROM file_locations WHERE verified_at IS NOT NULL", [], |r| r.get(0),
-        )?;
-        Ok((total, verified, oldest, newest))
+        self.conn.query_row(
+            "SELECT COUNT(*), \
+                COALESCE(SUM(CASE WHEN verified_at IS NOT NULL THEN 1 ELSE 0 END), 0), \
+                MIN(verified_at), \
+                MAX(verified_at) \
+             FROM file_locations",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        ).map_err(Into::into)
     }
 
     /// Verification counts for recipes: (total, verified).
@@ -2302,24 +2283,11 @@ impl Catalog {
                 .map(|(f, c)| FormatCount { format: f, count: c })
                 .collect();
 
-            let recipe_paths = self.stats_recipe_paths()?;
-            let mut recipe_ext_counts: HashMap<String, u64> = HashMap::new();
-            for path in &recipe_paths {
-                let ext = std::path::Path::new(path)
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("unknown")
-                    .to_lowercase();
-                *recipe_ext_counts.entry(ext).or_default() += 1;
-            }
-            let mut recipe_formats: Vec<FormatCount> = recipe_ext_counts
+            let recipe_formats: Vec<FormatCount> = self
+                .stats_recipe_formats(limit)?
                 .into_iter()
                 .map(|(f, c)| FormatCount { format: f, count: c })
                 .collect();
-            recipe_formats.sort_by(|a, b| b.count.cmp(&a.count));
-            if recipe_formats.len() > limit {
-                recipe_formats.truncate(limit);
-            }
 
             Some(TypeStats {
                 asset_types,
@@ -2370,22 +2338,9 @@ impl Catalog {
 
         let tags = if show_tags {
             let (tagged, untagged) = self.stats_tag_coverage()?;
-            let all_tags_json = self.stats_all_tags_json()?;
-            let mut tag_freq: HashMap<String, u64> = HashMap::new();
-            for tags_str in &all_tags_json {
-                if let Ok(tags) = serde_json::from_str::<Vec<String>>(tags_str) {
-                    for tag in tags {
-                        *tag_freq.entry(tag).or_default() += 1;
-                    }
-                }
-            }
-            let unique_tags = tag_freq.len() as u64;
-            let mut sorted: Vec<(String, u64)> = tag_freq.into_iter().collect();
-            sorted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-            if sorted.len() > limit {
-                sorted.truncate(limit);
-            }
-            let top_tags: Vec<TagCount> = sorted
+            let unique_tags = self.stats_unique_tag_count()?;
+            let top_tags: Vec<TagCount> = self
+                .stats_tag_frequencies(limit)?
                 .into_iter()
                 .map(|(tag, count)| TagCount { tag, count })
                 .collect();
@@ -2497,28 +2452,22 @@ impl Catalog {
             ""
         };
 
-        // Total counts
-        let total_assets: u64 = self.conn.query_row(
-            &format!("SELECT COUNT(*) FROM assets a {}", scope_filter),
-            [],
-            |r| r.get(0),
-        )?;
-        let total_variants: u64 = self.conn.query_row(
-            &format!("SELECT COUNT(*) FROM variants v {}", scope_filter_v),
-            [],
-            |r| r.get(0),
-        )?;
-        let total_file_locations: u64 = self.conn.query_row(
+        // Combined counts: total assets, variants, file_locations in one query
+        let (total_assets, total_variants, total_file_locations): (u64, u64, u64) = self.conn.query_row(
             &format!(
-                "SELECT COUNT(*) FROM file_locations fl \
-                 JOIN variants v ON fl.content_hash = v.content_hash {}",
-                scope_filter_v
+                "SELECT \
+                    (SELECT COUNT(*) FROM assets a {}), \
+                    (SELECT COUNT(*) FROM variants v {}), \
+                    (SELECT COUNT(*) FROM file_locations fl \
+                        JOIN variants v ON fl.content_hash = v.content_hash {})",
+                scope_filter, scope_filter_v, scope_filter_v
             ),
             [],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
 
-        // Volume distribution: per-asset distinct volume count → bucket into 0, 1, 2, 3+
+        // Volume distribution + at-risk count in a single pass
+        // Computes per-asset volume count, then buckets and counts at-risk
         let mut stmt = self.conn.prepare(&format!(
             "SELECT vol_count, COUNT(*) FROM ( \
                 SELECT a.id, COUNT(DISTINCT fl.volume_id) as vol_count \
@@ -2529,20 +2478,19 @@ impl Catalog {
             ) GROUP BY vol_count ORDER BY vol_count",
             scope_filter,
         ))?;
-        let mut raw_dist: Vec<(u64, u64)> = Vec::new();
+        let mut buckets = [0u64; 4]; // [0, 1, 2, 3+]
+        let mut at_risk_count = 0u64;
         let rows = stmt.query_map([], |r| Ok((r.get::<_, u64>(0)?, r.get::<_, u64>(1)?)))?;
         for row in rows {
-            raw_dist.push(row?);
-        }
-
-        // Bucket: 0, 1, 2, 3+
-        let mut buckets = [0u64; 4]; // [0, 1, 2, 3+]
-        for (loc_count, asset_count) in &raw_dist {
-            match *loc_count {
+            let (vol_count, asset_count) = row?;
+            match vol_count {
                 0 => buckets[0] += asset_count,
                 1 => buckets[1] += asset_count,
                 2 => buckets[2] += asset_count,
                 _ => buckets[3] += asset_count,
+            }
+            if vol_count < min_copies {
+                at_risk_count += asset_count;
             }
         }
         let location_distribution = vec![
@@ -2552,30 +2500,38 @@ impl Catalog {
             LocationBucket { volume_count: "3+".to_string(), asset_count: buckets[3] },
         ];
 
-        // At-risk count: assets on fewer than min_copies distinct volumes
-        let at_risk_count: u64 = self.conn.query_row(
-            &format!(
-                "SELECT COUNT(*) FROM ( \
-                    SELECT a.id FROM assets a {} \
-                    LEFT JOIN variants v2 ON v2.asset_id = a.id \
-                    LEFT JOIN file_locations fl ON fl.content_hash = v2.content_hash \
-                    GROUP BY a.id HAVING COUNT(DISTINCT fl.volume_id) < ?1 \
-                )",
-                scope_filter,
-            ),
-            [min_copies],
-            |r| r.get(0),
-        )?;
-
-        // Purpose coverage: COUNT(DISTINCT asset_id) per volume purpose
-        // Group volumes by purpose, then count distinct assets across all volumes of each purpose
-        let mut purpose_coverage = Vec::new();
-        let mut purpose_groups: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-        for (_label, vid, _online, purpose) in volumes_info {
+        // Purpose coverage + volume gaps in batch queries (one each instead of per-item)
+        let mut purpose_groups: HashMap<String, Vec<(String, String, Option<String>)>> = HashMap::new();
+        for (label, vid, _online, purpose) in volumes_info {
             let purpose_str = purpose.as_deref().unwrap_or("(none)");
-            purpose_groups.entry(purpose_str.to_string()).or_default().push(vid.clone());
+            purpose_groups.entry(purpose_str.to_string()).or_default()
+                .push((vid.clone(), label.clone(), purpose.clone()));
         }
-        for (purpose_str, vol_ids) in &purpose_groups {
+
+        // Single query: asset count per volume (reused for both purpose coverage and volume gaps)
+        let mut assets_per_volume: HashMap<String, u64> = HashMap::new();
+        {
+            let mut stmt = self.conn.prepare(&format!(
+                "SELECT fl.volume_id, COUNT(DISTINCT v.asset_id) \
+                 FROM file_locations fl \
+                 JOIN variants v ON fl.content_hash = v.content_hash \
+                 {} \
+                 GROUP BY fl.volume_id",
+                scope_filter_v,
+            ))?;
+            let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?)))?;
+            for row in rows {
+                let (vid, count) = row?;
+                assets_per_volume.insert(vid, count);
+            }
+        }
+
+        // Build purpose coverage from the per-volume counts
+        let mut purpose_coverage = Vec::new();
+        for (purpose_str, vol_entries) in &purpose_groups {
+            // For purpose coverage we need assets on ANY volume of this purpose (distinct)
+            let vol_ids: Vec<&str> = vol_entries.iter().map(|(vid, _, _)| vid.as_str()).collect();
+            if vol_ids.is_empty() { continue; }
             let placeholders: Vec<String> = vol_ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect();
             let sql = format!(
                 "SELECT COUNT(DISTINCT v.asset_id) FROM file_locations fl \
@@ -2590,27 +2546,17 @@ impl Catalog {
             let pct = if total_assets > 0 { (asset_count as f64 / total_assets as f64) * 100.0 } else { 0.0 };
             purpose_coverage.push(PurposeCoverage {
                 purpose: purpose_str.clone(),
-                volume_count: vol_ids.len() as u64,
+                volume_count: vol_entries.len() as u64,
                 asset_count,
                 asset_percentage: pct,
             });
         }
         purpose_coverage.sort_by(|a, b| b.asset_count.cmp(&a.asset_count));
 
-        // Volume gaps: per volume, count present and missing
+        // Build volume gaps from the per-volume counts (no extra queries)
         let mut volume_gaps = Vec::new();
         for (label, vid, _online, purpose) in volumes_info {
-            let present: u64 = self.conn.query_row(
-                &format!(
-                    "SELECT COUNT(DISTINCT v.asset_id) FROM file_locations fl \
-                     JOIN variants v ON fl.content_hash = v.content_hash \
-                     {} \
-                     WHERE fl.volume_id = ?1",
-                    scope_filter_v,
-                ),
-                [vid],
-                |r| r.get(0),
-            )?;
+            let present = *assets_per_volume.get(vid).unwrap_or(&0);
             let missing = total_assets.saturating_sub(present);
             if missing > 0 {
                 volume_gaps.push(VolumeGap {
