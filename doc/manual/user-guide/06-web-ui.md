@@ -313,6 +313,21 @@ The stats page displays:
 
 This is the web equivalent of `dam stats --all` on the command line. See [Browsing & Searching](05-browse-and-search.md) for the CLI stats command.
 
+
+## Backup Status Page
+
+Navigate to `/backup` or click "Backup" in the navigation bar to see backup health at a glance.
+
+The backup status page displays:
+
+- **Summary cards**: total assets, at-risk count (highlighted in red when > 0), and minimum copies threshold (default 2)
+- **At-risk link**: when at-risk assets exist, a prominent link navigates to the browse page filtered to `copies:1` for immediate review
+- **Volume distribution**: horizontal bar chart showing how many assets exist on 0, 1, 2, or 3+ volumes, with red/amber/green coloring and "AT RISK" badges on under-backed-up buckets
+- **Coverage by purpose**: table showing each volume purpose (working, archive, backup) with the number of volumes, asset count, and a coverage bar
+- **Volume gaps**: table listing volumes with missing assets, showing the volume label, purpose, and missing count
+
+This is the web equivalent of `dam backup-status` on the command line. See [Maintenance](07-maintenance.md) for the CLI backup-status command.
+
 ---
 
 Next: [Maintenance](07-maintenance.md) -- verification, sync, refresh, cleanup, and file relocation.

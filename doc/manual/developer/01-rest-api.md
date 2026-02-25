@@ -81,6 +81,14 @@ Returns an HTML page listing all collections with a "New Collection" button.
 curl http://localhost:8080/collections
 ```
 
+### `GET /backup` -- Backup Status Page
+
+Returns an HTML page showing backup health: summary cards (total assets, at-risk count, min copies), volume distribution bar chart, coverage by purpose table, and volume gaps table.
+
+```bash
+curl http://localhost:8080/backup
+```
+
 ---
 
 ## Search API

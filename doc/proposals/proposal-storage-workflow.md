@@ -357,21 +357,18 @@ Implementation: `copies:N` is a pure SQL filter on a COUNT of `file_locations` g
 - `src/main.rs` — added `dedup` subcommand with `--volume`, `--prefer`, `--min-copies`, `--apply` flags
 - `doc/manual/reference/05-maintain-commands.md` — documented command
 
-### Phase 5: `dam backup-status` Command
+### Phase 5: `dam backup-status` Command ✅ *v1.4.1*
 
-**Files to modify:**
-- `src/catalog.rs` — add coverage queries (assets per volume, location count distribution, gap analysis)
-- `src/asset_service.rs` or `src/query.rs` — add `backup_status()` method
-- `src/main.rs` — add `backup-status` subcommand with flags
-- `doc/manual/reference/04-retrieve-commands.md` — document command
+**Files modified:**
+- `src/catalog.rs` — added `BackupStatusResult` structs + `backup_status_overview()`, `backup_status_at_risk_ids()`, `backup_status_missing_from_volume()` methods. Counts distinct volumes per asset (not file locations) for backup safety.
+- `src/main.rs` — added `backup-status` subcommand with `--at-risk`, `--min-copies`, `--volume`, `--format`, `-q` flags; overview + listing modes; `print_backup_status_human()` output.
+- `doc/manual/reference/04-retrieve-commands.md` — documented command.
 
-**Estimated scope:** ~350 lines. Mostly SQL queries and output formatting.
+### Phase 6: Web UI ✅ *v1.4.1*
 
-### Phase 6: Web UI (optional, after CLI is solid)
-
-- Volume purpose display in stats/volume list
-- Backup status dashboard section
-- `copies:N` filter integration in browse page
+- Volume purpose display in stats/volume list (shipped in v1.4.0)
+- Backup status dashboard — dedicated `/backup` page with summary cards, volume distribution chart, purpose coverage table, volume gaps table, and at-risk asset link
+- `copies:N` filter integration in browse page (shipped in v1.4.0)
 
 ---
 
@@ -438,7 +435,7 @@ dam backup-status --min-copies 2 "rating:3+"
 | Enhanced duplicates | Distinguish unwanted from wanted copies | Small | ✅ v1.4.0 |
 | `copies:N` filter | Find under-backed-up assets in search | Small | ✅ v1.4.0 |
 | `dam dedup` | Clean up same-volume duplicates safely | Medium | ✅ v1.4.1 |
-| `dam backup-status` | At-a-glance backup health overview | Medium | Planned |
-| Web UI integration | Visual backup dashboard | Medium | Planned |
+| `dam backup-status` | At-a-glance backup health overview | Medium | ✅ v1.4.1 |
+| Web UI integration | Visual backup dashboard | Medium | ✅ v1.4.1 |
 
-Phases 1–3 shipped in v1.4.0, Phase 4 in v1.4.1. Each remaining phase is independently useful and can be released separately.
+All phases shipped: 1–3 in v1.4.0, 4–6 in v1.4.1.
