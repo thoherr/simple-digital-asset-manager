@@ -82,7 +82,7 @@ The search bar has two rows:
 **Row 2** -- a row of filter controls, left to right:
 
 - **Tag filter**: a chip-based input with autocomplete. Type to see tag suggestions, click or press Enter to add a tag chip. Multiple tags narrow the results (AND logic). Remove a tag by clicking the x on its chip, or press Backspace in an empty input to remove the last chip. Adding or removing a tag triggers an immediate search.
-- **Star rating filter**: five clickable stars. Click star 3 to filter for rating 3 and above (shown as "3+"). Click star 5 to filter for exactly 5 stars. Click the active star again to clear the filter. Triggers an immediate search.
+- **Star rating filter**: five clickable stars with a three-state cycle. First click sets an exact match (e.g. "3"), second click switches to minimum match ("3+"), third click clears the filter. Star 5 is two-state (exact and clear, since 5 and 5+ are identical). Triggers an immediate search.
 - **Color label filter**: seven colored dots (Red, Orange, Yellow, Green, Blue, Pink, Purple). Click a dot to filter by that label. Click the active dot again to clear. Triggers an immediate search.
 - **Type dropdown**: filter by asset type (Image, Video, Audio, Document). Triggers immediately on change.
 - **Format dropdown**: filter by variant format (NEF, ARW, JPEG, etc.). Populated from the formats present in your catalog. Triggers immediately on change.

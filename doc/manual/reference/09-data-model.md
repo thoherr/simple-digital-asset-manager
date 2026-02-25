@@ -276,6 +276,14 @@ A single `catalog.db` file providing fast indexed queries. Contains denormalized
 
 **Tables**: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `collections`, `collection_assets`
 
+**Performance indexes** (created automatically via schema migrations):
+
+- `variants(asset_id)`, `variants(format)`, `variants(camera_model)`, `variants(lens_model)`, `variants(iso)`, `variants(focal_length_mm)` — variant lookups and filter queries
+- `file_locations(content_hash)`, `file_locations(volume_id)` — join and volume filter performance
+- `assets(created_at)`, `assets(best_variant_hash)` — sort-by-date and best-variant join
+- `recipes(variant_hash)` — recipe lookups by variant
+- `collection_assets(asset_id)` — collection membership queries
+
 ### Other Files
 
 | File | Format | Contents |

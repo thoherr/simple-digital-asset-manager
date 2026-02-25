@@ -2,6 +2,15 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v1.5.1
+
+### Performance
+- **Database indexes for large catalogs** — added 6 missing indexes on `file_locations(content_hash)`, `file_locations(volume_id)`, `assets(created_at)`, `assets(best_variant_hash)`, `variants(format)`, and `recipes(variant_hash)`. Dramatically speeds up browse, search, stats, and backup-status queries at scale (tested with 150k+ assets, 220k+ variants). Indexes are created automatically on first open after upgrade.
+- **Optimized stats and backup-status queries** — consolidated ~20+ sequential SQL queries into ~8 with SQL-side aggregation. Tag frequency counting uses `json_each()` instead of loading all asset JSON into Rust. Directory counting per volume uses SQL `RTRIM` trick instead of loading all file_location rows. Recipe format extraction moved to SQL. Backup-status derives at-risk count from the volume distribution query (eliminating a redundant full scan) and batches per-volume gap queries into a single `GROUP BY`.
+
+### Enhancements
+- **Three-state rating filter** — clicking a star in the browse rating filter now cycles through exact match (e.g. "3"), minimum match (e.g. "3+"), and clear. Star 5 remains two-state (5 and 5+ are identical). Makes it easy to filter for exactly 1-star photos for culling.
+
 ## v1.5.0
 
 ### New Features
