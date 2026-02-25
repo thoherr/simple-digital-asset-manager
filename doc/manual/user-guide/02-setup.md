@@ -166,6 +166,83 @@ There is no limit on the number of volumes. A typical setup might look like:
 
 Assets can have files on multiple volumes simultaneously (see [Maintenance](07-maintenance.md) for the `relocate` command).
 
+### Volume purposes
+
+Each volume can optionally be assigned a **purpose** that describes its role in your storage hierarchy:
+
+| Purpose     | Meaning |
+|-------------|---------|
+| `working`   | Active editing drive — fast SSD with current projects |
+| `archive`   | Long-term primary storage — the "master" copy |
+| `backup`    | Redundancy copy — exists purely for safety |
+| `cloud`     | Cloud-synced folder (Dropbox, iCloud, Google Drive) |
+
+```bash
+dam volume add "Laptop SSD" /Volumes/MacintoshHD --purpose working
+dam volume add "Archive"    /Volumes/MediaDrive   --purpose archive
+dam volume add "Backup A"   /Volumes/BackupDisk   --purpose backup
+dam volume add "Dropbox"    ~/Dropbox/Photos      --purpose cloud
+```
+
+Purpose metadata drives two features:
+
+- **Duplicate analysis** (`dam duplicates`): Distinguishes unwanted duplicates (same file twice on the same working drive) from wanted redundancy (same file on an archive and a backup).
+- **Backup coverage** (`dam backup-status`): Reports which assets lack copies on archive or backup volumes and flags at-risk assets.
+
+You can set or change a purpose at any time:
+
+```bash
+dam volume set-purpose "Laptop SSD" archive
+dam volume set-purpose "Laptop SSD" none      # clear
+```
+
+Volumes without a purpose are treated as unclassified — they still work for import, search, and all other operations, but are excluded from purpose-based analysis.
+
+### Symlinks and path resolution
+
+dam resolves symlinks when registering volumes and importing files. All paths stored in the catalog are **physical (canonical) paths**, not the symlink paths you may see in your filesystem.
+
+This matters when your directory layout uses symlinks to span multiple disks. For example, if you have:
+
+```
+/Volumes/Pictures/masters/2025/   (real directory)
+/Volumes/Pictures/masters/2026 → /Volumes/Dropbox/masters/2026/  (symlink)
+```
+
+and you register `/Volumes/Pictures` as a volume, then:
+
+- Files under `.../masters/2025/` are tracked on the "Pictures" volume as expected.
+- Files under `.../masters/2026/` resolve through the symlink to `/Volumes/Dropbox/masters/2026/`, which is **outside** the Pictures volume mount point. Import will fail with "No registered volume contains path" unless the Dropbox path is also registered as a volume.
+
+**Why dam resolves symlinks:**
+
+- **Reliable verification.** `dam verify` re-hashes files by their catalog path. If the catalog stored a symlink path and the symlink later changed target, verification would silently check the wrong file — or fail when the link breaks.
+- **Correct offline detection.** A volume is "online" when its mount point exists. A broken symlink inside an online volume would cause confusing partial failures.
+- **Predictable sync behavior.** `dam sync` detects moved and missing files by comparing disk state to catalog paths. Symlink changes would cause false "moved" or "missing" reports for every file under the changed link.
+- **Unambiguous volume mapping.** Each file belongs to exactly one volume (determined by longest mount-point prefix match on the physical path). Symlinks could cause the same file to appear to belong to two different volumes depending on which path you use.
+
+**The recommended workaround** is to register each physical storage location as its own volume:
+
+```bash
+dam volume add "Pictures"  /Volumes/Pictures  --purpose archive
+dam volume add "Dropbox"   /Volumes/Dropbox   --purpose cloud
+```
+
+Both volumes work independently. Import auto-detects the correct volume based on the resolved physical path. `backup-status` shows correct copy counts across both. You can still navigate your symlinked directory structure normally — dam simply tracks where files physically reside.
+
+### Removing a volume
+
+If a volume is no longer needed (drive decommissioned, cloud service cancelled), you can cleanly remove it:
+
+```bash
+dam volume remove "Old Drive"          # report what would be removed
+dam volume remove "Old Drive" --apply  # actually remove
+```
+
+This removes all file location and recipe records on that volume from the catalog and sidecar files, deletes any assets that become orphaned (no remaining file locations), and cleans up orphaned preview files. Without `--apply`, it runs in report-only mode so you can review the impact first.
+
+See the [volume remove reference](../reference/01-setup-commands.md#dam-volume-remove) for details.
+
 
 ## Configuration (dam.toml)
 

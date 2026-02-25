@@ -261,4 +261,74 @@ dam volume set-purpose "Photos" none
 
 ---
 
+## dam volume remove
+
+### NAME
+
+dam-volume-remove -- remove a volume and all its associated catalog data
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] volume remove <VOLUME> [--apply]
+```
+
+### DESCRIPTION
+
+Removes a volume and all data associated with it: file location records, recipe records, assets that become orphaned (no remaining file locations on any volume), and preview files for those orphaned assets. Also removes the volume from `volumes.yaml` and the SQLite catalog.
+
+By default, runs in **report-only mode** -- shows what would be removed without making changes. Use `--apply` to execute the removal. This is consistent with `cleanup`, `sync`, and `dedup`.
+
+The removal proceeds in phases:
+
+1. **Locations**: Removes all file location records on the volume from the catalog and sidecar YAML files.
+2. **Recipes**: Removes all recipe records on the volume from the catalog and sidecar YAML files.
+3. **Orphaned assets**: Detects assets where all variants now have zero file locations. In apply mode, deletes these assets along with their variants, remaining recipes, catalog rows, and sidecar YAML files.
+4. **Orphaned previews**: Detects preview files whose content hash no longer matches any variant in the catalog. In apply mode, deletes these files.
+5. **Volume**: Removes the volume entry from `volumes.yaml` and the SQLite `volumes` table.
+
+In report-only mode, orphaned assets and previews are predicted (what *would* become orphaned if the locations were removed).
+
+### ARGUMENTS
+
+**VOLUME** (required)
+: Volume label or UUID.
+
+### OPTIONS
+
+`--apply`
+: Execute the removal. Without this flag, only a report is printed.
+
+This command also accepts [global flags](00-cli-conventions.md#global-flags). `--json` outputs a `VolumeRemoveResult` object with fields: `volume_label`, `volume_id`, `locations`, `locations_removed`, `recipes`, `recipes_removed`, `orphaned_assets`, `removed_assets`, `orphaned_previews`, `removed_previews`, `apply`, `errors`. `--log` prints per-file progress to stderr.
+
+### EXAMPLES
+
+Preview what removing a volume would do:
+
+```bash
+dam volume remove "Old Drive"
+# Volume 'Old Drive' would remove: 1523 locations, 87 recipes, 412 orphaned assets, 412 orphaned previews
+#   Run with --apply to remove.
+```
+
+Remove the volume:
+
+```bash
+dam volume remove "Old Drive" --apply
+# Volume 'Old Drive' removed: 1523 locations removed, 87 recipes removed, 412 orphaned assets removed, 412 orphaned previews removed
+```
+
+JSON output for scripting:
+
+```bash
+dam volume remove "Old Drive" --json
+```
+
+### SEE ALSO
+
+[volume list](#dam-volume-list) -- list volumes and their status.
+[cleanup](05-maintain-commands.md#dam-cleanup) -- remove stale records for missing files (works across volumes).
+
+---
+
 Next: [Ingest Commands](02-ingest-commands.md) -- `import`, `tag`, `edit`, `group`, `auto-group`.
