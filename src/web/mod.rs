@@ -59,6 +59,7 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/asset/{id}", axum::routing::get(routes::asset_page))
         .route("/tags", axum::routing::get(routes::tags_page))
         .route("/stats", axum::routing::get(routes::stats_page))
+        .route("/backup", axum::routing::get(routes::backup_page))
         .route("/api/search", axum::routing::get(routes::search_api))
         .route(
             "/api/asset/{id}/tags",

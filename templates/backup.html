@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Backup Status - DAM{% endblock %}
+
+{% block content %}
+<h1>Backup Status</h1>
+
+<!-- Summary Cards -->
+<div class="stats-overview backup-summary">
+    <div class="stat-card accent-blue">
+        <div class="stat-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect>
+            </svg>
+        </div>
+        <div class="stat-value">{{ result.total_assets }}</div>
+        <div class="stat-label">Total Assets</div>
+    </div>
+    <div class="stat-card {% if result.at_risk_count > 0 %}accent-danger{% else %}accent-emerald{% endif %}">
+        <div class="stat-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+        </div>
+        <div class="stat-value">{{ result.at_risk_count }}</div>
+        <div class="stat-label">At Risk</div>
+    </div>
+    <div class="stat-card accent-amber">
+        <div class="stat-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+        </div>
+        <div class="stat-value">{{ result.min_copies }}</div>
+        <div class="stat-label">Min Copies</div>
+    </div>
+</div>
+
+{% if result.at_risk_count > 0 %}
+<div class="at-risk-hint">
+    <a href="/?q=copies%3A1">View {{ result.at_risk_count }} at-risk asset{% if result.at_risk_count != 1 %}s{% endif %} &rarr;</a>
+</div>
+{% endif %}
+
+<!-- Volume Distribution -->
+<div class="stats-section">
+    <h2>Volume Distribution</h2>
+    <div class="bar-chart" data-auto-scale>
+    {% for bucket in result.location_distribution %}
+        {% if bucket.asset_count > 0 %}
+        <div class="bar-row">
+            <span class="bar-label" style="width: 100px;">{{ bucket.volume_count }}
+                {% if bucket.volume_count == "1" %}volume{% else %}volumes{% endif %}
+            </span>
+            <div class="bar-track">
+                <div class="bar-fill {{ bucket.volume_count|backup_bar_class(result.min_copies) }}" data-value="{{ bucket.asset_count }}"></div>
+            </div>
+            <span class="bar-value">
+                {{ bucket.asset_count }}
+                {% if bucket.volume_count == "0" || bucket.volume_count == "1" %}
+                <span class="badge-at-risk">AT RISK</span>
+                {% endif %}
+            </span>
+        </div>
+        {% endif %}
+    {% endfor %}
+    </div>
+</div>
+
+{% if !result.purpose_coverage.is_empty() %}
+<!-- Coverage by Purpose -->
+<div class="stats-section">
+    <h2>Coverage by Purpose</h2>
+    <table class="stats-table">
+        <thead>
+            <tr>
+                <th>Purpose</th>
+                <th>Volumes</th>
+                <th>Assets</th>
+                <th style="width: 35%;">Coverage</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for pc in result.purpose_coverage %}
+            <tr>
+                <td><strong>{{ pc.purpose }}</strong></td>
+                <td>{{ pc.volume_count }}</td>
+                <td>{{ pc.asset_count }}</td>
+                <td>
+                    <div class="inline-bar">
+                        <div class="inline-bar-track">
+                            <div class="inline-bar-fill {{ pc.asset_percentage|verify_class }}" style="width: {{ pc.asset_percentage|pct0 }}%"></div>
+                        </div>
+                        <span class="inline-bar-label">{{ pc.asset_percentage|pct1 }}%</span>
+                    </div>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if !result.volume_gaps.is_empty() %}
+<!-- Volume Gaps -->
+<div class="stats-section">
+    <h2>Volume Gaps</h2>
+    <table class="stats-table">
+        <thead>
+            <tr>
+                <th>Volume</th>
+                <th>Purpose</th>
+                <th>Missing Assets</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for gap in result.volume_gaps %}
+            <tr>
+                <td><strong>{{ gap.volume_label }}</strong></td>
+                <td>
+                    {% match gap.purpose %}
+                    {% when Some with (p) %}
+                    <span class="badge badge-purpose">{{ p }}</span>
+                    {% when None %}
+                    <span class="badge" style="background: var(--badge-bg); color: var(--text-muted);">none</span>
+                    {% endmatch %}
+                </td>
+                <td>{{ gap.missing_count }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<script>
+// Auto-scale bar charts
+document.querySelectorAll('.bar-chart[data-auto-scale]').forEach(function(chart) {
+    var fills = chart.querySelectorAll('.bar-fill[data-value]');
+    var max = 0;
+    fills.forEach(function(f) { var v = parseInt(f.dataset.value, 10); if (v > max) max = v; });
+    if (max > 0) fills.forEach(function(f) {
+        f.style.width = (parseInt(f.dataset.value, 10) / max * 100) + '%';
+    });
+});
+</script>
+
+{% endblock %}

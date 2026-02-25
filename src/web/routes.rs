@@ -12,9 +12,10 @@ use crate::query::{normalize_path_for_search, parse_search_query};
 use crate::device_registry::DeviceRegistry;
 
 use super::templates::{
-    format_size, AssetCard, AssetPage, BrowsePage, CollectionOption, DescriptionFragment,
-    FormatOption, LabelFragment, NameFragment, PreviewFragment, RatingFragment, ResultsPartial,
-    SavedSearchChip, StatsPage, TagOption, TagPageEntry, TagsFragment, TagsPage, VolumeOption,
+    format_size, AssetCard, AssetPage, BackupPage, BrowsePage, CollectionOption,
+    DescriptionFragment, FormatOption, LabelFragment, NameFragment, PreviewFragment,
+    RatingFragment, ResultsPartial, SavedSearchChip, StatsPage, TagOption, TagPageEntry,
+    TagsFragment, TagsPage, VolumeOption,
 };
 use super::AppState;
 
@@ -507,6 +508,45 @@ pub async fn stats_page(State(state): State<Arc<AppState>>) -> Response {
         let tmpl = StatsPage {
             stats,
             total_size_fmt,
+        };
+        Ok::<_, anyhow::Error>(tmpl.render()?)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+/// GET /backup — backup status dashboard.
+pub async fn backup_page(State(state): State<Arc<AppState>>) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let registry = DeviceRegistry::new(&state.catalog_root);
+        let vol_list = registry.list()?;
+        let volumes_info: Vec<(String, String, bool, Option<String>)> = vol_list
+            .iter()
+            .map(|v| {
+                (
+                    v.label.clone(),
+                    v.id.to_string(),
+                    v.is_online,
+                    v.purpose.as_ref().map(|p| p.as_str().to_string()),
+                )
+            })
+            .collect();
+
+        let backup = catalog.backup_status_overview(None, &volumes_info, 2, None)?;
+        let total_assets_fmt = format!("{}", backup.total_assets);
+
+        let tmpl = BackupPage {
+            result: backup,
+            total_assets_fmt,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })

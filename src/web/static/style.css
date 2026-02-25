@@ -1305,3 +1305,41 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     color: #fff;
     border-color: var(--danger, #e74c3c);
 }
+
+/* ===== Backup Status Page ===== */
+.backup-summary {
+    grid-template-columns: repeat(3, 1fr);
+}
+@media (max-width: 768px) {
+    .backup-summary { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+}
+.accent-danger  { border-left-color: #dc3545; }
+.accent-danger  .stat-icon { color: #dc3545; }
+
+.at-risk-hint {
+    margin: -0.5rem 0 1.5rem;
+    padding: 0.75rem 1.25rem;
+    background: #fff5f5;
+    border: 1px solid #fed7d7;
+    border-left: 4px solid #dc3545;
+    border-radius: var(--radius);
+}
+.at-risk-hint a {
+    color: #dc3545;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+.at-risk-hint a:hover { text-decoration: underline; }
+
+.badge-at-risk {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    background: #fee2e2;
+    color: #991b1b;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+}

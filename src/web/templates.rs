@@ -1,6 +1,6 @@
 use askama::Template;
 
-use crate::catalog::{AssetDetails, CatalogStats, SearchRow};
+use crate::catalog::{AssetDetails, BackupStatusResult, CatalogStats, SearchRow};
 
 /// Compute preview URL from a content hash like "sha256:abcdef...".
 pub fn preview_url(content_hash: &str, ext: &str) -> String {
@@ -297,6 +297,13 @@ pub struct StatsPage {
 }
 
 #[derive(Template)]
+#[template(path = "backup.html")]
+pub struct BackupPage {
+    pub result: BackupStatusResult,
+    pub total_assets_fmt: String,
+}
+
+#[derive(Template)]
 #[template(path = "preview_fragment.html")]
 pub struct PreviewFragment {
     pub asset_id: String,
@@ -372,6 +379,19 @@ mod filters {
 
     pub fn version(_s: &str) -> ::askama::Result<String> {
         Ok(env!("CARGO_PKG_VERSION").to_string())
+    }
+
+    pub fn backup_bar_class(label: &str, min_copies: &u64) -> ::askama::Result<String> {
+        // Parse leading digit(s) from label like "0 volumes", "1 volume", "3+ volumes"
+        let n: u64 = label.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(0);
+        Ok(if n < *min_copies {
+            "fill-low"
+        } else if n == *min_copies {
+            "fill-warn"
+        } else {
+            "fill-good"
+        }
+        .to_string())
     }
 
     pub fn label_color(name: &str) -> ::askama::Result<String> {
