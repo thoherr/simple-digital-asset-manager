@@ -681,6 +681,8 @@ fn main() {
                     println!("  Path: {}", volume.mount_point.display());
                     if let Some(ref p) = volume.purpose {
                         println!("  Purpose: {}", p);
+                    } else {
+                        eprintln!("  Hint: use --purpose <working|archive|backup|cloud> to set the volume's role");
                     }
                 }
                 Ok(())
