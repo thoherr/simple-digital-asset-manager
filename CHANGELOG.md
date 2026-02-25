@@ -2,6 +2,18 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v1.5.2
+
+### New Features
+- **Saved search favorites** — saved searches now have a `favorite` field that controls which ones appear as chips on the browse page. Non-favorites are hidden from the browse page but remain accessible via the management page and CLI.
+- **Saved searches management page** — new `/saved-searches` page in the web UI provides a table view of all saved searches with star toggle (favorite/unfavorite), rename, and delete actions. Accessible via "Searches" link in the navigation bar and "Manage..." link on the browse page.
+
+### Enhancements
+- **Browse page Save button** — now defaults to `favorite: true` so newly saved searches appear immediately as browse chips. Before prompting for a name, checks for duplicate queries and alerts if the search is already saved.
+- **CLI `--favorite` flag** — `dam ss save --favorite "Name" "query"` marks a saved search as favorite. `dam ss list` shows `[*]` marker next to favorites.
+- **New API endpoints** — `PUT /api/saved-searches/{name}/favorite` toggles favorite status, `PUT /api/saved-searches/{name}/rename` renames a saved search with collision detection.
+- **Simplified browse chips** — saved search chips on the browse page are now clean links without inline rename/delete buttons (those moved to the management page).
+
 ## v1.5.1
 
 ### Performance

@@ -233,7 +233,7 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - Preview images are served directly from the catalog's `previews/` directory via `tower-http::ServeDir`.
 
 **Routes**:
-- `GET /` — browse page with search, filter dropdowns (type, tag, format, volume, collection, rating), color label filter dots, sort, pagination, grid density controls (compact/normal/large), thumbnail grid with star ratings and color label dots. Lightbox overlay on card click (prev/next navigation, info panel with rating/label editing). Batch operations toolbar with tag, rating, and label editing. Dark mode toggle in nav bar (persisted in localStorage, follows OS preference).
+- `GET /` — browse page with search, filter dropdowns (type, tag, format, volume, collection, rating), color label filter dots, sort, pagination, grid density controls (compact/normal/large), thumbnail grid with star ratings and color label dots. Lightbox overlay on card click (prev/next navigation, info panel with rating/label editing). Batch operations toolbar with tag, rating, and label editing. Dark mode toggle in nav bar (persisted in localStorage, follows OS preference). Favorite saved searches shown as chips with "Manage..." link to `/saved-searches`.
 - `GET /asset/{id}` — asset detail with preview, metadata, editable tags, inline editable star rating, inline color label picker (7 color dots), variants, recipes
 - `GET /tags` — tags page with sortable columns (name/count), live text filter, multi-column layout
 - `GET /api/search` — results partial (htmx target) with pagination
@@ -256,8 +256,11 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - `POST /api/batch/auto-group` — batch auto-group selected assets by stem (JSON: `{asset_ids}`)
 - `PUT /api/asset/{id}/name` — set/clear asset name (form: `name=text`), returns name fragment
 - `GET /api/saved-searches` — list all saved searches as JSON
-- `POST /api/saved-searches` — save a new search (JSON: `{name, query, sort?}`)
+- `POST /api/saved-searches` — save a new search (JSON: `{name, query, sort?, favorite?}`)
 - `DELETE /api/saved-searches/{name}` — delete a saved search
+- `PUT /api/saved-searches/{name}/favorite` — toggle favorite status (JSON: `{favorite: bool}`)
+- `PUT /api/saved-searches/{name}/rename` — rename a saved search (JSON: `{new_name}`)
+- `GET /saved-searches` — saved searches management page (table with favorite toggle, rename, delete)
 
 **Catalog extensions** (in `src/catalog.rs`):
 - `SearchOptions` / `SearchSort` / `SearchPage` — paginated search with volume filter and dynamic sort
@@ -326,10 +329,12 @@ After each write, the file is re-hashed and the recipe's `content_hash` is updat
 **Module**: `src/saved_search_store.rs` — stored in `searches.toml` at catalog root.
 
 **Operations**:
-- `save(name, query, sort)` — save or replace a named search
-- `list()` — list all saved searches with query and sort
+- `save(name, query, sort, favorite)` — save or replace a named search
+- `list()` — list all saved searches with query, sort, and favorite status
 - `run(name)` — execute a saved search and return results
 - `delete(name)` — delete a saved search
+
+**Favorite field**: Each saved search has a `favorite: bool` field (default `false`). Only favorites are shown as chips on the browse page. The `/saved-searches` management page shows all searches and allows toggling favorites.
 
 ### 16. CLI
 
@@ -361,7 +366,7 @@ dam generate-previews [PATHS...] [--asset ID] [--volume V] [--include G] [--skip
 dam stats [--types] [--volumes] [--tags] [--verified] [--all] [--limit N]  # catalog statistics
 dam auto-group [QUERY] [--apply]                  # group assets by filename stem
 dam fix-roles [PATHS...] [--volume V] [--asset ID] [--apply]  # fix variant roles in RAW+non-RAW groups
-dam saved-search save|list|run|delete             # manage saved searches (alias: ss)
+dam saved-search save|list|run|delete             # manage saved searches (alias: ss, save supports --favorite)
 dam collection create|list|show|add|remove|delete # manage collections (alias: col)
 dam rebuild-catalog                               # rebuild SQLite from sidecars
 dam serve [--port P] [--bind ADDR] [--log]         # start web UI server (--log for request logging)
