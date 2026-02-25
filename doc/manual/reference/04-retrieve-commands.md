@@ -42,6 +42,9 @@ Searches the catalog for assets matching the given query. The query string suppo
 | `meta:` | Source metadata key=value | `meta:Copyright=2026` |
 | `path:` | File location path prefix | `path:Capture/2026-02`, `path:/Volumes/Photos/2026` |
 | `collection:` | Collection membership | `collection:Favorites`, `collection:"My Picks"` |
+| `date:` | Creation date (prefix match) | `date:2026-02-25`, `date:2026-02`, `date:2026` |
+| `dateFrom:` | Creation date lower bound (inclusive) | `dateFrom:2026-01-01` |
+| `dateUntil:` | Creation date upper bound (inclusive) | `dateUntil:2026-12-31` |
 | `copies:` | File location count (exact) | `copies:1`, `copies:2` |
 | `copies:N+` | File location count (minimum) | `copies:2+`, `copies:3+` |
 | `orphan:true` | Assets with zero file locations | `orphan:true` |

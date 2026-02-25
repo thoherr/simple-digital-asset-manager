@@ -64,6 +64,9 @@ All filters can be combined in a single query. Remaining tokens become free-text
 | Source metadata | `meta:<key>=<value>` | `meta:software=CaptureOne` |
 | Path prefix | `path:<prefix>` | `path:Capture/2026-02-22` |
 | Collection | `collection:<name>` | `collection:Favorites` |
+| Date (prefix match) | `date:<prefix>` | `date:2026-02-25`, `date:2026-02`, `date:2026` |
+| Date (from) | `dateFrom:<date>` | `dateFrom:2026-01-01` |
+| Date (until) | `dateUntil:<date>` | `dateUntil:2026-12-31` |
 | Volume | `volume:none` | `volume:none` |
 | Orphan assets | `orphan:true` | `orphan:true` |
 | Missing files | `missing:true` | `missing:true` |
