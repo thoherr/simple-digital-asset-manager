@@ -483,6 +483,15 @@ impl Catalog {
         let _ = crate::collection::CollectionStore::initialize(&self.conn);
         // Volume purpose
         let _ = self.conn.execute_batch("ALTER TABLE volumes ADD COLUMN purpose TEXT");
+        // Performance indexes for search, stats, and join queries
+        let _ = self.conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_fl_content_hash ON file_locations(content_hash);
+             CREATE INDEX IF NOT EXISTS idx_fl_volume_id ON file_locations(volume_id);
+             CREATE INDEX IF NOT EXISTS idx_assets_created_at ON assets(created_at);
+             CREATE INDEX IF NOT EXISTS idx_assets_best_variant_hash ON assets(best_variant_hash);
+             CREATE INDEX IF NOT EXISTS idx_variants_format ON variants(format);
+             CREATE INDEX IF NOT EXISTS idx_recipes_variant_hash ON recipes(variant_hash);",
+        );
     }
 
     /// Initialize the database schema.
@@ -611,6 +620,16 @@ impl Catalog {
                 SELECT COUNT(*) FROM variants WHERE asset_id = assets.id
             ) WHERE variant_count = 0",
         );
+
+        // Performance indexes for search, stats, and join queries
+        self.conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_fl_content_hash ON file_locations(content_hash);
+             CREATE INDEX IF NOT EXISTS idx_fl_volume_id ON file_locations(volume_id);
+             CREATE INDEX IF NOT EXISTS idx_assets_created_at ON assets(created_at);
+             CREATE INDEX IF NOT EXISTS idx_assets_best_variant_hash ON assets(best_variant_hash);
+             CREATE INDEX IF NOT EXISTS idx_variants_format ON variants(format);
+             CREATE INDEX IF NOT EXISTS idx_recipes_variant_hash ON recipes(variant_hash);",
+        )?;
 
         Ok(())
     }
