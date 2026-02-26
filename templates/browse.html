@@ -674,6 +674,7 @@
 
     // Keyboard shortcuts (Cmd/Ctrl+A handled here; Escape handled by keyboard nav IIFE)
     document.addEventListener('keydown', function(e) {
+        if (window.damHelp && window.damHelp.isOpen()) return;
         // Ignore when typing in a text input/textarea/select (but not checkboxes)
         var el = e.target;
         if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
@@ -1161,7 +1162,12 @@
         img.alt = name;
         counter.textContent = (currentIndex + 1) + ' / ' + cards.length;
         title.textContent = name;
-        detailLink.href = '/asset/' + assetId;
+        var prev = card.getAttribute('data-prev');
+        var next = card.getAttribute('data-next');
+        var qs = [];
+        if (prev) qs.push('prev=' + prev);
+        if (next) qs.push('next=' + next);
+        detailLink.href = '/asset/' + assetId + (qs.length ? '?' + qs.join('&') : '');
 
         // Metadata
         document.getElementById('lb-meta-type').textContent = type;
@@ -1308,6 +1314,7 @@
     // Keyboard: capture phase to intercept before keyboard nav
     document.addEventListener('keydown', function(e) {
         if (!isOpen) return;
+        if (window.damHelp && window.damHelp.isOpen()) return;
 
         var el = e.target;
         if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
@@ -1491,6 +1498,8 @@
     document.addEventListener('keydown', function(e) {
         // Don't handle keys while lightbox is open (it captures its own)
         if (window.damLightbox && window.damLightbox.isOpen()) return;
+        // Don't handle keys while help panel is open
+        if (window.damHelp && window.damHelp.isOpen()) return;
 
         // Ignore when typing in a text input/textarea/select
         var el = e.target;
@@ -1799,5 +1808,37 @@ window.damCalendar = (function() {
 
     return { setView: setView, fetchAndRender: fetchAndRender };
 })();
+</script>
+<script>
+if (window.damHelp) {
+    damHelp.registerShortcuts([
+        { title: 'Navigation', shortcuts: [
+            { keys: '\u2190 \u2191 \u2192 \u2193', desc: 'Move focus between cards' },
+            { keys: 'Enter', desc: 'Open lightbox' },
+            { keys: 'Escape', desc: 'Clear selection / focus' }
+        ]},
+        { title: 'Selection', shortcuts: [
+            { keys: 'Space', desc: 'Toggle card selection' },
+            { keys: '\u2318/Ctrl+A', desc: 'Select all on page' }
+        ]},
+        { title: 'Rating', shortcuts: [
+            { keys: '1 \u2013 5', desc: 'Set rating' },
+            { keys: '0', desc: 'Clear rating' }
+        ]},
+        { title: 'Color Label', shortcuts: [
+            { keys: 'Alt+1\u20137', desc: 'Set label by number' },
+            { keys: 'r, o, y, g, b, p, u', desc: 'Set label by color initial' },
+            { keys: 'x, Alt+0', desc: 'Clear label' }
+        ]},
+        { title: 'Lightbox', shortcuts: [
+            { keys: '\u2190 \u2192', desc: 'Previous / next' },
+            { keys: 'i', desc: 'Toggle info panel' },
+            { keys: 'Escape', desc: 'Close lightbox' }
+        ]},
+        { title: 'General', shortcuts: [
+            { keys: '?', desc: 'Show this help' }
+        ]}
+    ]);
+}
 </script>
 {% endblock %}

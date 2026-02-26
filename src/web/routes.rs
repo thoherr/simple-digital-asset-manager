@@ -12,7 +12,7 @@ use crate::query::{normalize_path_for_search, parse_search_query};
 use crate::device_registry::DeviceRegistry;
 
 use super::templates::{
-    format_size, AssetCard, AssetPage, BackupPage, BrowsePage, CollectionOption,
+    format_size, link_cards, AssetCard, AssetPage, BackupPage, BrowsePage, CollectionOption,
     DescriptionFragment, FormatOption, LabelFragment, NameFragment, PreviewFragment,
     RatingFragment, ResultsPartial, SavedSearchChip, SavedSearchEntry, SavedSearchesPage,
     StackMemberCard, StatsPage, TagOption, TagTreeEntry, TagsFragment, TagsPage, VolumeOption,
@@ -102,7 +102,8 @@ pub async fn browse_page(
         let total = catalog.search_count(&opts)?;
         let rows = catalog.search_paginated(&opts)?;
         let total_pages = ((total as f64) / 60.0).ceil() as u32;
-        let cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
+        let mut cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
+        link_cards(&mut cards);
 
         if is_htmx {
             let tmpl = ResultsPartial {
@@ -271,7 +272,8 @@ pub async fn search_api(
         let total = catalog.search_count(&opts)?;
         let rows = catalog.search_paginated(&opts)?;
         let total_pages = ((total as f64) / 60.0).ceil() as u32;
-        let cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
+        let mut cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
+        link_cards(&mut cards);
 
         let tmpl = ResultsPartial {
             query: query.to_string(),
@@ -304,10 +306,17 @@ pub async fn search_api(
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct AssetPageParams {
+    pub prev: Option<String>,
+    pub next: Option<String>,
+}
+
 /// GET /asset/{id} — asset detail page.
 pub async fn asset_page(
     State(state): State<Arc<AppState>>,
     Path(asset_id): Path<String>,
+    Query(nav_params): Query<AssetPageParams>,
 ) -> Response {
     let preview_ext = state.preview_ext.clone();
     let state = state.clone();
@@ -360,7 +369,9 @@ pub async fn asset_page(
             (cols, members, is_pick)
         };
 
-        let tmpl = AssetPage::from_details(details, preview_url, collections, stack_members, is_stack_pick);
+        let mut tmpl = AssetPage::from_details(details, preview_url, collections, stack_members, is_stack_pick);
+        tmpl.prev_id = nav_params.prev;
+        tmpl.next_id = nav_params.next;
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
     .await;

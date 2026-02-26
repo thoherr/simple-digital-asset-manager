@@ -475,14 +475,25 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     opacity: 0.4;
 }
 
-/* Back link */
-.back-link {
-    display: inline-block;
+/* Asset navigation bar */
+.asset-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 0.5rem;
+    gap: 0.5rem;
+}
+.asset-nav-btn {
+    display: inline-block;
     font-size: 0.9rem;
     color: var(--text-muted);
+    text-decoration: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius);
+    transition: color 0.15s, background 0.15s;
 }
-.back-link:hover { color: var(--text); text-decoration: none; }
+.asset-nav-btn:hover { color: var(--text); background: var(--badge-bg); text-decoration: none; }
+.asset-nav-btn.invisible { visibility: hidden; }
 
 /* Asset detail page */
 .asset-detail {
@@ -2003,3 +2014,91 @@ body.has-batch-toolbar { padding-bottom: 60px; }
 }
 .view-btn:hover { color: var(--primary); border-color: var(--primary); }
 .view-btn.active { color: var(--primary); border-color: var(--primary); background: var(--bg-card); }
+
+/* ===== Keyboard Help Panel ===== */
+.keyboard-help {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.5);
+}
+.keyboard-help.open { display: flex; }
+.keyboard-help-inner {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    max-width: 640px;
+    width: 90vw;
+    max-height: 80vh;
+    overflow-y: auto;
+    color: var(--text);
+}
+.keyboard-help-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+.keyboard-help-header h2 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+.keyboard-help-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0 0.25rem;
+    line-height: 1;
+}
+.keyboard-help-close:hover { color: var(--text); }
+.keyboard-help-body {
+    padding: 1rem 1.25rem;
+}
+.keyboard-help-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+}
+@media (max-width: 500px) {
+    .keyboard-help-grid { grid-template-columns: 1fr; }
+}
+.keyboard-help-section h3 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin: 0 0 0.5rem;
+}
+.keyboard-help-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin-bottom: 0.35rem;
+}
+.keyboard-help-keys {
+    min-width: 100px;
+    text-align: right;
+    flex-shrink: 0;
+}
+.keyboard-help-keys kbd {
+    display: inline-block;
+    padding: 0.1rem 0.35rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--badge-bg);
+    font-family: inherit;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+.keyboard-help-desc {
+    font-size: 0.85rem;
+    color: var(--text);
+}

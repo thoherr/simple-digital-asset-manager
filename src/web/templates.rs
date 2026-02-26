@@ -44,6 +44,8 @@ pub struct AssetCard {
     pub variant_count: u32,
     pub stack_count: Option<u32>,
     pub stack_id: Option<String>,
+    pub prev_id: Option<String>,
+    pub next_id: Option<String>,
 }
 
 impl AssetCard {
@@ -66,6 +68,36 @@ impl AssetCard {
             variant_count: row.variant_count,
             stack_count: row.stack_count.filter(|&n| n >= 2),
             stack_id: row.stack_id.clone(),
+            prev_id: None,
+            next_id: None,
+        }
+    }
+
+    /// Build the detail page URL with optional prev/next query params.
+    pub fn detail_url(&self) -> String {
+        let mut qs = Vec::new();
+        if let Some(ref p) = self.prev_id {
+            qs.push(format!("prev={p}"));
+        }
+        if let Some(ref n) = self.next_id {
+            qs.push(format!("next={n}"));
+        }
+        if qs.is_empty() {
+            format!("/asset/{}", self.asset_id)
+        } else {
+            format!("/asset/{}?{}", self.asset_id, qs.join("&"))
+        }
+    }
+}
+
+/// Link adjacent cards with prev/next IDs for detail page navigation.
+pub fn link_cards(cards: &mut [AssetCard]) {
+    for i in 0..cards.len() {
+        if i > 0 {
+            cards[i].prev_id = Some(cards[i - 1].asset_id.clone());
+        }
+        if i + 1 < cards.len() {
+            cards[i].next_id = Some(cards[i + 1].asset_id.clone());
         }
     }
 }
@@ -218,6 +250,8 @@ pub struct AssetPage {
     pub collections: Vec<AssetCollectionChip>,
     pub stack_members: Vec<StackMemberCard>,
     pub is_stack_pick: bool,
+    pub prev_id: Option<String>,
+    pub next_id: Option<String>,
 }
 
 /// Collections the asset belongs to, shown on asset detail page.
@@ -312,6 +346,8 @@ impl AssetPage {
                 .collect(),
             stack_members,
             is_stack_pick,
+            prev_id: None,
+            next_id: None,
         }
     }
 }

@@ -19,6 +19,7 @@
             <a href="/stats">Stats</a>
             <a href="/backup">Backup</a>
         </div>
+        <button class="theme-toggle" id="help-toggle" title="Keyboard shortcuts (?)">?</button>
         <button class="theme-toggle" id="theme-toggle" title="Toggle dark mode">
             <span class="theme-icon-light">&#9788;</span>
             <span class="theme-icon-dark">&#9790;</span>
@@ -28,6 +29,90 @@
     <div class="container">
         {% block content %}{% endblock %}
     </div>
+<div class="keyboard-help" id="keyboard-help">
+    <div class="keyboard-help-inner">
+        <div class="keyboard-help-header">
+            <h2>Keyboard Shortcuts</h2>
+            <button class="keyboard-help-close" id="kb-help-close">&times;</button>
+        </div>
+        <div class="keyboard-help-body" id="kb-help-body"></div>
+    </div>
+</div>
+<script>
+(function(){
+    var overlay = document.getElementById('keyboard-help');
+    var body = document.getElementById('kb-help-body');
+    var open = false;
+
+    function show() {
+        open = true;
+        overlay.classList.add('open');
+    }
+    function hide() {
+        open = false;
+        overlay.classList.remove('open');
+    }
+    function toggle() {
+        if (open) hide(); else show();
+    }
+
+    document.getElementById('kb-help-close').addEventListener('click', hide);
+    document.getElementById('help-toggle').addEventListener('click', toggle);
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) hide();
+    });
+
+    document.addEventListener('keydown', function(e) {
+        var el = e.target;
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
+        if (el.tagName === 'INPUT' && el.type !== 'checkbox') return;
+        if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            toggle();
+            return;
+        }
+        if (e.key === 'Escape' && open) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            hide();
+            return;
+        }
+    }, true);
+
+    function renderSections(sections) {
+        var html = '<div class="keyboard-help-grid">';
+        for (var i = 0; i < sections.length; i++) {
+            var sec = sections[i];
+            html += '<div class="keyboard-help-section">';
+            html += '<h3>' + sec.title + '</h3>';
+            for (var j = 0; j < sec.shortcuts.length; j++) {
+                var s = sec.shortcuts[j];
+                html += '<div class="keyboard-help-row">';
+                html += '<span class="keyboard-help-keys">';
+                var keys = s.keys.split(', ');
+                for (var k = 0; k < keys.length; k++) {
+                    if (k > 0) html += ' ';
+                    html += '<kbd>' + keys[k] + '</kbd>';
+                }
+                html += '</span>';
+                html += '<span class="keyboard-help-desc">' + s.desc + '</span>';
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+        html += '</div>';
+        body.innerHTML = html;
+    }
+
+    window.damHelp = {
+        isOpen: function() { return open; },
+        open: show,
+        close: hide,
+        registerShortcuts: renderSections
+    };
+})();
+</script>
 <script>
 (function(){
     var btn = document.getElementById('theme-toggle');

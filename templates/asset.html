@@ -3,7 +3,19 @@
 {% block title %}{{ display_name }} - DAM{% endblock %}
 
 {% block content %}
-<a href="javascript:history.back()" class="back-link">&larr; Back</a>
+<div class="asset-nav">
+    {% if prev_id.is_some() %}
+    <a href="/asset/{{ prev_id.as_deref().unwrap() }}?next={{ asset_id }}" class="asset-nav-btn" id="nav-prev">&larr; Prev</a>
+    {% else %}
+    <span class="asset-nav-btn invisible">&larr; Prev</span>
+    {% endif %}
+    <a href="javascript:history.back()" class="asset-nav-btn">&larr; Back</a>
+    {% if next_id.is_some() %}
+    <a href="/asset/{{ next_id.as_deref().unwrap() }}?prev={{ asset_id }}" class="asset-nav-btn" id="nav-next">Next &rarr;</a>
+    {% else %}
+    <span class="asset-nav-btn invisible">Next &rarr;</span>
+    {% endif %}
+</div>
 <div class="asset-detail">
     <div class="asset-preview">
         <div id="preview">
@@ -218,4 +230,84 @@
         {% endif %}
     </div>
 </div>
+<script>
+(function() {
+    var assetId = '{{ asset_id }}';
+    var labelNumMap = {'1':'Red','2':'Orange','3':'Yellow','4':'Green','5':'Blue','6':'Pink','7':'Purple'};
+    var labelLetterMap = {r:'Red',o:'Orange',y:'Yellow',g:'Green',b:'Blue',p:'Pink',u:'Purple'};
+
+    document.addEventListener('keydown', function(e) {
+        if (window.damHelp && window.damHelp.isOpen()) return;
+        var el = e.target;
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
+        if (el.tagName === 'INPUT' && el.type !== 'checkbox') return;
+
+        // Arrow left/right: prev/next navigation
+        if (e.key === 'ArrowLeft') {
+            var prev = document.getElementById('nav-prev');
+            if (prev) { e.preventDefault(); prev.click(); }
+            return;
+        }
+        if (e.key === 'ArrowRight') {
+            var next = document.getElementById('nav-next');
+            if (next) { e.preventDefault(); next.click(); }
+            return;
+        }
+
+        // Escape: go back
+        if (e.key === 'Escape') {
+            history.back();
+            return;
+        }
+
+        // Alt+0-7: label
+        if (e.altKey && e.key >= '0' && e.key <= '7') {
+            e.preventDefault();
+            var lbl = e.key === '0' ? '' : (labelNumMap[e.key] || '');
+            htmx.ajax('PUT', '/api/asset/' + assetId + '/label', {target:'#label', swap:'innerHTML', values:{label: lbl}});
+            return;
+        }
+
+        // 0-5: rating
+        if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key >= '0' && e.key <= '5') {
+            htmx.ajax('PUT', '/api/asset/' + assetId + '/rating', {target:'#rating', swap:'innerHTML', values:{rating: parseInt(e.key)}});
+            return;
+        }
+
+        // Letter label shortcuts
+        if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+            var lower = e.key.toLowerCase();
+            if (labelLetterMap[lower]) {
+                htmx.ajax('PUT', '/api/asset/' + assetId + '/label', {target:'#label', swap:'innerHTML', values:{label: labelLetterMap[lower]}});
+                return;
+            }
+            if (lower === 'x') {
+                htmx.ajax('PUT', '/api/asset/' + assetId + '/label', {target:'#label', swap:'innerHTML', values:{label: ''}});
+                return;
+            }
+        }
+    });
+
+    if (window.damHelp) {
+        damHelp.registerShortcuts([
+            { title: 'Navigation', shortcuts: [
+                { keys: '\u2190 \u2192', desc: 'Previous / next asset' },
+                { keys: 'Escape', desc: 'Go back to browse' }
+            ]},
+            { title: 'Rating', shortcuts: [
+                { keys: '1 \u2013 5', desc: 'Set rating' },
+                { keys: '0', desc: 'Clear rating' }
+            ]},
+            { title: 'Color Label', shortcuts: [
+                { keys: 'Alt+1\u20137', desc: 'Set label by number' },
+                { keys: 'r, o, y, g, b, p, u', desc: 'Set label by color initial' },
+                { keys: 'x, Alt+0', desc: 'Clear label' }
+            ]},
+            { title: 'General', shortcuts: [
+                { keys: '?', desc: 'Show this help' }
+            ]}
+        ]);
+    }
+})();
+</script>
 {% endblock %}

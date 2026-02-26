@@ -102,12 +102,12 @@
 
 <div class="results-grid">
     {% for card in cards %}
-    <div class="asset-card{% if card.stack_id.is_some() %} stacked{% endif %}" data-asset-id="{{ card.asset_id }}" data-preview="{{ card.preview_url }}" data-name="{{ card.display_name }}" data-type="{{ card.asset_type }}" data-format="{{ card.format }}" data-date="{{ card.date }}" data-rating="{{ card.rating.unwrap_or(0) }}" data-label="{{ card.color_label.as_deref().unwrap_or_default() }}" data-variants="{{ card.variant_count }}" data-stack="{{ card.stack_id.as_deref().unwrap_or_default() }}" style="{% if card.stack_id.is_some() %}--stack-color: {{ card.stack_id.as_deref().unwrap()|stack_color }};{% endif %}">
+    <div class="asset-card{% if card.stack_id.is_some() %} stacked{% endif %}" data-asset-id="{{ card.asset_id }}" data-preview="{{ card.preview_url }}" data-name="{{ card.display_name }}" data-type="{{ card.asset_type }}" data-format="{{ card.format }}" data-date="{{ card.date }}" data-rating="{{ card.rating.unwrap_or(0) }}" data-label="{{ card.color_label.as_deref().unwrap_or_default() }}" data-variants="{{ card.variant_count }}" data-stack="{{ card.stack_id.as_deref().unwrap_or_default() }}" data-prev="{{ card.prev_id.as_deref().unwrap_or_default() }}" data-next="{{ card.next_id.as_deref().unwrap_or_default() }}" style="{% if card.stack_id.is_some() %}--stack-color: {{ card.stack_id.as_deref().unwrap()|stack_color }};{% endif %}">
         <label class="select-checkbox" onclick="event.stopPropagation()">
             <input type="checkbox" class="asset-select-cb" value="{{ card.asset_id }}">
             <span class="checkmark"></span>
         </label>
-        <a href="/asset/{{ card.asset_id }}">
+        <a href="{{ card.detail_url() }}">
             <img class="thumb"
                  src="{{ card.preview_url }}"
                  alt="{{ card.display_name }}"
