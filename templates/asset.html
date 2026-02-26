@@ -320,6 +320,11 @@
                 htmx.ajax('PUT', '/api/asset/' + assetId + '/label', {target:'#label', swap:'innerHTML', values:{label: ''}});
                 return;
             }
+            if (lower === 'l') {
+                sessionStorage.setItem('dam-lightbox-asset', assetId);
+                backNav.click();
+                return;
+            }
         }
     });
 
@@ -327,6 +332,7 @@
         damHelp.registerShortcuts([
             { title: 'Navigation', shortcuts: [
                 { keys: '\u2190 \u2192', desc: 'Previous / next asset' },
+                { keys: 'l', desc: 'Open in lightbox' },
                 { keys: 'Escape', desc: 'Go back to browse' }
             ]},
             { title: 'Rating', shortcuts: [

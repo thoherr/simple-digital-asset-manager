@@ -1385,6 +1385,12 @@
             toggleInfo();
             return;
         }
+        if (e.key === 'd' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            detailLink.click();
+            return;
+        }
 
         // Alt/Option+0-7: label (use e.code for macOS compatibility)
         if (e.altKey && e.code >= 'Digit0' && e.code <= 'Digit7') {
@@ -1424,6 +1430,19 @@
         open: open,
         close: close
     };
+
+    // Auto-open lightbox if returning from detail page via "l" key
+    var lbAsset = sessionStorage.getItem('dam-lightbox-asset');
+    if (lbAsset) {
+        sessionStorage.removeItem('dam-lightbox-asset');
+        var initCards = getCards();
+        for (var ci = 0; ci < initCards.length; ci++) {
+            if (initCards[ci].getAttribute('data-asset-id') === lbAsset) {
+                open(ci);
+                break;
+            }
+        }
+    }
 })();
 
 // --- Keyboard navigation ---
@@ -1894,6 +1913,7 @@ if (window.damHelp) {
         { title: 'Lightbox', shortcuts: [
             { keys: '\u2190 \u2192', desc: 'Previous / next' },
             { keys: 'i', desc: 'Toggle info panel' },
+            { keys: 'd', desc: 'Open detail page' },
             { keys: 'Escape', desc: 'Close lightbox' }
         ]},
         { title: 'General', shortcuts: [
