@@ -1838,16 +1838,17 @@ impl Catalog {
                         // Convert user-facing form to storage form for matching:
                         // `/` → `|` (hierarchy), `\/` → `/` (literal)
                         let stored = crate::tag_util::tag_input_to_storage(t);
-                        if stored.contains('/') {
-                            // Tag has literal slashes — also try matching as-is
-                            // in case the stored form wasn't converted yet
+                        if t != stored {
+                            // Conversion changed the input — match both forms.
+                            // Handles hierarchy (`animals/birds` → `animals|birds`)
+                            // and literal slash tags (`f\/1.4` → `f/1.4`).
+                            // Raw fallback catches tags with literal `/` that were
+                            // stored before the `|` convention (e.g. `f/1.4`).
                             clauses.push(
                                 "(a.tags LIKE ? OR a.tags LIKE ? OR a.tags LIKE ?)".to_string(),
                             );
                             params.push(Box::new(format!("%\"{stored}\"%")));
                             params.push(Box::new(format!("%\"{stored}|%")));
-                            // Fallback: match the raw input form (for tags with
-                            // literal `/` entered before the escape convention)
                             params.push(Box::new(format!("%\"{t}\"%")));
                         } else {
                             // Match exact tag OR hierarchical children (e.g. tag:animals
@@ -3247,6 +3248,42 @@ mod tests {
         // Search tag:animals should match both
         let results = catalog.search_assets(None, None, Some("animals"), None, None, None).unwrap();
         assert_eq!(results.len(), 2, "tag:animals should match both 'animals' and 'animals|birds|eagles'");
+    }
+
+    #[test]
+    fn search_by_tag_literal_slash() {
+        // Tags like "AF Nikkor 85mm f/1.4 D" contain literal `/` — not hierarchy.
+        // Searching `tag:AF Nikkor 85mm f/1.4` should match via the raw fallback.
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:slash1");
+        asset.tags = vec!["AF Nikkor 85mm f/1.4 D".to_string()];
+        let variant = crate::models::Variant {
+            content_hash: "sha256:slash1".to_string(),
+            asset_id: asset.id.clone(),
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 1000,
+            original_filename: "portrait.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        asset.variants.push(variant.clone());
+        catalog.insert_asset(&asset).unwrap();
+        catalog.insert_variant(&variant).unwrap();
+
+        // Exact search should match via raw fallback (since `/` gets converted to `|`)
+        let results = catalog
+            .search_assets(None, None, Some("AF Nikkor 85mm f/1.4 D"), None, None, None)
+            .unwrap();
+        assert_eq!(results.len(), 1, "tag with literal slash should be found");
+
+        // Non-matching tag should not match
+        let results = catalog
+            .search_assets(None, None, Some("AF Nikkor 85mm f/2.8"), None, None, None)
+            .unwrap();
+        assert!(results.is_empty(), "wrong tag should not match");
     }
 
     #[test]

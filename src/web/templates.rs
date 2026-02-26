@@ -420,8 +420,9 @@ mod filters {
     }
 
     /// Convert tag from storage form (`|` separator) to display form (`/` separator).
+    /// Uses simple replacement (no `\/` escaping) since web display is read-only.
     pub fn tag_display(tag: &str) -> ::askama::Result<String> {
-        Ok(crate::tag_util::tag_storage_to_display(tag))
+        Ok(tag.replace('|', "/"))
     }
 
     pub fn label_color(name: &str) -> ::askama::Result<String> {
