@@ -1094,32 +1094,46 @@ impl QueryEngine {
                 continue;
             }
 
-            match xmp_reader::update_tags(&full_path, tags_to_add, tags_to_remove) {
-                Ok(true) => {
-                    match content_store.hash_file(&full_path) {
-                        Ok(new_hash) => {
-                            if let Err(e) = catalog.update_recipe_content_hash(
-                                &recipe.id.to_string(),
-                                &new_hash,
-                            ) {
-                                eprintln!(
-                                    "Warning: could not update recipe hash in catalog: {e}"
-                                );
-                            }
-                            recipe.content_hash = new_hash;
-                            sidecar_dirty = true;
-                        }
-                        Err(e) => {
-                            eprintln!("Warning: could not re-hash XMP file: {e}");
-                        }
-                    }
-                }
-                Ok(false) => {}
+            let changed_dc = match xmp_reader::update_tags(&full_path, tags_to_add, tags_to_remove)
+            {
+                Ok(c) => c,
                 Err(e) => {
                     eprintln!(
                         "Warning: could not write tags to {}: {e}",
                         full_path.display()
                     );
+                    false
+                }
+            };
+            let changed_lr =
+                match xmp_reader::update_hierarchical_subjects(&full_path, tags_to_add, tags_to_remove)
+                {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: could not write hierarchical subjects to {}: {e}",
+                            full_path.display()
+                        );
+                        false
+                    }
+                };
+            if changed_dc || changed_lr {
+                match content_store.hash_file(&full_path) {
+                    Ok(new_hash) => {
+                        if let Err(e) = catalog.update_recipe_content_hash(
+                            &recipe.id.to_string(),
+                            &new_hash,
+                        ) {
+                            eprintln!(
+                                "Warning: could not update recipe hash in catalog: {e}"
+                            );
+                        }
+                        recipe.content_hash = new_hash;
+                        sidecar_dirty = true;
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: could not re-hash XMP file: {e}");
+                    }
                 }
             }
         }

@@ -4040,8 +4040,51 @@ fn compute_prefixes(paths: &[PathBuf], mount_point: &Path) -> Vec<String> {
 /// - Keywords merge into `asset.tags` (deduplicated)
 /// - Description sets `asset.description` if not already set
 /// - source_metadata merges into the variant (EXIF takes precedence via `or_insert`)
+/// Merge flat `dc:subject` keywords with hierarchical `lr:hierarchicalSubject` keywords.
+///
+/// Hierarchical tags (containing `/`) take priority. Flat keywords that are components
+/// of any hierarchical tag are suppressed (e.g., `birds` is suppressed when
+/// `animals/birds/eagles` exists). Non-component flat keywords are kept as-is.
+fn merge_hierarchical_keywords(
+    flat_keywords: &[String],
+    hierarchical_keywords: &[String],
+) -> Vec<String> {
+    use std::collections::HashSet;
+
+    if hierarchical_keywords.is_empty() {
+        return flat_keywords.to_vec();
+    }
+
+    // Collect all individual components from hierarchical tags
+    let components: HashSet<&str> = hierarchical_keywords
+        .iter()
+        .flat_map(|h| h.split('/'))
+        .collect();
+
+    let mut result: Vec<String> = Vec::new();
+    let mut seen: HashSet<&str> = HashSet::new();
+
+    // Add hierarchical tags first
+    for h in hierarchical_keywords {
+        if seen.insert(h.as_str()) {
+            result.push(h.clone());
+        }
+    }
+
+    // Add flat keywords that are NOT components of any hierarchical tag
+    for kw in flat_keywords {
+        if !components.contains(kw.as_str()) && !seen.contains(kw.as_str()) {
+            seen.insert(kw.as_str());
+            result.push(kw.clone());
+        }
+    }
+
+    result
+}
+
 fn apply_xmp_data(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, variant_hash: &str) {
-    for kw in &xmp.keywords {
+    let merged = merge_hierarchical_keywords(&xmp.keywords, &xmp.hierarchical_keywords);
+    for kw in &merged {
         if !asset.tags.contains(kw) {
             asset.tags.push(kw.clone());
         }
@@ -4085,7 +4128,8 @@ fn apply_xmp_data(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, variant_h
 /// - Description: overwrite (user explicitly edited the XMP)
 /// - source_metadata: overwrite XMP-sourced keys (rating, label, creator, copyright)
 fn reapply_xmp_data(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, variant_hash: &str) {
-    for kw in &xmp.keywords {
+    let merged = merge_hierarchical_keywords(&xmp.keywords, &xmp.hierarchical_keywords);
+    for kw in &merged {
         if !asset.tags.contains(kw) {
             asset.tags.push(kw.clone());
         }
@@ -4455,6 +4499,7 @@ mod tests {
 
         let xmp = crate::xmp_reader::XmpData {
             keywords: vec!["new_tag".to_string(), "existing_tag".to_string()],
+            hierarchical_keywords: vec![],
             description: Some("new description".to_string()),
             source_metadata: {
                 let mut m = std::collections::HashMap::new();
@@ -5761,5 +5806,59 @@ mod tests {
         let result = service.fix_dates(None, None, false, |_, _, _| {}).unwrap();
         assert_eq!(result.already_correct, 1);
         assert_eq!(result.fixed, 0);
+    }
+
+    #[test]
+    fn merge_hierarchical_deduplicates_components() {
+        let flat = vec![
+            "animals".to_string(),
+            "birds".to_string(),
+            "eagles".to_string(),
+            "sunset".to_string(),
+        ];
+        let hier = vec!["animals/birds/eagles".to_string()];
+        let result = merge_hierarchical_keywords(&flat, &hier);
+        assert_eq!(result, vec!["animals/birds/eagles", "sunset"]);
+    }
+
+    #[test]
+    fn merge_hierarchical_empty_hierarchical() {
+        let flat = vec!["landscape".to_string(), "sunset".to_string()];
+        let hier: Vec<String> = vec![];
+        let result = merge_hierarchical_keywords(&flat, &hier);
+        assert_eq!(result, vec!["landscape", "sunset"]);
+    }
+
+    #[test]
+    fn merge_hierarchical_multiple_hierarchies() {
+        let flat = vec![
+            "animals".to_string(),
+            "birds".to_string(),
+            "nature".to_string(),
+            "sky".to_string(),
+            "sunset".to_string(),
+            "portrait".to_string(),
+        ];
+        let hier = vec![
+            "animals/birds/eagles".to_string(),
+            "nature/sky/sunset".to_string(),
+        ];
+        let result = merge_hierarchical_keywords(&flat, &hier);
+        assert_eq!(
+            result,
+            vec![
+                "animals/birds/eagles",
+                "nature/sky/sunset",
+                "portrait",
+            ]
+        );
+    }
+
+    #[test]
+    fn merge_hierarchical_no_flat_overlap() {
+        let flat = vec!["portrait".to_string(), "studio".to_string()];
+        let hier = vec!["animals/birds".to_string()];
+        let result = merge_hierarchical_keywords(&flat, &hier);
+        assert_eq!(result, vec!["animals/birds", "portrait", "studio"]);
     }
 }

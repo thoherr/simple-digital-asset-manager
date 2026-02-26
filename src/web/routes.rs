@@ -15,7 +15,7 @@ use super::templates::{
     format_size, AssetCard, AssetPage, BackupPage, BrowsePage, CollectionOption,
     DescriptionFragment, FormatOption, LabelFragment, NameFragment, PreviewFragment,
     RatingFragment, ResultsPartial, SavedSearchChip, SavedSearchEntry, SavedSearchesPage,
-    StatsPage, TagOption, TagPageEntry, TagsFragment, TagsPage, VolumeOption,
+    StatsPage, TagOption, TagTreeEntry, TagsFragment, TagsPage, VolumeOption,
 };
 use super::AppState;
 
@@ -353,6 +353,11 @@ pub struct TagForm {
     pub tags: String,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct RemoveTagQuery {
+    pub tag: String,
+}
+
 /// POST /api/asset/{id}/tags — add tags, return tags fragment.
 pub async fn add_tags(
     State(state): State<Arc<AppState>>,
@@ -387,12 +392,14 @@ pub async fn add_tags(
     }
 }
 
-/// DELETE /api/asset/{id}/tags/{tag} — remove tag, return tags fragment.
+/// DELETE /api/asset/{id}/tags?tag=... — remove tag, return tags fragment.
 pub async fn remove_tag(
     State(state): State<Arc<AppState>>,
-    Path((asset_id, tag)): Path<(String, String)>,
+    Path(asset_id): Path<String>,
+    Query(query): Query<RemoveTagQuery>,
 ) -> Response {
     let state = state.clone();
+    let tag = query.tag;
     let result = tokio::task::spawn_blocking(move || {
         let engine = state.query_engine();
         let result = engine.tag(&asset_id, &[tag], true)?;
@@ -457,6 +464,84 @@ pub async fn stats_api(State(state): State<Arc<AppState>>) -> Response {
     }
 }
 
+/// Build a tree of tag entries from a flat list of (name, count) pairs.
+/// Ensures ancestor paths exist and computes total counts including descendants.
+fn build_tag_tree(flat_tags: &[(String, u64)]) -> Vec<TagTreeEntry> {
+    use std::collections::BTreeMap;
+
+    // Collect own counts into a sorted map
+    let mut own_counts: BTreeMap<String, u64> = BTreeMap::new();
+    for (name, count) in flat_tags {
+        own_counts.insert(name.clone(), *count);
+    }
+
+    // Ensure ancestor paths exist (e.g. "animals/birds/eagles" creates "animals" and "animals/birds")
+    let names: Vec<String> = own_counts.keys().cloned().collect();
+    for name in &names {
+        if let Some(pos) = name.find('/') {
+            let mut prefix = String::new();
+            for part in name.split('/') {
+                if !prefix.is_empty() {
+                    prefix.push('/');
+                }
+                prefix.push_str(part);
+                if prefix != *name {
+                    own_counts.entry(prefix.clone()).or_insert(0);
+                }
+            }
+            // Also handle the full path just in case
+            let _ = pos;
+        }
+    }
+
+    // Compute total counts (own + all descendants)
+    let sorted_names: Vec<String> = own_counts.keys().cloned().collect();
+    let mut total_counts: BTreeMap<String, u64> = BTreeMap::new();
+    for name in &sorted_names {
+        let own = own_counts[name];
+        total_counts.insert(name.clone(), own);
+    }
+    // Accumulate child counts into parents
+    for name in sorted_names.iter().rev() {
+        let total = total_counts[name];
+        if let Some(slash_pos) = name.rfind('/') {
+            let parent = &name[..slash_pos];
+            if let Some(parent_total) = total_counts.get_mut(parent) {
+                *parent_total += total;
+            }
+        }
+    }
+
+    // Determine which entries have children
+    let mut has_children_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for name in &sorted_names {
+        if let Some(slash_pos) = name.rfind('/') {
+            has_children_set.insert(name[..slash_pos].to_string());
+        }
+    }
+
+    // Flatten to Vec with depth
+    sorted_names
+        .iter()
+        .map(|name| {
+            let depth = name.matches('/').count() as u32;
+            let display = name
+                .rsplit('/')
+                .next()
+                .unwrap_or(name)
+                .to_string();
+            TagTreeEntry {
+                name: name.clone(),
+                display,
+                depth,
+                own_count: own_counts[name],
+                total_count: total_counts[name],
+                has_children: has_children_set.contains(name.as_str()),
+            }
+        })
+        .collect()
+}
+
 /// GET /tags — tags HTML page.
 pub async fn tags_page(State(state): State<Arc<AppState>>) -> Response {
     let state = state.clone();
@@ -464,12 +549,9 @@ pub async fn tags_page(State(state): State<Arc<AppState>>) -> Response {
         let catalog = state.catalog()?;
         let tags = catalog.list_all_tags()?;
         let total_tags = tags.len() as u64;
-        let entries: Vec<TagPageEntry> = tags
-            .into_iter()
-            .map(|(name, count)| TagPageEntry { name, count })
-            .collect();
+        let tree = build_tag_tree(&tags);
         let tmpl = TagsPage {
-            tags: entries,
+            tags: tree,
             total_tags,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)

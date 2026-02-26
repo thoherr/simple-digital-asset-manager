@@ -1835,8 +1835,11 @@ impl Catalog {
                 for t in tag.split(',') {
                     let t = t.trim();
                     if !t.is_empty() {
-                        clauses.push("a.tags LIKE ?".to_string());
+                        // Match exact tag OR hierarchical children (e.g. tag:animals
+                        // matches "animals" and "animals/birds/eagles")
+                        clauses.push("(a.tags LIKE ? OR a.tags LIKE ?)".to_string());
                         params.push(Box::new(format!("%\"{t}\"%")));
+                        params.push(Box::new(format!("%\"{t}/%")));
                     }
                 }
             }
@@ -3166,6 +3169,94 @@ mod tests {
         let results = catalog.search_assets(None, None, Some("landscape"), None, None, None).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name.as_deref(), Some("sunset photo"));
+    }
+
+    #[test]
+    fn search_by_tag_hierarchical() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:hier1");
+        asset.tags = vec!["animals/birds/eagles".to_string(), "sunset".to_string()];
+        let variant = crate::models::Variant {
+            content_hash: "sha256:hier1".to_string(),
+            asset_id: asset.id.clone(),
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 1000,
+            original_filename: "eagle.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        asset.variants.push(variant.clone());
+        catalog.insert_asset(&asset).unwrap();
+        catalog.insert_variant(&variant).unwrap();
+
+        // Search for parent tag should find child
+        let results = catalog.search_assets(None, None, Some("animals"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:animals should match animals/birds/eagles");
+
+        // Search for intermediate tag
+        let results = catalog.search_assets(None, None, Some("animals/birds"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:animals/birds should match animals/birds/eagles");
+
+        // Search for exact tag
+        let results = catalog.search_assets(None, None, Some("animals/birds/eagles"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:animals/birds/eagles should match exactly");
+
+        // Search for non-matching parent
+        let results = catalog.search_assets(None, None, Some("cats"), None, None, None).unwrap();
+        assert!(results.is_empty(), "tag:cats should not match");
+
+        // Search for child when only parent is tagged — should NOT match
+        let mut asset2 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:hier2");
+        asset2.tags = vec!["animals".to_string()];
+        let variant2 = crate::models::Variant {
+            content_hash: "sha256:hier2".to_string(),
+            asset_id: asset2.id.clone(),
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 1000,
+            original_filename: "cat.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        asset2.variants.push(variant2.clone());
+        catalog.insert_asset(&asset2).unwrap();
+        catalog.insert_variant(&variant2).unwrap();
+
+        let results = catalog.search_assets(None, None, Some("animals/birds"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:animals/birds should not match plain 'animals'");
+
+        // Search tag:animals should match both
+        let results = catalog.search_assets(None, None, Some("animals"), None, None, None).unwrap();
+        assert_eq!(results.len(), 2, "tag:animals should match both 'animals' and 'animals/birds/eagles'");
+    }
+
+    #[test]
+    fn search_by_tag_no_false_positive_prefix() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:fp1");
+        asset.tags = vec!["other-animals".to_string()];
+        let variant = crate::models::Variant {
+            content_hash: "sha256:fp1".to_string(),
+            asset_id: asset.id.clone(),
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 1000,
+            original_filename: "other.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        asset.variants.push(variant.clone());
+        catalog.insert_asset(&asset).unwrap();
+        catalog.insert_variant(&variant).unwrap();
+
+        // "animals" should NOT match "other-animals"
+        let results = catalog.search_assets(None, None, Some("animals"), None, None, None).unwrap();
+        assert!(results.is_empty(), "tag:animals should not match other-animals");
     }
 
     #[test]

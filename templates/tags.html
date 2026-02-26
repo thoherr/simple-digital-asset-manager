@@ -11,19 +11,32 @@
 <input type="text" id="tag-search" class="tag-search-input" placeholder="Filter tags…">
 
 <div class="tag-list-header">
-    <span class="tag-col-name sortable" data-sort="name" data-dir="asc">
-        Tag <span class="sort-arrow"></span>
+    <span class="tag-col-name sortable active" data-sort="name" data-dir="asc">
+        Tag <span class="sort-arrow">▲</span>
     </span>
-    <span class="tag-col-count sortable active" data-sort="count" data-dir="desc">
-        Assets <span class="sort-arrow">▼</span>
+    <span class="tag-col-count sortable" data-sort="count" data-dir="desc">
+        Assets <span class="sort-arrow"></span>
     </span>
 </div>
 
-<div id="tag-list" class="tag-list-columns">
+<div id="tag-list" class="tag-list-tree">
     {% for t in tags %}
-    <div class="tag-entry" data-name="{{ t.name }}" data-count="{{ t.count }}">
-        <a href="/?tag={{ t.name }}">{{ t.name }}</a>
-        <span class="tag-count">{{ t.count }}</span>
+    <div class="tag-entry{% if t.has_children %} tag-parent{% endif %}" data-name="{{ t.name }}" data-count="{{ t.total_count }}" data-own-count="{{ t.own_count }}" data-depth="{{ t.depth }}">
+        <div class="tag-name-col" style="padding-left: {{ t.depth * 20 }}px;">
+            {% if t.has_children %}
+            <span class="tag-toggle" onclick="toggleTagChildren(this)" data-name="{{ t.name }}">▾</span>
+            {% else %}
+            <span class="tag-toggle-spacer"></span>
+            {% endif %}
+            <a href="/?tag={{ t.name|urlencode }}">{{ t.display }}</a>
+        </div>
+        <span class="tag-count">
+            {% if t.own_count != t.total_count %}
+            {{ t.own_count }} <span class="tag-total-count">({{ t.total_count }})</span>
+            {% else %}
+            {{ t.own_count }}
+            {% endif %}
+        </span>
     </div>
     {% endfor %}
 </div>
@@ -35,6 +48,37 @@
     var searchInput = document.getElementById('tag-search');
     var countSpan = document.getElementById('tag-count');
     var totalTags = {{ total_tags }};
+
+    // Toggle children visibility
+    window.toggleTagChildren = function(el) {
+        var parentName = el.getAttribute('data-name');
+        var collapsed = el.textContent.trim() === '▸';
+        el.textContent = collapsed ? '▾' : '▸';
+
+        var entries = list.querySelectorAll('.tag-entry');
+        for (var i = 0; i < entries.length; i++) {
+            var name = entries[i].getAttribute('data-name');
+            // Child entries start with parentName + '/'
+            if (name.indexOf(parentName + '/') === 0) {
+                if (collapsed) {
+                    entries[i].classList.remove('tag-collapsed');
+                    // Restore nested toggles — if a nested parent was collapsed, keep its children hidden
+                    var nestedToggle = entries[i].querySelector('.tag-toggle');
+                    if (nestedToggle && nestedToggle.textContent.trim() === '▸') {
+                        // Re-hide children of this collapsed nested parent
+                        var nestedName = nestedToggle.getAttribute('data-name');
+                        for (var j = 0; j < entries.length; j++) {
+                            if (entries[j].getAttribute('data-name').indexOf(nestedName + '/') === 0) {
+                                entries[j].classList.add('tag-collapsed');
+                            }
+                        }
+                    }
+                } else {
+                    entries[i].classList.add('tag-collapsed');
+                }
+            }
+        }
+    };
 
     function sortTags(field, dir) {
         var entries = Array.from(list.querySelectorAll('.tag-entry'));
@@ -61,14 +105,12 @@
         header.addEventListener('click', function() {
             var sort = this.getAttribute('data-sort');
             var dir = this.getAttribute('data-dir');
-            // If already active, toggle direction; otherwise activate with default
             if (this.classList.contains('active')) {
                 dir = dir === 'asc' ? 'desc' : 'asc';
             } else {
                 dir = sort === 'name' ? 'asc' : 'desc';
             }
             this.setAttribute('data-dir', dir);
-            // Update active state
             headers.forEach(function(h) {
                 h.classList.remove('active');
                 h.querySelector('.sort-arrow').textContent = '';
@@ -83,9 +125,25 @@
         var entries = list.querySelectorAll('.tag-entry');
         var q = query.toLowerCase();
         var shown = 0;
+        // Build set of ancestor paths to show when a descendant matches
+        var ancestorsToShow = {};
+        if (q.length >= 2) {
+            for (var i = 0; i < entries.length; i++) {
+                var name = entries[i].getAttribute('data-name');
+                if (name.toLowerCase().indexOf(q) !== -1) {
+                    // Show all ancestors of matching entries
+                    var parts = name.split('/');
+                    var path = '';
+                    for (var p = 0; p < parts.length - 1; p++) {
+                        path = path ? path + '/' + parts[p] : parts[p];
+                        ancestorsToShow[path] = true;
+                    }
+                }
+            }
+        }
         for (var i = 0; i < entries.length; i++) {
             var name = entries[i].getAttribute('data-name').toLowerCase();
-            if (q.length < 2 || name.indexOf(q) !== -1) {
+            if (q.length < 2 || name.indexOf(q) !== -1 || ancestorsToShow[entries[i].getAttribute('data-name')]) {
                 entries[i].classList.remove('hidden');
                 shown++;
             } else {

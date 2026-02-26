@@ -160,7 +160,7 @@ fn build_router(state: Arc<AppState>) -> Router {
             axum::routing::post(routes::add_tags),
         )
         .route(
-            "/api/asset/{id}/tags/{tag}",
+            "/api/asset/{id}/tags",
             axum::routing::delete(routes::remove_tag),
         )
         .route(

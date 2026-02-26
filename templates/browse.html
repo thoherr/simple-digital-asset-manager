@@ -289,7 +289,15 @@
         matches.forEach(function(t) {
             var div = document.createElement('div');
             div.className = 'tag-suggestion';
-            div.textContent = t;
+            var parts = t.split('/');
+            if (parts.length > 1) {
+                var prefix = parts.slice(0, -1).join('/') + '/';
+                div.innerHTML = '<span class="tag-path-prefix">' +
+                    prefix.replace(/&/g,'&amp;').replace(/</g,'&lt;') +
+                    '</span>' + parts[parts.length - 1].replace(/&/g,'&amp;').replace(/</g,'&lt;');
+            } else {
+                div.textContent = t;
+            }
             div.onmousedown = function(e) {
                 e.preventDefault();
                 addTagAndSearch(t);

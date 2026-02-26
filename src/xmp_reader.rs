@@ -10,6 +10,8 @@ use regex::Regex;
 pub struct XmpData {
     /// Keywords from `dc:subject`.
     pub keywords: Vec<String>,
+    /// Hierarchical keywords from `lr:hierarchicalSubject` (pipe-separated in XMP, stored with `/`).
+    pub hierarchical_keywords: Vec<String>,
     /// Description from `dc:description`.
     pub description: Option<String>,
     /// Additional metadata: rating, label, creator, copyright.
@@ -20,6 +22,7 @@ impl XmpData {
     pub(crate) fn empty() -> Self {
         Self {
             keywords: Vec::new(),
+            hierarchical_keywords: Vec::new(),
             description: None,
             source_metadata: HashMap::new(),
         }
@@ -31,6 +34,7 @@ impl XmpData {
 enum Context {
     None,
     SubjectBag,
+    HierarchicalBag,
     DescriptionAlt,
     CreatorContainer,
     RightsAlt,
@@ -253,6 +257,180 @@ fn update_tags_in_string(content: &str, tags_to_add: &[String], tags_to_remove: 
         }
         block.push_str(&format!(
             "{}</rdf:Bag>\n{}</dc:subject>\n{}</rdf:Description>",
+            bag_indent, indent, desc_indent
+        ));
+
+        return format!("{}{}{}", &content[..m.start()], block, &content[m.end()..]);
+    }
+
+    content
+}
+
+/// Update the `lr:hierarchicalSubject` keywords in an XMP file on disk.
+///
+/// Only processes hierarchical tags (containing `/`). Flat tags are ignored.
+/// Converts `/` to `|` for XMP storage format.
+/// Returns `Ok(true)` if the file was modified, `Ok(false)` if no change was needed.
+pub fn update_hierarchical_subjects(
+    path: &Path,
+    tags_to_add: &[String],
+    tags_to_remove: &[String],
+) -> Result<bool> {
+    // Filter to only hierarchical tags (containing '/')
+    let hier_add: Vec<String> = tags_to_add
+        .iter()
+        .filter(|t| t.contains('/'))
+        .map(|t| t.replace('/', "|"))
+        .collect();
+    let hier_remove: Vec<String> = tags_to_remove
+        .iter()
+        .filter(|t| t.contains('/'))
+        .map(|t| t.replace('/', "|"))
+        .collect();
+
+    if hier_add.is_empty() && hier_remove.is_empty() {
+        return Ok(false);
+    }
+
+    let content = std::fs::read_to_string(path)?;
+    let modified = update_hierarchical_in_string(&content, &hier_add, &hier_remove);
+    if modified == content {
+        return Ok(false);
+    }
+    std::fs::write(path, &modified)?;
+    Ok(true)
+}
+
+/// Apply hierarchical subject add/remove operations to an XMP string.
+/// Tags use pipe-separated format (e.g., `animals|birds|eagles`).
+fn update_hierarchical_in_string(
+    content: &str,
+    hier_to_add: &[String],
+    hier_to_remove: &[String],
+) -> String {
+    let remove_set: HashSet<&str> = hier_to_remove.iter().map(|s| s.as_str()).collect();
+
+    // Match existing lr:hierarchicalSubject block with rdf:Bag
+    let subject_re = Regex::new(
+        r"(?s)([ \t]*)<lr:hierarchicalSubject>\s*<rdf:Bag>(.*?)</rdf:Bag>\s*</lr:hierarchicalSubject>",
+    )
+    .unwrap();
+    let li_re = Regex::new(r"<rdf:li>([^<]*)</rdf:li>").unwrap();
+
+    if let Some(caps) = subject_re.captures(content) {
+        let full_match = caps.get(0).unwrap();
+        let indent = caps.get(1).unwrap().as_str();
+        let bag_content = caps.get(2).unwrap().as_str();
+
+        let mut tags: Vec<String> = li_re
+            .captures_iter(bag_content)
+            .map(|c| c.get(1).unwrap().as_str().to_string())
+            .collect();
+
+        tags.retain(|t| !remove_set.contains(t.as_str()));
+
+        for tag in hier_to_add {
+            if !tags.iter().any(|t| t == tag) {
+                tags.push(tag.clone());
+            }
+        }
+
+        if tags.is_empty() {
+            let start = full_match.start();
+            let end = full_match.end();
+            let trim_start = if content[..start].ends_with('\n') {
+                start - 1
+            } else {
+                start
+            };
+            return format!("{}{}", &content[..trim_start], &content[end..]);
+        }
+
+        let bag_indent = format!("{} ", indent);
+        let li_indent = format!("{}  ", indent);
+        let mut block = format!(
+            "{}<lr:hierarchicalSubject>\n{}<rdf:Bag>\n",
+            indent, bag_indent
+        );
+        for tag in &tags {
+            block.push_str(&format!("{}<rdf:li>{}</rdf:li>\n", li_indent, xml_escape(tag)));
+        }
+        block.push_str(&format!(
+            "{}</rdf:Bag>\n{}</lr:hierarchicalSubject>",
+            bag_indent, indent
+        ));
+
+        return format!(
+            "{}{}{}",
+            &content[..full_match.start()],
+            block,
+            &content[full_match.end()..]
+        );
+    }
+
+    // No existing lr:hierarchicalSubject — only proceed if we have tags to add
+    if hier_to_add.is_empty() {
+        return content.to_string();
+    }
+
+    // Ensure xmlns:lr namespace is declared
+    let mut content = content.to_string();
+    if !content.contains("xmlns:lr") {
+        let desc_re = Regex::new(r#"(<rdf:Description\b)"#).unwrap();
+        if desc_re.is_match(&content) {
+            content = desc_re
+                .replace(
+                    &content,
+                    r#"${1} xmlns:lr="http://ns.adobe.com/lightroom/1.0/""#,
+                )
+                .into_owned();
+        }
+    }
+
+    // Try to inject before </rdf:Description>
+    let close_re = Regex::new(r"([ \t]*)</rdf:Description>").unwrap();
+    if let Some(caps) = close_re.captures(&content) {
+        let m = caps.get(0).unwrap();
+        let desc_indent = caps.get(1).unwrap().as_str();
+        let indent = format!("{} ", desc_indent);
+        let bag_indent = format!("{}  ", desc_indent);
+        let li_indent = format!("{}   ", desc_indent);
+
+        let mut block = format!(
+            "{}<lr:hierarchicalSubject>\n{}<rdf:Bag>\n",
+            indent, bag_indent
+        );
+        for tag in hier_to_add {
+            block.push_str(&format!("{}<rdf:li>{}</rdf:li>\n", li_indent, xml_escape(tag)));
+        }
+        block.push_str(&format!(
+            "{}</rdf:Bag>\n{}</lr:hierarchicalSubject>\n",
+            bag_indent, indent
+        ));
+
+        return format!("{}{}{}", &content[..m.start()], block, &content[m.start()..]);
+    }
+
+    // Try self-closing rdf:Description
+    let self_close_re = Regex::new(r"(?s)([ \t]*)<rdf:Description\b([^>]*?)/>").unwrap();
+    if let Some(caps) = self_close_re.captures(&content) {
+        let m = caps.get(0).unwrap();
+        let desc_indent = caps.get(1).unwrap().as_str();
+        let attrs = caps.get(2).unwrap().as_str();
+        let indent = format!("{} ", desc_indent);
+        let bag_indent = format!("{}  ", desc_indent);
+        let li_indent = format!("{}   ", desc_indent);
+
+        let mut block = format!("{}<rdf:Description{}>\n", desc_indent, attrs);
+        block.push_str(&format!(
+            "{}<lr:hierarchicalSubject>\n{}<rdf:Bag>\n",
+            indent, bag_indent
+        ));
+        for tag in hier_to_add {
+            block.push_str(&format!("{}<rdf:li>{}</rdf:li>\n", li_indent, xml_escape(tag)));
+        }
+        block.push_str(&format!(
+            "{}</rdf:Bag>\n{}</lr:hierarchicalSubject>\n{}</rdf:Description>",
             bag_indent, indent, desc_indent
         ));
 
@@ -492,6 +670,10 @@ pub(crate) fn parse_xmp(xml: &str) -> XmpData {
                                     Context::SubjectBag => {
                                         data.keywords.push(text);
                                     }
+                                    Context::HierarchicalBag => {
+                                        let hierarchical = text.replace('|', "/");
+                                        data.hierarchical_keywords.push(hierarchical);
+                                    }
                                     Context::DescriptionAlt => {
                                         if data.description.is_none() {
                                             data.description = Some(text);
@@ -534,7 +716,7 @@ pub(crate) fn parse_xmp(xml: &str) -> XmpData {
                             text_buf.clear();
                         }
                     }
-                    b"subject" | b"description" | b"creator" | b"rights" => {
+                    b"subject" | b"hierarchicalSubject" | b"description" | b"creator" | b"rights" => {
                         context = Context::None;
                     }
                     _ => {}
@@ -581,6 +763,7 @@ fn handle_open_tag(
             }
         }
         b"subject" => *context = Context::SubjectBag,
+        b"hierarchicalSubject" => *context = Context::HierarchicalBag,
         b"description" => *context = Context::DescriptionAlt,
         b"creator" => *context = Context::CreatorContainer,
         b"rights" => *context = Context::RightsAlt,
@@ -746,6 +929,84 @@ mod tests {
         let data = parse_xmp(xmp);
         assert_eq!(data.source_metadata.get("rating").unwrap(), "2");
         assert_eq!(data.source_metadata.get("label").unwrap(), "Green");
+    }
+
+    // ── hierarchical subject tests ──────────────────────────
+
+    #[test]
+    fn parse_hierarchical_subject() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>animals</rdf:li>
+     <rdf:li>birds</rdf:li>
+     <rdf:li>eagles</rdf:li>
+     <rdf:li>sunset</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>animals|birds|eagles</rdf:li>
+     <rdf:li>nature|sky|sunset</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let data = parse_xmp(xmp);
+        assert_eq!(data.keywords, vec!["animals", "birds", "eagles", "sunset"]);
+        assert_eq!(
+            data.hierarchical_keywords,
+            vec!["animals/birds/eagles", "nature/sky/sunset"]
+        );
+    }
+
+    #[test]
+    fn parse_hierarchical_subject_single_level() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/">
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>landscape</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let data = parse_xmp(xmp);
+        assert!(data.keywords.is_empty());
+        assert_eq!(data.hierarchical_keywords, vec!["landscape"]);
+    }
+
+    #[test]
+    fn parse_no_hierarchical_subject() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>landscape</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let data = parse_xmp(xmp);
+        assert_eq!(data.keywords, vec!["landscape"]);
+        assert!(data.hierarchical_keywords.is_empty());
     }
 
     // ── update_rating tests ──────────────────────────────────
@@ -1655,5 +1916,181 @@ mod tests {
         assert!(result.contains(r#"xmp:Label="Purple""#));
         assert!(result.contains(r#"xmp:Rating="4""#));
         assert!(result.contains("<rdf:li>landscape</rdf:li>"));
+    }
+
+    // ── update_hierarchical_subjects tests ──────────────────
+
+    #[test]
+    fn update_hierarchical_add_to_existing() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/">
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>animals|birds</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_hierarchical_in_string(
+            xmp,
+            &["nature|sky|sunset".to_string()],
+            &[],
+        );
+        assert!(result.contains("<rdf:li>animals|birds</rdf:li>"));
+        assert!(result.contains("<rdf:li>nature|sky|sunset</rdf:li>"));
+    }
+
+    #[test]
+    fn update_hierarchical_remove_from_existing() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/">
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>animals|birds|eagles</rdf:li>
+     <rdf:li>nature|sunset</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_hierarchical_in_string(
+            xmp,
+            &[],
+            &["animals|birds|eagles".to_string()],
+        );
+        assert!(!result.contains("animals|birds|eagles"));
+        assert!(result.contains("<rdf:li>nature|sunset</rdf:li>"));
+    }
+
+    #[test]
+    fn update_hierarchical_remove_all_removes_block() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/"
+    xmp:Rating="3">
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>animals|birds</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_hierarchical_in_string(
+            xmp,
+            &[],
+            &["animals|birds".to_string()],
+        );
+        assert!(!result.contains("lr:hierarchicalSubject"));
+        assert!(!result.contains("animals|birds"));
+        assert!(result.contains("xmp:Rating"));
+    }
+
+    #[test]
+    fn update_hierarchical_inject_when_missing() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmp:Rating="3">
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_hierarchical_in_string(
+            xmp,
+            &["animals|birds|eagles".to_string()],
+            &[],
+        );
+        assert!(result.contains("lr:hierarchicalSubject"));
+        assert!(result.contains("xmlns:lr"));
+        assert!(result.contains("<rdf:li>animals|birds|eagles</rdf:li>"));
+        assert!(result.contains("xmp:Rating"));
+    }
+
+    #[test]
+    fn update_hierarchical_subjects_filters_flat_tags() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.xmp");
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+        std::fs::write(&path, xmp).unwrap();
+
+        // Flat tags should be ignored
+        let modified = update_hierarchical_subjects(
+            &path,
+            &["landscape".to_string()],
+            &[],
+        )
+        .unwrap();
+        assert!(!modified, "flat tags should be ignored by update_hierarchical_subjects");
+
+        // Hierarchical tags should be written
+        let modified = update_hierarchical_subjects(
+            &path,
+            &["animals/birds/eagles".to_string()],
+            &[],
+        )
+        .unwrap();
+        assert!(modified);
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("animals|birds|eagles"));
+    }
+
+    #[test]
+    fn update_hierarchical_round_trip() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/">
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>animals|birds|eagles</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        // Parse it
+        let data = parse_xmp(xmp);
+        assert_eq!(data.hierarchical_keywords, vec!["animals/birds/eagles"]);
+
+        // Add a new hierarchical tag
+        let result = update_hierarchical_in_string(
+            xmp,
+            &["nature|sky|sunset".to_string()],
+            &[],
+        );
+        assert!(result.contains("<rdf:li>animals|birds|eagles</rdf:li>"));
+        assert!(result.contains("<rdf:li>nature|sky|sunset</rdf:li>"));
+
+        // Parse the result — should have both
+        let data2 = parse_xmp(&result);
+        assert_eq!(
+            data2.hierarchical_keywords,
+            vec!["animals/birds/eagles", "nature/sky/sunset"]
+        );
     }
 }

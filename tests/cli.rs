@@ -6433,3 +6433,194 @@ fn volume_combine_not_subdirectory_error() {
         .failure()
         .stderr(predicate::str::contains("not a subdirectory"));
 }
+
+// ── Hierarchical tag tests ──────────────────────────────
+
+#[test]
+fn tag_hierarchy_search() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "eagle.jpg", b"eagle data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "eagle"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let short_id = stdout.split_whitespace().next().unwrap();
+
+    // Add hierarchical tag
+    dam()
+        .current_dir(&root)
+        .args(["tag", short_id, "animals/birds/eagles"])
+        .assert()
+        .success();
+
+    // Search for parent tag should match
+    dam()
+        .current_dir(&root)
+        .args(["search", "tag:animals"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("eagle"));
+
+    // Search for intermediate tag should match
+    dam()
+        .current_dir(&root)
+        .args(["search", "tag:animals/birds"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("eagle"));
+
+    // Search for exact tag should match
+    dam()
+        .current_dir(&root)
+        .args(["search", "tag:animals/birds/eagles"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("eagle"));
+
+    // Search for unrelated tag should not match
+    dam()
+        .current_dir(&root)
+        .args(["search", "tag:cats"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No results"));
+}
+
+#[test]
+fn tag_hierarchy_add_remove() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "hawk.jpg", b"hawk data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "hawk"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let short_id = stdout.split_whitespace().next().unwrap();
+
+    // Add hierarchical tag
+    dam()
+        .current_dir(&root)
+        .args(["tag", short_id, "animals/birds/hawks"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("animals/birds/hawks"));
+
+    // Verify in show
+    dam()
+        .current_dir(&root)
+        .args(["show", short_id])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("animals/birds/hawks"));
+
+    // Remove hierarchical tag
+    dam()
+        .current_dir(&root)
+        .args(["tag", short_id, "--remove", "animals/birds/hawks"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Removed tags:"));
+
+    // Verify removal
+    dam()
+        .current_dir(&root)
+        .args(["show", short_id])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("animals/birds/hawks").not());
+}
+
+#[test]
+fn import_xmp_hierarchical_subject() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let photos = root.join("photos");
+    std::fs::create_dir_all(&photos).unwrap();
+    create_test_file(&photos, "DSC_200.nef", b"raw image for hier test");
+
+    let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="4">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>animals</rdf:li>
+     <rdf:li>birds</rdf:li>
+     <rdf:li>eagles</rdf:li>
+     <rdf:li>sunset</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>animals|birds|eagles</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+    create_test_file(&photos, "DSC_200.xmp", xmp.as_bytes());
+
+    dam()
+        .current_dir(&root)
+        .args(["import", photos.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "DSC_200"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let short_id = stdout.split_whitespace().next().expect("search returned an ID");
+
+    // Verify: flat components (animals, birds, eagles) should be deduplicated
+    // into the hierarchical tag, while "sunset" remains
+    let show_output = dam()
+        .current_dir(&root)
+        .args(["show", short_id])
+        .output()
+        .unwrap();
+    let show_stdout = String::from_utf8_lossy(&show_output.stdout);
+
+    assert!(
+        show_stdout.contains("animals/birds/eagles"),
+        "should contain hierarchical tag: {show_stdout}"
+    );
+    assert!(
+        show_stdout.contains("sunset"),
+        "should contain non-component flat tag: {show_stdout}"
+    );
+
+    // Hierarchical search should work
+    dam()
+        .current_dir(&root)
+        .args(["search", "tag:animals"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 result"));
+}

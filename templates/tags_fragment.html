@@ -3,7 +3,7 @@
     <span class="tag-chip">
         {{ t }}
         <button class="remove-tag"
-                hx-delete="/api/asset/{{ asset_id }}/tags/{{ t }}"
+                hx-delete="/api/asset/{{ asset_id }}/tags?tag={{ t|urlencode }}"
                 hx-target="#tags"
                 hx-swap="innerHTML">&times;</button>
     </span>

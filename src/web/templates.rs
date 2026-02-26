@@ -297,10 +297,19 @@ pub struct TagPageEntry {
     pub count: u64,
 }
 
+pub struct TagTreeEntry {
+    pub name: String,
+    pub display: String,
+    pub depth: u32,
+    pub own_count: u64,
+    pub total_count: u64,
+    pub has_children: bool,
+}
+
 #[derive(Template)]
 #[template(path = "tags.html")]
 pub struct TagsPage {
-    pub tags: Vec<TagPageEntry>,
+    pub tags: Vec<TagTreeEntry>,
     pub total_tags: u64,
 }
 
