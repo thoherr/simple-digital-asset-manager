@@ -12,5 +12,6 @@ pub mod models;
 pub mod preview;
 pub mod query;
 pub mod saved_search;
+pub mod tag_util;
 pub mod web;
 pub mod xmp_reader;

@@ -298,8 +298,9 @@ pub struct TagPageEntry {
 }
 
 pub struct TagTreeEntry {
-    pub name: String,
-    pub display: String,
+    pub name: String,         // Internal form with `|` for hierarchy (used in JS tree ops)
+    pub display_name: String, // User-facing form with `/` for hierarchy (used in URLs/links)
+    pub display: String,      // Leaf segment only
     pub depth: u32,
     pub own_count: u64,
     pub total_count: u64,
@@ -416,6 +417,11 @@ mod filters {
             "fill-good"
         }
         .to_string())
+    }
+
+    /// Convert tag from storage form (`|` separator) to display form (`/` separator).
+    pub fn tag_display(tag: &str) -> ::askama::Result<String> {
+        Ok(crate::tag_util::tag_storage_to_display(tag))
     }
 
     pub fn label_color(name: &str) -> ::askama::Result<String> {

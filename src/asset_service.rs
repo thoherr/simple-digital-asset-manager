@@ -4042,9 +4042,9 @@ fn compute_prefixes(paths: &[PathBuf], mount_point: &Path) -> Vec<String> {
 /// - source_metadata merges into the variant (EXIF takes precedence via `or_insert`)
 /// Merge flat `dc:subject` keywords with hierarchical `lr:hierarchicalSubject` keywords.
 ///
-/// Hierarchical tags (containing `/`) take priority. Flat keywords that are components
+/// Hierarchical tags use `|` as separator internally. Flat keywords that are components
 /// of any hierarchical tag are suppressed (e.g., `birds` is suppressed when
-/// `animals/birds/eagles` exists). Non-component flat keywords are kept as-is.
+/// `animals|birds|eagles` exists). Non-component flat keywords are kept as-is.
 fn merge_hierarchical_keywords(
     flat_keywords: &[String],
     hierarchical_keywords: &[String],
@@ -4055,10 +4055,10 @@ fn merge_hierarchical_keywords(
         return flat_keywords.to_vec();
     }
 
-    // Collect all individual components from hierarchical tags
+    // Collect all individual components from hierarchical tags (split on `|`)
     let components: HashSet<&str> = hierarchical_keywords
         .iter()
-        .flat_map(|h| h.split('/'))
+        .flat_map(|h| h.split('|'))
         .collect();
 
     let mut result: Vec<String> = Vec::new();
@@ -5816,9 +5816,9 @@ mod tests {
             "eagles".to_string(),
             "sunset".to_string(),
         ];
-        let hier = vec!["animals/birds/eagles".to_string()];
+        let hier = vec!["animals|birds|eagles".to_string()];
         let result = merge_hierarchical_keywords(&flat, &hier);
-        assert_eq!(result, vec!["animals/birds/eagles", "sunset"]);
+        assert_eq!(result, vec!["animals|birds|eagles", "sunset"]);
     }
 
     #[test]
@@ -5840,15 +5840,15 @@ mod tests {
             "portrait".to_string(),
         ];
         let hier = vec![
-            "animals/birds/eagles".to_string(),
-            "nature/sky/sunset".to_string(),
+            "animals|birds|eagles".to_string(),
+            "nature|sky|sunset".to_string(),
         ];
         let result = merge_hierarchical_keywords(&flat, &hier);
         assert_eq!(
             result,
             vec![
-                "animals/birds/eagles",
-                "nature/sky/sunset",
+                "animals|birds|eagles",
+                "nature|sky|sunset",
                 "portrait",
             ]
         );
@@ -5857,8 +5857,8 @@ mod tests {
     #[test]
     fn merge_hierarchical_no_flat_overlap() {
         let flat = vec!["portrait".to_string(), "studio".to_string()];
-        let hier = vec!["animals/birds".to_string()];
+        let hier = vec!["animals|birds".to_string()];
         let result = merge_hierarchical_keywords(&flat, &hier);
-        assert_eq!(result, vec!["animals/birds", "portrait", "studio"]);
+        assert_eq!(result, vec!["animals|birds", "portrait", "studio"]);
     }
 }

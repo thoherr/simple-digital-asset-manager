@@ -276,16 +276,16 @@ pub fn update_hierarchical_subjects(
     tags_to_add: &[String],
     tags_to_remove: &[String],
 ) -> Result<bool> {
-    // Filter to only hierarchical tags (containing '/')
+    // Filter to only hierarchical tags (containing `|` — the internal hierarchy separator)
     let hier_add: Vec<String> = tags_to_add
         .iter()
-        .filter(|t| t.contains('/'))
-        .map(|t| t.replace('/', "|"))
+        .filter(|t| t.contains('|'))
+        .cloned()
         .collect();
     let hier_remove: Vec<String> = tags_to_remove
         .iter()
-        .filter(|t| t.contains('/'))
-        .map(|t| t.replace('/', "|"))
+        .filter(|t| t.contains('|'))
+        .cloned()
         .collect();
 
     if hier_add.is_empty() && hier_remove.is_empty() {
@@ -671,8 +671,9 @@ pub(crate) fn parse_xmp(xml: &str) -> XmpData {
                                         data.keywords.push(text);
                                     }
                                     Context::HierarchicalBag => {
-                                        let hierarchical = text.replace('|', "/");
-                                        data.hierarchical_keywords.push(hierarchical);
+                                        // Keep pipe-separated form as-is — `|` is the
+                                        // internal hierarchy separator.
+                                        data.hierarchical_keywords.push(text);
                                     }
                                     Context::DescriptionAlt => {
                                         if data.description.is_none() {
@@ -963,7 +964,7 @@ mod tests {
         assert_eq!(data.keywords, vec!["animals", "birds", "eagles", "sunset"]);
         assert_eq!(
             data.hierarchical_keywords,
-            vec!["animals/birds/eagles", "nature/sky/sunset"]
+            vec!["animals|birds|eagles", "nature|sky|sunset"]
         );
     }
 
@@ -2044,10 +2045,10 @@ mod tests {
         .unwrap();
         assert!(!modified, "flat tags should be ignored by update_hierarchical_subjects");
 
-        // Hierarchical tags should be written
+        // Hierarchical tags (containing `|`) should be written
         let modified = update_hierarchical_subjects(
             &path,
-            &["animals/birds/eagles".to_string()],
+            &["animals|birds|eagles".to_string()],
             &[],
         )
         .unwrap();
@@ -2075,7 +2076,7 @@ mod tests {
 
         // Parse it
         let data = parse_xmp(xmp);
-        assert_eq!(data.hierarchical_keywords, vec!["animals/birds/eagles"]);
+        assert_eq!(data.hierarchical_keywords, vec!["animals|birds|eagles"]);
 
         // Add a new hierarchical tag
         let result = update_hierarchical_in_string(
@@ -2090,7 +2091,7 @@ mod tests {
         let data2 = parse_xmp(&result);
         assert_eq!(
             data2.hierarchical_keywords,
-            vec!["animals/birds/eagles", "nature/sky/sunset"]
+            vec!["animals|birds|eagles", "nature|sky|sunset"]
         );
     }
 }

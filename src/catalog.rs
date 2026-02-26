@@ -1835,11 +1835,27 @@ impl Catalog {
                 for t in tag.split(',') {
                     let t = t.trim();
                     if !t.is_empty() {
-                        // Match exact tag OR hierarchical children (e.g. tag:animals
-                        // matches "animals" and "animals/birds/eagles")
-                        clauses.push("(a.tags LIKE ? OR a.tags LIKE ?)".to_string());
-                        params.push(Box::new(format!("%\"{t}\"%")));
-                        params.push(Box::new(format!("%\"{t}/%")));
+                        // Convert user-facing form to storage form for matching:
+                        // `/` → `|` (hierarchy), `\/` → `/` (literal)
+                        let stored = crate::tag_util::tag_input_to_storage(t);
+                        if stored.contains('/') {
+                            // Tag has literal slashes — also try matching as-is
+                            // in case the stored form wasn't converted yet
+                            clauses.push(
+                                "(a.tags LIKE ? OR a.tags LIKE ? OR a.tags LIKE ?)".to_string(),
+                            );
+                            params.push(Box::new(format!("%\"{stored}\"%")));
+                            params.push(Box::new(format!("%\"{stored}|%")));
+                            // Fallback: match the raw input form (for tags with
+                            // literal `/` entered before the escape convention)
+                            params.push(Box::new(format!("%\"{t}\"%")));
+                        } else {
+                            // Match exact tag OR hierarchical children (e.g. tag:animals
+                            // matches "animals" and "animals|birds|eagles")
+                            clauses.push("(a.tags LIKE ? OR a.tags LIKE ?)".to_string());
+                            params.push(Box::new(format!("%\"{stored}\"%")));
+                            params.push(Box::new(format!("%\"{stored}|%")));
+                        }
                     }
                 }
             }
@@ -3177,7 +3193,7 @@ mod tests {
         catalog.initialize().unwrap();
 
         let mut asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:hier1");
-        asset.tags = vec!["animals/birds/eagles".to_string(), "sunset".to_string()];
+        asset.tags = vec!["animals|birds|eagles".to_string(), "sunset".to_string()];
         let variant = crate::models::Variant {
             content_hash: "sha256:hier1".to_string(),
             asset_id: asset.id.clone(),
@@ -3194,11 +3210,11 @@ mod tests {
 
         // Search for parent tag should find child
         let results = catalog.search_assets(None, None, Some("animals"), None, None, None).unwrap();
-        assert_eq!(results.len(), 1, "tag:animals should match animals/birds/eagles");
+        assert_eq!(results.len(), 1, "tag:animals should match animals|birds|eagles");
 
-        // Search for intermediate tag
+        // Search for intermediate tag (user types `/` which converts to `|` in build_search_where)
         let results = catalog.search_assets(None, None, Some("animals/birds"), None, None, None).unwrap();
-        assert_eq!(results.len(), 1, "tag:animals/birds should match animals/birds/eagles");
+        assert_eq!(results.len(), 1, "tag:animals/birds should match animals|birds|eagles");
 
         // Search for exact tag
         let results = catalog.search_assets(None, None, Some("animals/birds/eagles"), None, None, None).unwrap();
@@ -3230,7 +3246,7 @@ mod tests {
 
         // Search tag:animals should match both
         let results = catalog.search_assets(None, None, Some("animals"), None, None, None).unwrap();
-        assert_eq!(results.len(), 2, "tag:animals should match both 'animals' and 'animals/birds/eagles'");
+        assert_eq!(results.len(), 2, "tag:animals should match both 'animals' and 'animals|birds|eagles'");
     }
 
     #[test]

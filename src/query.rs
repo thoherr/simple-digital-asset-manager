@@ -1094,7 +1094,11 @@ impl QueryEngine {
                 continue;
             }
 
-            let changed_dc = match xmp_reader::update_tags(&full_path, tags_to_add, tags_to_remove)
+            // For dc:subject, convert `|` to `/` (display form for flat keyword list)
+            let dc_add: Vec<String> = tags_to_add.iter().map(|t| t.replace('|', "/")).collect();
+            let dc_remove: Vec<String> =
+                tags_to_remove.iter().map(|t| t.replace('|', "/")).collect();
+            let changed_dc = match xmp_reader::update_tags(&full_path, &dc_add, &dc_remove)
             {
                 Ok(c) => c,
                 Err(e) => {

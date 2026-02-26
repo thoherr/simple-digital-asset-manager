@@ -183,6 +183,10 @@
             });
     }
 
+    // Tag display helpers: storage form uses `|` for hierarchy, display uses `/`
+    function tagToDisplay(t) { return t.replace(/\|/g, '/'); }
+    function tagToStorage(t) { return t.replace(/\//g, '|'); }
+
     function getSelectedTags() {
         var chips = document.querySelectorAll('#tag-chips .tag-chip');
         var tags = [];
@@ -206,7 +210,7 @@
         var chip = document.createElement('span');
         chip.className = 'tag-chip';
         chip.setAttribute('data-tag', name);
-        chip.textContent = name;
+        chip.textContent = tagToDisplay(name);
 
         var btn = document.createElement('button');
         btn.type = 'button';
@@ -276,8 +280,11 @@
         var selected = getSelectedTags();
         query = query.toLowerCase();
 
+        // Match against both storage form (with |) and display form (with /)
+        var queryStorage = query.replace(/\//g, '|');
         var matches = allTags.filter(function(t) {
-            return t.toLowerCase().indexOf(query) !== -1 && selected.indexOf(t) === -1;
+            var tl = t.toLowerCase();
+            return (tl.indexOf(query) !== -1 || tl.indexOf(queryStorage) !== -1) && selected.indexOf(t) === -1;
         }).slice(0, 10);
 
         if (matches.length === 0) {
@@ -289,7 +296,7 @@
         matches.forEach(function(t) {
             var div = document.createElement('div');
             div.className = 'tag-suggestion';
-            var parts = t.split('/');
+            var parts = t.split('|');
             if (parts.length > 1) {
                 var prefix = parts.slice(0, -1).join('/') + '/';
                 div.innerHTML = '<span class="tag-path-prefix">' +

@@ -1205,7 +1205,10 @@ fn main() {
                 println!("Type:  {}", details.asset_type);
                 println!("Date:  {}", details.created_at);
                 if !details.tags.is_empty() {
-                    println!("Tags:  {}", details.tags.join(", "));
+                    let display_tags: Vec<String> = details.tags.iter()
+                        .map(|t| dam::tag_util::tag_storage_to_display(t))
+                        .collect();
+                    println!("Tags:  {}", display_tags.join(", "));
                 }
                 if let Some(rating) = details.rating {
                     let stars: String = (1..=5).map(|i| if i <= rating { '\u{2605}' } else { '\u{2606}' }).collect();
@@ -1272,7 +1275,12 @@ fn main() {
         Commands::Tag { asset_id, remove, tags } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let engine = QueryEngine::new(&catalog_root);
-            let result = engine.tag(&asset_id, &tags, remove)?;
+            // Convert user-facing tag input to storage form:
+            // `/` → `|` (hierarchy), `\/` → `/` (literal slash)
+            let storage_tags: Vec<String> = tags.iter()
+                .map(|t| dam::tag_util::tag_input_to_storage(t))
+                .collect();
+            let result = engine.tag(&asset_id, &storage_tags, remove)?;
 
             if cli.json {
                 println!("{}", serde_json::json!({
@@ -1280,17 +1288,24 @@ fn main() {
                     "tags": result.current_tags,
                 }));
             } else {
-                if !result.changed.is_empty() {
+                // Display tags with `/` for hierarchy, `\/` for literal slashes
+                let display_changed: Vec<String> = result.changed.iter()
+                    .map(|t| dam::tag_util::tag_storage_to_display(t))
+                    .collect();
+                let display_tags: Vec<String> = result.current_tags.iter()
+                    .map(|t| dam::tag_util::tag_storage_to_display(t))
+                    .collect();
+                if !display_changed.is_empty() {
                     if remove {
-                        println!("Removed tags: {}", result.changed.join(", "));
+                        println!("Removed tags: {}", display_changed.join(", "));
                     } else {
-                        println!("Added tags: {}", result.changed.join(", "));
+                        println!("Added tags: {}", display_changed.join(", "));
                     }
                 }
-                if result.current_tags.is_empty() {
+                if display_tags.is_empty() {
                     println!("Tags: (none)");
                 } else {
-                    println!("Tags: {}", result.current_tags.join(", "));
+                    println!("Tags: {}", display_tags.join(", "));
                 }
             }
             Ok(())

@@ -370,7 +370,7 @@ pub async fn add_tags(
         let tags: Vec<String> = form
             .tags
             .split(',')
-            .map(|t| t.trim().to_string())
+            .map(|t| crate::tag_util::tag_input_to_storage(t.trim()))
             .filter(|t| !t.is_empty())
             .collect();
         let result = engine.tag(&asset_id, &tags, false)?;
@@ -475,22 +475,20 @@ fn build_tag_tree(flat_tags: &[(String, u64)]) -> Vec<TagTreeEntry> {
         own_counts.insert(name.clone(), *count);
     }
 
-    // Ensure ancestor paths exist (e.g. "animals/birds/eagles" creates "animals" and "animals/birds")
+    // Ensure ancestor paths exist (e.g. "animals|birds|eagles" creates "animals" and "animals|birds")
     let names: Vec<String> = own_counts.keys().cloned().collect();
     for name in &names {
-        if let Some(pos) = name.find('/') {
+        if name.contains('|') {
             let mut prefix = String::new();
-            for part in name.split('/') {
+            for part in name.split('|') {
                 if !prefix.is_empty() {
-                    prefix.push('/');
+                    prefix.push('|');
                 }
                 prefix.push_str(part);
                 if prefix != *name {
                     own_counts.entry(prefix.clone()).or_insert(0);
                 }
             }
-            // Also handle the full path just in case
-            let _ = pos;
         }
     }
 
@@ -504,8 +502,8 @@ fn build_tag_tree(flat_tags: &[(String, u64)]) -> Vec<TagTreeEntry> {
     // Accumulate child counts into parents
     for name in sorted_names.iter().rev() {
         let total = total_counts[name];
-        if let Some(slash_pos) = name.rfind('/') {
-            let parent = &name[..slash_pos];
+        if let Some(pipe_pos) = name.rfind('|') {
+            let parent = &name[..pipe_pos];
             if let Some(parent_total) = total_counts.get_mut(parent) {
                 *parent_total += total;
             }
@@ -515,23 +513,25 @@ fn build_tag_tree(flat_tags: &[(String, u64)]) -> Vec<TagTreeEntry> {
     // Determine which entries have children
     let mut has_children_set: std::collections::HashSet<String> = std::collections::HashSet::new();
     for name in &sorted_names {
-        if let Some(slash_pos) = name.rfind('/') {
-            has_children_set.insert(name[..slash_pos].to_string());
+        if let Some(pipe_pos) = name.rfind('|') {
+            has_children_set.insert(name[..pipe_pos].to_string());
         }
     }
 
-    // Flatten to Vec with depth
+    // Flatten to Vec with depth; display uses `/` for hierarchy separator
     sorted_names
         .iter()
         .map(|name| {
-            let depth = name.matches('/').count() as u32;
+            let depth = name.matches('|').count() as u32;
             let display = name
-                .rsplit('/')
+                .rsplit('|')
                 .next()
                 .unwrap_or(name)
                 .to_string();
+            let display_name = name.replace('|', "/");
             TagTreeEntry {
                 name: name.clone(),
+                display_name,
                 display,
                 depth,
                 own_count: own_counts[name],
@@ -883,10 +883,14 @@ pub async fn batch_tags(
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
         let engine = state.query_engine();
+        // Convert user-facing tag input to storage form
+        let storage_tags: Vec<String> = req.tags.iter()
+            .map(|t| crate::tag_util::tag_input_to_storage(t))
+            .collect();
         let mut succeeded = 0u32;
         let mut errors = Vec::new();
         for id in &req.asset_ids {
-            match engine.tag(id, &req.tags, req.remove) {
+            match engine.tag(id, &storage_tags, req.remove) {
                 Ok(_) => succeeded += 1,
                 Err(e) => errors.push(BatchError {
                     asset_id: id.clone(),

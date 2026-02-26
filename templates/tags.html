@@ -28,7 +28,7 @@
             {% else %}
             <span class="tag-toggle-spacer"></span>
             {% endif %}
-            <a href="/?tag={{ t.name|urlencode }}">{{ t.display }}</a>
+            <a href="/?tag={{ t.display_name|urlencode }}">{{ t.display }}</a>
         </div>
         <span class="tag-count">
             {% if t.own_count != t.total_count %}
@@ -59,7 +59,7 @@
         for (var i = 0; i < entries.length; i++) {
             var name = entries[i].getAttribute('data-name');
             // Child entries start with parentName + '/'
-            if (name.indexOf(parentName + '/') === 0) {
+            if (name.indexOf(parentName + '|') === 0) {
                 if (collapsed) {
                     entries[i].classList.remove('tag-collapsed');
                     // Restore nested toggles — if a nested parent was collapsed, keep its children hidden
@@ -68,7 +68,7 @@
                         // Re-hide children of this collapsed nested parent
                         var nestedName = nestedToggle.getAttribute('data-name');
                         for (var j = 0; j < entries.length; j++) {
-                            if (entries[j].getAttribute('data-name').indexOf(nestedName + '/') === 0) {
+                            if (entries[j].getAttribute('data-name').indexOf(nestedName + '|') === 0) {
                                 entries[j].classList.add('tag-collapsed');
                             }
                         }
@@ -132,10 +132,10 @@
                 var name = entries[i].getAttribute('data-name');
                 if (name.toLowerCase().indexOf(q) !== -1) {
                     // Show all ancestors of matching entries
-                    var parts = name.split('/');
+                    var parts = name.split('|');
                     var path = '';
                     for (var p = 0; p < parts.length - 1; p++) {
-                        path = path ? path + '/' + parts[p] : parts[p];
+                        path = path ? path + '|' + parts[p] : parts[p];
                         ancestorsToShow[path] = true;
                     }
                 }
