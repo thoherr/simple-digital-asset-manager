@@ -155,6 +155,7 @@ impl AppState {
 
 fn build_router(state: Arc<AppState>) -> Router {
     let preview_dir = state.catalog_root.join("previews");
+    let smart_preview_dir = state.catalog_root.join("smart-previews");
 
     Router::new()
         .route("/", axum::routing::get(routes::browse_page))
@@ -262,6 +263,7 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/static/htmx.min.js", axum::routing::get(static_assets::htmx_js))
         .route("/static/style.css", axum::routing::get(static_assets::style_css))
         .nest_service("/preview", ServeDir::new(preview_dir))
+        .nest_service("/smart-preview", ServeDir::new(smart_preview_dir))
         .layer(axum::middleware::from_fn_with_state(state.clone(), log_request))
         .with_state(state)
 }

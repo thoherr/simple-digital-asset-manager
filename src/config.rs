@@ -37,6 +37,10 @@ pub struct PreviewConfig {
     pub format: PreviewFormat,
     #[serde(default = "default_quality")]
     pub quality: u8,
+    #[serde(default = "default_smart_max_edge")]
+    pub smart_max_edge: u32,
+    #[serde(default = "default_smart_quality")]
+    pub smart_quality: u8,
 }
 
 fn default_max_edge() -> u32 {
@@ -47,12 +51,22 @@ fn default_quality() -> u8 {
     85
 }
 
+fn default_smart_max_edge() -> u32 {
+    2560
+}
+
+fn default_smart_quality() -> u8 {
+    85
+}
+
 impl Default for PreviewConfig {
     fn default() -> Self {
         Self {
             max_edge: 800,
             format: PreviewFormat::Jpeg,
             quality: 85,
+            smart_max_edge: 2560,
+            smart_quality: 85,
         }
     }
 }
@@ -171,6 +185,12 @@ impl CatalogConfig {
         }
         if self.preview.quality == 0 || self.preview.quality > 100 {
             anyhow::bail!("preview.quality must be between 1 and 100");
+        }
+        if self.preview.smart_max_edge == 0 {
+            anyhow::bail!("preview.smart_max_edge must be greater than 0");
+        }
+        if self.preview.smart_quality == 0 || self.preview.smart_quality > 100 {
+            anyhow::bail!("preview.smart_quality must be between 1 and 100");
         }
         Ok(())
     }
@@ -324,6 +344,8 @@ max_edge = 1000
                 max_edge: 1200,
                 format: PreviewFormat::Webp,
                 quality: 90,
+                smart_max_edge: 3000,
+                smart_quality: 92,
             },
             serve: ServeConfig {
                 port: 9090,
@@ -379,6 +401,42 @@ max_edge = 1000
     }
 
     #[test]
+    fn validate_zero_smart_max_edge_errors() {
+        let config = CatalogConfig {
+            preview: PreviewConfig {
+                smart_max_edge: 0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn validate_zero_smart_quality_errors() {
+        let config = CatalogConfig {
+            preview: PreviewConfig {
+                smart_quality: 0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn validate_smart_quality_over_100_errors() {
+        let config = CatalogConfig {
+            preview: PreviewConfig {
+                smart_quality: 101,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
     fn validate_default_passes() {
         CatalogConfig::default().validate().unwrap();
     }
@@ -387,6 +445,31 @@ max_edge = 1000
     fn preview_format_extension() {
         assert_eq!(PreviewFormat::Jpeg.extension(), "jpg");
         assert_eq!(PreviewFormat::Webp.extension(), "webp");
+    }
+
+    #[test]
+    fn parse_smart_preview_config() {
+        let input = r#"
+[preview]
+smart_max_edge = 3000
+smart_quality = 92
+"#;
+        let config: CatalogConfig = toml::from_str(input).unwrap();
+        assert_eq!(config.preview.smart_max_edge, 3000);
+        assert_eq!(config.preview.smart_quality, 92);
+        assert_eq!(config.preview.max_edge, 800); // default
+        assert_eq!(config.preview.quality, 85); // default
+    }
+
+    #[test]
+    fn parse_smart_preview_defaults_when_missing() {
+        let input = r#"
+[preview]
+max_edge = 1000
+"#;
+        let config: CatalogConfig = toml::from_str(input).unwrap();
+        assert_eq!(config.preview.smart_max_edge, 2560); // default
+        assert_eq!(config.preview.smart_quality, 85); // default
     }
 
     #[test]
@@ -406,6 +489,8 @@ max_edge = 1000
                 max_edge: 1200,
                 format: PreviewFormat::Webp,
                 quality: 90,
+                smart_max_edge: 3000,
+                smart_quality: 92,
             },
             serve: ServeConfig::default(),
             import: ImportConfig {

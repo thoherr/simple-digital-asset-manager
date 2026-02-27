@@ -469,6 +469,10 @@ enum Commands {
         /// Regenerate previews for assets where a better variant (export/processed) exists
         #[arg(long, display_order = 21)]
         upgrade: bool,
+
+        /// Generate smart previews (high-resolution, 2560px) instead of thumbnails
+        #[arg(long, display_order = 22)]
+        smart: bool,
     },
 
     /// Fix variant roles (re-role non-RAW variants to Export in RAW+non-RAW groups)
@@ -2266,7 +2270,7 @@ fn main() {
             }
             Ok(())
         }
-        Commands::GeneratePreviews { paths, asset, volume, include, skip, force, upgrade } => {
+        Commands::GeneratePreviews { paths, asset, volume, include, skip, force, upgrade, smart } => {
             use dam::asset_service::FileTypeFilter;
 
             let catalog_root = dam::config::find_catalog_root()?;
@@ -2339,7 +2343,10 @@ fn main() {
                         &relative_path.to_string_lossy(),
                     )? {
                         let file_start = std::time::Instant::now();
-                        let result = if force {
+                        let result = if smart {
+                            if force { preview_gen.regenerate_smart(&content_hash, file_path, &format) }
+                            else { preview_gen.generate_smart(&content_hash, file_path, &format) }
+                        } else if force {
                             preview_gen.regenerate(&content_hash, file_path, &format)
                         } else {
                             preview_gen.generate(&content_hash, file_path, &format)
@@ -2421,7 +2428,10 @@ fn main() {
 
                         if let Some(path) = source_path {
                             let file_start = std::time::Instant::now();
-                            let result = if force || upgrade {
+                            let result = if smart {
+                                if force || upgrade { preview_gen.regenerate_smart(&variant.content_hash, &path, &variant.format) }
+                                else { preview_gen.generate_smart(&variant.content_hash, &path, &variant.format) }
+                            } else if force || upgrade {
                                 preview_gen.regenerate(&variant.content_hash, &path, &variant.format)
                             } else {
                                 preview_gen.generate(&variant.content_hash, &path, &variant.format)
@@ -2454,6 +2464,7 @@ fn main() {
                 }
             }
 
+            let preview_label = if smart { "smart preview(s)" } else { "preview(s)" };
             if cli.json {
                 let mut result = serde_json::json!({
                     "generated": generated,
@@ -2463,17 +2474,20 @@ fn main() {
                 if upgrade {
                     result["upgraded"] = serde_json::json!(upgraded);
                 }
+                if smart {
+                    result["smart"] = serde_json::json!(true);
+                }
                 println!("{result}");
             } else {
                 if upgrade && upgraded > 0 {
                     println!(
-                        "Generated {} preview(s) ({} upgraded), {} skipped, {} failed",
-                        generated, upgraded, skipped, failed
+                        "Generated {} {} ({} upgraded), {} skipped, {} failed",
+                        generated, preview_label, upgraded, skipped, failed
                     );
                 } else {
                     println!(
-                        "Generated {} preview(s), {} skipped, {} failed",
-                        generated, skipped, failed
+                        "Generated {} {}, {} skipped, {} failed",
+                        generated, preview_label, skipped, failed
                     );
                 }
             }

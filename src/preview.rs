@@ -38,20 +38,26 @@ const DOCUMENT_FORMATS: &[&str] = &[
 /// Creates and caches thumbnails for browsing.
 pub struct PreviewGenerator {
     preview_dir: PathBuf,
+    smart_dir: PathBuf,
     debug: bool,
     max_edge: u32,
     format: PreviewFormat,
     quality: u8,
+    smart_max_edge: u32,
+    smart_quality: u8,
 }
 
 impl PreviewGenerator {
     pub fn new(catalog_root: &Path, debug: bool, config: &PreviewConfig) -> Self {
         Self {
             preview_dir: catalog_root.join("previews"),
+            smart_dir: catalog_root.join("smart-previews"),
             debug,
             max_edge: config.max_edge,
             format: config.format.clone(),
             quality: config.quality,
+            smart_max_edge: config.smart_max_edge,
+            smart_quality: config.smart_quality,
         }
     }
 
@@ -99,6 +105,47 @@ impl PreviewGenerator {
         self.do_generate(content_hash, source_path, format)
     }
 
+    /// Return the path where a smart preview for this content hash would be stored.
+    pub fn smart_preview_path(&self, content_hash: &str) -> PathBuf {
+        let hex = content_hash.strip_prefix("sha256:").unwrap_or(content_hash);
+        let prefix = &hex[..2.min(hex.len())];
+        let ext = self.format.extension();
+        self.smart_dir.join(prefix).join(format!("{hex}.{ext}"))
+    }
+
+    /// Check if a smart preview already exists on disk.
+    pub fn has_smart_preview(&self, content_hash: &str) -> bool {
+        self.smart_preview_path(content_hash).exists()
+    }
+
+    /// Generate a smart preview (high-resolution) for a file.
+    pub fn generate_smart(
+        &self,
+        content_hash: &str,
+        source_path: &Path,
+        format: &str,
+    ) -> Result<Option<PathBuf>> {
+        let dest = self.smart_preview_path(content_hash);
+        if dest.exists() {
+            return Ok(Some(dest));
+        }
+        self.do_generate_to(&dest, source_path, format, self.smart_max_edge, self.smart_quality)
+    }
+
+    /// Like `generate_smart`, but forces regeneration.
+    pub fn regenerate_smart(
+        &self,
+        content_hash: &str,
+        source_path: &Path,
+        format: &str,
+    ) -> Result<Option<PathBuf>> {
+        let dest = self.smart_preview_path(content_hash);
+        if dest.exists() {
+            std::fs::remove_file(&dest).ok();
+        }
+        self.do_generate_to(&dest, source_path, format, self.smart_max_edge, self.smart_quality)
+    }
+
     fn do_generate(
         &self,
         _content_hash: &str,
@@ -106,37 +153,48 @@ impl PreviewGenerator {
         format: &str,
     ) -> Result<Option<PathBuf>> {
         let dest = self.preview_path(_content_hash);
+        self.do_generate_to(&dest, source_path, format, self.max_edge, self.quality)
+    }
+
+    fn do_generate_to(
+        &self,
+        dest: &Path,
+        source_path: &Path,
+        format: &str,
+        max_edge: u32,
+        quality: u8,
+    ) -> Result<Option<PathBuf>> {
         let fmt = format.to_lowercase();
 
         let result = match fmt.as_str() {
             // Standard image formats the `image` crate can decode
             "jpg" | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "tif" | "webp" | "ico" => {
-                self.generate_image(&dest, source_path)
+                self.generate_image(dest, source_path, max_edge, quality)
             }
             // RAW camera formats
             "raw" | "cr2" | "cr3" | "crw" | "nef" | "nrw" | "arw" | "sr2" | "srf"
             | "orf" | "rw2" | "dng" | "raf" | "pef" | "srw" | "mrw"
             | "3fr" | "fff" | "iiq" | "erf" | "kdc" | "dcr"
-            | "mef" | "mos" | "rwl" | "bay" | "x3f" => self.generate_raw(&dest, source_path),
+            | "mef" | "mos" | "rwl" | "bay" | "x3f" => self.generate_raw(dest, source_path, max_edge, quality),
             // Video formats
             "mp4" | "mov" | "avi" | "mkv" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg"
-            | "3gp" | "mts" | "m2ts" => self.generate_video(&dest, source_path),
+            | "3gp" | "mts" | "m2ts" => self.generate_video(dest, source_path, max_edge, quality),
             // Audio and everything else → info card
-            _ => return self.generate_info_card(&dest, source_path, &fmt),
+            _ => return self.generate_info_card(dest, source_path, &fmt, max_edge, quality),
         };
 
         match result {
-            Ok(()) => Ok(Some(dest)),
+            Ok(()) => Ok(Some(dest.to_path_buf())),
             Err(e) => {
                 // If the dest was partially written, clean up
-                std::fs::remove_file(&dest).ok();
+                std::fs::remove_file(dest).ok();
                 // Check if it's a missing-tool error — fall back to info card
                 let msg = e.to_string();
                 if msg.contains("not found")
                     || msg.contains("No such file")
                     || msg.contains("does not contain any stream")
                 {
-                    self.generate_info_card(&dest, source_path, &fmt)
+                    self.generate_info_card(dest, source_path, &fmt, max_edge, quality)
                 } else {
                     Err(e)
                 }
@@ -144,14 +202,14 @@ impl PreviewGenerator {
         }
     }
 
-    /// Save a preview image using the configured format and quality.
-    fn save_preview(&self, img: &image::DynamicImage, dest: &Path) -> Result<()> {
+    /// Save a preview image using the configured format and given quality.
+    fn save_preview(&self, img: &image::DynamicImage, dest: &Path, quality: u8) -> Result<()> {
         let file = std::fs::File::create(dest)
             .with_context(|| format!("Failed to create preview file {}", dest.display()))?;
         let writer = BufWriter::new(file);
         match self.format {
             PreviewFormat::Jpeg => {
-                let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(writer, self.quality);
+                let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(writer, quality);
                 img.write_with_encoder(encoder)
                     .with_context(|| format!("Failed to save preview to {}", dest.display()))?;
             }
@@ -165,18 +223,18 @@ impl PreviewGenerator {
     }
 
     /// Generate preview from a standard image format using the `image` crate.
-    fn generate_image(&self, dest: &Path, source: &Path) -> Result<()> {
+    fn generate_image(&self, dest: &Path, source: &Path, max_edge: u32, quality: u8) -> Result<()> {
         let img = image::open(source)
             .with_context(|| format!("Failed to open image {}", source.display()))?;
 
-        let resized = resize_image(&img, self.max_edge);
+        let resized = resize_image(&img, max_edge);
         ensure_parent(dest)?;
-        self.save_preview(&resized, dest)?;
+        self.save_preview(&resized, dest, quality)?;
         Ok(())
     }
 
     /// Generate preview from a RAW camera file using dcraw or dcraw_emu.
-    fn generate_raw(&self, dest: &Path, source: &Path) -> Result<()> {
+    fn generate_raw(&self, dest: &Path, source: &Path, max_edge: u32, quality: u8) -> Result<()> {
         ensure_parent(dest)?;
 
         // Strategy 1: dcraw -e -c extracts the embedded JPEG preview to stdout
@@ -195,8 +253,8 @@ impl PreviewGenerator {
             if output.status.success() && !output.stdout.is_empty() {
                 let img = image::load_from_memory(&output.stdout)
                     .context("Failed to decode dcraw output")?;
-                let resized = resize_image(&img, self.max_edge);
-                self.save_preview(&resized, dest)?;
+                let resized = resize_image(&img, max_edge);
+                self.save_preview(&resized, dest, quality)?;
                 return Ok(());
             }
         }
@@ -221,8 +279,8 @@ impl PreviewGenerator {
                     format!("Failed to open dcraw_emu output {}", temp_tiff.display())
                 })?;
                 std::fs::remove_file(&temp_tiff).ok();
-                let resized = resize_image(&img, self.max_edge);
-                self.save_preview(&resized, dest)?;
+                let resized = resize_image(&img, max_edge);
+                self.save_preview(&resized, dest, quality)?;
                 return Ok(());
             }
             if !output.status.success() {
@@ -236,7 +294,7 @@ impl PreviewGenerator {
     }
 
     /// Generate preview from a video file using ffmpeg.
-    fn generate_video(&self, dest: &Path, source: &Path) -> Result<()> {
+    fn generate_video(&self, dest: &Path, source: &Path, max_edge: u32, quality: u8) -> Result<()> {
         if !tool_available("ffmpeg") {
             anyhow::bail!("ffmpeg not found in PATH");
         }
@@ -271,8 +329,8 @@ impl PreviewGenerator {
             .with_context(|| format!("Failed to open ffmpeg frame {}", temp_frame.display()))?;
         std::fs::remove_file(&temp_frame).ok();
 
-        let resized = resize_image(&img, self.max_edge);
-        self.save_preview(&resized, dest)?;
+        let resized = resize_image(&img, max_edge);
+        self.save_preview(&resized, dest, quality)?;
         Ok(())
     }
 
@@ -282,13 +340,15 @@ impl PreviewGenerator {
         dest: &Path,
         source_path: &Path,
         format: &str,
+        max_edge: u32,
+        quality: u8,
     ) -> Result<Option<PathBuf>> {
         let info = InfoCardData::from_file(source_path, format);
-        let card_width = self.max_edge;
-        let card_height = (self.max_edge as f64 * 0.75) as u32;
+        let card_width = max_edge;
+        let card_height = (max_edge as f64 * 0.75) as u32;
         let img = render_info_card(&info, card_width, card_height);
         ensure_parent(dest)?;
-        self.save_preview(&image::DynamicImage::ImageRgb8(img), dest)?;
+        self.save_preview(&image::DynamicImage::ImageRgb8(img), dest, quality)?;
         Ok(Some(dest.to_path_buf()))
     }
 }
@@ -940,7 +1000,7 @@ mod tests {
         let dest = gen.preview_path("sha256:badvideo");
         ensure_parent(&dest).unwrap();
         // Call generate_video directly to bypass do_generate's error filter
-        let err = gen.generate_video(&dest, &bad_source).unwrap_err();
+        let err = gen.generate_video(&dest, &bad_source, 800, 85).unwrap_err();
         let msg = err.to_string();
         // Should contain ffmpeg's actual error output, not just "non-zero status"
         assert!(
@@ -990,5 +1050,96 @@ mod tests {
         let resized = resize_image(&img, 400);
         assert_eq!(resized.width(), 400);
         assert_eq!(resized.height(), 200);
+    }
+
+    #[test]
+    fn smart_preview_path_shards_correctly() {
+        let dir = tempfile::tempdir().unwrap();
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let path = gen.smart_preview_path("sha256:abcdef1234567890");
+        assert_eq!(
+            path,
+            dir.path()
+                .join("smart-previews/ab/abcdef1234567890.jpg")
+        );
+    }
+
+    #[test]
+    fn has_smart_preview_false_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        assert!(!gen.has_smart_preview("sha256:0000000000"));
+    }
+
+    #[test]
+    fn generate_smart_creates_larger_preview() {
+        let dir = tempfile::tempdir().unwrap();
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+
+        // Create a 4000x3000 image
+        let img = image::DynamicImage::new_rgb8(4000, 3000);
+        let source = dir.path().join("big.png");
+        img.save(&source).unwrap();
+
+        let result = gen
+            .generate_smart("sha256:smarttest1", &source, "png")
+            .unwrap();
+        assert!(result.is_some());
+
+        let preview_path = result.unwrap();
+        assert!(preview_path.exists());
+        assert!(preview_path.to_string_lossy().contains("smart-previews"));
+
+        let preview = image::open(&preview_path).unwrap();
+        assert_eq!(preview.width(), 2560); // smart_max_edge default
+        assert!(preview.height() <= 2560);
+    }
+
+    #[test]
+    fn generate_smart_skips_if_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+
+        let img = image::DynamicImage::new_rgb8(100, 100);
+        let source = dir.path().join("small.png");
+        img.save(&source).unwrap();
+
+        let path1 = gen
+            .generate_smart("sha256:smartexist", &source, "png")
+            .unwrap()
+            .unwrap();
+        let mtime1 = std::fs::metadata(&path1).unwrap().modified().unwrap();
+
+        let path2 = gen
+            .generate_smart("sha256:smartexist", &source, "png")
+            .unwrap()
+            .unwrap();
+        let mtime2 = std::fs::metadata(&path2).unwrap().modified().unwrap();
+
+        assert_eq!(path1, path2);
+        assert_eq!(mtime1, mtime2);
+    }
+
+    #[test]
+    fn regenerate_smart_overwrites() {
+        let dir = tempfile::tempdir().unwrap();
+        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+
+        let img = image::DynamicImage::new_rgb8(200, 200);
+        let source = dir.path().join("regen_smart.png");
+        img.save(&source).unwrap();
+
+        let path1 = gen
+            .generate_smart("sha256:smartregen", &source, "png")
+            .unwrap()
+            .unwrap();
+        assert!(path1.exists());
+
+        let path2 = gen
+            .regenerate_smart("sha256:smartregen", &source, "png")
+            .unwrap()
+            .unwrap();
+        assert_eq!(path1, path2);
+        assert!(path2.exists());
     }
 }

@@ -207,6 +207,16 @@
 
 <script>
 (function() {
+    // Upgrade compare images to smart previews with fallback
+    document.querySelectorAll('.compare-image-wrap img').forEach(function(img) {
+        var originalSrc = img.getAttribute('src');
+        if (originalSrc && originalSrc.indexOf('/preview/') !== -1) {
+            var smartSrc = originalSrc.replace('/preview/', '/smart-preview/');
+            img.onerror = function() { if (this.src !== originalSrc) { this.onerror = null; this.src = originalSrc; } };
+            img.src = smartSrc;
+        }
+    });
+
     var cols = document.querySelectorAll('.compare-col');
     var wraps = document.querySelectorAll('.compare-image-wrap');
     var syncCheckbox = document.getElementById('sync-zoom');

@@ -1187,7 +1187,9 @@
         var label = card.getAttribute('data-label') || '';
         var variants = card.getAttribute('data-variants');
 
-        img.src = src;
+        var smartSrc = src.replace('/preview/', '/smart-preview/');
+        img.src = smartSrc;
+        img.onerror = function() { if (this.src !== src) { this.onerror = null; this.src = src; } };
         img.alt = name;
         counter.textContent = (currentIndex + 1) + ' / ' + cards.length;
         title.textContent = name;
@@ -1210,12 +1212,16 @@
         // Label dots
         renderLabels(label);
 
-        // Preload adjacent
+        // Preload adjacent (try smart preview first, fall back to regular)
         if (currentIndex > 0) {
-            preloadPrev.src = cards[currentIndex - 1].getAttribute('data-preview');
+            var prevSrc = cards[currentIndex - 1].getAttribute('data-preview');
+            preloadPrev.src = prevSrc.replace('/preview/', '/smart-preview/');
+            preloadPrev.onerror = function() { if (this.src !== prevSrc) { this.onerror = null; this.src = prevSrc; } };
         }
         if (currentIndex < cards.length - 1) {
-            preloadNext.src = cards[currentIndex + 1].getAttribute('data-preview');
+            var nextSrc = cards[currentIndex + 1].getAttribute('data-preview');
+            preloadNext.src = nextSrc.replace('/preview/', '/smart-preview/');
+            preloadNext.onerror = function() { if (this.src !== nextSrc) { this.onerror = null; this.src = nextSrc; } };
         }
     }
 
