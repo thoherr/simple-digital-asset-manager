@@ -241,6 +241,16 @@
             });
         });
         var cur = 0;
+        function storeBrowseContext() {
+            var ids = items.map(function(it) { return it.assetId; });
+            sessionStorage.setItem('dam-browse-ids', JSON.stringify(ids));
+            sessionStorage.setItem('dam-browse-url', window.location.href);
+        }
+        function goToDetail() {
+            if (items.length === 0) return;
+            storeBrowseContext();
+            window.location.href = '/asset/' + items[cur].assetId;
+        }
         function show(idx) {
             if (items.length === 0) return;
             cur = idx;
@@ -274,6 +284,9 @@
         document.getElementById('dup-lb-prev').addEventListener('click', prev);
         document.getElementById('dup-lb-next').addEventListener('click', next);
 
+        // Store browse context before navigating to detail via link click
+        detail.addEventListener('click', function() { storeBrowseContext(); });
+
         // Click outside image to close
         lb.addEventListener('click', function(e) {
             if (e.target === lb) hide();
@@ -285,6 +298,7 @@
             if (e.key === 'Escape') { hide(); e.preventDefault(); }
             else if (e.key === 'ArrowLeft') { prev(); e.preventDefault(); }
             else if (e.key === 'ArrowRight') { next(); e.preventDefault(); }
+            else if (e.key === 'd') { goToDetail(); e.preventDefault(); }
         });
     })();
 })();
