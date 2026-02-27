@@ -2096,6 +2096,39 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     font-weight: 600;
 }
 
+.dup-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+.dup-filter-row select,
+.dup-filter-row .path-filter-input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.9rem;
+}
+.dup-filter-row .path-filter-input { flex: 1; min-width: 150px; }
+.dup-filter-row button {
+    padding: 0.5rem 1rem;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.dup-filter-row button:hover { opacity: 0.9; }
+.dup-filter-row .filter-clear {
+    color: var(--muted);
+    font-size: 0.85rem;
+    text-decoration: underline;
+}
+
 .dup-actions {
     margin-bottom: 1.5rem;
 }

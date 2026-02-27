@@ -1744,6 +1744,9 @@ pub async fn calendar_api(
 #[derive(Debug, serde::Deserialize)]
 pub struct DuplicatesParams {
     pub mode: Option<String>,
+    pub volume: Option<String>,
+    pub format: Option<String>,
+    pub path: Option<String>,
 }
 
 /// GET /duplicates — duplicates page showing duplicate file groups.
@@ -1756,10 +1759,19 @@ pub async fn duplicates_page(
         let catalog = state.catalog()?;
         let mode = params.mode.as_deref().unwrap_or("all");
 
-        let entries = match mode {
-            "same" => catalog.find_duplicates_same_volume()?,
-            "cross" => catalog.find_duplicates_cross_volume()?,
-            _ => catalog.find_duplicates()?,
+        let vol_filter = params.volume.as_deref().filter(|s| !s.is_empty());
+        let fmt_filter = params.format.as_deref().filter(|s| !s.is_empty());
+        let path_filter = params.path.as_deref().filter(|s| !s.is_empty());
+        let has_filters = vol_filter.is_some() || fmt_filter.is_some() || path_filter.is_some();
+
+        let entries = if has_filters {
+            catalog.find_duplicates_filtered(mode, vol_filter, fmt_filter, path_filter)?
+        } else {
+            match mode {
+                "same" => catalog.find_duplicates_same_volume()?,
+                "cross" => catalog.find_duplicates_cross_volume()?,
+                _ => catalog.find_duplicates()?,
+            }
         };
 
         let total_groups = entries.len();
@@ -1785,12 +1797,22 @@ pub async fn duplicates_page(
             }
         }
 
+        let all_formats: Vec<FormatOption> = state.dropdown_cache.get_formats(&catalog)
+            .into_iter().map(|name| FormatOption { name }).collect();
+        let all_volumes: Vec<VolumeOption> = state.dropdown_cache.get_volumes(&catalog)
+            .into_iter().map(|(id, label)| VolumeOption { id, label }).collect();
+
         let tmpl = DuplicatesPage {
             entries,
             mode: mode.to_string(),
             total_groups,
             total_wasted,
             same_volume_count,
+            volume: params.volume.unwrap_or_default(),
+            format_filter: params.format.unwrap_or_default(),
+            path: params.path.unwrap_or_default(),
+            all_volumes,
+            all_formats,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })

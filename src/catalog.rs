@@ -1334,6 +1334,109 @@ impl Catalog {
         )
     }
 
+    /// Find duplicates with optional filters for volume, format, and path prefix.
+    pub fn find_duplicates_filtered(
+        &self,
+        mode: &str,
+        volume: Option<&str>,
+        format: Option<&str>,
+        path_prefix: Option<&str>,
+    ) -> Result<Vec<DuplicateEntry>> {
+        // Build the inner GROUP BY subquery based on mode
+        let inner = match mode {
+            "same" => {
+                "SELECT content_hash FROM file_locations \
+                 GROUP BY content_hash, volume_id HAVING COUNT(*) > 1"
+            }
+            "cross" => {
+                "SELECT content_hash FROM file_locations \
+                 GROUP BY content_hash HAVING COUNT(DISTINCT volume_id) > 1"
+            }
+            _ => {
+                "SELECT content_hash FROM file_locations \
+                 GROUP BY content_hash HAVING COUNT(*) > 1"
+            }
+        };
+
+        let mut sql = format!(
+            "SELECT v.content_hash, v.original_filename, v.format, v.file_size, a.name \
+             FROM variants v \
+             JOIN assets a ON v.asset_id = a.id \
+             WHERE v.content_hash IN ({inner})"
+        );
+
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if let Some(vol) = volume {
+            sql.push_str(
+                " AND v.content_hash IN (SELECT content_hash FROM file_locations WHERE volume_id = ?)",
+            );
+            params.push(Box::new(vol.to_string()));
+        }
+
+        if let Some(prefix) = path_prefix {
+            let like = format!("{prefix}%");
+            sql.push_str(
+                " AND v.content_hash IN (SELECT content_hash FROM file_locations WHERE relative_path LIKE ?)",
+            );
+            params.push(Box::new(like));
+        }
+
+        if let Some(fmt) = format {
+            sql.push_str(" AND LOWER(v.format) = ?");
+            params.push(Box::new(fmt.to_lowercase()));
+        }
+
+        sql.push_str(" ORDER BY v.file_size DESC");
+
+        self.load_duplicate_entries_filtered(&sql, &params)
+    }
+
+    /// Like `load_duplicate_entries` but accepts dynamic params.
+    fn load_duplicate_entries_filtered(
+        &self,
+        variant_query: &str,
+        params: &[Box<dyn rusqlite::types::ToSql>],
+    ) -> Result<Vec<DuplicateEntry>> {
+        let mut stmt = self.conn.prepare(variant_query)?;
+
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+
+        let entries: Vec<DuplicateEntry> = stmt
+            .query_map(param_refs.as_slice(), |row| {
+                Ok(DuplicateEntry {
+                    content_hash: row.get(0)?,
+                    original_filename: row.get(1)?,
+                    format: row.get(2)?,
+                    file_size: row.get(3)?,
+                    asset_name: row.get(4)?,
+                    locations: Vec::new(),
+                    volume_count: 0,
+                    same_volume_groups: Vec::new(),
+                })
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let mut lstmt = self.conn.prepare(
+            "SELECT fl.relative_path, vol.label, vol.id, vol.purpose, fl.verified_at \
+             FROM file_locations fl \
+             JOIN volumes vol ON fl.volume_id = vol.id \
+             WHERE fl.content_hash = ?1",
+        )?;
+
+        let entries: Vec<DuplicateEntry> = entries
+            .into_iter()
+            .map(|mut e| {
+                e.locations = Self::load_locations_for_hash(&mut lstmt, &e.content_hash);
+                Self::compute_duplicate_stats(&mut e);
+                e
+            })
+            .collect();
+
+        Ok(entries)
+    }
+
     /// Delete a specific file location row. Returns true if a row was deleted.
     pub fn delete_file_location(
         &self,

@@ -42,10 +42,32 @@
 
 <!-- Mode Tabs -->
 <div class="dup-tabs">
-    <a href="/duplicates?mode=all" class="dup-tab{% if mode == "all" %} active{% endif %}">All</a>
-    <a href="/duplicates?mode=same" class="dup-tab{% if mode == "same" %} active{% endif %}">Same Volume</a>
-    <a href="/duplicates?mode=cross" class="dup-tab{% if mode == "cross" %} active{% endif %}">Cross Volume</a>
+    <a href="/duplicates?mode=all{% if !volume.is_empty() %}&amp;volume={{ volume }}{% endif %}{% if !format_filter.is_empty() %}&amp;format={{ format_filter }}{% endif %}{% if !path.is_empty() %}&amp;path={{ path }}{% endif %}" class="dup-tab{% if mode == "all" %} active{% endif %}">All</a>
+    <a href="/duplicates?mode=same{% if !volume.is_empty() %}&amp;volume={{ volume }}{% endif %}{% if !format_filter.is_empty() %}&amp;format={{ format_filter }}{% endif %}{% if !path.is_empty() %}&amp;path={{ path }}{% endif %}" class="dup-tab{% if mode == "same" %} active{% endif %}">Same Volume</a>
+    <a href="/duplicates?mode=cross{% if !volume.is_empty() %}&amp;volume={{ volume }}{% endif %}{% if !format_filter.is_empty() %}&amp;format={{ format_filter }}{% endif %}{% if !path.is_empty() %}&amp;path={{ path }}{% endif %}" class="dup-tab{% if mode == "cross" %} active{% endif %}">Cross Volume</a>
 </div>
+
+<!-- Filters -->
+<form class="dup-filter-row" method="get" action="/duplicates">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <input type="text" name="path" placeholder="Path prefix..." value="{{ path }}" class="path-filter-input">
+    <select name="format">
+        <option value="">All formats</option>
+        {% for f in all_formats %}
+        <option value="{{ f.name }}"{% if format_filter == f.name %} selected{% endif %}>{{ f.name }}</option>
+        {% endfor %}
+    </select>
+    <select name="volume">
+        <option value="">All volumes</option>
+        {% for v in all_volumes %}
+        <option value="{{ v.id }}"{% if volume == v.id %} selected{% endif %}>{{ v.label }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit">Filter</button>
+    {% if !volume.is_empty() || !format_filter.is_empty() || !path.is_empty() %}
+    <a href="/duplicates?mode={{ mode }}" class="filter-clear">Clear</a>
+    {% endif %}
+</form>
 
 {% if same_volume_count > 0 %}
 <!-- Auto-resolve button -->

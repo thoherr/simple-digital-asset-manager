@@ -445,6 +445,11 @@ pub struct DuplicatesPage {
     pub total_groups: usize,
     pub total_wasted: u64,
     pub same_volume_count: usize,
+    pub volume: String,
+    pub format_filter: String,
+    pub path: String,
+    pub all_volumes: Vec<VolumeOption>,
+    pub all_formats: Vec<FormatOption>,
 }
 
 /// Custom askama filters for templates.
