@@ -2315,6 +2315,7 @@ fn main() {
             if !canonical_paths.is_empty() {
                 // PATHS mode: resolve files, look up each in catalog
                 let files = dam::asset_service::resolve_files(&canonical_paths, &config.import.exclude);
+                let content_store = dam::content_store::ContentStore::new(&catalog_root);
 
                 for file_path in &files {
                     // Filter by extension
@@ -2326,22 +2327,31 @@ fn main() {
                         continue;
                     }
 
-                    // Find which volume this file is on
-                    let vol = volumes.iter().find(|v| file_path.starts_with(&v.mount_point));
-                    let vol = match vol {
-                        Some(v) => v,
-                        None => continue,
+                    // Look up variant in catalog: try volume+path first, fall back to content hash
+                    let lookup = {
+                        let vol = volumes.iter().find(|v| file_path.starts_with(&v.mount_point));
+                        if let Some(v) = vol {
+                            let relative_path = file_path
+                                .strip_prefix(&v.mount_point)
+                                .unwrap_or(file_path);
+                            catalog.find_variant_by_volume_and_path(
+                                &v.id.to_string(),
+                                &relative_path.to_string_lossy(),
+                            )?
+                        } else {
+                            None
+                        }
+                    };
+                    // Fall back to hashing the file and looking up by content hash
+                    let lookup = match lookup {
+                        Some(v) => Some(v),
+                        None => {
+                            let hash = content_store.hash_file(file_path)?;
+                            catalog.get_variant_format(&hash)?.map(|fmt| (hash, fmt))
+                        }
                     };
 
-                    let relative_path = file_path
-                        .strip_prefix(&vol.mount_point)
-                        .unwrap_or(file_path);
-
-                    // Look up variant in catalog
-                    if let Some((content_hash, format)) = catalog.find_variant_by_volume_and_path(
-                        &vol.id.to_string(),
-                        &relative_path.to_string_lossy(),
-                    )? {
+                    if let Some((content_hash, format)) = lookup {
                         let file_start = std::time::Instant::now();
                         let result = if smart {
                             if force { preview_gen.regenerate_smart(&content_hash, file_path, &format) }

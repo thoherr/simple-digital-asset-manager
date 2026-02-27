@@ -984,6 +984,18 @@ impl Catalog {
         Ok(count > 0)
     }
 
+    /// Look up a variant's format by its content hash.
+    pub fn get_variant_format(&self, content_hash: &str) -> Result<Option<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT format FROM variants WHERE content_hash = ?1 LIMIT 1",
+        )?;
+        let mut rows = stmt.query(rusqlite::params![content_hash])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(row.get(0)?)),
+            None => Ok(None),
+        }
+    }
+
     /// Open an in-memory catalog (for testing).
     #[cfg(test)]
     pub fn open_in_memory() -> Result<Self> {
