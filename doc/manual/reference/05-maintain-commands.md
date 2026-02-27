@@ -380,14 +380,16 @@ Identifies variants with 2+ file locations on the **same** volume and removes th
 
 For each set of same-volume duplicate locations, a resolution heuristic selects which copy to **keep**:
 
-1. If `--prefer` is given, prefer locations whose relative path starts with the specified prefix.
+1. If `--prefer` is given (or set in `[dedup] prefer` config), prefer locations whose relative path **contains** the specified string (substring match, not prefix-only).
 2. Prefer more recently verified files (by `verified_at` timestamp; never-verified sorts oldest).
 3. Prefer shorter relative paths (closer to the volume root).
 4. Tiebreak: first alphabetically (deterministic).
 
 Before removing a location, the command checks that the variant's total location count across **all** volumes won't drop below `--min-copies`.
 
-Without `--apply`, runs in **report-only mode** (safe default): shows what would be removed without making any changes.
+When a file location is removed, co-located recipe files (XMP sidecars etc.) in the same directory are automatically cleaned up from disk, catalog, and sidecar YAML.
+
+Without `--apply`, runs in **report-only mode** (safe default): shows what would be removed without making any changes. Recipe file counts are included in the dry-run report.
 
 ### ARGUMENTS
 
@@ -398,16 +400,22 @@ None.
 **--volume \<LABEL\>**
 : Limit deduplication to a specific volume. When omitted, processes same-volume duplicates on all volumes.
 
-**--prefer \<PATH_PREFIX\>**
-: Prefer keeping locations whose relative path starts with this prefix. Useful for keeping files in a curated directory (e.g. `Selects/`) while removing copies elsewhere.
+**--prefer \<STRING\>**
+: Prefer keeping locations whose relative path contains this string (substring match). Useful for keeping files in a curated directory (e.g. `--prefer Selects`) while removing copies elsewhere. Falls back to the `[dedup] prefer` value in `dam.toml` when not given on the command line.
+
+**--filter-format \<FORMAT\>**
+: Filter to a specific file format (e.g. `nef`, `jpg`). Only processes duplicate groups matching this format.
+
+**--path \<PREFIX\>**
+: Filter to locations under this path prefix. Only processes duplicates with locations matching the prefix.
 
 **--min-copies \<N\>** (default: 1)
 : Minimum total locations to preserve per variant across all volumes. Prevents removing a location if it would leave fewer than N copies total. Set to 2 to ensure at least one backup copy survives.
 
 **--apply**
-: Apply changes: delete physical files from disk and remove location records from catalog and sidecar YAML.
+: Apply changes: delete physical files and co-located recipe files from disk, remove location and recipe records from catalog and sidecar YAML.
 
-`--json` outputs a `DedupResult` with `duplicates_found`, `locations_to_remove`, `locations_removed`, `files_deleted`, `bytes_freed`, `dry_run`, and `errors`.
+`--json` outputs a `DedupResult` with `duplicates_found`, `locations_to_remove`, `locations_removed`, `files_deleted`, `recipes_removed`, `bytes_freed`, `dry_run`, and `errors`.
 
 `--log` prints per-location status to stderr (keep, remove, skipped).
 

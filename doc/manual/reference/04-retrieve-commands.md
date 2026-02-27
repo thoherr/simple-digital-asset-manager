@@ -227,7 +227,7 @@ dam-duplicates -- find files with identical content at multiple locations
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] duplicates [--format <FMT>] [--same-volume] [--cross-volume] [--volume <LABEL>]
+dam [GLOBAL FLAGS] duplicates [--format <FMT>] [--same-volume] [--cross-volume] [--volume <LABEL>] [--filter-format <FMT>] [--path <PREFIX>]
 ```
 
 ### DESCRIPTION
@@ -242,7 +242,7 @@ Each result shows the content hash, filename, volume count, and all locations wh
 - **`--same-volume`**: Only variants with 2+ locations on the **same** volume. These are likely unwanted copies (e.g., accidentally imported twice from different paths on the same drive).
 - **`--cross-volume`**: Only variants with locations on 2+ **different** volumes. These represent intentional backups or copies across drives.
 
-The `--volume` flag post-filters any mode's results to entries that involve the specified volume.
+The `--volume`, `--filter-format`, and `--path` flags narrow results via SQL filtering. All filters compose with any mode.
 
 ### ARGUMENTS
 
@@ -261,6 +261,12 @@ None.
 
 **--volume \<LABEL\>**
 : Filter results to entries involving this volume. Combines with any mode.
+
+**--filter-format \<FORMAT\>**
+: Filter to entries matching this file format (e.g. `nef`, `jpg`).
+
+**--path \<PREFIX\>**
+: Filter to entries with a location under this path prefix.
 
 `--json` outputs an array of `DuplicateEntry` objects (includes `volume_count` and `same_volume_groups` fields).
 

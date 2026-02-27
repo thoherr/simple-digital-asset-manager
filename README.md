@@ -43,9 +43,9 @@ dam serve
 
 ## Commands
 
-24 commands covering setup, import, search, editing, maintenance, and more:
+26 commands covering setup, import, search, editing, maintenance, and more:
 
-`init` · `volume add/list/combine/remove` · `import` · `search` · `show` · `edit` · `tag` · `group` · `auto-group` · `stack` · `duplicates` · `generate-previews` · `relocate` · `verify` · `sync` · `refresh` · `cleanup` · `stats` · `fix-roles` · `fix-dates` · `rebuild-catalog` · `saved-search` · `collection` · `serve`
+`init` · `volume add/list/combine/remove` · `import` · `search` · `show` · `edit` · `tag` · `group` · `auto-group` · `stack` · `duplicates` · `dedup` · `generate-previews` · `relocate` · `verify` · `sync` · `refresh` · `cleanup` · `stats` · `backup-status` · `fix-roles` · `fix-dates` · `rebuild-catalog` · `saved-search` · `collection` · `serve`
 
 **Global flags**: `--json`, `--log`, `--debug`, `--time`. Run `dam --help` or `dam <command> --help` for usage.
 

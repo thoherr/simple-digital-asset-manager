@@ -280,8 +280,8 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - `GET /api/calendar` — calendar heatmap data as JSON (`{year, counts, years}`), respects all search filter params
 - `GET /saved-searches` — saved searches management page (table with favorite toggle, rename, delete)
 - `GET /duplicates` — duplicates page with summary cards, mode tabs (all/same/cross), filters (path/format/volume), preview thumbnails, lightbox overlay, per-location remove buttons, and auto-resolve
-- `POST /api/dedup/resolve` — auto-resolve all same-volume duplicates (deletes files, returns `{locations_removed, bytes_freed, errors}`)
-- `DELETE /api/dedup/location` — remove a specific file location (JSON: `{content_hash, volume_id, relative_path}`)
+- `POST /api/dedup/resolve` — auto-resolve same-volume duplicates with optional filters and prefer (deletes files and co-located recipes, returns `DedupResult` with `locations_removed, recipes_removed, bytes_freed, errors`)
+- `DELETE /api/dedup/location` — remove a specific file location and co-located recipes (JSON: `{content_hash, volume_id, relative_path}`)
 
 **Catalog extensions** (in `src/catalog.rs`):
 - `SearchOptions` / `SearchSort` / `SearchPage` — paginated search with volume filter, date filters, and dynamic sort
@@ -296,12 +296,13 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 
 **Responsibility**: parse and provide catalog configuration from `dam.toml`.
 
-**Module**: `src/config.rs` — `CatalogConfig` struct with sub-structs `PreviewConfig`, `ServeConfig`, `ImportConfig`.
+**Module**: `src/config.rs` — `CatalogConfig` struct with sub-structs `PreviewConfig`, `ServeConfig`, `ImportConfig`, `DedupConfig`.
 
 **Sections**:
 - `[preview]`: `max_edge` (default 800), `format` ("jpeg"/"webp", default "jpeg"), `quality` (1–100, default 85)
 - `[serve]`: `port` (default 8080), `bind` (default "127.0.0.1"). CLI flags override.
 - `[import]`: `exclude` (glob patterns matched against filenames), `auto_tags` (merged into new assets)
+- `[dedup]`: `prefer` (default path substring for `--prefer` flag, used by CLI and web UI)
 - `default_volume`: fallback volume UUID for import
 
 All sections and fields are optional — missing fields use defaults.
@@ -403,7 +404,8 @@ dam sync <PATHS...> [--volume V] [--apply] [--remove-stale]  # reconcile catalog
 dam refresh [PATHS...] [--volume V] [--asset ID] [--dry-run] [--media]  # re-read metadata from changed sidecars
 dam update-location <id> --from <old> --to <new> [--volume V]  # update path after manual move
 dam cleanup [--volume V] [--list] [--apply]       # remove stale locations, orphaned assets, and previews
-dam duplicates [--format F]                       # find duplicates
+dam duplicates [--same-volume] [--cross-volume] [--volume V] [--filter-format F] [--path P] [--format FMT]  # find duplicates
+dam dedup [--volume V] [--prefer S] [--filter-format F] [--path P] [--min-copies N] [--apply]  # remove same-volume duplicates
 dam generate-previews [PATHS...] [--asset ID] [--volume V] [--include G] [--skip G] [--force]  # generate thumbnails
 dam stats [--types] [--volumes] [--tags] [--verified] [--all] [--limit N]  # catalog statistics
 dam auto-group [QUERY] [--apply]                  # group assets by filename stem

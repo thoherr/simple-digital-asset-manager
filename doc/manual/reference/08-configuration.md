@@ -157,6 +157,26 @@ auto_tags = ["inbox", "unreviewed"]
 
 ---
 
+## [dedup] Section
+
+Controls dedup behavior for `dam dedup` and the web UI's auto-resolve action.
+
+### prefer
+
+- **Type:** string (optional)
+- **Default:** none
+
+Default path substring for the `--prefer` flag. When set, dedup prefers keeping file locations whose relative path contains this string. Useful for always keeping files in a curated directory (e.g. `Selects`) while removing copies elsewhere.
+
+The CLI `--prefer` flag overrides this value. The web UI duplicates page pre-populates its "Prefer keeping" input from this setting.
+
+```toml
+[dedup]
+prefer = "Selects"
+```
+
+---
+
 ## Full Example
 
 A complete `dam.toml` with all options set and annotated:
@@ -191,6 +211,10 @@ exclude = [
 ]
 # Tags automatically applied to every new asset.
 auto_tags = ["inbox", "unreviewed"]
+
+[dedup]
+# Default path substring for --prefer (keep files whose path contains this).
+prefer = "Selects"
 ```
 
 ---
@@ -237,6 +261,7 @@ When a field is absent from `dam.toml`, these defaults apply:
 | `serve.bind` | `"127.0.0.1"` |
 | `import.exclude` | `[]` |
 | `import.auto_tags` | `[]` |
+| `dedup.prefer` | none |
 
 ---
 
