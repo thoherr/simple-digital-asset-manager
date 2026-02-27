@@ -450,6 +450,7 @@ pub struct DuplicatesPage {
     pub path: String,
     pub all_volumes: Vec<VolumeOption>,
     pub all_formats: Vec<FormatOption>,
+    pub dedup_prefer: String,
 }
 
 /// Custom askama filters for templates.

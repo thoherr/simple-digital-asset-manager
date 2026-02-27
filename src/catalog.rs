@@ -1822,6 +1822,31 @@ impl Catalog {
         Ok(result)
     }
 
+    /// List recipes for a specific variant on a specific volume.
+    /// Returns `(recipe_id, content_hash, relative_path)` tuples.
+    pub fn list_recipes_for_variant_on_volume(
+        &self,
+        variant_hash: &str,
+        volume_id: &str,
+    ) -> Result<Vec<(String, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, content_hash, relative_path FROM recipes \
+             WHERE variant_hash = ?1 AND volume_id = ?2",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![variant_hash, volume_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
     /// List all recipes for a given asset (across all volumes).
     /// Returns `(recipe_id, content_hash, variant_hash, relative_path, volume_id)` tuples.
     pub fn list_recipes_for_asset(

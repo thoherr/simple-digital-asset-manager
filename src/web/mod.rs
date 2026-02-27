@@ -115,10 +115,11 @@ pub struct AppState {
     pub preview_ext: String,
     pub log_requests: bool,
     pub dropdown_cache: DropdownCache,
+    pub dedup_prefer: Option<String>,
 }
 
 impl AppState {
-    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig, log_requests: bool) -> Self {
+    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig, log_requests: bool, dedup_prefer: Option<String>) -> Self {
         let preview_ext = preview_config.format.extension().to_string();
         Self {
             catalog_root,
@@ -126,6 +127,7 @@ impl AppState {
             preview_ext,
             log_requests,
             dropdown_cache: DropdownCache::new(),
+            dedup_prefer,
         }
     }
 
@@ -280,8 +282,8 @@ async fn log_request(
 }
 
 /// Start the web server.
-pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool) -> Result<()> {
-    let state = Arc::new(AppState::new(catalog_root, preview_config, log));
+pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool, dedup_prefer: Option<String>) -> Result<()> {
+    let state = Arc::new(AppState::new(catalog_root, preview_config, log, dedup_prefer));
 
     // Verify catalog is accessible and run schema migrations once at startup
     Catalog::open(&state.catalog_root)?;

@@ -208,9 +208,17 @@ enum Commands {
         #[arg(long, display_order = 11)]
         cross_volume: bool,
 
-        /// Filter results to entries involving this volume
+        /// Filter to entries involving this volume
         #[arg(long, display_order = 12)]
         volume: Option<String>,
+
+        /// Filter to entries matching this file format (e.g. nef, jpg)
+        #[arg(long, display_order = 13)]
+        filter_format: Option<String>,
+
+        /// Filter to entries with a location under this path prefix
+        #[arg(long, display_order = 14)]
+        path: Option<String>,
     },
 
     /// Show catalog statistics
@@ -370,12 +378,20 @@ enum Commands {
         #[arg(long, display_order = 10)]
         volume: Option<String>,
 
-        /// Prefer locations matching this path prefix
+        /// Prefer keeping locations whose path contains this string
         #[arg(long, display_order = 11)]
         prefer: Option<String>,
 
+        /// Filter to a specific file format (e.g. nef, jpg)
+        #[arg(long, display_order = 12)]
+        filter_format: Option<String>,
+
+        /// Filter to locations under this path prefix
+        #[arg(long, display_order = 13)]
+        path: Option<String>,
+
         /// Minimum total copies to preserve per variant (default: 1)
-        #[arg(long, display_order = 12, default_value = "1")]
+        #[arg(long, display_order = 14, default_value = "1")]
         min_copies: usize,
 
         /// Apply changes (delete files and remove location records)
@@ -1960,19 +1976,22 @@ fn main() {
 
             Ok(())
         }
-        Commands::Dedup { volume, prefer, min_copies, apply } => {
+        Commands::Dedup { volume, prefer, filter_format, path, min_copies, apply } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+
+            // CLI --prefer overrides config [dedup] prefer
+            let effective_prefer = prefer.or(config.dedup.prefer);
 
             let show_log = cli.log;
             let result = if show_log {
                 use dam::asset_service::DedupStatus;
                 service.dedup(
                     volume.as_deref(),
-                    None,
-                    None,
-                    prefer.as_deref(),
+                    filter_format.as_deref(),
+                    path.as_deref(),
+                    effective_prefer.as_deref(),
                     min_copies,
                     apply,
                     |filename, path, status, vol_label| {
@@ -1992,9 +2011,9 @@ fn main() {
             } else {
                 service.dedup(
                     volume.as_deref(),
-                    None,
-                    None,
-                    prefer.as_deref(),
+                    filter_format.as_deref(),
+                    path.as_deref(),
+                    effective_prefer.as_deref(),
                     min_copies,
                     apply,
                     |_, _, _, _| {},
@@ -2009,18 +2028,30 @@ fn main() {
                 }
 
                 if apply {
+                    let recipe_msg = if result.recipes_removed > 0 {
+                        format!(", {} recipes removed", result.recipes_removed)
+                    } else {
+                        String::new()
+                    };
                     println!(
-                        "Dedup: {} duplicate groups, {} locations removed, {} files deleted ({})",
+                        "Dedup: {} duplicate groups, {} locations removed, {} files deleted{} ({})",
                         result.duplicates_found,
                         result.locations_removed,
                         result.files_deleted,
+                        recipe_msg,
                         format_size(result.bytes_freed),
                     );
                 } else {
+                    let recipe_msg = if result.recipes_removed > 0 {
+                        format!(", {} recipe files", result.recipes_removed)
+                    } else {
+                        String::new()
+                    };
                     println!(
-                        "Dedup: {} duplicate groups, {} redundant locations ({} reclaimable)",
+                        "Dedup: {} duplicate groups, {} redundant locations{} ({} reclaimable)",
                         result.duplicates_found,
                         result.locations_to_remove,
+                        recipe_msg,
                         format_size(result.bytes_freed),
                     );
                     if result.locations_to_remove > 0 {
@@ -2058,7 +2089,7 @@ fn main() {
             }
             Ok(())
         }
-        Commands::Duplicates { format, same_volume, cross_volume, volume } => {
+        Commands::Duplicates { format, same_volume, cross_volume, volume, filter_format, path } => {
             use dam::format::{self, OutputFormat};
 
             if same_volume && cross_volume {
@@ -2068,20 +2099,34 @@ fn main() {
             let catalog_root = dam::config::find_catalog_root()?;
             let catalog = Catalog::open(&catalog_root)?;
 
-            let mut entries = if same_volume {
+            // Resolve volume label → ID for the SQL filter (unknown volume → empty results)
+            let vol_id = if let Some(ref label) = volume {
+                let registry = DeviceRegistry::new(&catalog_root);
+                match registry.resolve_volume(label) {
+                    Ok(v) => Some(v.id.to_string()),
+                    Err(_) => Some("nonexistent".to_string()),
+                }
+            } else {
+                None
+            };
+
+            let mode = if same_volume { "same" } else if cross_volume { "cross" } else { "all" };
+            let has_filters = vol_id.is_some() || filter_format.is_some() || path.is_some();
+
+            let entries = if has_filters {
+                catalog.find_duplicates_filtered(
+                    mode,
+                    vol_id.as_deref(),
+                    filter_format.as_deref(),
+                    path.as_deref(),
+                )?
+            } else if same_volume {
                 catalog.find_duplicates_same_volume()?
             } else if cross_volume {
                 catalog.find_duplicates_cross_volume()?
             } else {
                 catalog.find_duplicates()?
             };
-
-            // Post-filter by volume if specified
-            if let Some(ref vol_label) = volume {
-                entries.retain(|e| {
-                    e.locations.iter().any(|l| l.volume_label == *vol_label)
-                });
-            }
 
             let explicit_format = format.is_some();
 
@@ -2670,7 +2715,7 @@ fn main() {
             let port = port.unwrap_or(config.serve.port);
             let bind = bind.unwrap_or_else(|| config.serve.bind.clone());
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(dam::web::serve(catalog_root, &bind, port, config.preview, cli.log))?;
+            rt.block_on(dam::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer))?;
             Ok(())
         }
         Commands::Stats { types, volumes, tags, verified, all, limit } => {

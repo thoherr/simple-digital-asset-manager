@@ -406,6 +406,7 @@ pub struct DedupResult {
     pub locations_to_remove: usize,
     pub locations_removed: usize,
     pub files_deleted: usize,
+    pub recipes_removed: usize,
     pub bytes_freed: u64,
     pub dry_run: bool,
     pub errors: Vec<String>,
@@ -2336,7 +2337,7 @@ impl AssetService {
     }
 
     /// Remove a recipe from the sidecar YAML by matching volume_id + relative_path.
-    fn remove_sidecar_recipe(
+    pub fn remove_sidecar_recipe(
         &self,
         metadata_store: &MetadataStore,
         catalog: &Catalog,
@@ -3013,6 +3014,7 @@ impl AssetService {
             locations_to_remove: 0,
             locations_removed: 0,
             files_deleted: 0,
+            recipes_removed: 0,
             bytes_freed: 0,
             dry_run: !apply,
             errors: Vec::new(),
@@ -3055,10 +3057,10 @@ impl AssetService {
 
                 // Sort by resolution heuristic (best first = keep)
                 locs.sort_by(|a, b| {
-                    // 1. Prefer locations matching --prefer prefix
+                    // 1. Prefer locations matching --prefer substring
                     if let Some(prefix) = prefer {
-                        let a_match = a.relative_path.starts_with(prefix);
-                        let b_match = b.relative_path.starts_with(prefix);
+                        let a_match = a.relative_path.contains(prefix);
+                        let b_match = b.relative_path.contains(prefix);
                         if a_match != b_match {
                             return if a_match {
                                 std::cmp::Ordering::Less
@@ -3123,6 +3125,24 @@ impl AssetService {
                         vol_label,
                     );
 
+                    // Find co-located recipes (same variant, same volume, same directory)
+                    let loc_dir = std::path::Path::new(&loc.relative_path)
+                        .parent()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    let colocated_recipes = catalog
+                        .list_recipes_for_variant_on_volume(&entry.content_hash, &vol_id)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|(_id, _hash, rpath)| {
+                            let rdir = std::path::Path::new(rpath)
+                                .parent()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .unwrap_or_default();
+                            rdir == loc_dir
+                        })
+                        .collect::<Vec<_>>();
+
                     if apply {
                         // Delete the physical file
                         if let Some(vol) = vol_map.get(&vol_id) {
@@ -3167,6 +3187,36 @@ impl AssetService {
                         } else {
                             result.locations_removed += 1;
                         }
+
+                        // Clean up co-located recipe files
+                        for (recipe_id, _recipe_hash, recipe_path) in &colocated_recipes {
+                            if let Some(vol) = vol_map.get(&vol_id) {
+                                if vol.is_online {
+                                    let recipe_full = vol.mount_point.join(recipe_path);
+                                    let _ = std::fs::remove_file(&recipe_full);
+                                }
+                            }
+                            if let Err(e) = catalog.delete_recipe(recipe_id) {
+                                result.errors.push(format!(
+                                    "Failed to remove recipe {recipe_path}: {e}"
+                                ));
+                            } else if let Err(e) = self.remove_sidecar_recipe(
+                                &metadata_store,
+                                &catalog,
+                                &entry.content_hash,
+                                vol_id.parse().unwrap_or_default(),
+                                recipe_path,
+                            ) {
+                                result.errors.push(format!(
+                                    "Failed to update sidecar for recipe {recipe_path}: {e}"
+                                ));
+                            } else {
+                                result.recipes_removed += 1;
+                            }
+                        }
+                    } else {
+                        // Dry-run: just count recipes
+                        result.recipes_removed += colocated_recipes.len();
                     }
                 }
             }

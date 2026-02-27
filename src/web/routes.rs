@@ -1808,6 +1808,8 @@ pub async fn duplicates_page(
         let all_volumes: Vec<VolumeOption> = state.dropdown_cache.get_volumes(&catalog)
             .into_iter().map(|(id, label)| VolumeOption { id, label }).collect();
 
+        let dedup_prefer = state.dedup_prefer.clone().unwrap_or_default();
+
         let tmpl = DuplicatesPage {
             entries,
             mode: mode.to_string(),
@@ -1819,6 +1821,7 @@ pub async fn duplicates_page(
             path: params.path.unwrap_or_default(),
             all_volumes,
             all_formats,
+            dedup_prefer,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
@@ -1839,6 +1842,7 @@ pub struct DedupResolveRequest {
     pub volume: Option<String>,
     pub format: Option<String>,
     pub path: Option<String>,
+    pub prefer: Option<String>,
     pub dry_run: Option<bool>,
 }
 
@@ -1856,11 +1860,13 @@ pub async fn dedup_resolve_api(
         let volume = req.volume.filter(|s| !s.is_empty());
         let format = req.format.filter(|s| !s.is_empty());
         let path = req.path.filter(|s| !s.is_empty());
+        let prefer = req.prefer.filter(|s| !s.is_empty())
+            .or_else(|| state.dedup_prefer.clone());
         let dedup_result = service.dedup(
             volume.as_deref(),
             format.as_deref(),
             path.as_deref(),
-            None,
+            prefer.as_deref(),
             min_copies,
             apply,
             |_, _, _, _| {},
@@ -1942,7 +1948,40 @@ pub async fn dedup_remove_location_api(
             eprintln!("Warning: failed to update sidecar: {e}");
         }
 
-        Ok::<_, anyhow::Error>(serde_json::json!({"removed": true}))
+        // Clean up co-located recipe files (same variant, same volume, same directory)
+        let loc_dir = std::path::Path::new(&req.relative_path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let mut recipes_removed = 0usize;
+        if let Ok(recipes) = catalog.list_recipes_for_variant_on_volume(&req.content_hash, &req.volume_id) {
+            for (recipe_id, _recipe_hash, recipe_path) in &recipes {
+                let rdir = std::path::Path::new(recipe_path.as_str())
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                if rdir != loc_dir {
+                    continue;
+                }
+                let recipe_full = vol.mount_point.join(recipe_path);
+                let _ = std::fs::remove_file(&recipe_full);
+                if let Err(e) = catalog.delete_recipe(recipe_id) {
+                    eprintln!("Warning: failed to remove recipe {recipe_path}: {e}");
+                } else if let Err(e) = service.remove_sidecar_recipe(
+                    &metadata_store,
+                    &catalog,
+                    &req.content_hash,
+                    vol_uuid,
+                    recipe_path,
+                ) {
+                    eprintln!("Warning: failed to update sidecar for recipe {recipe_path}: {e}");
+                } else {
+                    recipes_removed += 1;
+                }
+            }
+        }
+
+        Ok::<_, anyhow::Error>(serde_json::json!({"removed": true, "recipes_removed": recipes_removed}))
     })
     .await;
 

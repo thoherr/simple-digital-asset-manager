@@ -70,8 +70,10 @@
 </form>
 
 {% if same_volume_count > 0 %}
-<!-- Auto-resolve button -->
+<!-- Auto-resolve actions -->
 <div class="dup-actions">
+    <label for="prefer-input" style="font-size: .85rem; color: var(--text-muted, #666);">Prefer keeping:</label>
+    <input type="text" id="prefer-input" value="{{ dedup_prefer }}" placeholder="Path prefix..." style="width: 180px; padding: 4px 8px; font-size: .85rem; border: 1px solid var(--border-color, #ddd); border-radius: 4px;">
     <button class="btn-resolve" id="auto-resolve-btn">{% if !volume.is_empty() || !format_filter.is_empty() || !path.is_empty() %}Auto-resolve filtered same-volume duplicates{% else %}Auto-resolve all same-volume duplicates{% endif %}</button>
 </div>
 {% endif %}
@@ -170,9 +172,11 @@
             var vol = form.querySelector('[name="volume"]').value;
             var fmt = form.querySelector('[name="format"]').value;
             var p = form.querySelector('[name="path"]').value;
+            var pref = document.getElementById('prefer-input');
             if (vol) payload.volume = vol;
             if (fmt) payload.format = fmt;
             if (p) payload.path = p;
+            if (pref && pref.value) payload.prefer = pref.value;
             return payload;
         }
 
@@ -195,7 +199,10 @@
                     return;
                 }
                 // Step 2: confirm with preview counts
-                var msg = 'This will remove ' + data.locations_to_remove + ' duplicate file copies, freeing ' + formatBytes(data.bytes_freed) + '.\n' +
+                var recipeNote = data.recipes_removed > 0
+                    ? ' and ' + data.recipes_removed + ' recipe file' + (data.recipes_removed !== 1 ? 's' : '')
+                    : '';
+                var msg = 'This will remove ' + data.locations_to_remove + ' duplicate file copies' + recipeNote + ', freeing ' + formatBytes(data.bytes_freed) + '.\n' +
                     data.duplicates_found + ' duplicate group(s) affected.\n\n' +
                     'Files will be permanently deleted from disk. Continue?';
                 if (!confirm(msg)) {

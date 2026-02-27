@@ -104,6 +104,17 @@ fn is_default_import(i: &ImportConfig) -> bool {
     *i == ImportConfig::default()
 }
 
+/// Dedup behavior configuration.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct DedupConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefer: Option<String>,
+}
+
+fn is_default_dedup(d: &DedupConfig) -> bool {
+    *d == DedupConfig::default()
+}
+
 /// Catalog configuration stored in dam.toml.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CatalogConfig {
@@ -115,6 +126,8 @@ pub struct CatalogConfig {
     pub serve: ServeConfig,
     #[serde(default, skip_serializing_if = "is_default_import")]
     pub import: ImportConfig,
+    #[serde(default, skip_serializing_if = "is_default_dedup")]
+    pub dedup: DedupConfig,
 }
 
 impl Default for CatalogConfig {
@@ -124,6 +137,7 @@ impl Default for CatalogConfig {
             preview: PreviewConfig::default(),
             serve: ServeConfig::default(),
             import: ImportConfig::default(),
+            dedup: DedupConfig::default(),
         }
     }
 }
@@ -319,6 +333,7 @@ max_edge = 1000
                 exclude: vec!["*.tmp".to_string()],
                 auto_tags: vec!["test".to_string()],
             },
+            dedup: DedupConfig::default(),
         };
         let toml_str = toml::to_string_pretty(&original).unwrap();
         let parsed: CatalogConfig = toml::from_str(&toml_str).unwrap();
@@ -397,6 +412,7 @@ max_edge = 1000
                 exclude: vec!["*.tmp".to_string()],
                 auto_tags: vec![],
             },
+            dedup: DedupConfig::default(),
         };
         original.save(dir.path()).unwrap();
         let loaded = CatalogConfig::load(dir.path()).unwrap();
