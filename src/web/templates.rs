@@ -453,6 +453,77 @@ pub struct DuplicatesPage {
     pub dedup_prefer: String,
 }
 
+/// Pre-computed asset data for the compare page.
+pub struct CompareAsset {
+    pub asset_id: String,
+    pub display_name: String,
+    pub created_at: String,
+    pub preview_url: String,
+    pub rating: Option<u8>,
+    pub color_label: Option<String>,
+    pub camera: String,
+    pub lens: String,
+    pub focal_length: String,
+    pub aperture: String,
+    pub shutter_speed: String,
+    pub iso: String,
+}
+
+impl CompareAsset {
+    pub fn from_details(details: &AssetDetails, preview_url: String) -> Self {
+        let fallback_name = details
+            .variants
+            .first()
+            .map(|v| v.original_filename.clone())
+            .unwrap_or_else(|| "Untitled".to_string());
+
+        let display_name = details
+            .name
+            .as_deref()
+            .unwrap_or(&fallback_name)
+            .to_string();
+
+        // Extract EXIF metadata from first variant's source_metadata
+        let meta = details
+            .variants
+            .first()
+            .map(|v| &v.source_metadata)
+            .cloned()
+            .unwrap_or_default();
+
+        let make = meta.get("Make").cloned().unwrap_or_default();
+        let model = meta.get("Model").cloned().unwrap_or_default();
+        let camera = if make.is_empty() && model.is_empty() {
+            String::new()
+        } else if model.starts_with(&make) {
+            model
+        } else {
+            format!("{make} {model}").trim().to_string()
+        };
+
+        Self {
+            asset_id: details.id.clone(),
+            display_name,
+            created_at: format_date(&details.created_at),
+            preview_url,
+            rating: details.rating,
+            color_label: details.color_label.clone(),
+            camera,
+            lens: meta.get("LensModel").cloned().unwrap_or_default(),
+            focal_length: meta.get("FocalLength").cloned().unwrap_or_default(),
+            aperture: meta.get("FNumber").cloned().unwrap_or_default(),
+            shutter_speed: meta.get("ExposureTime").cloned().unwrap_or_default(),
+            iso: meta.get("ISOSpeedRatings").cloned().unwrap_or_default(),
+        }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "compare.html")]
+pub struct ComparePage {
+    pub assets: Vec<CompareAsset>,
+}
+
 /// Custom askama filters for templates.
 mod filters {
     pub fn fmt_bytes(bytes: &u64) -> ::askama::Result<String> {

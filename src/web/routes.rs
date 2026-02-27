@@ -13,10 +13,10 @@ use crate::device_registry::DeviceRegistry;
 
 use super::templates::{
     format_size, link_cards, AssetCard, AssetPage, BackupPage, BrowsePage, CollectionOption,
-    DescriptionFragment, DuplicatesPage, FormatOption, LabelFragment, NameFragment,
-    PreviewFragment, RatingFragment, ResultsPartial, SavedSearchChip, SavedSearchEntry,
-    SavedSearchesPage, StackMemberCard, StatsPage, TagOption, TagTreeEntry, TagsFragment,
-    TagsPage, VolumeOption,
+    CompareAsset, ComparePage, DescriptionFragment, DuplicatesPage, FormatOption, LabelFragment,
+    NameFragment, PreviewFragment, RatingFragment, ResultsPartial, SavedSearchChip,
+    SavedSearchEntry, SavedSearchesPage, StackMemberCard, StatsPage, TagOption, TagTreeEntry,
+    TagsFragment, TagsPage, VolumeOption,
 };
 use super::AppState;
 
@@ -1995,6 +1995,75 @@ pub async fn dedup_remove_location_api(
                 StatusCode::INTERNAL_SERVER_ERROR
             };
             (status, msg).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct CompareParams {
+    pub ids: Option<String>,
+}
+
+/// GET /compare?ids=id1,id2,... — side-by-side compare page.
+pub async fn compare_page(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<CompareParams>,
+) -> Response {
+    let ids_str = params.ids.unwrap_or_default();
+    let ids: Vec<&str> = ids_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+
+    if ids.len() < 2 || ids.len() > 4 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Html("<h1>Compare</h1><p>Select 2\u{2013}4 assets to compare.</p><p><a href=\"/\">Back to browse</a></p>".to_string()),
+        )
+            .into_response();
+    }
+
+    let preview_ext = state.preview_ext.clone();
+    let ids_owned: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let engine = state.query_engine();
+        let preview_gen = state.preview_generator();
+        let mut assets = Vec::new();
+
+        for id in &ids_owned {
+            let details = engine.show(id)?;
+            let best = crate::models::variant::best_preview_index_details(&details.variants);
+            let purl = best
+                .and_then(|i| {
+                    let v = &details.variants[i];
+                    if preview_gen.has_preview(&v.content_hash) {
+                        Some(super::templates::preview_url(&v.content_hash, &preview_ext))
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_default();
+
+            assets.push(CompareAsset::from_details(&details, purl));
+        }
+
+        let tmpl = ComparePage { assets };
+        Ok::<_, anyhow::Error>(tmpl.render()?)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Err(e)) => {
+            let msg = format!("{e:#}");
+            if msg.contains("No asset found") {
+                (
+                    StatusCode::NOT_FOUND,
+                    Html(format!("<h1>Not Found</h1><p>{msg}</p><p><a href=\"/\">Back to browse</a></p>")),
+                )
+                    .into_response()
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {msg}")).into_response()
+            }
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
     }

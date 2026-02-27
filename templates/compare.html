@@ -1,0 +1,548 @@
+{% extends "base.html" %}
+{% block title %}Compare — DAM{% endblock %}
+{% block content %}
+<style>
+.compare-topbar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+.compare-topbar a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+.compare-topbar a:hover { text-decoration: underline; }
+.compare-topbar .spacer { flex: 1; }
+.sync-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-muted);
+}
+.sync-toggle input { cursor: pointer; }
+.sync-toggle.active { color: var(--primary); font-weight: 500; }
+
+.compare-grid {
+    display: flex;
+    gap: 4px;
+    height: calc(100vh - 240px);
+    min-height: 300px;
+}
+.compare-col {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border: 2px solid transparent;
+    border-radius: 4px;
+    transition: border-color 0.15s;
+}
+.compare-col.focused {
+    border-color: var(--primary);
+}
+
+.compare-image-wrap {
+    flex: 1;
+    overflow: hidden;
+    background: #111;
+    border-radius: 4px 4px 0 0;
+    position: relative;
+    cursor: grab;
+}
+.compare-image-wrap:active { cursor: grabbing; }
+.compare-image-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transform-origin: 0 0;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.compare-meta {
+    padding: 0.5rem 0.6rem;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 4px 4px;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+.compare-meta-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.compare-meta-date {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+.compare-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+}
+
+/* Rating stars in compare */
+.compare-stars {
+    display: inline-flex;
+    gap: 0.1rem;
+    font-size: 1.2rem;
+    line-height: 1;
+}
+.compare-stars .star {
+    cursor: pointer;
+    user-select: none;
+}
+.compare-stars .star.filled { color: #f5a623; }
+.compare-stars .star.empty { color: #666; }
+.compare-stars .star:hover { transform: scale(1.15); }
+
+/* Label dots in compare */
+.compare-labels {
+    display: inline-flex;
+    gap: 0.25rem;
+    align-items: center;
+}
+.compare-labels .label-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.1s, border-color 0.15s;
+}
+.compare-labels .label-dot:hover { transform: scale(1.2); }
+.compare-labels .label-dot.active {
+    border-color: var(--text);
+    box-shadow: 0 0 0 2px var(--bg);
+}
+
+.compare-exif {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-top: 0.2rem;
+}
+.compare-exif span + span::before {
+    content: " \00b7 ";
+}
+
+.zoom-hint {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: rgba(0,0,0,0.6);
+    color: #ccc;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.compare-image-wrap:hover .zoom-hint { opacity: 1; }
+</style>
+
+<div class="compare-topbar">
+    <a href="/" id="compare-back">&larr; Browse</a>
+    <div class="spacer"></div>
+    <label class="sync-toggle active" id="sync-label">
+        <input type="checkbox" id="sync-zoom" checked> Sync zoom
+    </label>
+</div>
+
+<div class="compare-grid" id="compare-grid">
+{% for asset in assets %}
+    <div class="compare-col{% if loop.first %} focused{% endif %}" data-index="{{ loop.index0 }}" data-asset-id="{{ asset.asset_id }}">
+        <div class="compare-image-wrap" data-index="{{ loop.index0 }}">
+            {% if !asset.preview_url.is_empty() %}
+            <img src="{{ asset.preview_url }}" alt="{{ asset.display_name }}" draggable="false">
+            {% else %}
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666;">No preview</div>
+            {% endif %}
+            <div class="zoom-hint">Scroll to zoom, drag to pan</div>
+        </div>
+        <div class="compare-meta">
+            <div class="compare-meta-name" title="{{ asset.display_name }}">
+                <a href="/asset/{{ asset.asset_id }}" style="color:inherit;text-decoration:none;">{{ asset.display_name }}</a>
+            </div>
+            <div class="compare-meta-date">{{ asset.created_at }}</div>
+            <div class="compare-meta-row">
+                <span class="compare-stars" data-asset-id="{{ asset.asset_id }}">
+                    {% for i in 1..=5 %}
+                    <span class="star {% if asset.rating.unwrap_or(0) >= i %}filled{% else %}empty{% endif %}" data-value="{{ i }}">{% if asset.rating.unwrap_or(0) >= i %}&#9733;{% else %}&#9734;{% endif %}</span>
+                    {% endfor %}
+                </span>
+                <span class="compare-labels" data-asset-id="{{ asset.asset_id }}">
+                    <span class="label-dot{% if asset.color_label.as_deref() == Some("Red") %} active{% endif %}" data-label="Red" style="background:#e74c3c;" title="Red"></span>
+                    <span class="label-dot{% if asset.color_label.as_deref() == Some("Orange") %} active{% endif %}" data-label="Orange" style="background:#e67e22;" title="Orange"></span>
+                    <span class="label-dot{% if asset.color_label.as_deref() == Some("Yellow") %} active{% endif %}" data-label="Yellow" style="background:#f1c40f;" title="Yellow"></span>
+                    <span class="label-dot{% if asset.color_label.as_deref() == Some("Green") %} active{% endif %}" data-label="Green" style="background:#27ae60;" title="Green"></span>
+                    <span class="label-dot{% if asset.color_label.as_deref() == Some("Blue") %} active{% endif %}" data-label="Blue" style="background:#3498db;" title="Blue"></span>
+                    <span class="label-dot{% if asset.color_label.as_deref() == Some("Pink") %} active{% endif %}" data-label="Pink" style="background:#e91e8e;" title="Pink"></span>
+                    <span class="label-dot{% if asset.color_label.as_deref() == Some("Purple") %} active{% endif %}" data-label="Purple" style="background:#9b59b6;" title="Purple"></span>
+                </span>
+            </div>
+            <div class="compare-exif">
+                {% if !asset.camera.is_empty() %}<span>{{ asset.camera }}</span>{% endif %}
+                {% if !asset.lens.is_empty() %}<span>{{ asset.lens }}</span>{% endif %}
+                {% if !asset.focal_length.is_empty() %}<span>{{ asset.focal_length }}</span>{% endif %}
+                {% if !asset.aperture.is_empty() %}<span>f/{{ asset.aperture }}</span>{% endif %}
+                {% if !asset.shutter_speed.is_empty() %}<span>{{ asset.shutter_speed }}s</span>{% endif %}
+                {% if !asset.iso.is_empty() %}<span>ISO {{ asset.iso }}</span>{% endif %}
+            </div>
+        </div>
+    </div>
+{% endfor %}
+</div>
+
+<script>
+(function() {
+    var cols = document.querySelectorAll('.compare-col');
+    var wraps = document.querySelectorAll('.compare-image-wrap');
+    var syncCheckbox = document.getElementById('sync-zoom');
+    var syncLabel = document.getElementById('sync-label');
+    var focusedCol = 0;
+    var colCount = cols.length;
+
+    // Back navigation: return to the browse page that launched compare.
+    // dam-browse-url may have been overwritten by storeCompareContext() during a
+    // detail round-trip, so we keep a dedicated dam-compare-back key.
+    var browseUrl;
+    var storedBrowse = sessionStorage.getItem('dam-browse-url');
+    if (storedBrowse && storedBrowse.indexOf('/compare') === -1) {
+        browseUrl = storedBrowse;
+        sessionStorage.setItem('dam-compare-back', storedBrowse);
+    } else {
+        browseUrl = sessionStorage.getItem('dam-compare-back') || '/';
+    }
+    document.getElementById('compare-back').href = browseUrl;
+
+    // Per-column transform state
+    var transforms = [];
+    for (var i = 0; i < colCount; i++) {
+        transforms.push({ scale: 1, tx: 0, ty: 0 });
+    }
+
+    function applyTransform(index) {
+        var img = wraps[index].querySelector('img');
+        if (!img) return;
+        var t = transforms[index];
+        img.style.transform = 'scale(' + t.scale + ') translate(' + t.tx + 'px, ' + t.ty + 'px)';
+    }
+
+    function broadcastTransform(sourceIndex) {
+        if (!syncCheckbox.checked) return;
+        var src = transforms[sourceIndex];
+        for (var i = 0; i < colCount; i++) {
+            if (i === sourceIndex) continue;
+            transforms[i].scale = src.scale;
+            transforms[i].tx = src.tx;
+            transforms[i].ty = src.ty;
+            applyTransform(i);
+        }
+    }
+
+    function setFocusedCol(index) {
+        cols[focusedCol].classList.remove('focused');
+        focusedCol = Math.max(0, Math.min(index, colCount - 1));
+        cols[focusedCol].classList.add('focused');
+    }
+
+    // Sync toggle
+    syncCheckbox.addEventListener('change', function() {
+        if (syncCheckbox.checked) {
+            syncLabel.classList.add('active');
+            broadcastTransform(focusedCol);
+        } else {
+            syncLabel.classList.remove('active');
+        }
+    });
+
+    // Zoom via scroll wheel
+    for (var wi = 0; wi < wraps.length; wi++) {
+        (function(idx) {
+            wraps[idx].addEventListener('wheel', function(e) {
+                e.preventDefault();
+                var t = transforms[idx];
+                var delta = e.deltaY > 0 ? 0.9 : 1.1;
+                var newScale = Math.max(0.5, Math.min(t.scale * delta, 20));
+                // Zoom toward cursor position
+                var rect = wraps[idx].getBoundingClientRect();
+                var cx = (e.clientX - rect.left) / rect.width;
+                var cy = (e.clientY - rect.top) / rect.height;
+                var imgW = rect.width;
+                var imgH = rect.height;
+                // Adjust translate so the point under cursor stays fixed
+                t.tx = cx * imgW / newScale - (cx * imgW / t.scale - t.tx);
+                t.ty = cy * imgH / newScale - (cy * imgH / t.scale - t.ty);
+                t.scale = newScale;
+                applyTransform(idx);
+                setFocusedCol(idx);
+                broadcastTransform(idx);
+            }, { passive: false });
+
+            // Pan via drag
+            var dragging = false, startX, startY, startTx, startTy;
+            wraps[idx].addEventListener('mousedown', function(e) {
+                if (e.button !== 0) return;
+                dragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startTx = transforms[idx].tx;
+                startTy = transforms[idx].ty;
+                setFocusedCol(idx);
+            });
+            document.addEventListener('mousemove', function(e) {
+                if (!dragging) return;
+                var t = transforms[idx];
+                t.tx = startTx + (e.clientX - startX) / t.scale;
+                t.ty = startTy + (e.clientY - startY) / t.scale;
+                applyTransform(idx);
+                broadcastTransform(idx);
+            });
+            document.addEventListener('mouseup', function() {
+                dragging = false;
+            });
+        })(wi);
+    }
+
+    // Reset zoom on double-click
+    for (var di = 0; di < wraps.length; di++) {
+        (function(idx) {
+            wraps[idx].addEventListener('dblclick', function() {
+                transforms[idx] = { scale: 1, tx: 0, ty: 0 };
+                applyTransform(idx);
+                setFocusedCol(idx);
+                broadcastTransform(idx);
+            });
+        })(di);
+    }
+
+    // Click on column to focus
+    for (var ci = 0; ci < cols.length; ci++) {
+        (function(idx) {
+            cols[idx].querySelector('.compare-meta').addEventListener('click', function(e) {
+                if (e.target.closest('a') || e.target.closest('.star') || e.target.closest('.label-dot')) return;
+                setFocusedCol(idx);
+            });
+        })(ci);
+    }
+
+    // Interactive rating stars
+    document.querySelectorAll('.compare-stars').forEach(function(group) {
+        var assetId = group.getAttribute('data-asset-id');
+        group.querySelectorAll('.star').forEach(function(star) {
+            star.addEventListener('click', function() {
+                var val = parseInt(star.getAttribute('data-value'));
+                // If clicking the current rating, clear it
+                var currentRating = group.querySelectorAll('.star.filled').length;
+                var newRating = (val === currentRating) ? 0 : val;
+                fetch('/api/asset/' + assetId + '/rating', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: 'rating=' + newRating
+                }).then(function() {
+                    // Update stars in DOM
+                    group.querySelectorAll('.star').forEach(function(s) {
+                        var v = parseInt(s.getAttribute('data-value'));
+                        if (v <= newRating) {
+                            s.className = 'star filled';
+                            s.innerHTML = '\u2605';
+                        } else {
+                            s.className = 'star empty';
+                            s.innerHTML = '\u2606';
+                        }
+                    });
+                });
+            });
+        });
+    });
+
+    // Interactive label dots
+    document.querySelectorAll('.compare-labels').forEach(function(group) {
+        var assetId = group.getAttribute('data-asset-id');
+        group.querySelectorAll('.label-dot').forEach(function(dot) {
+            dot.addEventListener('click', function() {
+                var label = dot.getAttribute('data-label');
+                var isActive = dot.classList.contains('active');
+                var newLabel = isActive ? '' : label;
+                fetch('/api/asset/' + assetId + '/label', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({label: newLabel})
+                }).then(function() {
+                    group.querySelectorAll('.label-dot').forEach(function(d) {
+                        d.classList.remove('active');
+                    });
+                    if (!isActive) dot.classList.add('active');
+                });
+            });
+        });
+    });
+
+    // Store compare context so the detail page navigates within the compare set
+    function storeCompareContext() {
+        var ids = [];
+        cols.forEach(function(c) { ids.push(c.getAttribute('data-asset-id')); });
+        sessionStorage.setItem('dam-browse-ids', JSON.stringify(ids));
+        sessionStorage.setItem('dam-browse-url', window.location.href);
+    }
+
+    // Intercept asset name links to store compare context first
+    document.querySelectorAll('.compare-meta-name a').forEach(function(link) {
+        link.addEventListener('click', function() {
+            storeCompareContext();
+        });
+    });
+
+    // Keyboard shortcuts
+    var labelNumMap = {'1':'Red','2':'Orange','3':'Yellow','4':'Green','5':'Blue','6':'Pink','7':'Purple'};
+    var labelLetterMap = {'r':'Red','o':'Orange','y':'Yellow','g':'Green','b':'Blue','p':'Pink','u':'Purple'};
+
+    function getFocusedAssetId() {
+        return cols[focusedCol].getAttribute('data-asset-id');
+    }
+
+    function applyRatingKey(rating) {
+        var assetId = getFocusedAssetId();
+        var group = cols[focusedCol].querySelector('.compare-stars');
+        fetch('/api/asset/' + assetId + '/rating', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'rating=' + rating
+        }).then(function() {
+            group.querySelectorAll('.star').forEach(function(s) {
+                var v = parseInt(s.getAttribute('data-value'));
+                if (v <= rating) {
+                    s.className = 'star filled';
+                    s.innerHTML = '\u2605';
+                } else {
+                    s.className = 'star empty';
+                    s.innerHTML = '\u2606';
+                }
+            });
+        });
+    }
+
+    function applyLabelKey(label) {
+        var assetId = getFocusedAssetId();
+        var group = cols[focusedCol].querySelector('.compare-labels');
+        fetch('/api/asset/' + assetId + '/label', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({label: label})
+        }).then(function() {
+            group.querySelectorAll('.label-dot').forEach(function(d) {
+                d.classList.remove('active');
+                if (label && d.getAttribute('data-label') === label) d.classList.add('active');
+            });
+        });
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (window.damHelp && window.damHelp.isOpen()) return;
+        var el = e.target;
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
+        if (el.tagName === 'INPUT' && el.type !== 'checkbox') return;
+
+        // Escape: go back to browse
+        if (e.key === 'Escape') {
+            window.location.href = browseUrl;
+            return;
+        }
+
+        // Left/Right: move focus between columns
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            setFocusedCol(focusedCol - 1);
+            return;
+        }
+        if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            setFocusedCol(focusedCol + 1);
+            return;
+        }
+
+        // s: toggle sync
+        if (e.key === 's' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            syncCheckbox.checked = !syncCheckbox.checked;
+            syncCheckbox.dispatchEvent(new Event('change'));
+            return;
+        }
+
+        // d: open detail page for focused asset
+        if (e.key === 'd' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            storeCompareContext();
+            window.location.href = '/asset/' + getFocusedAssetId();
+            return;
+        }
+
+        // Alt+0-7: color label
+        if (e.altKey && e.code >= 'Digit0' && e.code <= 'Digit7') {
+            e.preventDefault();
+            var num = e.code.charAt(5);
+            applyLabelKey(num === '0' ? '' : (labelNumMap[num] || ''));
+            return;
+        }
+
+        // 0-5: rating
+        if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key >= '0' && e.key <= '5') {
+            applyRatingKey(parseInt(e.key));
+            return;
+        }
+
+        // Letter keys for label
+        if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+            var lower = e.key.toLowerCase();
+            if (labelLetterMap[lower]) {
+                applyLabelKey(labelLetterMap[lower]);
+                return;
+            }
+            if (lower === 'x') {
+                applyLabelKey('');
+                return;
+            }
+        }
+    });
+
+    // Register keyboard help
+    if (window.damHelp) {
+        damHelp.registerShortcuts([
+            { title: 'Compare', shortcuts: [
+                { keys: '\u2190 \u2192', desc: 'Focus previous / next' },
+                { keys: 'd', desc: 'Open detail page' },
+                { keys: 's', desc: 'Toggle sync zoom' },
+                { keys: 'Escape', desc: 'Back to browse' }
+            ]},
+            { title: 'Rating', shortcuts: [
+                { keys: '1 \u2013 5', desc: 'Set rating (focused)' },
+                { keys: '0', desc: 'Clear rating' }
+            ]},
+            { title: 'Color Label', shortcuts: [
+                { keys: 'Alt+1\u20137', desc: 'Set label by number' },
+                { keys: 'r, o, y, g, b, p, u', desc: 'Set by color initial' },
+                { keys: 'x, Alt+0', desc: 'Clear label' }
+            ]},
+            { title: 'Zoom', shortcuts: [
+                { keys: 'Scroll', desc: 'Zoom in/out' },
+                { keys: 'Drag', desc: 'Pan image' },
+                { keys: 'Double-click', desc: 'Reset zoom' }
+            ]},
+            { title: 'General', shortcuts: [
+                { keys: '?', desc: 'Show this help' }
+            ]}
+        ]);
+    }
+})();
+</script>
+{% endblock %}

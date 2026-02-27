@@ -188,6 +188,8 @@
         <span class="batch-sep"></span>
         <button class="batch-btn" id="batch-stack">Stack</button>
         <button class="batch-btn batch-btn-danger" id="batch-unstack">Unstack</button>
+        <span class="batch-sep"></span>
+        <button class="batch-btn" id="batch-compare" title="Compare 2–4 selected assets (c)">Compare</button>
     </div>
 </div>
 
@@ -1049,6 +1051,15 @@
         .finally(function() { setButtonsBusy(false); });
     });
 
+    // Compare (navigate to compare page with 2-4 selected)
+    document.getElementById('batch-compare').addEventListener('click', function() {
+        if (selected.size < 2 || selected.size > 4) {
+            alert('Select 2\u20134 assets to compare.');
+            return;
+        }
+        window.location.href = '/compare?ids=' + Array.from(selected).join(',');
+    });
+
     // Expose for keyboard navigation integration
     window.damBatch = {
         selected: selected,
@@ -1648,6 +1659,11 @@
                 applyLabel('');
                 return;
             }
+            // c: compare selected (2-4)
+            if (lower === 'c' && window.damBatch && window.damBatch.selected.size >= 2 && window.damBatch.selected.size <= 4) {
+                window.location.href = '/compare?ids=' + Array.from(window.damBatch.selected).join(',');
+                return;
+            }
         }
     });
 
@@ -1899,7 +1915,8 @@ if (window.damHelp) {
         ]},
         { title: 'Selection', shortcuts: [
             { keys: 'Space', desc: 'Toggle card selection' },
-            { keys: '\u2318/Ctrl+A', desc: 'Select all on page' }
+            { keys: '\u2318/Ctrl+A', desc: 'Select all on page' },
+            { keys: 'c', desc: 'Compare selected (2\u20134)' }
         ]},
         { title: 'Rating', shortcuts: [
             { keys: '1 \u2013 5', desc: 'Set rating' },
