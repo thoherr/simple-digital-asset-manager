@@ -1,8 +1,14 @@
+{% match smart_preview_url %}
+{% when Some with (smart_url) %}
+<img src="{{ smart_url }}" alt="Preview"
+     onerror="{% match primary_preview_url %}{% when Some with (url) %}this.onerror=null;this.src='{{ url }}'{% when None %}{% endmatch %}">
+{% when None %}
 {% match primary_preview_url %}
 {% when Some with (url) %}
 <img src="{{ url }}" alt="Preview">
 {% when None %}
 <div class="no-preview">No preview available</div>
+{% endmatch %}
 {% endmatch %}
 <button class="preview-generate-btn"
         hx-post="/api/asset/{{ asset_id }}/preview"
@@ -11,5 +17,12 @@
         hx-indicator="#preview-spinner">
     {% match primary_preview_url %}
     {% when Some with (_url) %}Regenerate preview{% when None %}Generate preview{% endmatch %}
+</button>
+<button class="preview-generate-btn"
+        hx-post="/api/asset/{{ asset_id }}/smart-preview"
+        hx-target="#preview"
+        hx-swap="innerHTML"
+        hx-indicator="#preview-spinner">
+    {% if has_smart_preview %}Regenerate smart preview{% else %}Generate smart preview{% endif %}
 </button>
 <span id="preview-spinner" class="htmx-indicator">Generating...</span>

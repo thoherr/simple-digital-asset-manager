@@ -9,6 +9,13 @@ pub fn preview_url(content_hash: &str, ext: &str) -> String {
     format!("/preview/{prefix}/{hex}.{ext}")
 }
 
+/// Compute smart preview URL from a content hash.
+pub fn smart_preview_url(content_hash: &str, ext: &str) -> String {
+    let hex = content_hash.strip_prefix("sha256:").unwrap_or(content_hash);
+    let prefix = &hex[..2.min(hex.len())];
+    format!("/smart-preview/{prefix}/{hex}.{ext}")
+}
+
 /// Format a byte count for display.
 pub fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
@@ -245,6 +252,8 @@ pub struct AssetPage {
     pub color_label: Option<String>,
     pub tags: Vec<String>,
     pub primary_preview_url: Option<String>,
+    pub smart_preview_url: Option<String>,
+    pub has_smart_preview: bool,
     pub variants: Vec<VariantRow>,
     pub recipes: Vec<RecipeRow>,
     pub collections: Vec<AssetCollectionChip>,
@@ -271,6 +280,8 @@ impl AssetPage {
     pub fn from_details(
         details: AssetDetails,
         preview: Option<String>,
+        smart_preview: Option<String>,
+        has_smart_preview: bool,
         collections: Vec<String>,
         stack_members: Vec<StackMemberCard>,
         is_stack_pick: bool,
@@ -338,6 +349,8 @@ impl AssetPage {
             color_label: details.color_label,
             tags: details.tags,
             primary_preview_url: preview,
+            smart_preview_url: smart_preview,
+            has_smart_preview,
             variants,
             recipes,
             collections: collections
@@ -393,6 +406,8 @@ pub struct BackupPage {
 pub struct PreviewFragment {
     pub asset_id: String,
     pub primary_preview_url: Option<String>,
+    pub smart_preview_url: Option<String>,
+    pub has_smart_preview: bool,
 }
 
 #[derive(Template)]
