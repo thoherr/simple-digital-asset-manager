@@ -264,7 +264,7 @@ Ranked by impact-to-effort ratio, building on existing infrastructure:
 | Priority | Enhancement | Effort | Impact | Status |
 |----------|-------------|--------|--------|--------|
 | 1 | Lightbox / fullscreen view | Medium | Very high | **Done** (v1.5.0, enhanced v1.6.1) |
-| 2 | Smart duplicate resolution | Medium | High | Partially done — `dam dedup` (v1.4.1) handles CLI; web UI still pending |
+| 2 | Smart duplicate resolution | Medium | High | **Done** (CLI `dam dedup` v1.4.1, web UI `/duplicates` v1.6.2) |
 | 3 | Hierarchical tags | Medium | High | **Done** (v1.6.0) |
 | 4 | Adjustable grid density | Low | High | **Done** (v1.5.0) |
 | 5 | Timeline / calendar view | Medium | High | **Done** (v1.5.3) |
@@ -278,6 +278,6 @@ Ranked by impact-to-effort ratio, building on existing infrastructure:
 | 13 | Drag-and-drop stack reordering | Low | Low | Planned — reorder stack members on asset detail page |
 | 14 | Keyboard help & detail page nav | Low | Medium | **Done** (v1.6.1) — `?` help overlay, detail prev/next, d/l lightbox switching |
 
-Items 1, 3, 4, 5, 6, 9, 11, 12, and 14 are complete. Item 1 was enhanced in v1.6.1 with top-bar rating/label, detail page navigation, and lightbox/detail switching. Item 2 has CLI coverage via `dam dedup` (v1.4.1) but the web UI duplicate resolution page is still pending. The highest-priority remaining items are 7 (side-by-side compare) and 2 (web UI dedup).
+Items 1, 2, 3, 4, 5, 6, 9, 11, 12, and 14 are complete. Item 2 was completed in v1.6.2 with the `/duplicates` web UI page (summary cards, mode tabs, filters, per-location removal, auto-resolve, preview thumbnails with lightbox). The highest-priority remaining item is 7 (side-by-side compare).
 
 Watch mode and export are specified in [`proposal-future-enhancements.md`](proposal-future-enhancements.md) and would slot in around priority 7-8.

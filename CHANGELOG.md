@@ -2,6 +2,12 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v1.6.2
+
+### New Features
+- **Duplicates page** — new `/duplicates` page in the web UI showing duplicate file groups with summary cards (total groups, wasted space, same-volume count), mode tabs (All / Same Volume / Cross Volume), and filters (path prefix, format, volume). Per-location "Remove" buttons delete individual file copies from disk. "Auto-resolve" button removes all same-volume duplicates in one click. Each group header shows a clickable preview thumbnail; clicking opens a lightbox overlay with prev/next navigation (arrow keys), keyboard shortcut `d` to open the detail page, and Escape to close. Back/Escape on the detail page returns to the duplicates page.
+- **Duplicates dedup API** — `POST /api/dedup/resolve` auto-resolves same-volume duplicates, `DELETE /api/dedup/location` removes a specific file location.
+
 ## v1.6.1
 
 ### Enhancements

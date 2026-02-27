@@ -279,6 +279,9 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - `PUT /api/saved-searches/{name}/rename` — rename a saved search (JSON: `{new_name}`)
 - `GET /api/calendar` — calendar heatmap data as JSON (`{year, counts, years}`), respects all search filter params
 - `GET /saved-searches` — saved searches management page (table with favorite toggle, rename, delete)
+- `GET /duplicates` — duplicates page with summary cards, mode tabs (all/same/cross), filters (path/format/volume), preview thumbnails, lightbox overlay, per-location remove buttons, and auto-resolve
+- `POST /api/dedup/resolve` — auto-resolve all same-volume duplicates (deletes files, returns `{locations_removed, bytes_freed, errors}`)
+- `DELETE /api/dedup/location` — remove a specific file location (JSON: `{content_hash, volume_id, relative_path}`)
 
 **Catalog extensions** (in `src/catalog.rs`):
 - `SearchOptions` / `SearchSort` / `SearchPage` — paginated search with volume filter, date filters, and dynamic sort
