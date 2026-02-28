@@ -183,12 +183,12 @@ flowchart LR
     L["<b>Lightbox</b><br><i>← → prev / next</i>"]
     D["<b>Detail Page</b><br><i>← → prev / next</i>"]
 
-    B -- "thumb click / Enter / l →" --> L
-    L -- "← Esc" --> B
-    L -- "click image / d →" --> D
-    D -- "← click image / l" --> L
-    B -- "card-body click / d →" --> D
-    D -- "← Esc / Back" --> B
+    B -- "thumb click / Enter / l" --> L
+    L -- "Esc" --> B
+    B -- "card-body click / d" --> D
+    D -- "click image / l" --> L
+    L -- "click image / d" --> D
+    D -- "Esc / Back" --> B
 
     style B fill:#e8f0fe,stroke:#4285f4,stroke-width:2px
     style L fill:#fce8e6,stroke:#ea4335,stroke-width:2px
