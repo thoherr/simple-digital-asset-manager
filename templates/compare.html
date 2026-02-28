@@ -166,6 +166,7 @@
         <div class="compare-image-wrap" data-index="{{ loop.index0 }}">
             {% if !asset.preview_url.is_empty() %}
             <img src="{{ asset.preview_url }}" alt="{{ asset.display_name }}" draggable="false">
+            <span class="smart-loading" style="display:none;">HD</span>
             {% else %}
             <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666;">No preview</div>
             {% endif %}
@@ -207,13 +208,24 @@
 
 <script>
 (function() {
-    // Upgrade compare images to smart previews with fallback
-    document.querySelectorAll('.compare-image-wrap img').forEach(function(img) {
+    // Upgrade compare images to smart previews with HD badge
+    document.querySelectorAll('.compare-image-wrap').forEach(function(wrap) {
+        var img = wrap.querySelector('img');
+        var badge = wrap.querySelector('.smart-loading');
+        if (!img || !badge) return;
         var originalSrc = img.getAttribute('src');
         if (originalSrc && originalSrc.indexOf('/preview/') !== -1) {
             var smartSrc = originalSrc.replace('/preview/', '/smart-preview/');
-            img.onerror = function() { if (this.src !== originalSrc) { this.onerror = null; this.src = originalSrc; } };
-            img.src = smartSrc;
+            badge.style.display = 'block';
+            badge.className = 'smart-loading loading';
+            var bg = new Image();
+            bg.onload = function() {
+                img.src = smartSrc;
+                badge.className = 'smart-loading done';
+                setTimeout(function() { badge.style.display = 'none'; }, 1500);
+            };
+            bg.onerror = function() { badge.style.display = 'none'; };
+            bg.src = smartSrc;
         }
     });
 
@@ -415,6 +427,29 @@
         });
     });
 
+    // Zoom keyboard helpers
+    function zoomFocused(newScale) {
+        var t = transforms[focusedCol];
+        if (newScale <= 1.05) {
+            t.scale = 1; t.tx = 0; t.ty = 0;
+        } else {
+            newScale = Math.max(0.5, Math.min(newScale, 20));
+            // Zoom toward center
+            var rect = wraps[focusedCol].getBoundingClientRect();
+            var cx = 0.5, cy = 0.5;
+            var imgW = rect.width, imgH = rect.height;
+            t.tx = cx * imgW / newScale - (cx * imgW / t.scale - t.tx);
+            t.ty = cy * imgH / newScale - (cy * imgH / t.scale - t.ty);
+            t.scale = newScale;
+        }
+        applyTransform(focusedCol);
+        broadcastTransform(focusedCol);
+    }
+    function zoomFocusedIn() { zoomFocused(transforms[focusedCol].scale * 1.5); }
+    function zoomFocusedOut() { zoomFocused(transforms[focusedCol].scale / 1.5); }
+    function zoomFocusedFit() { zoomFocused(1); }
+    function zoomFocusedFull() { zoomFocused(transforms[focusedCol].scale === 1 ? 3 : 1); }
+
     // Keyboard shortcuts
     var labelNumMap = {'1':'Red','2':'Orange','3':'Yellow','4':'Green','5':'Blue','6':'Pink','7':'Purple'};
     var labelLetterMap = {'r':'Red','o':'Orange','y':'Yellow','g':'Green','b':'Blue','p':'Pink','u':'Purple'};
@@ -497,6 +532,14 @@
             return;
         }
 
+        // Zoom shortcuts
+        if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+            if (e.key === ',') { e.preventDefault(); zoomFocusedFit(); return; }
+            if (e.key === '.') { e.preventDefault(); zoomFocusedFull(); return; }
+            if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomFocusedIn(); return; }
+            if (e.key === '-') { e.preventDefault(); zoomFocusedOut(); return; }
+        }
+
         // Alt+0-7: color label
         if (e.altKey && e.code >= 'Digit0' && e.code <= 'Digit7') {
             e.preventDefault();
@@ -544,6 +587,9 @@
                 { keys: 'x, Alt+0', desc: 'Clear label' }
             ]},
             { title: 'Zoom', shortcuts: [
+                { keys: '+ / \u2212', desc: 'Zoom in / out' },
+                { keys: ', (comma)', desc: 'Fit to view' },
+                { keys: '. (period)', desc: 'Toggle 3\u00d7 zoom' },
                 { keys: 'Scroll', desc: 'Zoom in/out' },
                 { keys: 'Drag', desc: 'Pan image' },
                 { keys: 'Double-click', desc: 'Reset zoom' }

@@ -365,26 +365,39 @@
 
         function onLoad() {
             hasSmartPreview = img.src.indexOf('/smart-preview/') !== -1;
+            var badge = document.getElementById('detail-smart-loading');
+            if (hasSmartPreview) {
+                // Already showing smart preview — flash HD badge
+                if (badge) {
+                    badge.style.display = 'block';
+                    badge.className = 'smart-loading done';
+                    setTimeout(function() { badge.style.display = 'none'; }, 1500);
+                }
+                return;
+            }
             // Progressive smart preview loading
-            if (!hasSmartPreview) {
-                var smartSrc = img.getAttribute('data-smart-src');
-                if (!smartSrc && img.src.indexOf('/preview/') !== -1) {
-                    smartSrc = img.src.replace('/preview/', '/smart-preview/');
+            var smartSrc = img.getAttribute('data-smart-src');
+            if (!smartSrc && img.src.indexOf('/preview/') !== -1) {
+                smartSrc = img.src.replace('/preview/', '/smart-preview/');
+            }
+            if (smartSrc) {
+                if (badge) {
+                    badge.style.display = 'block';
+                    badge.className = 'smart-loading loading';
                 }
-                if (smartSrc) {
-                    var badge = document.getElementById('detail-smart-loading');
-                    if (badge) badge.style.display = 'block';
-                    var bg = new Image();
-                    bg.onload = function() {
-                        img.src = smartSrc;
-                        hasSmartPreview = true;
-                        if (badge) badge.style.display = 'none';
-                    };
-                    bg.onerror = function() {
-                        if (badge) badge.style.display = 'none';
-                    };
-                    bg.src = smartSrc;
-                }
+                var bg = new Image();
+                bg.onload = function() {
+                    img.src = smartSrc;
+                    hasSmartPreview = true;
+                    if (badge) {
+                        badge.className = 'smart-loading done';
+                        setTimeout(function() { badge.style.display = 'none'; }, 1500);
+                    }
+                };
+                bg.onerror = function() {
+                    if (badge) badge.style.display = 'none';
+                };
+                bg.src = smartSrc;
             }
         }
         if (img.complete) onLoad();

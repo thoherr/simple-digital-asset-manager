@@ -1359,18 +1359,23 @@
         var label = card.getAttribute('data-label') || '';
         var variants = card.getAttribute('data-variants');
 
+        var hdBadge = document.getElementById('lb-smart-loading');
+        hdBadge.style.display = 'none';
+        hdBadge.className = 'smart-loading';
         img.src = src;
         img.alt = name;
         var smartSrc = src.replace('/preview/', '/smart-preview/');
-        var hdBadge = document.getElementById('lb-smart-loading');
         if (smartSrc !== src) {
             hdBadge.style.display = 'block';
+            hdBadge.className = 'smart-loading loading';
             var bg = new Image();
-            bg.onload = function() { img.src = smartSrc; hdBadge.style.display = 'none'; };
+            bg.onload = function() {
+                img.src = smartSrc;
+                hdBadge.className = 'smart-loading done';
+                setTimeout(function() { hdBadge.style.display = 'none'; }, 1500);
+            };
             bg.onerror = function() { hdBadge.style.display = 'none'; };
             bg.src = smartSrc;
-        } else {
-            hdBadge.style.display = 'none';
         }
         counter.textContent = (currentIndex + 1) + ' / ' + cards.length;
         title.textContent = name;
