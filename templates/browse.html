@@ -1364,7 +1364,7 @@
         var smartSrc = src.replace('/preview/', '/smart-preview/');
         var hdBadge = document.getElementById('lb-smart-loading');
         if (smartSrc !== src) {
-            hdBadge.style.display = '';
+            hdBadge.style.display = 'block';
             var bg = new Image();
             bg.onload = function() { img.src = smartSrc; hdBadge.style.display = 'none'; };
             bg.onerror = function() { hdBadge.style.display = 'none'; };
