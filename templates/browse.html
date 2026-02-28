@@ -1187,6 +1187,7 @@
     var currentIndex = -1;
     var isOpen = false;
     var infoVisible = false;
+    var standaloneData = null; // set by openWithData() for map popup lightbox
 
     var overlay = document.getElementById('lightbox');
     var img = document.getElementById('lb-img');
@@ -1389,34 +1390,72 @@
     function close() {
         resetZoom();
         isOpen = false;
+        standaloneData = null;
         overlay.classList.remove('open');
         document.body.style.overflow = '';
+        document.getElementById('lb-prev').style.display = '';
+        document.getElementById('lb-next').style.display = '';
         if (window.damKeyNav) window.damKeyNav.setFocusById(
             sessionStorage.getItem('dam-browse-focus')
         );
     }
 
-    function render() {
-        var cards = getCards();
-        if (currentIndex < 0 || currentIndex >= cards.length) return;
-        resetZoom();
-        var card = cards[currentIndex];
+    function openWithData(data) {
+        standaloneData = data;
+        isOpen = true;
+        overlay.classList.add('open');
+        document.body.style.overflow = 'hidden';
+        render();
+    }
 
-        var src = card.getAttribute('data-preview');
-        var name = card.getAttribute('data-name');
-        var assetId = card.getAttribute('data-asset-id');
-        var type = card.getAttribute('data-type');
-        var format = card.getAttribute('data-format');
-        var date = card.getAttribute('data-date');
-        var rating = parseInt(card.getAttribute('data-rating') || '0');
-        var label = card.getAttribute('data-label') || '';
-        var variants = card.getAttribute('data-variants');
+    function render() {
+        resetZoom();
+        var src, assetName, assetId, type, format, date, rating, label, variants;
+        var prevNav, nextNav;
+        var totalCount;
+
+        if (standaloneData) {
+            // Standalone mode (map popup) — use provided data
+            src = standaloneData.preview;
+            assetName = standaloneData.name;
+            assetId = standaloneData.id;
+            type = '';
+            format = '';
+            date = '';
+            rating = standaloneData.rating || 0;
+            label = standaloneData.label || '';
+            variants = '';
+            prevNav = null;
+            nextNav = null;
+            totalCount = 1;
+            document.getElementById('lb-prev').style.display = 'none';
+            document.getElementById('lb-next').style.display = 'none';
+        } else {
+            // Normal mode — read from grid cards
+            var cards = getCards();
+            if (currentIndex < 0 || currentIndex >= cards.length) return;
+            var card = cards[currentIndex];
+            src = card.getAttribute('data-preview');
+            assetName = card.getAttribute('data-name');
+            assetId = card.getAttribute('data-asset-id');
+            type = card.getAttribute('data-type');
+            format = card.getAttribute('data-format');
+            date = card.getAttribute('data-date');
+            rating = parseInt(card.getAttribute('data-rating') || '0');
+            label = card.getAttribute('data-label') || '';
+            variants = card.getAttribute('data-variants');
+            prevNav = card.getAttribute('data-prev');
+            nextNav = card.getAttribute('data-next');
+            totalCount = cards.length;
+            document.getElementById('lb-prev').style.display = '';
+            document.getElementById('lb-next').style.display = '';
+        }
 
         var hdBadge = document.getElementById('lb-smart-loading');
         hdBadge.style.display = 'none';
         hdBadge.className = 'smart-loading';
         img.src = src;
-        img.alt = name;
+        img.alt = assetName;
         var smartSrc = src.replace('/preview/', '/smart-preview/');
         if (smartSrc !== src) {
             hdBadge.style.display = 'block';
@@ -1430,13 +1469,11 @@
             bg.onerror = function() { hdBadge.style.display = 'none'; };
             bg.src = smartSrc;
         }
-        counter.textContent = (currentIndex + 1) + ' / ' + cards.length;
-        title.textContent = name;
-        var prev = card.getAttribute('data-prev');
-        var next = card.getAttribute('data-next');
+        counter.textContent = standaloneData ? '' : (currentIndex + 1) + ' / ' + totalCount;
+        title.textContent = assetName;
         var qs = [];
-        if (prev) qs.push('prev=' + prev);
-        if (next) qs.push('next=' + next);
+        if (prevNav) qs.push('prev=' + prevNav);
+        if (nextNav) qs.push('next=' + nextNav);
         detailLink.href = '/asset/' + assetId + (qs.length ? '?' + qs.join('&') : '');
 
         // Metadata
@@ -1451,18 +1488,21 @@
         // Label dots
         renderLabels(label);
 
-        // Preload adjacent: regular preview for instant display, then smart in background
-        if (currentIndex > 0) {
-            var prevSrc = cards[currentIndex - 1].getAttribute('data-preview');
-            preloadPrev.src = prevSrc;
-            var prevSmart = prevSrc.replace('/preview/', '/smart-preview/');
-            if (prevSmart !== prevSrc) { var p = new Image(); p.src = prevSmart; }
-        }
-        if (currentIndex < cards.length - 1) {
-            var nextSrc = cards[currentIndex + 1].getAttribute('data-preview');
-            preloadNext.src = nextSrc;
-            var nextSmart = nextSrc.replace('/preview/', '/smart-preview/');
-            if (nextSmart !== nextSrc) { var n = new Image(); n.src = nextSmart; }
+        // Preload adjacent (only in normal mode)
+        if (!standaloneData) {
+            var cards = getCards();
+            if (currentIndex > 0) {
+                var prevSrc = cards[currentIndex - 1].getAttribute('data-preview');
+                preloadPrev.src = prevSrc;
+                var prevSmart = prevSrc.replace('/preview/', '/smart-preview/');
+                if (prevSmart !== prevSrc) { var p = new Image(); p.src = prevSmart; }
+            }
+            if (currentIndex < cards.length - 1) {
+                var nextSrc = cards[currentIndex + 1].getAttribute('data-preview');
+                preloadNext.src = nextSrc;
+                var nextSmart = nextSrc.replace('/preview/', '/smart-preview/');
+                if (nextSmart !== nextSrc) { var n = new Image(); n.src = nextSmart; }
+            }
         }
     }
 
@@ -1723,6 +1763,7 @@
     window.damLightbox = {
         isOpen: function() { return isOpen; },
         open: open,
+        openWithData: openWithData,
         close: close
     };
 
@@ -2283,7 +2324,12 @@ window.damMap = (function() {
                     var marker = L.marker([m.lat, m.lng]);
                     var popupHtml = '<div class="map-popup">';
                     if (m.preview) {
-                        popupHtml += '<a href="/asset/' + m.id + '"><img class="map-popup-thumb" src="' + m.preview + '" loading="lazy" alt=""></a>';
+                        popupHtml += '<img class="map-popup-thumb" src="' + m.preview + '" loading="lazy" alt=""'
+                            + ' data-id="' + m.id + '"'
+                            + ' data-preview="' + m.preview + '"'
+                            + ' data-name="' + escapeHtml(m.name) + '"'
+                            + ' data-rating="' + (m.rating || 0) + '"'
+                            + ' data-label="' + (m.label || '') + '">';
                     }
                     popupHtml += '<a class="popup-detail-link" href="/asset/' + m.id + '">';
                     popupHtml += '<div class="popup-name">' + escapeHtml(m.name) + '</div>';
@@ -2337,6 +2383,23 @@ window.damMap = (function() {
     function invalidateSize() {
         if (map) map.invalidateSize();
     }
+
+    // Thumbnail click in map popup → open lightbox
+    document.addEventListener('click', function(e) {
+        var thumb = e.target.closest('.map-popup-thumb');
+        if (!thumb) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (window.damLightbox && window.damLightbox.openWithData) {
+            window.damLightbox.openWithData({
+                id: thumb.getAttribute('data-id'),
+                preview: thumb.getAttribute('data-preview'),
+                name: thumb.getAttribute('data-name'),
+                rating: parseInt(thumb.getAttribute('data-rating') || '0'),
+                label: thumb.getAttribute('data-label') || ''
+            });
+        }
+    });
 
     return { fetchAndRender: fetchAndRender, invalidateSize: invalidateSize };
 })();
