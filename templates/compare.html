@@ -502,6 +502,7 @@
 
         // Escape: go back to browse
         if (e.key === 'Escape') {
+            e.preventDefault();
             window.location.href = browseUrl;
             return;
         }

@@ -538,12 +538,27 @@
     window.getStackCollapse = getStackCollapse;
     window.setStackCollapse = setStackCollapse;
 
-    // Refresh results when page is restored from bfcache (e.g., back from asset detail)
-    // so that changes made on the asset page (rating, tags) are reflected.
+    // Handle bfcache restoration (back from detail/compare).
+    // Don't htmx-refresh — bfcache preserves scroll, selection, and focus.
+    // Only handle lightbox auto-open and focus sync.
     window.addEventListener('pageshow', function(event) {
         if (event.persisted) {
-            window._damRestoring = true;
-            htmx.ajax('GET', window.location.href, {target: '#results', swap: 'innerHTML'});
+            var lbAsset = sessionStorage.getItem('dam-lightbox-asset');
+            if (lbAsset) {
+                sessionStorage.removeItem('dam-lightbox-asset');
+                var cards = document.querySelectorAll('.asset-card');
+                for (var i = 0; i < cards.length; i++) {
+                    if (cards[i].getAttribute('data-asset-id') === lbAsset) {
+                        if (window.damLightbox) window.damLightbox.open(i);
+                        break;
+                    }
+                }
+                return;
+            }
+            var focId = sessionStorage.getItem('dam-browse-focus');
+            if (focId && window.damKeyNav) {
+                window.damKeyNav.setFocusById(focId);
+            }
         }
     });
 
@@ -1915,48 +1930,13 @@
         }
     });
 
-    // Unified afterSwap handler: lightbox auto-open, focus restore, scroll restore
+    // Re-apply focus after htmx swaps (pagination/sort/search)
     document.body.addEventListener('htmx:afterSwap', function(e) {
         if (e.detail.target && e.detail.target.id === 'results') {
             var cards = getCards();
-            // 1. Lightbox auto-open (for bfcache return from detail via l key / image click)
-            var lbAsset = sessionStorage.getItem('dam-lightbox-asset');
-            if (lbAsset) {
-                sessionStorage.removeItem('dam-lightbox-asset');
-                for (var ci = 0; ci < cards.length; ci++) {
-                    if (cards[ci].getAttribute('data-asset-id') === lbAsset) {
-                        if (window.damLightbox) window.damLightbox.open(ci);
-                        focusedIndex = ci;
-                        break;
-                    }
-                }
-                window._damRestoring = false;
-                return;
-            }
-            // 2. Focus restore by asset ID
-            var focusId = sessionStorage.getItem('dam-browse-focus');
-            if (focusId) {
-                for (var fi = 0; fi < cards.length; fi++) {
-                    if (cards[fi].getAttribute('data-asset-id') === focusId) {
-                        setFocus(fi);
-                        break;
-                    }
-                }
-            } else if (focusedIndex >= cards.length) {
-                focusedIndex = cards.length - 1;
-                if (focusedIndex >= 0) cards[focusedIndex].classList.add('focused');
-            } else if (focusedIndex >= 0 && cards.length > 0) {
+            if (focusedIndex >= cards.length) focusedIndex = cards.length - 1;
+            if (focusedIndex >= 0 && cards.length > 0) {
                 cards[focusedIndex].classList.add('focused');
-            }
-            // 3. Scroll restore (only on bfcache return)
-            if (window._damRestoring) {
-                window._damRestoring = false;
-                var savedScroll = sessionStorage.getItem('dam-browse-scroll');
-                if (savedScroll) {
-                    requestAnimationFrame(function() {
-                        window.scrollTo(0, parseInt(savedScroll));
-                    });
-                }
             }
         }
     });
@@ -2198,9 +2178,6 @@ window.damCalendar = (function() {
         if (e.detail.target && e.detail.target.id === 'results') {
             storeBrowseContext();
         }
-    });
-    window.addEventListener('pagehide', function() {
-        sessionStorage.setItem('dam-browse-scroll', String(window.scrollY));
     });
 })();
 </script>
