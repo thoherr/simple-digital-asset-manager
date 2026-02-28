@@ -365,6 +365,27 @@
 
         function onLoad() {
             hasSmartPreview = img.src.indexOf('/smart-preview/') !== -1;
+            // Progressive smart preview loading
+            if (!hasSmartPreview) {
+                var smartSrc = img.getAttribute('data-smart-src');
+                if (!smartSrc && img.src.indexOf('/preview/') !== -1) {
+                    smartSrc = img.src.replace('/preview/', '/smart-preview/');
+                }
+                if (smartSrc) {
+                    var badge = document.getElementById('detail-smart-loading');
+                    if (badge) badge.style.display = '';
+                    var bg = new Image();
+                    bg.onload = function() {
+                        img.src = smartSrc;
+                        hasSmartPreview = true;
+                        if (badge) badge.style.display = 'none';
+                    };
+                    bg.onerror = function() {
+                        if (badge) badge.style.display = 'none';
+                    };
+                    bg.src = smartSrc;
+                }
+            }
         }
         if (img.complete) onLoad();
         else img.addEventListener('load', onLoad);

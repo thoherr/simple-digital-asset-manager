@@ -1,7 +1,11 @@
 {% match smart_preview_url %}
 {% when Some with (smart_url) %}
-<img src="{{ smart_url }}" alt="Preview"
-     onerror="{% match primary_preview_url %}{% when Some with (url) %}this.onerror=null;this.src='{{ url }}'{% when None %}{% endmatch %}">
+{% match primary_preview_url %}
+{% when Some with (url) %}
+<img src="{{ url }}" alt="Preview" data-smart-src="{{ smart_url }}">
+{% when None %}
+<img src="{{ smart_url }}" alt="Preview">
+{% endmatch %}
 {% when None %}
 {% match primary_preview_url %}
 {% when Some with (url) %}
@@ -10,6 +14,7 @@
 <div class="no-preview">No preview available</div>
 {% endmatch %}
 {% endmatch %}
+<span class="smart-loading" id="detail-smart-loading" style="display:none;">HD</span>
 <button class="preview-generate-btn"
         hx-post="/api/asset/{{ asset_id }}/preview"
         hx-target="#preview"

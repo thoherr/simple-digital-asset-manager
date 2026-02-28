@@ -110,6 +110,7 @@
         <button class="lightbox-nav" id="lb-prev" title="Previous (&#8592;)">&lsaquo;</button>
         <div class="lightbox-img-wrap" id="lb-img-wrap">
             <img class="lightbox-img" id="lb-img" src="" alt="">
+            <span class="smart-loading" id="lb-smart-loading">HD</span>
         </div>
         <button class="lightbox-nav" id="lb-next" title="Next (&#8594;)">&rsaquo;</button>
     </div>
@@ -1358,10 +1359,19 @@
         var label = card.getAttribute('data-label') || '';
         var variants = card.getAttribute('data-variants');
 
-        var smartSrc = src.replace('/preview/', '/smart-preview/');
-        img.src = smartSrc;
-        img.onerror = function() { if (this.src !== src) { this.onerror = null; this.src = src; } };
+        img.src = src;
         img.alt = name;
+        var smartSrc = src.replace('/preview/', '/smart-preview/');
+        var hdBadge = document.getElementById('lb-smart-loading');
+        if (smartSrc !== src) {
+            hdBadge.style.display = '';
+            var bg = new Image();
+            bg.onload = function() { img.src = smartSrc; hdBadge.style.display = 'none'; };
+            bg.onerror = function() { hdBadge.style.display = 'none'; };
+            bg.src = smartSrc;
+        } else {
+            hdBadge.style.display = 'none';
+        }
         counter.textContent = (currentIndex + 1) + ' / ' + cards.length;
         title.textContent = name;
         var prev = card.getAttribute('data-prev');
@@ -1383,16 +1393,18 @@
         // Label dots
         renderLabels(label);
 
-        // Preload adjacent (try smart preview first, fall back to regular)
+        // Preload adjacent: regular preview for instant display, then smart in background
         if (currentIndex > 0) {
             var prevSrc = cards[currentIndex - 1].getAttribute('data-preview');
-            preloadPrev.src = prevSrc.replace('/preview/', '/smart-preview/');
-            preloadPrev.onerror = function() { if (this.src !== prevSrc) { this.onerror = null; this.src = prevSrc; } };
+            preloadPrev.src = prevSrc;
+            var prevSmart = prevSrc.replace('/preview/', '/smart-preview/');
+            if (prevSmart !== prevSrc) { var p = new Image(); p.src = prevSmart; }
         }
         if (currentIndex < cards.length - 1) {
             var nextSrc = cards[currentIndex + 1].getAttribute('data-preview');
-            preloadNext.src = nextSrc.replace('/preview/', '/smart-preview/');
-            preloadNext.onerror = function() { if (this.src !== nextSrc) { this.onerror = null; this.src = nextSrc; } };
+            preloadNext.src = nextSrc;
+            var nextSmart = nextSrc.replace('/preview/', '/smart-preview/');
+            if (nextSmart !== nextSrc) { var n = new Image(); n.src = nextSmart; }
         }
     }
 
