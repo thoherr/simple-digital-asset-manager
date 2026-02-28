@@ -177,28 +177,20 @@ Because the URL updates with every search (via `hx-push-url`), the browser back 
 
 The browse grid, lightbox, and asset detail page form a seamless navigation loop. You can switch between all three views with keyboard shortcuts, clicks, and the browser back button. The current asset is tracked across views so focus and scroll position are restored when you return.
 
-```
-                    ┌───────────┐
-      thumb click   │           │   Esc
-   ┌──Enter / l───▶ │ Lightbox  │ ──────┐
-   │                │ (overlay) │       │
-   │                └─────┬─────┘       │
-   │          img click / │             │
-   │              d key   │             │
-   │                      ▼             │
-   │          img click / l key         │
-   │                      │             │
-   │                ┌─────┴─────┐       │
-   │  card-body     │           │  Esc  │
-   ├───click / d──▶ │  Detail   │ ──────┤
-   │                │  (page)   │       │
-   │                └───────────┘       │
-   │                                    ▼
-   │                ┌──────────────────────┐
-   └────────────────┤       Browse         │
-                    │  (scroll + focus     │
-                    │   preserved)         │
-                    └──────────────────────┘
+```mermaid
+flowchart TD
+    B["Browse\n(scroll + focus preserved)"]
+    L["Lightbox\n(overlay)"]
+    D["Detail\n(page)"]
+
+    B -- "thumb click / Enter / l" --> L
+    B -- "card-body click / d" --> D
+    L -- "click image / d" --> D
+    L -- "Esc" --> B
+    D -- "click image / l" --> L
+    D -- "Esc / Back" --> B
+    L -- "← →" --> L
+    D -- "← →" --> D
 ```
 
 | From | Action | To |
