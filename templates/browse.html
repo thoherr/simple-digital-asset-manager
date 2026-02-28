@@ -543,6 +543,8 @@
     // Only handle lightbox auto-open and focus sync.
     window.addEventListener('pageshow', function(event) {
         if (event.persisted) {
+            // Clear saved selection — JS Set is already intact via bfcache
+            sessionStorage.removeItem('dam-browse-selection');
             var lbAsset = sessionStorage.getItem('dam-lightbox-asset');
             if (lbAsset) {
                 sessionStorage.removeItem('dam-lightbox-asset');
@@ -631,6 +633,15 @@
 
     var selected = new Set();
     var batchBusy = false;
+
+    // Restore selection from sessionStorage (survives fresh page load on back-nav)
+    try {
+        var savedSel = sessionStorage.getItem('dam-browse-selection');
+        if (savedSel) {
+            sessionStorage.removeItem('dam-browse-selection');
+            JSON.parse(savedSel).forEach(function(id) { selected.add(id); });
+        }
+    } catch(e) {}
 
     var toolbar = document.getElementById('batch-toolbar');
     var countEl = document.getElementById('batch-count');
@@ -1076,6 +1087,18 @@
         }
         window.location.href = '/compare?ids=' + Array.from(selected).join(',');
     });
+
+    // Persist selection to sessionStorage so it survives fresh page loads (back-nav)
+    window.addEventListener('pagehide', function() {
+        if (selected.size > 0) {
+            sessionStorage.setItem('dam-browse-selection', JSON.stringify(Array.from(selected)));
+        } else {
+            sessionStorage.removeItem('dam-browse-selection');
+        }
+    });
+
+    // Apply restored selection to DOM (must run after initial render)
+    if (selected.size > 0) updateToolbar();
 
     // Expose for keyboard navigation integration
     window.damBatch = {
@@ -1953,6 +1976,20 @@
             }
         }
     };
+
+    // Restore focus on fresh page load (non-bfcache back-nav)
+    var initFocusId = sessionStorage.getItem('dam-browse-focus');
+    if (initFocusId) {
+        var initCards = getCards();
+        for (var fi = 0; fi < initCards.length; fi++) {
+            if (initCards[fi].getAttribute('data-asset-id') === initFocusId) {
+                setFocus(fi);
+                // Use 'center' to approximate scroll restore
+                initCards[fi].scrollIntoView({ block: 'center', behavior: 'instant' });
+                break;
+            }
+        }
+    }
 })();
 </script>
 
