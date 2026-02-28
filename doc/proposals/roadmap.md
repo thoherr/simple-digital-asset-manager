@@ -1,6 +1,6 @@
 # Roadmap: Planned & Proposed Features
 
-Consolidated list of unimplemented features and new ideas, organized by theme. Items from `enhancements.md` and `proposal-future-enhancements.md` are merged here with updated priorities reflecting the current state of the project (v1.6.3).
+Consolidated list of unimplemented features and new ideas, organized by theme. Items from `enhancements.md` and `proposal-future-enhancements.md` are merged here with updated priorities reflecting the current state of the project (v1.7.1).
 
 The main focus is on an **optimized workflow for finding, evaluating, and managing the best images** from a large multi-year archive, and on getting a **clear overview of assets** across volumes.
 
@@ -19,6 +19,8 @@ Select 2–4 assets and view them in a split layout with synchronized zoom and p
 **Why:** Essential for choosing between similar shots (same scene, different exposure/composition). Currently requires opening multiple browser tabs or relying on memory.
 
 **Prerequisites:** Smart previews (below) would make this usable for offline volumes.
+
+> **Status (v1.7.0):** Fully implemented. Compare view at `/compare?ids=...` with flex columns, synchronized zoom/pan (toggle with `s` key), interactive rating/label per column, EXIF display, smart preview loading with HD badge. Keyboard: arrows for focus, `d` detail, `s` sync toggle, `,` `.` `+` `-` zoom, `0`–`5` rating, Alt+1–7 labels. "Compare" button in batch toolbar (requires 2–4 selected).
 
 ---
 
@@ -47,6 +49,8 @@ Current previews are 800px thumbnails — enough for browse cards but too small 
 **Web UI:** Lightbox automatically uses smart preview when available, falling back to 800px thumbnail. Compare view requires smart previews for meaningful side-by-side evaluation.
 
 **Why:** The core value proposition is browsing without media mounted. 800px thumbnails limit this to the grid view. Smart previews extend offline utility to full-screen review, rating, and comparison — the workflow that matters most for culling.
+
+> **Status (v1.7.0):** Fully implemented. Smart previews at 2560px stored in `smart_previews/<hash-prefix>/<hash>.jpg`. Generated via `dam import --smart`, `[import] smart_previews = true` config, detail page button, or on-demand (`[preview] generate_on_demand = true`). Web UI shows regular preview instantly, background-loads smart preview with pulsing HD badge. Enables zoom and pan in lightbox, detail page, and compare view (mouse wheel, drag, click toggle, keyboard `,` `.` `+` `-`). Config: `smart_max_edge` (default 2560), `smart_quality` (default 85).
 
 ---
 
@@ -213,19 +217,19 @@ Each facet updates counts in real time based on the current filter combination (
 
 ## Priority Summary
 
-| Priority | Feature | Effort | Impact | Theme |
-|----------|---------|--------|--------|-------|
-| 1 | Side-by-side compare | Medium | Very high | Evaluation |
-| 2 | Map view | Medium | High | Overview / browsing |
-| 3 | Smart previews | Medium | High | Offline evaluation |
-| 4 | AI tagging & similarity | High | Very high | Discovery / organization |
-| 5 | Import profiles | Low | Medium | Workflow convenience |
-| 6 | Watch mode | Medium | Medium | Workflow automation |
-| 7 | Export command | Medium | Medium | Delivery |
-| 8 | Undo / edit history | Medium | Medium | Safety |
-| 9 | IPTC metadata | Medium | Low–Medium | Professional workflow |
-| 10 | Drag-and-drop | Low | Low | UX polish |
-| 11 | Statistics dashboard | Medium | Medium | Overview / insights |
-| 12 | Faceted browse sidebar | Medium | High | Overview / discovery |
+| Priority | Feature | Effort | Impact | Theme | Status |
+|----------|---------|--------|--------|-------|--------|
+| 1 | Side-by-side compare | Medium | Very high | Evaluation | **Done** (v1.7.0) |
+| 2 | Map view | Medium | High | Overview / browsing | |
+| 3 | Smart previews | Medium | High | Offline evaluation | **Done** (v1.7.0) |
+| 4 | AI tagging & similarity | High | Very high | Discovery / organization | |
+| 5 | Import profiles | Low | Medium | Workflow convenience | |
+| 6 | Watch mode | Medium | Medium | Workflow automation | |
+| 7 | Export command | Medium | Medium | Delivery | |
+| 8 | Undo / edit history | Medium | Medium | Safety | |
+| 9 | IPTC metadata | Medium | Low–Medium | Professional workflow | |
+| 10 | Drag-and-drop | Low | Low | UX polish | |
+| 11 | Statistics dashboard | Medium | Medium | Overview / insights | |
+| 12 | Faceted browse sidebar | Medium | High | Overview / discovery | |
 
-Items 1–3 directly serve the "find and evaluate the best images" workflow. Item 4 accelerates discovery across large archives. Items 11–12 provide the "overview of assets" dimension.
+Items 1 and 3 are complete as of v1.7.0, delivering the core "find and evaluate the best images" workflow with compare view and smart previews. The highest-priority remaining items are 2 (map view) and 4 (AI tagging). Items 11–12 provide the "overview of assets" dimension.

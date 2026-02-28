@@ -27,6 +27,8 @@ dam deduplicate [--keep-volume <label>] [--prefer-online] [--min-copies N] [--ap
 
 **Why:** Large multi-volume archives accumulate duplicates from backup runs, re-imports, and relocations. Currently the user must manually identify and remove them.
 
+> **Status (v1.4.1 / v1.6.2 / v1.6.3):** Fully implemented. CLI `dam dedup` with `--prefer`, `--min-copies`, `--apply`, `--volume`, path/format filters. Web UI `/duplicates` page with summary cards, mode tabs, filters, per-location removal, auto-resolve with prefer input, recipe cleanup. Config: `[dedup] prefer` default.
+
 ---
 
 ### 2. Hierarchical Tags
@@ -44,6 +46,8 @@ Photographers commonly organize keywords in trees: `People/Family/Thomas`, `Loca
 **XMP round-trip:** Read `lr:hierarchicalSubject` on import. Write back using the same element. Flat `dc:subject` keywords continue to work as before (non-hierarchical).
 
 **Why:** Flat tag lists become unmanageable beyond ~50 tags. Hierarchy enables both broad and narrow filtering without explosion of tag names.
+
+> **Status (v1.6.0):** Fully implemented. Tags with `/` hierarchy separator, parent tag matching in search, collapsible tree view on tags page with own-count and total-count. `lr:hierarchicalSubject` XMP round-trip. Internally stored with `|` separator.
 
 ---
 
@@ -71,6 +75,8 @@ A date-oriented browsing mode for navigating large archives by time.
 
 **Why:** "When did I shoot this?" is the most common retrieval question after "what is this?" Date-based navigation is missing from the current text-search-only UI.
 
+> **Status (v1.5.3):** Fully implemented as calendar heatmap view on the browse page (Grid/Calendar toggle). Year-at-a-glance with day cells colored by asset count. Year navigation with arrow buttons and year chips. Click day to filter grid. All search filters apply to calendar aggregation. Date filters: `date:`, `dateFrom:`, `dateUntil:`. API: `GET /api/calendar`.
+
 ---
 
 ### 5. Backup Coverage Report
@@ -90,6 +96,8 @@ dam backup-status [--min-copies N] [--volume <label>]
 **Web UI:** Section on the stats page, or a dedicated `/backup` page with a volume-by-volume matrix.
 
 **Why:** Combines the information from `volume:none`, `orphan:true`, and `duplicates` into a single actionable report. Currently the user must run multiple commands and mentally correlate the results.
+
+> **Status (v1.4.1):** Fully implemented. CLI `dam backup-status` with `--min-copies`, `--volume`, `--at-risk`, format/query options. Web UI `/backup` page with summary cards, volume distribution bar chart, coverage by purpose table, volume gaps, clickable at-risk link.
 
 ---
 
@@ -119,6 +127,8 @@ The browse grid currently uses a fixed ~6 columns. Different tasks need differen
 
 **Why:** Culling wants large previews. Organizing wants to see many assets at once. One size doesn't fit all.
 
+> **Status (v1.5.0):** Fully implemented. Three density presets (Compact/Normal/Large) via `[data-density]` attribute. CSS variable `--grid-min` (120px/200px/300px). Toggle buttons with SVG grid icons in results bar. `localStorage` persistence. Keyboard nav column count adjusts automatically.
+
 ---
 
 ### 8. Side-by-Side Compare
@@ -131,6 +141,8 @@ Select 2-4 assets and compare them in a split view with synchronized zoom and pa
 
 **Why:** Essential for choosing between similar shots (same scene, different exposure/composition). Currently requires opening multiple browser tabs.
 
+> **Status (v1.7.0):** Fully implemented. Compare view at `/compare?ids=...` with flex columns, synchronized zoom/pan (`s` key toggle), interactive rating/label per column, EXIF display, smart preview loading with HD badge. Keyboard: arrows for focus, `d` detail, `s` sync toggle, `,` `.` `+` `-` zoom, `0`–`5` rating, Alt+1–7 labels.
+
 ---
 
 ### 9. Dark Mode
@@ -140,6 +152,8 @@ Many photographers prefer dark interfaces to reduce eye strain and minimize colo
 **Implementation:** CSS custom properties for all colors. Toggle button in the nav bar. Preference stored in `localStorage`. Respect `prefers-color-scheme` media query as default. Dark theme: dark gray backgrounds (#1e1e2e), light text (#cdd6f4), muted borders, adjusted card shadows.
 
 **Why:** Low-effort, high-appreciation feature. The current light theme works but feels out of place for a photo management tool.
+
+> **Status (v1.5.0):** Fully implemented. Sun/moon toggle in nav bar, OS preference via `prefers-color-scheme`, `localStorage('dam-theme')` persistence, FOUC-preventing inline script, CSS custom property overrides via `[data-theme="dark"]`.
 
 ---
 
@@ -166,6 +180,8 @@ dam generate-smart-previews [--asset <id>] [--volume <label>] [--max-edge <N>]
 **Behavior:** Generate a second tier of previews at 2560px (configurable), stored as lossy JPEG/WebP in `smart-previews/<hash-prefix>/<hash>.jpg`. Used by the lightbox view and compare view when the source volume is offline. `[preview]` config gets a `smart_max_edge` and `smart_quality` setting.
 
 **Why:** The core value proposition of dam is browsing without media mounted. 800px thumbnails limit this to the grid view. Smart previews extend offline utility to full-screen review and editing decisions.
+
+> **Status (v1.7.0):** Fully implemented. Smart previews at 2560px stored in `smart_previews/<hash-prefix>/<hash>.jpg`. Generated via `dam import --smart`, `[import] smart_previews = true` config, detail page button, or on-demand (`[preview] generate_on_demand = true`). Enables zoom and pan in lightbox, detail page, and compare view. Config: `smart_max_edge` (default 2560), `smart_quality` (default 85).
 
 ---
 
@@ -263,21 +279,21 @@ Ranked by impact-to-effort ratio, building on existing infrastructure:
 
 | Priority | Enhancement | Effort | Impact | Status |
 |----------|-------------|--------|--------|--------|
-| 1 | Lightbox / fullscreen view | Medium | Very high | **Done** (v1.5.0, enhanced v1.6.1) |
-| 2 | Smart duplicate resolution | Medium | High | **Done** (CLI `dam dedup` v1.4.1, web UI `/duplicates` v1.6.2) |
+| 1 | Lightbox / fullscreen view | Medium | Very high | **Done** (v1.5.0, enhanced v1.6.1, v1.7.1) |
+| 2 | Smart duplicate resolution | Medium | High | **Done** (CLI v1.4.1, web UI v1.6.2, recipe cleanup v1.6.3) |
 | 3 | Hierarchical tags | Medium | High | **Done** (v1.6.0) |
 | 4 | Adjustable grid density | Low | High | **Done** (v1.5.0) |
 | 5 | Timeline / calendar view | Medium | High | **Done** (v1.5.3) |
 | 6 | Dark mode | Low | Medium | **Done** (v1.5.0) |
-| 7 | Side-by-side compare | Medium | High | |
+| 7 | Side-by-side compare | Medium | High | **Done** (v1.7.0) |
 | 8 | Import profiles | Low | Medium | |
 | 9 | Backup coverage report | Low | Medium | **Done** (v1.4.1) |
-| 10 | Smart previews | Medium | Medium | |
+| 10 | Smart previews | Medium | Medium | **Done** (v1.7.0) |
 | 11 | Stacks (scene grouping) | Medium | High | **Done** (v1.6.0) |
 | 12 | Stack from tag conversion | Low | Medium | **Done** (v1.6.0) — `dam stack from-tag` converts matching tags to stacks |
 | 13 | Drag-and-drop stack reordering | Low | Low | Planned — reorder stack members on asset detail page |
 | 14 | Keyboard help & detail page nav | Low | Medium | **Done** (v1.6.1) — `?` help overlay, detail prev/next, d/l lightbox switching |
 
-Items 1, 2, 3, 4, 5, 6, 9, 11, 12, and 14 are complete. Item 2 was completed in v1.6.2 with the `/duplicates` web UI page (summary cards, mode tabs, filters, per-location removal, auto-resolve, preview thumbnails with lightbox). The highest-priority remaining item is 7 (side-by-side compare).
+Items 1–7, 9–12, and 14 are complete (13 of 14 items). The remaining items are 8 (import profiles) and 13 (drag-and-drop).
 
-Watch mode and export are specified in [`proposal-future-enhancements.md`](proposal-future-enhancements.md) and would slot in around priority 7-8.
+Watch mode and export are specified in [`proposal-future-enhancements.md`](proposal-future-enhancements.md) and in the [roadmap](roadmap.md).
