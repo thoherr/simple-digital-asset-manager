@@ -69,14 +69,22 @@ dam verify --include raw
 dam verify --skip audio
 ```
 
+### Two verification modes
+
+**Catalog mode** (no paths): `dam verify` walks all file locations known to the catalog on online volumes. This checks whether your cataloged files are intact.
+
+**Path mode** (with paths): `dam verify /some/path` scans files on disk and looks them up in the catalog. This also detects files that are not in the catalog at all.
+
 ### What the results mean
 
 - **verified** -- file hash matches the catalog. The `verified_at` timestamp is updated.
 - **modified** -- a recipe file (`.xmp`, `.cos`, etc.) was changed externally. dam updates the stored hash and reports it as "modified" rather than "FAILED". This is expected when CaptureOne or Lightroom edits a sidecar.
 - **FAILED** -- a media file's hash does not match. This indicates corruption, accidental overwrite, or a file that was replaced. Investigate immediately.
+- **MISSING** -- a file referenced in the catalog no longer exists on disk (catalog mode only). The file's location record exists but the file is gone from an online volume.
+- **UNTRACKED** -- a file was found on disk but is not in the catalog (path mode only). The file's content hash does not match any known variant or recipe. Run `dam import` to bring it into the catalog, or ignore it if it is not a media file.
 - **skipped** -- the file is on an offline volume, or the path could not be read.
 
-If any files fail verification, dam exits with code 1. Scripts can check `$?` to detect problems:
+If any files fail verification (FAILED status), dam exits with code 1. Scripts can check `$?` to detect problems:
 
 ```bash
 dam verify --volume "Archive" || echo "Integrity check failed!"

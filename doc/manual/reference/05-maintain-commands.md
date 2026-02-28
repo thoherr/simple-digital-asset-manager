@@ -20,11 +20,24 @@ dam [GLOBAL FLAGS] verify [PATHS...] [OPTIONS]
 
 Verifies file integrity by re-hashing files on disk and comparing the computed SHA-256 hash against the stored content hash in the catalog. Detects corruption, bit rot, or unauthorized modification.
 
-Without arguments, verifies all file locations on all online volumes. With paths, verifies specific files or directories. `--volume` limits to a specific volume; `--asset` limits to a specific asset.
+**Catalog mode** (no paths): Verifies all file locations on all online volumes. Checks whether cataloged files are intact, detecting OK, FAILED, MODIFIED, MISSING, and SKIPPED statuses. `--volume` limits to a specific volume; `--asset` limits to a specific asset.
+
+**Path mode** (with paths): Scans files at the given paths on disk and looks them up in the catalog by content hash. In addition to the catalog mode statuses, can report UNTRACKED files — files on disk whose content hash does not match any known variant or recipe.
 
 On successful verification, updates the `verified_at` timestamp on each file location record.
 
-**Exit codes**: Exits with code 1 if any hash mismatches are found. Exits with code 0 if all files match.
+**Result statuses:**
+
+| Status | Description | Mode |
+|--------|-------------|------|
+| **OK** | File hash matches the catalog record. | Both |
+| **FAILED** | Media file hash does not match (corruption or replacement). | Both |
+| **MODIFIED** | Recipe file changed externally; hash updated in catalog. | Both |
+| **MISSING** | Catalog location exists but file is gone from disk. | Catalog |
+| **UNTRACKED** | File on disk not found in catalog. | Path |
+| **SKIPPED** | Volume offline, path unreadable, or other error. | Both |
+
+**Exit codes**: Exits with code 1 if any hash mismatches (FAILED) are found. Exits with code 0 for all other statuses, including MODIFIED.
 
 **Recipe handling**: Recipe files (XMP, COS, etc.) that have been modified externally are reported as "modified" rather than "FAILED" and do not trigger exit code 1. Their stored hash is updated to reflect the new content.
 
