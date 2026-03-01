@@ -30,13 +30,20 @@ Implemented as reveal-in-file-manager (📂) and open-terminal (`>_`) buttons on
 
 ## CLI
 
-### Scripting example
+### ~~Scripting example~~ - **DONE** (v1.8.5)
 
 Since the CLI can provide information in machine readable JSON format, one or more small example scripts
 (e.g. in Python, Ruby or even as Bash-Script) for how to use it may be helpful. Maybe something like "find all paths
 with pictures of Alices birthday and copy the two highest rated images with Bob to a sd card" (where the names would
 of cource have been tagged). Or maybe we come up with another, more useful example.
 
+### delete command
+
+Would be ver useful if we have orphaned files or other import bugs. Currently this is solved by quite complex and long
+running commands, whereas we often know that we just have to delete (and maybe re-import) a certain asset.
+
 ## Documentation
 
-### Cross References in the PDF manual do not work (they link to the *.md file) - BUG
+### ~~Cross References in the PDF manual do not work (they link to the *.md file) - BUG
+ **DONE** (v1.8.5)
+ 
