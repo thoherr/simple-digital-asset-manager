@@ -15,7 +15,7 @@ and moves the XMP file next to the RAW. After running this script, use:
     dam fix-recipes --apply           # reattach XMPs as recipes
 
 Usage:
-    python3 scripts/fix-orphaned-xmp.py [--apply] [--volume LABEL] [--path PREFIX]
+    python3 scripts/fix-orphaned-xmp.py [--apply] [--remove] [--volume LABEL] [--path PREFIX]
 
     --path PREFIX   Scope to assets whose file path starts with PREFIX.
                     Can be an absolute path (auto-stripped to volume-relative)
@@ -24,7 +24,11 @@ Usage:
                     Also limits the RAW file search to the session root
                     (one level up from the XMP's directory).
 
-Without --apply, runs in dry-run mode (report only, no files moved).
+    --remove        Delete XMP files that have no matching parent media file
+                    (instead of skipping them). Useful for cleaning up stale
+                    sidecars left behind in Capture/ folders.
+
+Without --apply, runs in dry-run mode (report only, no files moved/removed).
 """
 
 import argparse
@@ -123,7 +127,11 @@ def main():
     )
     parser.add_argument(
         "--apply", action="store_true",
-        help="Actually move files (default: dry-run report only)"
+        help="Actually move/remove files (default: dry-run report only)"
+    )
+    parser.add_argument(
+        "--remove", action="store_true",
+        help="Delete XMP files that have no matching parent media file"
     )
     parser.add_argument(
         "--volume", type=str, default=None,
@@ -160,6 +168,7 @@ def main():
         sys.exit(1)
 
     moved = 0
+    removed = 0
     no_parent = 0
     offline = 0
     errors = 0
@@ -221,8 +230,21 @@ def main():
 
             parent_path = find_raw_by_stem(stem, session_root, xmp_abs)
             if not parent_path:
-                print(f"  {filename}: no matching media file for stem '{stem}' under {os.path.relpath(session_root, mount)}/")
-                no_parent += 1
+                if args.remove:
+                    xmp_rel = os.path.relpath(xmp_abs, mount)
+                    print(f"  {filename}: no parent, remove {xmp_rel}")
+                    if args.apply:
+                        try:
+                            os.remove(str(xmp_abs))
+                            removed += 1
+                        except Exception as e:
+                            print(f"    ERROR: {e}", file=sys.stderr)
+                            errors += 1
+                    else:
+                        removed += 1
+                else:
+                    print(f"  {filename}: no matching media file for stem '{stem}' under {os.path.relpath(session_root, mount)}/")
+                    no_parent += 1
                 continue
 
             # Determine target path: same directory as parent, same filename
@@ -234,8 +256,21 @@ def main():
                 continue
 
             if target_path.exists():
-                print(f"  {filename}: target already exists: {target_path}")
-                errors += 1
+                if args.remove:
+                    xmp_rel = os.path.relpath(xmp_abs, mount)
+                    print(f"  {filename}: target exists, remove {xmp_rel}")
+                    if args.apply:
+                        try:
+                            os.remove(str(xmp_abs))
+                            removed += 1
+                        except Exception as e:
+                            print(f"    ERROR: {e}", file=sys.stderr)
+                            errors += 1
+                    else:
+                        removed += 1
+                else:
+                    print(f"  {filename}: target already exists: {target_path}")
+                    no_parent += 1
                 continue
 
             # Compute relative paths for display
@@ -256,18 +291,26 @@ def main():
     # Summary
     print(f"\n=== Summary ({mode}) ===")
     print(f"  Would move:  {moved}" if not args.apply else f"  Moved:       {moved}")
+    print(f"  Would remove:{removed}" if not args.apply else f"  Removed:     {removed}")
     print(f"  No parent:   {no_parent}")
     print(f"  Offline:     {offline}")
     print(f"  Errors:      {errors}")
 
-    if moved > 0 and not args.apply:
-        print(f"\nRe-run with --apply to move files, then:")
-        print(f"  dam sync <volume-path> --apply    # update catalog for moved files")
-        print(f"  dam fix-recipes --apply            # reattach XMPs as recipes")
-    elif moved > 0 and args.apply:
+    changes = moved + removed
+    if changes > 0 and not args.apply:
+        print(f"\nRe-run with --apply to move/remove files, then:")
+        print(f"  dam sync <volume-path> --apply    # update catalog for moved/removed files")
+        if moved > 0:
+            print(f"  dam fix-recipes --apply            # reattach moved XMPs as recipes")
+        if removed > 0:
+            print(f"  dam cleanup --apply                # remove stale records for deleted files")
+    elif changes > 0 and args.apply:
         print(f"\nNext steps:")
-        print(f"  dam sync <volume-path> --apply    # update catalog for moved files")
-        print(f"  dam fix-recipes --apply            # reattach XMPs as recipes")
+        print(f"  dam sync <volume-path> --apply    # update catalog for moved/removed files")
+        if moved > 0:
+            print(f"  dam fix-recipes --apply            # reattach moved XMPs as recipes")
+        if removed > 0:
+            print(f"  dam cleanup --apply                # remove stale records for deleted files")
 
 
 if __name__ == "__main__":
