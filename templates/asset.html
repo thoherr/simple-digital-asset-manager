@@ -4,9 +4,11 @@
 
 {% block content %}
 <div class="asset-nav">
+    <span class="nav-loading-spinner invisible" id="nav-prev-loading"></span>
     <a href="#" class="asset-nav-btn invisible" id="nav-prev">&larr; Prev</a>
     <a href="/" class="asset-nav-btn" id="nav-back">&larr; Back</a>
     <a href="#" class="asset-nav-btn invisible" id="nav-next">Next &rarr;</a>
+    <span class="nav-loading-spinner invisible" id="nav-next-loading"></span>
 </div>
 <div class="asset-detail">
     <div class="asset-preview">
@@ -292,8 +294,13 @@
         fetch(url).then(function(r) { return r.json(); }).then(callback).catch(function(){});
     }
 
+    var prevSpinner = document.getElementById('nav-prev-loading');
+    var nextSpinner = document.getElementById('nav-next-loading');
+
     if (idx === 0 && browsePage > 1) {
+        prevSpinner.classList.remove('invisible');
         fetchPageIds(browsePage - 1, function(data) {
+            prevSpinner.classList.add('invisible');
             if (data.ids && data.ids.length > 0) {
                 browseIds = data.ids.concat(browseIds);
                 idx = data.ids.length;
@@ -307,7 +314,9 @@
     }
 
     if (idx >= 0 && idx === browseIds.length - 1 && browsePage < browseTotalPages) {
+        nextSpinner.classList.remove('invisible');
         fetchPageIds(browsePage + 1, function(data) {
+            nextSpinner.classList.add('invisible');
             if (data.ids && data.ids.length > 0) {
                 browseIds = browseIds.concat(data.ids);
                 sessionStorage.setItem('dam-browse-ids', JSON.stringify(browseIds));

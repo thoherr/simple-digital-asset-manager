@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
@@ -524,8 +524,17 @@ fn clean_path(path: &std::path::Path) -> String {
 }
 
 /// Search and filter assets via the SQLite catalog.
+/// Shared context for batch operations — avoids reopening catalog, device
+/// registry, and content store per asset.
+pub struct BatchContext {
+    pub catalog: Catalog,
+    pub meta_store: MetadataStore,
+    pub online_volumes: HashMap<uuid::Uuid, PathBuf>,
+    pub content_store: ContentStore,
+}
+
 pub struct QueryEngine {
-    catalog_root: std::path::PathBuf,
+    catalog_root: PathBuf,
 }
 
 impl QueryEngine {
@@ -892,13 +901,20 @@ impl QueryEngine {
     /// Add or remove tags on an asset. Updates both sidecar YAML and SQLite catalog.
     pub fn tag(&self, asset_id_prefix: &str, tags: &[String], remove: bool) -> Result<TagResult> {
         let catalog = Catalog::open(&self.catalog_root)?;
-        let full_id = catalog
+        let store = MetadataStore::new(&self.catalog_root);
+        let online = Self::load_online_volumes(&self.catalog_root);
+        let content_store = ContentStore::new(&self.catalog_root);
+        let ctx = BatchContext { catalog, meta_store: store, online_volumes: online, content_store };
+        self.tag_inner(&ctx, asset_id_prefix, tags, remove)
+    }
+
+    fn tag_inner(&self, ctx: &BatchContext, asset_id_prefix: &str, tags: &[String], remove: bool) -> Result<TagResult> {
+        let full_id = ctx.catalog
             .resolve_asset_id(asset_id_prefix)?
             .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
 
         let uuid: uuid::Uuid = full_id.parse()?;
-        let store = MetadataStore::new(&self.catalog_root);
-        let mut asset = store.load(uuid)?;
+        let mut asset = ctx.meta_store.load(uuid)?;
 
         let changed;
         if remove {
@@ -927,8 +943,8 @@ impl QueryEngine {
             changed = added;
         }
 
-        store.save(&asset)?;
-        catalog.insert_asset(&asset)?;
+        ctx.meta_store.save(&asset)?;
+        ctx.catalog.insert_asset(&asset)?;
 
         if !changed.is_empty() {
             let (to_add, to_remove) = if remove {
@@ -936,7 +952,7 @@ impl QueryEngine {
             } else {
                 (changed.clone(), Vec::new())
             };
-            self.write_back_tags_to_xmp(&mut asset, &to_add, &to_remove, &catalog, &store);
+            self.write_back_tags_to_xmp_inner(&mut asset, &to_add, &to_remove, &ctx.catalog, &ctx.meta_store, &ctx.online_volumes, &ctx.content_store);
         }
 
         Ok(TagResult {
@@ -1059,19 +1075,26 @@ impl QueryEngine {
     /// Returns the new rating value.
     pub fn set_rating(&self, asset_id_prefix: &str, rating: Option<u8>) -> Result<Option<u8>> {
         let catalog = Catalog::open(&self.catalog_root)?;
-        let full_id = catalog
+        let store = MetadataStore::new(&self.catalog_root);
+        let online = Self::load_online_volumes(&self.catalog_root);
+        let content_store = ContentStore::new(&self.catalog_root);
+        let ctx = BatchContext { catalog, meta_store: store, online_volumes: online, content_store };
+        self.set_rating_inner(&ctx, asset_id_prefix, rating)
+    }
+
+    fn set_rating_inner(&self, ctx: &BatchContext, asset_id_prefix: &str, rating: Option<u8>) -> Result<Option<u8>> {
+        let full_id = ctx.catalog
             .resolve_asset_id(asset_id_prefix)?
             .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
 
         let uuid: uuid::Uuid = full_id.parse()?;
-        let store = MetadataStore::new(&self.catalog_root);
-        let mut asset = store.load(uuid)?;
+        let mut asset = ctx.meta_store.load(uuid)?;
 
         asset.rating = rating;
-        store.save(&asset)?;
-        catalog.update_asset_rating(&full_id, rating)?;
+        ctx.meta_store.save(&asset)?;
+        ctx.catalog.update_asset_rating(&full_id, rating)?;
 
-        self.write_back_rating_to_xmp(&mut asset, rating, &catalog, &store);
+        self.write_back_rating_to_xmp_inner(&mut asset, rating, &ctx.catalog, &ctx.meta_store, &ctx.online_volumes, &ctx.content_store);
 
         Ok(rating)
     }
@@ -1096,14 +1119,24 @@ impl QueryEngine {
                 return;
             }
         };
-
-        let online: HashMap<uuid::Uuid, &std::path::Path> = volumes
+        let online: HashMap<uuid::Uuid, PathBuf> = volumes
             .iter()
             .filter(|v| v.is_online)
-            .map(|v| (v.id, v.mount_point.as_path()))
+            .map(|v| (v.id, v.mount_point.clone()))
             .collect();
-
         let content_store = ContentStore::new(&self.catalog_root);
+        self.write_back_rating_to_xmp_inner(asset, rating, catalog, store, &online, &content_store);
+    }
+
+    fn write_back_rating_to_xmp_inner(
+        &self,
+        asset: &mut Asset,
+        rating: Option<u8>,
+        catalog: &Catalog,
+        store: &MetadataStore,
+        online: &HashMap<uuid::Uuid, PathBuf>,
+        content_store: &ContentStore,
+    ) {
         let mut sidecar_dirty = false;
 
         for recipe in &mut asset.recipes {
@@ -1119,8 +1152,8 @@ impl QueryEngine {
             }
 
             let mount_point = match online.get(&recipe.location.volume_id) {
-                Some(mp) => *mp,
-                None => continue, // volume offline
+                Some(mp) => mp.as_path(),
+                None => continue,
             };
 
             let full_path = mount_point.join(&recipe.location.relative_path);
@@ -1130,7 +1163,6 @@ impl QueryEngine {
 
             match xmp_reader::update_rating(&full_path, rating) {
                 Ok(true) => {
-                    // File was modified — re-hash and update catalog
                     match content_store.hash_file(&full_path) {
                         Ok(new_hash) => {
                             if let Err(e) = catalog.update_recipe_content_hash(
@@ -1149,7 +1181,7 @@ impl QueryEngine {
                         }
                     }
                 }
-                Ok(false) => {} // no change needed
+                Ok(false) => {}
                 Err(e) => {
                     eprintln!(
                         "Warning: could not write rating to {}: {e}",
@@ -1171,30 +1203,16 @@ impl QueryEngine {
     /// For each XMP recipe on an online volume, applies the same delta (add/remove)
     /// to the `dc:subject` keyword list, re-hashes, and updates the recipe's content
     /// hash in catalog and sidecar. Silently skips offline volumes and missing files.
-    fn write_back_tags_to_xmp(
+    fn write_back_tags_to_xmp_inner(
         &self,
         asset: &mut Asset,
         tags_to_add: &[String],
         tags_to_remove: &[String],
         catalog: &Catalog,
         store: &MetadataStore,
+        online: &HashMap<uuid::Uuid, PathBuf>,
+        content_store: &ContentStore,
     ) {
-        let registry = DeviceRegistry::new(&self.catalog_root);
-        let volumes = match registry.list() {
-            Ok(v) => v,
-            Err(e) => {
-                eprintln!("Warning: could not load volumes for XMP tag write-back: {e}");
-                return;
-            }
-        };
-
-        let online: HashMap<uuid::Uuid, &std::path::Path> = volumes
-            .iter()
-            .filter(|v| v.is_online)
-            .map(|v| (v.id, v.mount_point.as_path()))
-            .collect();
-
-        let content_store = ContentStore::new(&self.catalog_root);
         let mut sidecar_dirty = false;
 
         for recipe in &mut asset.recipes {
@@ -1210,7 +1228,7 @@ impl QueryEngine {
             }
 
             let mount_point = match online.get(&recipe.location.volume_id) {
-                Some(mp) => *mp,
+                Some(mp) => mp.as_path(),
                 None => continue,
             };
 
@@ -1219,7 +1237,6 @@ impl QueryEngine {
                 continue;
             }
 
-            // For dc:subject, convert `|` to `/` (display form for flat keyword list)
             let dc_add: Vec<String> = tags_to_add.iter().map(|t| t.replace('|', "/")).collect();
             let dc_remove: Vec<String> =
                 tags_to_remove.iter().map(|t| t.replace('|', "/")).collect();
@@ -1279,19 +1296,26 @@ impl QueryEngine {
     /// Returns the new label value.
     pub fn set_color_label(&self, asset_id_prefix: &str, label: Option<String>) -> Result<Option<String>> {
         let catalog = Catalog::open(&self.catalog_root)?;
-        let full_id = catalog
+        let store = MetadataStore::new(&self.catalog_root);
+        let online = Self::load_online_volumes(&self.catalog_root);
+        let content_store = ContentStore::new(&self.catalog_root);
+        let ctx = BatchContext { catalog, meta_store: store, online_volumes: online, content_store };
+        self.set_color_label_inner(&ctx, asset_id_prefix, label)
+    }
+
+    fn set_color_label_inner(&self, ctx: &BatchContext, asset_id_prefix: &str, label: Option<String>) -> Result<Option<String>> {
+        let full_id = ctx.catalog
             .resolve_asset_id(asset_id_prefix)?
             .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
 
         let uuid: uuid::Uuid = full_id.parse()?;
-        let store = MetadataStore::new(&self.catalog_root);
-        let mut asset = store.load(uuid)?;
+        let mut asset = ctx.meta_store.load(uuid)?;
 
         asset.color_label = label.clone();
-        store.save(&asset)?;
-        catalog.update_asset_color_label(&full_id, label.as_deref())?;
+        ctx.meta_store.save(&asset)?;
+        ctx.catalog.update_asset_color_label(&full_id, label.as_deref())?;
 
-        self.write_back_label_to_xmp(&mut asset, label.as_deref(), &catalog, &store);
+        self.write_back_label_to_xmp_inner(&mut asset, label.as_deref(), &ctx.catalog, &ctx.meta_store, &ctx.online_volumes, &ctx.content_store);
 
         Ok(label)
     }
@@ -1454,14 +1478,24 @@ impl QueryEngine {
                 return;
             }
         };
-
-        let online: HashMap<uuid::Uuid, &std::path::Path> = volumes
+        let online: HashMap<uuid::Uuid, PathBuf> = volumes
             .iter()
             .filter(|v| v.is_online)
-            .map(|v| (v.id, v.mount_point.as_path()))
+            .map(|v| (v.id, v.mount_point.clone()))
             .collect();
-
         let content_store = ContentStore::new(&self.catalog_root);
+        self.write_back_label_to_xmp_inner(asset, label, catalog, store, &online, &content_store);
+    }
+
+    fn write_back_label_to_xmp_inner(
+        &self,
+        asset: &mut Asset,
+        label: Option<&str>,
+        catalog: &Catalog,
+        store: &MetadataStore,
+        online: &HashMap<uuid::Uuid, PathBuf>,
+        content_store: &ContentStore,
+    ) {
         let mut sidecar_dirty = false;
 
         for recipe in &mut asset.recipes {
@@ -1477,7 +1511,7 @@ impl QueryEngine {
             }
 
             let mount_point = match online.get(&recipe.location.volume_id) {
-                Some(mp) => *mp,
+                Some(mp) => mp.as_path(),
                 None => continue,
             };
 
@@ -1637,6 +1671,57 @@ impl QueryEngine {
         }
 
         Ok(result)
+    }
+
+    // --- Batch methods (shared catalog/registry/content_store) ---
+
+    /// Load online volume mount points. Returns empty map if no volumes registered.
+    fn load_online_volumes(catalog_root: &Path) -> HashMap<uuid::Uuid, PathBuf> {
+        let registry = DeviceRegistry::new(catalog_root);
+        match registry.list() {
+            Ok(volumes) => volumes
+                .iter()
+                .filter(|v| v.is_online)
+                .map(|v| (v.id, v.mount_point.clone()))
+                .collect(),
+            Err(_) => HashMap::new(),
+        }
+    }
+
+    /// Create a `BatchContext` using `open_fast()` for use by batch web handlers.
+    fn batch_context_fast(&self) -> Result<BatchContext> {
+        let catalog = Catalog::open_fast(&self.catalog_root)?;
+        let store = MetadataStore::new(&self.catalog_root);
+        let online = Self::load_online_volumes(&self.catalog_root);
+        let content_store = ContentStore::new(&self.catalog_root);
+        Ok(BatchContext { catalog, meta_store: store, online_volumes: online, content_store })
+    }
+
+    /// Tag multiple assets using a single shared catalog connection.
+    pub fn batch_tag(&self, asset_ids: &[String], tags: &[String], remove: bool) -> Vec<Result<TagResult>> {
+        let ctx = match self.batch_context_fast() {
+            Ok(c) => c,
+            Err(e) => return asset_ids.iter().map(|_| Err(anyhow::anyhow!("{e:#}"))).collect(),
+        };
+        asset_ids.iter().map(|id| self.tag_inner(&ctx, id, tags, remove)).collect()
+    }
+
+    /// Set rating on multiple assets using a single shared catalog connection.
+    pub fn batch_set_rating(&self, asset_ids: &[String], rating: Option<u8>) -> Vec<Result<Option<u8>>> {
+        let ctx = match self.batch_context_fast() {
+            Ok(c) => c,
+            Err(e) => return asset_ids.iter().map(|_| Err(anyhow::anyhow!("{e:#}"))).collect(),
+        };
+        asset_ids.iter().map(|id| self.set_rating_inner(&ctx, id, rating)).collect()
+    }
+
+    /// Set color label on multiple assets using a single shared catalog connection.
+    pub fn batch_set_color_label(&self, asset_ids: &[String], label: Option<String>) -> Vec<Result<Option<String>>> {
+        let ctx = match self.batch_context_fast() {
+            Ok(c) => c,
+            Err(e) => return asset_ids.iter().map(|_| Err(anyhow::anyhow!("{e:#}"))).collect(),
+        };
+        asset_ids.iter().map(|id| self.set_color_label_inner(&ctx, id, label.clone())).collect()
     }
 }
 

@@ -1023,22 +1023,29 @@ pub async fn batch_set_rating(
     State(state): State<Arc<AppState>>,
     Json(req): Json<BatchRatingRequest>,
 ) -> Response {
+    let log = state.log_requests;
+    let count = req.asset_ids.len();
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
+        let start = std::time::Instant::now();
         let engine = state.query_engine();
         let rating = req.rating.filter(|&r| r > 0);
+        let results = engine.batch_set_rating(&req.asset_ids, rating);
         let mut succeeded = 0u32;
         let mut errors = Vec::new();
-        for id in &req.asset_ids {
-            match engine.set_rating(id, rating) {
+        for (i, r) in results.into_iter().enumerate() {
+            match r {
                 Ok(_) => succeeded += 1,
                 Err(e) => errors.push(BatchError {
-                    asset_id: id.clone(),
+                    asset_id: req.asset_ids[i].clone(),
                     error: format!("{e:#}"),
                 }),
             }
         }
         let failed = errors.len() as u32;
+        if log {
+            eprintln!("batch_rating: {} assets in {:.1?} ({} ok, {} err)", count, start.elapsed(), succeeded, failed);
+        }
         Ok::<_, anyhow::Error>(BatchResult {
             succeeded,
             failed,
@@ -1061,20 +1068,24 @@ pub async fn batch_tags(
     State(state): State<Arc<AppState>>,
     Json(req): Json<BatchTagRequest>,
 ) -> Response {
+    let log = state.log_requests;
+    let count = req.asset_ids.len();
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
+        let start = std::time::Instant::now();
         let engine = state.query_engine();
         // Convert user-facing tag input to storage form
         let storage_tags: Vec<String> = req.tags.iter()
             .map(|t| crate::tag_util::tag_input_to_storage(t))
             .collect();
+        let results = engine.batch_tag(&req.asset_ids, &storage_tags, req.remove);
         let mut succeeded = 0u32;
         let mut errors = Vec::new();
-        for id in &req.asset_ids {
-            match engine.tag(id, &storage_tags, req.remove) {
+        for (i, r) in results.into_iter().enumerate() {
+            match r {
                 Ok(_) => succeeded += 1,
                 Err(e) => errors.push(BatchError {
-                    asset_id: id.clone(),
+                    asset_id: req.asset_ids[i].clone(),
                     error: format!("{e:#}"),
                 }),
             }
@@ -1083,6 +1094,9 @@ pub async fn batch_tags(
             state.dropdown_cache.invalidate_tags();
         }
         let failed = errors.len() as u32;
+        if log {
+            eprintln!("batch_tag: {} assets in {:.1?} ({} ok, {} err)", count, start.elapsed(), succeeded, failed);
+        }
         Ok::<_, anyhow::Error>(BatchResult {
             succeeded,
             failed,
@@ -1412,8 +1426,11 @@ pub async fn batch_set_label(
     State(state): State<Arc<AppState>>,
     Json(req): Json<BatchLabelRequest>,
 ) -> Response {
+    let log = state.log_requests;
+    let count = req.asset_ids.len();
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
+        let start = std::time::Instant::now();
         let engine = state.query_engine();
         let label_str = req.label.filter(|s| !s.trim().is_empty());
         let validated = match label_str {
@@ -1423,18 +1440,22 @@ pub async fn batch_set_label(
             },
             None => None,
         };
+        let results = engine.batch_set_color_label(&req.asset_ids, validated);
         let mut succeeded = 0u32;
         let mut errors = Vec::new();
-        for id in &req.asset_ids {
-            match engine.set_color_label(id, validated.clone()) {
+        for (i, r) in results.into_iter().enumerate() {
+            match r {
                 Ok(_) => succeeded += 1,
                 Err(e) => errors.push(BatchError {
-                    asset_id: id.clone(),
+                    asset_id: req.asset_ids[i].clone(),
                     error: format!("{e:#}"),
                 }),
             }
         }
         let failed = errors.len() as u32;
+        if log {
+            eprintln!("batch_label: {} assets in {:.1?} ({} ok, {} err)", count, start.elapsed(), succeeded, failed);
+        }
         Ok::<_, anyhow::Error>(BatchResult {
             succeeded,
             failed,

@@ -762,6 +762,13 @@
         batchBusy = busy;
         var btns = toolbar.querySelectorAll('.batch-btn, .batch-star, .batch-rating-clear, .batch-label-dot, .batch-label-clear');
         btns.forEach(function(b) { b.disabled = busy; });
+        if (busy) {
+            countEl.textContent = 'Processing ' + selected.size + ' assets\u2026';
+            countEl.classList.add('batch-processing');
+        } else {
+            countEl.textContent = selected.size + ' selected';
+            countEl.classList.remove('batch-processing');
+        }
     }
 
     function refreshResults() {
@@ -1535,7 +1542,27 @@
         document.getElementById('lb-label-name').textContent = label || '';
     }
 
+    var _crossPagePending = false;
+
+    function showLightboxLoading() {
+        var existing = imgWrap.querySelector('.lightbox-loading-overlay');
+        if (existing) return;
+        var ov = document.createElement('div');
+        ov.className = 'lightbox-loading-overlay';
+        imgWrap.appendChild(ov);
+        var img = document.getElementById('lb-img');
+        if (img) img.style.opacity = '0.4';
+    }
+
+    function hideLightboxLoading() {
+        var ov = imgWrap.querySelector('.lightbox-loading-overlay');
+        if (ov) ov.remove();
+        var img = document.getElementById('lb-img');
+        if (img) img.style.opacity = '';
+    }
+
     function navigate(delta) {
+        if (_crossPagePending) return; // prevent queued presses
         var cards = getCards();
         var next = currentIndex + delta;
         if (next >= 0 && next < cards.length) {
@@ -1553,6 +1580,8 @@
         var totalPages = parseInt(meta.dataset.totalPages);
         var targetPage = (delta > 0) ? curPage + 1 : curPage - 1;
         if (targetPage < 1 || targetPage > totalPages) return;
+        _crossPagePending = true;
+        showLightboxLoading();
         window._lightboxResumeIndex = (delta > 0) ? 0 : -1;
         var link = (delta > 0)
             ? document.querySelector('.top-pagination a[href]:nth-last-child(2)')
@@ -1798,7 +1827,8 @@
         isOpen: function() { return isOpen; },
         open: open,
         openWithData: openWithData,
-        close: close
+        close: close,
+        _clearCrossPage: function() { _crossPagePending = false; hideLightboxLoading(); }
     };
 
     // Auto-open lightbox if returning from detail page via "l" key
@@ -2719,6 +2749,9 @@ window.damFacets = (function() {
             if (typeof window._lightboxResumeIndex !== 'undefined') {
                 var idx = window._lightboxResumeIndex;
                 delete window._lightboxResumeIndex;
+                if (window.damLightbox) {
+                    window.damLightbox._clearCrossPage();
+                }
                 var newCards = document.querySelectorAll('.asset-card');
                 if (newCards.length > 0 && window.damLightbox) {
                     var openIdx = (idx === -1) ? newCards.length - 1 : idx;

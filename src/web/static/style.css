@@ -2719,3 +2719,42 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     .facet-sidebar { display: none !important; }
     .sidebar-controls { display: none; }
 }
+
+/* Lightbox cross-page loading overlay */
+.lightbox-loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.3);
+    z-index: 10;
+}
+.lightbox-loading-overlay::after {
+    content: '';
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: lb-spin 0.8s linear infinite;
+}
+@keyframes lb-spin { to { transform: rotate(360deg); } }
+
+/* Batch toolbar processing state */
+.batch-processing {
+    color: var(--accent, #3b82f6);
+    animation: smart-pulse 1.5s ease-in-out infinite;
+}
+
+/* Detail page nav loading spinner */
+.nav-loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border, #ddd);
+    border-top-color: var(--primary, #333);
+    border-radius: 50%;
+    animation: lb-spin 0.8s linear infinite;
+    vertical-align: middle;
+}
