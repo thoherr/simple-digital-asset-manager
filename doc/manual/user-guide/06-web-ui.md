@@ -365,7 +365,7 @@ Below the editable fields:
 
 - **ID**: the asset's UUID
 - **Type**: image, video, audio, or document
-- **Date**: the asset's creation date (from EXIF or import time)
+- **Date**: the asset's creation date (from EXIF or import time). Click the pencil icon to edit it inline with a date input and Save/Cancel buttons.
 
 ### Collections
 
@@ -378,6 +378,10 @@ If the asset belongs to a stack, a section shows all members in position order w
 ### Variants
 
 An expandable section lists all variants of the asset in a table with columns for role, filename, format, size, and file locations (volume and path). This gives you a complete picture of where the asset's files live across your storage volumes.
+
+For locations on online volumes, two action buttons appear next to each path:
+- **📂 Reveal** — opens the system file manager with the file selected (Finder on macOS, file manager on Linux).
+- **>_ Terminal** — opens a terminal window in the file's parent directory.
 
 ### Recipes
 

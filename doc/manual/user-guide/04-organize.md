@@ -95,6 +95,7 @@ dam edit a1b2c3d4 --name "Sunset at Beach"
 dam edit a1b2c3d4 --description "A beautiful sunset over the Pacific coast"
 dam edit a1b2c3d4 --rating 5
 dam edit a1b2c3d4 --label Red
+dam edit a1b2c3d4 --date "2024-12-25"
 ```
 
 Multiple flags can be combined in a single invocation:
@@ -112,6 +113,7 @@ dam edit a1b2c3d4 --clear-name
 dam edit a1b2c3d4 --clear-description
 dam edit a1b2c3d4 --clear-rating
 dam edit a1b2c3d4 --clear-label
+dam edit a1b2c3d4 --clear-date
 ```
 
 An empty description string is normalized to a clear operation -- these two

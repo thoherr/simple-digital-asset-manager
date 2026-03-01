@@ -1,6 +1,6 @@
 # Roadmap: Planned & Proposed Features
 
-Consolidated list of unimplemented features and new ideas, organized by theme. Items from `enhancements.md` and `proposal-future-enhancements.md` are merged here with updated priorities reflecting the current state of the project (v1.8.1).
+Consolidated list of unimplemented features and new ideas, organized by theme. Items from `enhancements.md` and `proposal-future-enhancements.md` are merged here with updated priorities reflecting the current state of the project (v1.8.2).
 
 The main focus is on an **optimized workflow for finding, evaluating, and managing the best images** from a large multi-year archive, and on getting a **clear overview of assets** across volumes.
 
@@ -236,4 +236,4 @@ Each facet updates counts in real time based on the current filter combination (
 | 11 | Statistics dashboard | Medium | Medium | Overview / insights | |
 | 12 | Faceted browse sidebar | Medium | High | Overview / discovery | **Done** (v1.8.1) |
 
-Items 1, 2, 3, and 12 are complete as of v1.8.1, delivering the core "find and evaluate the best images" workflow with compare view, smart previews, spatial browsing via the map view, and faceted overview sidebar. The highest-priority remaining item is 4 (AI tagging). Item 11 provides additional "overview of assets" dimension.
+Items 1, 2, 3, and 12 are complete as of v1.8.2, delivering the core "find and evaluate the best images" workflow with compare view, smart previews, spatial browsing via the map view, and faceted overview sidebar. The highest-priority remaining item is 4 (AI tagging). Item 11 provides additional "overview of assets" dimension.

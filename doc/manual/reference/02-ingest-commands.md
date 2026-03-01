@@ -201,7 +201,7 @@ done
 
 ### NAME
 
-dam-edit -- edit asset metadata (name, description, rating, color label)
+dam-edit -- edit asset metadata (name, description, rating, color label, date)
 
 ### SYNOPSIS
 
@@ -211,7 +211,7 @@ dam [GLOBAL FLAGS] edit <ASSET_ID> [OPTIONS]
 
 ### DESCRIPTION
 
-Sets or clears an asset's name, description, rating, and color label from the CLI. At least one option must be provided.
+Sets or clears an asset's name, description, rating, color label, and creation date from the CLI. At least one option must be provided.
 
 Changes are written to both the YAML sidecar file (source of truth) and the SQLite catalog. Rating, description, and color label changes also trigger XMP write-back to any associated `.xmp` recipe files.
 
@@ -222,6 +222,8 @@ Changes are written to both the YAML sidecar file (source of truth) and the SQLi
 **Name** is a custom display name for the asset. When set, it appears instead of the original filename in search results and the web UI.
 
 **Description** is free-form text. Passing an empty string (`--description ""`) is equivalent to `--clear-description`.
+
+**Date** accepts an ISO date string (e.g. `2024-12-25` or `2024-12-25T14:30:00`). This overrides the asset's `created_at` timestamp. Clearing it is not recommended since the field is always populated at import time.
 
 Asset IDs support unique prefix matching (see [CLI Conventions](00-cli-conventions.md#asset-id-matching)).
 
@@ -256,6 +258,12 @@ Asset IDs support unique prefix matching (see [CLI Conventions](00-cli-conventio
 **--clear-label**
 : Remove the asset's color label.
 
+**--date \<YYYY-MM-DD\>**
+: Set the asset's creation date (accepts ISO date or datetime strings).
+
+**--clear-date**
+: Remove the asset's creation date.
+
 `--json` outputs an `EditResult` with the fields that were changed and their new values.
 
 ### EXAMPLES
@@ -282,6 +290,12 @@ Clear the rating and label:
 
 ```bash
 dam edit a1b2c3d4 --clear-rating --clear-label
+```
+
+Correct an asset's date:
+
+```bash
+dam edit a1b2c3d4 --date "2024-12-25"
 ```
 
 Clear the description (two equivalent forms):

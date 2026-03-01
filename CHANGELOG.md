@@ -2,6 +2,13 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v1.8.2
+
+### New Features
+- **Editable asset date** — set or clear an asset's creation date via CLI (`dam edit --date 2024-12-25` / `--clear-date`) or the web UI (inline date editor on the asset detail page, `PUT /api/asset/{id}/date` endpoint). Updates both sidecar YAML and SQLite catalog.
+- **Reveal in file manager** — asset detail page shows a folder icon button (📂) next to each file location on online volumes. Clicking it reveals the file in Finder (macOS `open -R`) or opens the enclosing folder (Linux `xdg-open`). Backed by `POST /api/open-location` endpoint.
+- **Open terminal** — a `>_` button next to the reveal icon opens a terminal window in the file's parent directory (Terminal.app on macOS, system terminal emulator on Linux). Backed by `POST /api/open-terminal` endpoint.
+
 ## v1.8.1
 
 ### New Features

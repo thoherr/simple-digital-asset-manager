@@ -233,6 +233,66 @@ curl -X PUT http://localhost:8080/api/asset/{id}/label \
   -d "label="
 ```
 
+### `PUT /api/asset/{id}/date` -- Set Date
+
+Sets or clears the asset's creation date. Accepts an ISO date or datetime string. An empty string clears the date.
+
+| Field  | Type          | Description                  |
+|--------|---------------|------------------------------|
+| `date` | string or null | ISO date string (e.g. `2024-12-25`), or empty to clear |
+
+**Content-Type**: `application/x-www-form-urlencoded`
+
+**Response**: HTML partial -- updated date fragment.
+
+```bash
+# Set date
+curl -X PUT http://localhost:8080/api/asset/{id}/date \
+  -d "date=2024-12-25"
+
+# Clear date
+curl -X PUT http://localhost:8080/api/asset/{id}/date \
+  -d "date="
+```
+
+### `POST /api/open-location` -- Reveal in File Manager
+
+Opens the system file manager with the specified file selected. macOS uses `open -R` (Finder); Linux uses `xdg-open` on the parent directory.
+
+| Field           | Type   | Description                     |
+|-----------------|--------|---------------------------------|
+| `volume_id`     | string | Volume UUID                     |
+| `relative_path` | string | File path relative to the volume mount point |
+
+**Content-Type**: `application/json`
+
+**Response**: `{"ok": true}` on success, or error message.
+
+```bash
+curl -X POST http://localhost:8080/api/open-location \
+  -H "Content-Type: application/json" \
+  -d '{"volume_id":"abc-123","relative_path":"Photos/DSC_001.nef"}'
+```
+
+### `POST /api/open-terminal` -- Open Terminal
+
+Opens a terminal window in the file's parent directory. macOS uses Terminal.app; Linux tries common terminal emulators.
+
+| Field           | Type   | Description                     |
+|-----------------|--------|---------------------------------|
+| `volume_id`     | string | Volume UUID                     |
+| `relative_path` | string | File path relative to the volume mount point |
+
+**Content-Type**: `application/json`
+
+**Response**: `{"ok": true}` on success, or error message.
+
+```bash
+curl -X POST http://localhost:8080/api/open-terminal \
+  -H "Content-Type: application/json" \
+  -d '{"volume_id":"abc-123","relative_path":"Photos/DSC_001.nef"}'
+```
+
 ### `POST /api/asset/{id}/preview` -- Regenerate Preview
 
 Regenerates the preview thumbnail for the asset's primary variant. Requires the source file to be on an online volume.
