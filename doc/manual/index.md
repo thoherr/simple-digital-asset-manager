@@ -42,4 +42,4 @@ Technical documentation for integrators and contributors.
 
 ---
 
-**Version**: v1.8.4 | **Source**: [GitHub](https://github.com/tblck/dam) | **License**: See repository
+**Version**: v1.8.5 | **Source**: [GitHub](https://github.com/tblck/dam) | **License**: See repository

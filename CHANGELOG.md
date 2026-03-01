@@ -2,6 +2,14 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v1.8.5
+
+### Enhancements
+- **Recipe location on detail page** — recipes now show the full volume location (volume label + path) with reveal-in-file-manager and open-terminal buttons, matching the variant location display.
+- **Scripting documentation** — new user guide chapter covering bash and Python scripting patterns, jq reporting, workflow automation, and a walkthrough of the `scripts/fix-orphaned-xmp.py` utility script.
+- **PDF cross-document links** — internal links between manual chapters now work correctly in the PDF. Previously they pointed to `.md` files; now they resolve to in-document anchors.
+- **Fix orphaned XMP script** — new Python utility (`scripts/fix-orphaned-xmp.py`) to relocate XMP sidecar files that were imported as standalone assets instead of being attached as recipes. Supports `--path` scoping for large catalogs and dry-run by default.
+
 ## v1.8.4
 
 ### Enhancements
