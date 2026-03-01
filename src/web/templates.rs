@@ -161,7 +161,9 @@ pub struct VariantRow {
 
 pub struct LocationRow {
     pub volume_label: String,
+    pub volume_id: String,
     pub relative_path: String,
+    pub is_online: bool,
 }
 
 pub struct RecipeRow {
@@ -285,6 +287,7 @@ impl AssetPage {
         collections: Vec<String>,
         stack_members: Vec<StackMemberCard>,
         is_stack_pick: bool,
+        volume_online: &std::collections::HashMap<String, bool>,
     ) -> Self {
         let fallback_name = details
             .variants
@@ -319,7 +322,9 @@ impl AssetPage {
                         .iter()
                         .map(|l| LocationRow {
                             volume_label: l.volume_label.clone(),
+                            volume_id: l.volume_id.clone(),
                             relative_path: l.relative_path.clone(),
+                            is_online: volume_online.get(&l.volume_id).copied().unwrap_or(false),
                         })
                         .collect(),
                     source_metadata: meta,

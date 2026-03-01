@@ -379,7 +379,16 @@ pub async fn asset_page(
             (cols, members, is_pick)
         };
 
-        let mut tmpl = AssetPage::from_details(details, preview_url, smart_preview_url, has_smart_preview, collections, stack_members, is_stack_pick);
+        // Build volume online map for reveal-in-finder buttons
+        let registry = DeviceRegistry::new(&state.catalog_root);
+        let volume_online: std::collections::HashMap<String, bool> = registry
+            .list()
+            .unwrap_or_default()
+            .iter()
+            .map(|v| (v.id.to_string(), v.is_online))
+            .collect();
+
+        let mut tmpl = AssetPage::from_details(details, preview_url, smart_preview_url, has_smart_preview, collections, stack_members, is_stack_pick, &volume_online);
         tmpl.prev_id = nav_params.prev;
         tmpl.next_id = nav_params.next;
         Ok::<_, anyhow::Error>(tmpl.render()?)
@@ -2465,6 +2474,69 @@ pub async fn serve_smart_preview(
             serve_smart_file(&file_path_clone, &file_name).await
         }
         _ => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct OpenLocationRequest {
+    pub volume_id: String,
+    pub relative_path: String,
+}
+
+/// POST /api/open-location — reveal a file in the system file manager.
+pub async fn open_location(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<OpenLocationRequest>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let registry = DeviceRegistry::new(&state.catalog_root);
+        let volumes = registry.list()?;
+        let vol = volumes
+            .iter()
+            .find(|v| v.id.to_string() == req.volume_id)
+            .ok_or_else(|| anyhow::anyhow!("Volume not found"))?;
+
+        if !vol.is_online {
+            anyhow::bail!("Volume '{}' is offline", vol.label);
+        }
+
+        let full_path = vol.mount_point.join(&req.relative_path);
+        if !full_path.exists() {
+            anyhow::bail!("File not found on disk: {}", full_path.display());
+        }
+
+        // Platform-specific reveal
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("open")
+                .arg("-R")
+                .arg(&full_path)
+                .spawn()
+                .map_err(|e| anyhow::anyhow!("Failed to open Finder: {e}"))?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            if let Some(parent) = full_path.parent() {
+                std::process::Command::new("xdg-open")
+                    .arg(parent)
+                    .spawn()
+                    .map_err(|e| anyhow::anyhow!("Failed to open file manager: {e}"))?;
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            anyhow::bail!("Reveal in file manager is not supported on this platform");
+        }
+
+        Ok::<_, anyhow::Error>(())
+    })
+    .await;
+
+    match result {
+        Ok(Ok(())) => Json(serde_json::json!({"ok": true})).into_response(),
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
     }
 }
 

@@ -780,6 +780,22 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     border-bottom: 1px solid var(--border);
 }
 
+.reveal-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    padding: 0 0.3rem;
+    font-size: 0.85rem;
+    vertical-align: middle;
+    margin-left: 0.3rem;
+    opacity: 0.6;
+}
+.reveal-btn:hover {
+    opacity: 1;
+    background: var(--hover-bg);
+}
+
 /* Collapsible sections */
 details { margin-top: 1rem; }
 details summary {

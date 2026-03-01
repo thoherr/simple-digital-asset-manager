@@ -176,7 +176,9 @@
                         <td>{{ v.size }}</td>
                         <td>
                             {% for loc in v.locations %}
-                            <div>{{ loc.volume_label }}: {{ loc.relative_path }}</div>
+                            <div>{{ loc.volume_label }}: {{ loc.relative_path }}{% if loc.is_online %}
+                                <button class="reveal-btn" title="Reveal in file manager"
+                                    onclick="fetch('/api/open-location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume_id:'{{ loc.volume_id }}',relative_path:'{{ loc.relative_path }}'})}).then(function(r){if(!r.ok)r.text().then(function(t){alert(t)})})">&#128194;</button>{% endif %}</div>
                             {% endfor %}
                         </td>
                     </tr>
