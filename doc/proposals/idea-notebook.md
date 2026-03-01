@@ -11,6 +11,12 @@ we do not want to loose our asset id, so we never write back to the JPEG, and no
 (this should work already). Have to chack how capture one e.g. handles this. But the date field has to be updateable,
 probable this information would then only go to our own yaml sidecar file (which is our source of truth)?
 
+### XMP sync / resolution for multi volume duplicates
+
+Maybe we could come up with ideas how to synchronize recipe files across volumes. this is especially critical for
+the use case we have a ssd work hard drive (volume role working) vs. the storage drive (role archive). A merge of the
+data is probably ways to complicated, maybe a "last one wins" approach is sufficient?
+
 ## UX / UI
 
 ### Text field with chips
