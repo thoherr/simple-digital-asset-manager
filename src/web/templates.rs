@@ -171,7 +171,10 @@ pub struct LocationRow {
 pub struct RecipeRow {
     pub recipe_type: String,
     pub software: String,
+    pub volume_label: String,
+    pub volume_id: String,
     pub relative_path: String,
+    pub is_online: bool,
 }
 
 /// A saved search for display in the browse page.
@@ -337,10 +340,17 @@ impl AssetPage {
         let recipes = details
             .recipes
             .iter()
-            .map(|r| RecipeRow {
-                recipe_type: r.recipe_type.clone(),
-                software: r.software.clone(),
-                relative_path: r.relative_path.as_deref().unwrap_or("-").to_string(),
+            .map(|r| {
+                let vid = r.volume_id.clone().unwrap_or_default();
+                let online = volume_online.get(&vid).copied().unwrap_or(false);
+                RecipeRow {
+                    recipe_type: r.recipe_type.clone(),
+                    software: r.software.clone(),
+                    volume_label: r.volume_label.clone().unwrap_or_else(|| "-".to_string()),
+                    volume_id: vid,
+                    relative_path: r.relative_path.as_deref().unwrap_or("-").to_string(),
+                    is_online: online,
+                }
             })
             .collect();
 

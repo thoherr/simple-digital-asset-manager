@@ -199,7 +199,7 @@
                     <tr>
                         <th>Type</th>
                         <th>Software</th>
-                        <th>Path</th>
+                        <th>Location</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -207,7 +207,10 @@
                     <tr>
                         <td><span class="badge">{{ r.recipe_type }}</span></td>
                         <td>{{ r.software }}</td>
-                        <td>{{ r.relative_path }}</td>
+                        <td>{{ r.volume_label }}: {{ r.relative_path }}{% if r.is_online %}
+                            <button class="reveal-btn" title="Reveal in file manager"
+                                onclick="fetch('/api/open-location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume_id:'{{ r.volume_id }}',relative_path:'{{ r.relative_path }}'})}).then(function(r){if(!r.ok)r.text().then(function(t){alert(t)})})">&#128194;</button><button class="reveal-btn" title="Open terminal here"
+                                onclick="fetch('/api/open-terminal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume_id:'{{ r.volume_id }}',relative_path:'{{ r.relative_path }}'})}).then(function(r){if(!r.ok)r.text().then(function(t){alert(t)})})">&gt;_</button>{% endif %}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

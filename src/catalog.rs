@@ -128,6 +128,8 @@ pub struct RecipeDetails {
     pub software: String,
     pub recipe_type: String,
     pub content_hash: String,
+    pub volume_id: Option<String>,
+    pub volume_label: Option<String>,
     pub relative_path: Option<String>,
 }
 
@@ -1204,9 +1206,11 @@ impl Catalog {
 
         // Load recipes linked to any variant of this asset
         let mut rstmt = self.conn.prepare(
-            "SELECT r.software, r.recipe_type, r.content_hash, r.relative_path \
+            "SELECT r.software, r.recipe_type, r.content_hash, r.volume_id, \
+                    vol.label, r.relative_path \
              FROM recipes r \
              JOIN variants v ON r.variant_hash = v.content_hash \
+             LEFT JOIN volumes vol ON r.volume_id = vol.id \
              WHERE v.asset_id = ?1",
         )?;
         let recipes: Vec<RecipeDetails> = rstmt
@@ -1215,7 +1219,9 @@ impl Catalog {
                     software: rrow.get(0)?,
                     recipe_type: rrow.get(1)?,
                     content_hash: rrow.get(2)?,
-                    relative_path: rrow.get(3)?,
+                    volume_id: rrow.get(3)?,
+                    volume_label: rrow.get(4)?,
+                    relative_path: rrow.get(5)?,
                 })
             })?
             .filter_map(|r| r.ok())
