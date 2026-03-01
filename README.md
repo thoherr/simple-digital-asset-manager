@@ -15,7 +15,7 @@ A command-line digital asset manager built in Rust, designed for large collectio
 - **Stacks** — group burst shots and similar-scene images into collapsible stacks, showing only the "pick" in the browse grid
 - **Hierarchical tags** — tree-structured keywords with Lightroom `lr:hierarchicalSubject` interop
 - **Saved searches & collections** — smart albums (dynamic queries) and static albums (curated lists)
-- **Web UI** — browser-based interface with search, inline editing, batch operations, keyboard navigation, lightbox viewer, dark mode, grid density controls, and calendar heatmap
+- **Web UI** — browser-based interface with search, inline editing, batch operations, keyboard navigation, lightbox viewer, dark mode, grid density controls, calendar heatmap, and faceted sidebar
 - **Flexible output** — JSON on all commands, custom format templates, quiet mode for scripting
 
 ## Quick Start

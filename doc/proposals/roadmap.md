@@ -1,6 +1,6 @@
 # Roadmap: Planned & Proposed Features
 
-Consolidated list of unimplemented features and new ideas, organized by theme. Items from `enhancements.md` and `proposal-future-enhancements.md` are merged here with updated priorities reflecting the current state of the project (v1.7.1).
+Consolidated list of unimplemented features and new ideas, organized by theme. Items from `enhancements.md` and `proposal-future-enhancements.md` are merged here with updated priorities reflecting the current state of the project (v1.8.1).
 
 The main focus is on an **optimized workflow for finding, evaluating, and managing the best images** from a large multi-year archive, and on getting a **clear overview of assets** across volumes.
 
@@ -215,6 +215,8 @@ Each facet updates counts in real time based on the current filter combination (
 
 **Why:** The current filter row works but doesn't show the distribution of values or give a sense of "what's available." A sidebar with counts enables discovery ("I have 340 unrated assets from 2024") and helps narrow searches iteratively.
 
+> **Status (v1.8.1):** Implemented as a read-only statistical sidebar. Toggleable via results bar button or `f` key. Shows distribution by rating (bar chart), color label (color dots), format, volume, tags (top 30), year (bar chart), and geotagged count. All sections collapsible with state persisted. Filtering remains in the top filter bar (no click-to-filter). Backed by `GET /api/facets` endpoint with 8 aggregate queries reusing `build_search_where()`.
+
 ---
 
 ## Priority Summary
@@ -232,6 +234,6 @@ Each facet updates counts in real time based on the current filter combination (
 | 9 | IPTC metadata | Medium | Low–Medium | Professional workflow | |
 | 10 | Drag-and-drop | Low | Low | UX polish | |
 | 11 | Statistics dashboard | Medium | Medium | Overview / insights | |
-| 12 | Faceted browse sidebar | Medium | High | Overview / discovery | |
+| 12 | Faceted browse sidebar | Medium | High | Overview / discovery | **Done** (v1.8.1) |
 
-Items 1, 2, and 3 are complete as of v1.8.0, delivering the core "find and evaluate the best images" workflow with compare view, smart previews, and spatial browsing via the map view. The highest-priority remaining item is 4 (AI tagging). Items 11–12 provide the "overview of assets" dimension.
+Items 1, 2, 3, and 12 are complete as of v1.8.1, delivering the core "find and evaluate the best images" workflow with compare view, smart previews, spatial browsing via the map view, and faceted overview sidebar. The highest-priority remaining item is 4 (AI tagging). Item 11 provides additional "overview of assets" dimension.
