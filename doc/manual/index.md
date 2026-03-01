@@ -15,6 +15,7 @@ Workflow-oriented guides that walk you through common tasks.
 5. [Browsing & Searching](user-guide/05-browse-and-search.md) — CLI search, filters, output formats, and statistics
 6. [Web UI](user-guide/06-web-ui.md) — Browser interface, batch operations, and keyboard navigation
 7. [Maintenance](user-guide/07-maintenance.md) — Verification, sync, refresh, cleanup, and relocation
+8. [Scripting](user-guide/08-scripting.md) — Shell and Python scripting patterns, workflow automation
 
 ## Reference Guide
 
@@ -41,4 +42,4 @@ Technical documentation for integrators and contributors.
 
 ---
 
-**Version**: v1.7.1 | **Source**: [GitHub](../../README.md) | **License**: See repository
+**Version**: v1.8.4 | **Source**: [GitHub](https://github.com/tblck/dam) | **License**: See repository

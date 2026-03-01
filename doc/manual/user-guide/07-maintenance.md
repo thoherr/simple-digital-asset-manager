@@ -606,4 +606,6 @@ dam stats --volumes
 
 ---
 
-Next: For complete flag and option details on every maintenance command, see the [Maintain Commands Reference](../reference/05-maintain-commands.md).
+Next: [Scripting](08-scripting.md) -- shell and Python scripting patterns for workflow automation.
+
+For complete flag and option details on every maintenance command, see the [Maintain Commands Reference](../reference/05-maintain-commands.md).

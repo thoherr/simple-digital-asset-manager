@@ -44,6 +44,7 @@ FILES=(
     user-guide/05-browse-and-search.md
     user-guide/06-web-ui.md
     user-guide/07-maintenance.md
+    user-guide/08-scripting.md
 
     # Reference Guide
     reference/00-cli-conventions.md
@@ -95,6 +96,52 @@ for f in "${FILES[@]}"; do
     # Append file, rewriting ../screenshots/ to screenshots/ for pandoc
     sed 's|\.\./screenshots/|screenshots/|g' "$filepath" >> "$TMPFILE"
 done
+
+# --- Rewrite cross-document .md links to internal anchors ---
+# In the concatenated document, links like [text](../reference/05-maintain-commands.md#dam-verify)
+# need to become [text](#dam-verify). Links without #anchor map to the file's first heading.
+
+echo "Rewriting cross-document links..."
+
+perl -i -pe '
+    # Map bare filenames (no #anchor) to their first heading anchor (pandoc format)
+    my %file_anchor = (
+        "index.md"                  => "dam-user-manual",
+        "01-overview.md"            => "overview-concepts",
+        "02-setup.md"               => "setup",
+        "03-ingest.md"              => "ingesting-assets",
+        "04-organize.md"            => "organizing-assets",
+        "05-browse-and-search.md"   => "browsing-searching",
+        "06-web-ui.md"              => "web-ui",
+        "07-maintenance.md"         => "maintenance",
+        "00-cli-conventions.md"     => "cli-conventions",
+        "01-setup-commands.md"      => "setup-commands",
+        "02-ingest-commands.md"     => "ingest-commands",
+        "03-organize-commands.md"   => "organize-commands",
+        "04-retrieve-commands.md"   => "retrieve-commands",
+        "05-maintain-commands.md"   => "maintain-commands",
+        "06-search-filters.md"      => "search-filter-reference",
+        "07-format-templates.md"    => "format-templates-reference",
+        "08-configuration.md"       => "configuration-reference-dam.toml",
+        "09-data-model.md"          => "data-model",
+        "01-rest-api.md"            => "rest-api-reference",
+        "02-module-reference.md"    => "module-reference",
+        "03-building-and-testing.md"=> "building-testing",
+        "08-scripting.md"           => "scripting",
+    );
+
+    # Pattern 1: links with #anchor — strip path, keep anchor
+    s/\]\((?:\.\.\/)?(?:[\w-]+\/)*[\w.-]+\.md(#[\w-]+)\)/](#$1)/g;
+    # Fix double # from the capture
+    s/\(##/\(#/g;
+
+    # Pattern 2: links without #anchor — map filename to heading anchor
+    s/\]\((?:\.\.\/)?(?:[\w-]+\/)*([\w.-]+\.md)\)/
+        my $file = $1;
+        my $anchor = $file_anchor{$file};
+        $anchor ? "](#$anchor)" : "]($file)";
+    /ge;
+' "$TMPFILE"
 
 # --- Insert page breaks before each "## dam ..." command in reference section ---
 
