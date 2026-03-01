@@ -447,6 +447,13 @@ pub struct LabelFragment {
 }
 
 #[derive(Template)]
+#[template(path = "date_fragment.html")]
+pub struct DateFragment {
+    pub asset_id: String,
+    pub created_at: String,
+}
+
+#[derive(Template)]
 #[template(path = "collections.html")]
 pub struct CollectionsPage {
     pub collections: Vec<crate::collection::CollectionSummary>,

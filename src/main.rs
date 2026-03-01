@@ -141,6 +141,14 @@ enum Commands {
         /// Clear color label
         #[arg(long)]
         clear_label: bool,
+
+        /// Set date (YYYY, YYYY-MM, YYYY-MM-DD, or ISO 8601)
+        #[arg(long)]
+        date: Option<String>,
+
+        /// Reset date to now
+        #[arg(long)]
+        clear_date: bool,
     },
 
     /// Group variants into one asset
@@ -1419,11 +1427,11 @@ fn main() {
             }
             Ok(())
         }
-        Commands::Edit { asset_id, name, clear_name, description, clear_description, rating, clear_rating, label, clear_label } => {
-            use dam::query::EditFields;
+        Commands::Edit { asset_id, name, clear_name, description, clear_description, rating, clear_rating, label, clear_label, date, clear_date } => {
+            use dam::query::{EditFields, parse_date_input};
 
-            if name.is_none() && !clear_name && description.is_none() && !clear_description && rating.is_none() && !clear_rating && label.is_none() && !clear_label {
-                anyhow::bail!("No edit flags provided. Use --name, --description, --rating, --label, --clear-name, --clear-description, --clear-rating, or --clear-label.");
+            if name.is_none() && !clear_name && description.is_none() && !clear_description && rating.is_none() && !clear_rating && label.is_none() && !clear_label && date.is_none() && !clear_date {
+                anyhow::bail!("No edit flags provided. Use --name, --description, --rating, --label, --date, --clear-name, --clear-description, --clear-rating, --clear-label, or --clear-date.");
             }
 
             // Validate label if provided
@@ -1434,6 +1442,15 @@ fn main() {
                     Ok(canonical) => Some(canonical),
                     Err(e) => anyhow::bail!(e),
                 }
+            } else {
+                None
+            };
+
+            // Parse date if provided
+            let date_field = if clear_date {
+                Some(None)
+            } else if let Some(ref d) = date {
+                Some(Some(parse_date_input(d)?))
             } else {
                 None
             };
@@ -1455,6 +1472,7 @@ fn main() {
                     rating.map(Some)
                 },
                 color_label: label_field,
+                created_at: date_field,
             };
 
             let catalog_root = dam::config::find_catalog_root()?;
@@ -1485,6 +1503,9 @@ fn main() {
                 } else {
                     println!("Label: (none)");
                 }
+                // Show date (truncate to YYYY-MM-DD)
+                let date_display = result.created_at.split('T').next().unwrap_or(&result.created_at);
+                println!("Date: {date_display}");
             }
             Ok(())
         }

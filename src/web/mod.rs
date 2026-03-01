@@ -192,6 +192,10 @@ fn build_router(state: Arc<AppState>) -> Router {
             axum::routing::put(routes::set_label),
         )
         .route(
+            "/api/asset/{id}/date",
+            axum::routing::put(routes::set_date),
+        )
+        .route(
             "/api/asset/{id}/preview",
             axum::routing::post(routes::generate_preview),
         )

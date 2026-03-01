@@ -13,8 +13,8 @@ use crate::device_registry::DeviceRegistry;
 
 use super::templates::{
     format_size, link_cards, AssetCard, AssetPage, BackupPage, BrowsePage, CollectionOption,
-    CompareAsset, ComparePage, DescriptionFragment, DuplicatesPage, FormatOption, LabelFragment,
-    NameFragment, PreviewFragment, RatingFragment, ResultsPartial, SavedSearchChip,
+    CompareAsset, ComparePage, DateFragment, DescriptionFragment, DuplicatesPage, FormatOption,
+    LabelFragment, NameFragment, PreviewFragment, RatingFragment, ResultsPartial, SavedSearchChip,
     SavedSearchEntry, SavedSearchesPage, StackMemberCard, StatsPage, TagOption, TagTreeEntry,
     TagsFragment, TagsPage, VolumeOption,
 };
@@ -851,6 +851,39 @@ pub async fn set_name(
             asset_id,
             name: new_name,
             fallback_name,
+        };
+        Ok::<_, anyhow::Error>(tmpl.render()?)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct DateForm {
+    pub date: String,
+}
+
+/// PUT /api/asset/{id}/date — set date, return date fragment.
+pub async fn set_date(
+    State(state): State<Arc<AppState>>,
+    Path(asset_id): Path<String>,
+    Form(form): Form<DateForm>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let engine = state.query_engine();
+        let dt = crate::query::parse_date_input(&form.date)?;
+        let date_str = engine.set_date(&asset_id, dt)?;
+        let tmpl = DateFragment {
+            asset_id,
+            created_at: super::templates::format_date(&date_str),
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })

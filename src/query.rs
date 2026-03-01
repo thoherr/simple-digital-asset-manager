@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::Result;
+use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 
 use crate::catalog::{AssetDetails, Catalog, SearchOptions, SearchRow};
 use crate::content_store::ContentStore;
@@ -10,6 +11,45 @@ use crate::metadata_store::MetadataStore;
 use crate::models::volume::Volume;
 use crate::models::Asset;
 use crate::xmp_reader;
+
+/// Parse a flexible date input string into a `DateTime<Utc>`.
+///
+/// Supported formats:
+/// - `YYYY` → Jan 1 of that year, midnight UTC
+/// - `YYYY-MM` → 1st of that month, midnight UTC
+/// - `YYYY-MM-DD` → midnight UTC on that date
+/// - Full ISO 8601 / RFC 3339 (e.g. `2024-06-15T12:30:00Z`) — parsed as-is
+pub fn parse_date_input(s: &str) -> Result<DateTime<Utc>> {
+    let s = s.trim();
+
+    // Try RFC 3339 / ISO 8601 first
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+
+    // YYYY-MM-DD
+    if let Ok(nd) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        return Ok(Utc.from_utc_datetime(&nd.and_hms_opt(0, 0, 0).unwrap()));
+    }
+
+    // YYYY-MM
+    if let Some((y, m)) = s.split_once('-') {
+        if let (Ok(year), Ok(month)) = (y.parse::<i32>(), m.parse::<u32>()) {
+            if let Some(nd) = NaiveDate::from_ymd_opt(year, month, 1) {
+                return Ok(Utc.from_utc_datetime(&nd.and_hms_opt(0, 0, 0).unwrap()));
+            }
+        }
+    }
+
+    // YYYY
+    if let Ok(year) = s.parse::<i32>() {
+        if let Some(nd) = NaiveDate::from_ymd_opt(year, 1, 1) {
+            return Ok(Utc.from_utc_datetime(&nd.and_hms_opt(0, 0, 0).unwrap()));
+        }
+    }
+
+    anyhow::bail!("Invalid date format: '{s}'. Use YYYY, YYYY-MM, YYYY-MM-DD, or ISO 8601.")
+}
 
 /// Parsed search query with all supported filter prefixes.
 #[derive(Debug, Default)]
@@ -375,6 +415,8 @@ pub struct EditFields {
     pub description: Option<Option<String>>,
     pub rating: Option<Option<u8>>,
     pub color_label: Option<Option<String>>,
+    /// `None` = no change, `Some(Some(dt))` = set to dt, `Some(None)` = reset to now.
+    pub created_at: Option<Option<DateTime<Utc>>>,
 }
 
 /// Result of an edit operation.
@@ -385,6 +427,7 @@ pub struct EditResult {
     pub description: Option<String>,
     pub rating: Option<u8>,
     pub color_label: Option<String>,
+    pub created_at: String,
 }
 
 /// Result of a tag add/remove operation.
@@ -932,6 +975,13 @@ impl QueryEngine {
             asset.color_label = label.clone();
         }
 
+        if let Some(date) = &fields.created_at {
+            match date {
+                Some(dt) => asset.created_at = *dt,
+                None => asset.created_at = Utc::now(),
+            }
+        }
+
         store.save(&asset)?;
         catalog.insert_asset(&asset)?;
 
@@ -956,6 +1006,7 @@ impl QueryEngine {
             description: asset.description,
             rating: asset.rating,
             color_label: asset.color_label,
+            created_at: asset.created_at.to_rfc3339(),
         })
     }
 
@@ -981,6 +1032,26 @@ impl QueryEngine {
         catalog.insert_asset(&asset)?;
 
         Ok(asset.name)
+    }
+
+    /// Set the date on an asset. Updates both sidecar YAML and SQLite catalog.
+    /// No XMP write-back needed — date has no XMP equivalent in our workflow.
+    /// Returns the new date as an RFC 3339 string.
+    pub fn set_date(&self, asset_id_prefix: &str, date: DateTime<Utc>) -> Result<String> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let full_id = catalog
+            .resolve_asset_id(asset_id_prefix)?
+            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+
+        let uuid: uuid::Uuid = full_id.parse()?;
+        let store = MetadataStore::new(&self.catalog_root);
+        let mut asset = store.load(uuid)?;
+
+        asset.created_at = date;
+        store.save(&asset)?;
+        catalog.update_asset_created_at(&full_id, &date)?;
+
+        Ok(date.to_rfc3339())
     }
 
     /// Set the rating on an asset. Updates both sidecar YAML and SQLite catalog.
