@@ -1334,6 +1334,27 @@
     });
 })();
 
+// --- Results loading indicator ---
+(function() {
+    var results = document.getElementById('results');
+    function isResultsTarget(e) {
+        var t = e.detail.target;
+        return t && (t === results || t.id === 'results');
+    }
+    document.body.addEventListener('htmx:beforeRequest', function(e) {
+        if (isResultsTarget(e)) results.classList.add('results-loading');
+    });
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+        if (isResultsTarget(e)) results.classList.remove('results-loading');
+    });
+    document.body.addEventListener('htmx:responseError', function(e) {
+        if (isResultsTarget(e)) results.classList.remove('results-loading');
+    });
+    document.body.addEventListener('htmx:sendError', function(e) {
+        results.classList.remove('results-loading');
+    });
+})();
+
 // --- Lightbox ---
 (function() {
     var currentIndex = -1;

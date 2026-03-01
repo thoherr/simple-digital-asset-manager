@@ -814,6 +814,11 @@ details[open] summary { margin-bottom: 0.5rem; }
     color: var(--text-muted);
     font-size: 1.1rem;
 }
+.results-loading {
+    opacity: 0.45;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
 
 /* Star rating */
 .star-rating {
