@@ -72,7 +72,7 @@ dam volume list --json | jq -r '.[] | "\(.label)\t\(if .is_online then "online" 
 Count assets per format:
 
 ```bash
-dam stats --types --json | jq -r '.variant_formats[] | "\(.format)\t\(.count)"'
+dam stats --types --json | jq -r '.types.variant_formats[] | "\(.format)\t\(.count)"'
 ```
 
 ### Building Collections from Filters
@@ -163,8 +163,8 @@ Find tags that are only used once (potential typos or inconsistencies):
 
 ```python
 stats = dam_json("stats", "--tags")
-if stats:
-    for tag in stats.get("top_tags", []):
+if stats and stats.get("tags"):
+    for tag in stats["tags"].get("top_tags", []):
         if tag["count"] == 1:
             print(f"  Singleton tag: {tag['tag']}")
 ```
