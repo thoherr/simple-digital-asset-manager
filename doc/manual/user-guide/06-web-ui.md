@@ -181,7 +181,7 @@ When results span multiple pages, pagination controls appear both above and belo
 
 Page numbers with ellipsis keep the controls compact for large result sets. The number of results per page defaults to 60 and can be configured via `[serve] per_page` in `dam.toml` or the `--per-page` CLI flag.
 
-Use **Shift+Left/Right arrow** keys to quickly turn pages from the keyboard. In the lightbox, regular arrow keys at page boundaries automatically navigate to the next/previous page with a loading spinner overlay.
+Use **Shift+Left/Right arrow** keys to quickly turn pages from the keyboard. The results grid fades during loading to provide visual feedback while the new page loads. In the lightbox, regular arrow keys at page boundaries automatically navigate to the next/previous page with a loading spinner overlay.
 
 ### Saved search chips
 
@@ -359,7 +359,7 @@ The right side contains the asset's metadata, all editable inline:
 
 **Color label** -- seven colored dots (Red, Orange, Yellow, Green, Blue, Pink, Purple) with a label name shown below the active dot. Click a dot to set that label; click the active dot again to clear it. Changes are written back to XMP recipe files on disk.
 
-**Tags** -- displayed as removable chips. Click the x on a chip to remove that tag. Use the text input below to add new tags. Changes are written back to XMP recipe files on disk with operation-level deltas (tags added independently in CaptureOne or Lightroom are preserved).
+**Tags** -- displayed as removable chips. Click the x on a chip to remove that tag. Use the text input below to add new tags -- it offers autocomplete suggestions from your catalog's tag list as you type. Changes are written back to XMP recipe files on disk with operation-level deltas (tags added independently in CaptureOne or Lightroom are preserved).
 
 ### Asset information
 
@@ -412,7 +412,7 @@ Each browse card has a checkbox that appears on hover. Once any card is selected
 
 A fixed toolbar appears at the bottom of the screen whenever one or more assets are selected. It shows the selection count and provides these controls:
 
-**Tags**: a text input with "+ Tag" and "- Tag" buttons. Type a tag name and click "+ Tag" to add it to all selected assets, or "- Tag" to remove it. Press Enter in the input to add.
+**Tags**: a text input with autocomplete, plus "+ Tag" and "- Tag" buttons. Type a partial tag name to see suggestions from your catalog's tag list; navigate with arrow keys, Enter or click to select a suggestion. Click "+ Tag" to add the tag to all selected assets, or "- Tag" to remove it. Press Enter in the input to add. Newly created tags are immediately available in the autocomplete.
 
 **Rating**: five clickable stars and a clear button (x). Click a star to set that rating on all selected assets. Click x to clear rating.
 
