@@ -11,6 +11,17 @@
 {% endblock %}
 
 {% block content %}
+<div class="browse-layout">
+<aside class="facet-sidebar" id="facet-sidebar">
+    <div class="facet-header">
+        <strong>Filters</strong>
+        <button class="facet-close-btn" id="sidebar-close" title="Hide sidebar">&times;</button>
+    </div>
+    <div id="facet-content">
+        <div class="facet-loading">Loading&hellip;</div>
+    </div>
+</aside>
+<div class="browse-main">
 <form class="search-bar"
       hx-get="/"
       hx-target="#results"
@@ -88,6 +99,8 @@
 
 <div id="calendar-container"></div>
 <div id="map-container"></div>
+</div><!-- .browse-main -->
+</div><!-- .browse-layout -->
 
 <div class="lightbox" id="lightbox">
     <div class="lightbox-top-bar">
@@ -2002,6 +2015,11 @@
                 window.location.href = '/compare?ids=' + Array.from(window.damBatch.selected).join(',');
                 return;
             }
+            // f: facet sidebar toggle
+            if (lower === 'f' && window.damFacets) {
+                window.damFacets.toggle();
+                return;
+            }
             // m: map view toggle
             if (lower === 'm' && window.damCalendar) {
                 var cur = document.documentElement.getAttribute('data-view') || 'grid';
@@ -2414,6 +2432,347 @@ window.damMap = (function() {
 })();
 </script>
 <script>
+// --- Faceted sidebar ---
+window.damFacets = (function() {
+    var sidebar = document.getElementById('facet-sidebar');
+    var content = document.getElementById('facet-content');
+    var fetchController = null;
+
+    function isOpen() {
+        return document.documentElement.getAttribute('data-sidebar') === 'open';
+    }
+
+    function init() {
+        var pref = localStorage.getItem('dam-sidebar');
+        if (pref === 'open') {
+            document.documentElement.setAttribute('data-sidebar', 'open');
+            fetchFacets();
+        }
+        document.getElementById('sidebar-close').addEventListener('click', toggle);
+        // Restore section collapse states
+        restoreCollapseStates();
+    }
+
+    function toggle() {
+        if (isOpen()) {
+            document.documentElement.removeAttribute('data-sidebar');
+            localStorage.setItem('dam-sidebar', 'closed');
+            updateToggleBtn(false);
+        } else {
+            document.documentElement.setAttribute('data-sidebar', 'open');
+            localStorage.setItem('dam-sidebar', 'open');
+            updateToggleBtn(true);
+            fetchFacets();
+        }
+    }
+
+    function updateToggleBtn(active) {
+        var btn = document.querySelector('.sidebar-toggle-btn');
+        if (btn) btn.classList.toggle('active', active);
+    }
+
+    function getFilterParams() {
+        var params = {};
+        var urlParams = new URLSearchParams(window.location.search);
+        ['q', 'type', 'tag', 'format', 'volume', 'rating', 'label', 'collection', 'path', 'stacks'].forEach(function(k) {
+            var v = urlParams.get(k);
+            if (v) params[k] = v;
+        });
+        return params;
+    }
+
+    function fetchFacets() {
+        if (!isOpen()) return;
+        if (fetchController) fetchController.abort();
+        fetchController = new AbortController();
+        var params = getFilterParams();
+        var qs = Object.keys(params).map(function(k) { return k + '=' + encodeURIComponent(params[k]); }).join('&');
+        content.innerHTML = '<div class="facet-loading">Loading\u2026</div>';
+        fetch('/api/facets?' + qs, { signal: fetchController.signal })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { render(data); })
+            .catch(function(e) { if (e.name !== 'AbortError') content.innerHTML = '<div class="facet-loading">Error loading facets</div>'; });
+    }
+
+    var labelColors = {
+        'Red': '#e74c3c', 'Orange': '#e67e22', 'Yellow': '#f1c40f',
+        'Green': '#27ae60', 'Blue': '#3498db', 'Pink': '#e91e8e', 'Purple': '#9b59b6'
+    };
+
+    function getCurrentFilters() {
+        var p = new URLSearchParams(window.location.search);
+        return {
+            rating: p.get('rating') || '',
+            label: p.get('label') || '',
+            format: p.get('format') || '',
+            volume: p.get('volume') || '',
+            tag: (p.get('tag') || '').split(',').filter(Boolean),
+            q: p.get('q') || ''
+        };
+    }
+
+    function render(data) {
+        var cur = getCurrentFilters();
+        var html = '';
+
+        // Rating section
+        html += facetSection('ratings', 'Ratings', function() {
+            var h = '';
+            // Sort: 5 down to 1, then unrated (null)
+            var sorted = (data.ratings || []).slice().sort(function(a, b) {
+                if (a[0] === null) return 1;
+                if (b[0] === null) return -1;
+                return b[0] - a[0];
+            });
+            var maxCount = Math.max.apply(null, sorted.map(function(r) { return r[1]; }).concat([1]));
+            for (var i = 0; i < sorted.length; i++) {
+                var val = sorted[i][0];
+                var cnt = sorted[i][1];
+                var active = (val !== null && cur.rating === String(val)) || (val === null && cur.rating === '');
+                var stars = '';
+                if (val !== null) {
+                    for (var s = 1; s <= 5; s++) stars += s <= val ? '\u2605' : '\u2606';
+                } else {
+                    stars = 'Unrated';
+                }
+                var pct = Math.round((cnt / maxCount) * 100);
+                h += '<div class="facet-item' + (active ? ' facet-active' : '') + '" data-facet="rating" data-value="' + (val !== null ? val : '') + '">';
+                h += '<span class="facet-label">' + stars + '</span>';
+                h += '<span class="facet-bar-wrap"><span class="facet-bar" style="width:' + pct + '%"></span></span>';
+                h += '<span class="facet-count">' + cnt + '</span>';
+                h += '</div>';
+            }
+            return h;
+        });
+
+        // Label section
+        html += facetSection('labels', 'Labels', function() {
+            var h = '';
+            var sorted = (data.labels || []).slice().sort(function(a, b) { return b[1] - a[1]; });
+            for (var i = 0; i < sorted.length; i++) {
+                var val = sorted[i][0];
+                var cnt = sorted[i][1];
+                var active = (val !== null && cur.label === val) || (val === null && cur.label === '');
+                var dot = val && labelColors[val] ? '<span class="facet-label-dot" style="background:' + labelColors[val] + '"></span>' : '';
+                h += '<div class="facet-item' + (active ? ' facet-active' : '') + '" data-facet="label" data-value="' + (val || '') + '">';
+                h += '<span class="facet-label">' + dot + (val || 'No label') + '</span>';
+                h += '<span class="facet-count">' + cnt + '</span>';
+                h += '</div>';
+            }
+            return h;
+        });
+
+        // Format section
+        html += facetSection('formats', 'Formats', function() {
+            var h = '';
+            for (var i = 0; i < (data.formats || []).length; i++) {
+                var val = data.formats[i][0];
+                var cnt = data.formats[i][1];
+                var active = cur.format === val;
+                h += '<div class="facet-item' + (active ? ' facet-active' : '') + '" data-facet="format" data-value="' + val + '">';
+                h += '<span class="facet-label">' + val + '</span>';
+                h += '<span class="facet-count">' + cnt + '</span>';
+                h += '</div>';
+            }
+            return h;
+        });
+
+        // Volume section
+        if (data.volumes && data.volumes.length > 0) {
+            html += facetSection('volumes', 'Volumes', function() {
+                var h = '';
+                for (var i = 0; i < data.volumes.length; i++) {
+                    var vid = data.volumes[i][0];
+                    var vlabel = data.volumes[i][1];
+                    var cnt = data.volumes[i][2];
+                    var active = cur.volume === vid;
+                    h += '<div class="facet-item' + (active ? ' facet-active' : '') + '" data-facet="volume" data-value="' + vid + '">';
+                    h += '<span class="facet-label">' + vlabel + '</span>';
+                    h += '<span class="facet-count">' + cnt + '</span>';
+                    h += '</div>';
+                }
+                return h;
+            });
+        }
+
+        // Tags section
+        if (data.tags && data.tags.length > 0) {
+            html += facetSection('tags', 'Tags', function() {
+                var h = '';
+                for (var i = 0; i < data.tags.length; i++) {
+                    var val = data.tags[i][0];
+                    var cnt = data.tags[i][1];
+                    var active = cur.tag.indexOf(val) >= 0;
+                    h += '<div class="facet-item' + (active ? ' facet-active' : '') + '" data-facet="tag" data-value="' + val.replace(/"/g, '&quot;') + '">';
+                    h += '<span class="facet-label">' + val + '</span>';
+                    h += '<span class="facet-count">' + cnt + '</span>';
+                    h += '</div>';
+                }
+                return h;
+            });
+        }
+
+        // Years section
+        if (data.years && data.years.length > 0) {
+            html += facetSection('years', 'Years', function() {
+                var h = '';
+                var maxCount = Math.max.apply(null, data.years.map(function(y) { return y[1]; }).concat([1]));
+                for (var i = 0; i < data.years.length; i++) {
+                    var val = data.years[i][0];
+                    var cnt = data.years[i][1];
+                    var active = cur.q.indexOf('date:' + val) >= 0;
+                    var pct = Math.round((cnt / maxCount) * 100);
+                    h += '<div class="facet-item' + (active ? ' facet-active' : '') + '" data-facet="year" data-value="' + val + '">';
+                    h += '<span class="facet-label">' + val + '</span>';
+                    h += '<span class="facet-bar-wrap"><span class="facet-bar" style="width:' + pct + '%"></span></span>';
+                    h += '<span class="facet-count">' + cnt + '</span>';
+                    h += '</div>';
+                }
+                return h;
+            });
+        }
+
+        // Geotagged
+        if (data.geotagged > 0) {
+            var geoActive = cur.q.indexOf('geo:any') >= 0;
+            html += '<div class="facet-section facet-geo">';
+            html += '<div class="facet-item' + (geoActive ? ' facet-active' : '') + '" data-facet="geo" data-value="any">';
+            html += '<span class="facet-label">\uD83D\uDCCD Geotagged</span>';
+            html += '<span class="facet-count">' + data.geotagged + '</span>';
+            html += '</div></div>';
+        }
+
+        content.innerHTML = html;
+        restoreCollapseStates();
+        bindClicks();
+    }
+
+    function facetSection(key, title, contentFn) {
+        var wasOpen = getSectionState(key);
+        return '<details class="facet-section" data-section="' + key + '"' + (wasOpen ? ' open' : '') + '>' +
+            '<summary>' + title + '</summary>' +
+            '<div class="facet-section-body">' + contentFn() + '</div></details>';
+    }
+
+    function getSectionState(key) {
+        try {
+            var states = JSON.parse(localStorage.getItem('dam-facet-sections') || '{}');
+            return states[key] !== false; // default open
+        } catch(e) { return true; }
+    }
+
+    function restoreCollapseStates() {
+        var sections = content.querySelectorAll('.facet-section[data-section]');
+        sections.forEach(function(det) {
+            det.addEventListener('toggle', function() {
+                saveSectionState(det.getAttribute('data-section'), det.open);
+            });
+        });
+    }
+
+    function saveSectionState(key, open) {
+        try {
+            var states = JSON.parse(localStorage.getItem('dam-facet-sections') || '{}');
+            states[key] = open;
+            localStorage.setItem('dam-facet-sections', JSON.stringify(states));
+        } catch(e) {}
+    }
+
+    function bindClicks() {
+        content.querySelectorAll('.facet-item[data-facet]').forEach(function(el) {
+            el.addEventListener('click', function() {
+                var facet = el.getAttribute('data-facet');
+                var value = el.getAttribute('data-value');
+                applyFacetFilter(facet, value);
+            });
+        });
+    }
+
+    function applyFacetFilter(facet, value) {
+        if (facet === 'rating') {
+            // Click the matching star in the rating filter, or clear
+            var stars = document.querySelectorAll('#rating-stars .star');
+            if (value === '') {
+                // Clear rating: click already-active star to toggle off
+                var activeStars = document.querySelectorAll('#rating-stars .star.filled');
+                if (activeStars.length > 0) activeStars[0].click();
+            } else {
+                // Find star with matching data-value and click it
+                for (var i = 0; i < stars.length; i++) {
+                    if (stars[i].getAttribute('data-value') === value) {
+                        stars[i].click();
+                        break;
+                    }
+                }
+            }
+        } else if (facet === 'label') {
+            var dots = document.querySelectorAll('#label-filter .label-dot-filter');
+            if (value === '') {
+                // Clear: click active dot to deactivate
+                var active = document.querySelector('#label-filter .label-dot-filter.active');
+                if (active) active.click();
+            } else {
+                for (var i = 0; i < dots.length; i++) {
+                    if (dots[i].getAttribute('data-label') === value) {
+                        dots[i].click();
+                        break;
+                    }
+                }
+            }
+        } else if (facet === 'format') {
+            var sel = document.querySelector('select[name=format]');
+            if (sel) {
+                sel.value = (sel.value === value) ? '' : value;
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        } else if (facet === 'volume') {
+            var sel = document.querySelector('select[name=volume]');
+            if (sel) {
+                sel.value = (sel.value === value) ? '' : value;
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        } else if (facet === 'tag') {
+            // Use the existing addTag function if available
+            if (window.addTag) {
+                window.addTag(value);
+            }
+        } else if (facet === 'year') {
+            var qInput = document.querySelector('input[name=q]');
+            if (qInput) {
+                // Replace existing date: filter or add new one
+                var q = qInput.value.replace(/\bdate:\S+/g, '').trim();
+                qInput.value = (q ? q + ' ' : '') + 'date:' + value;
+                // Trigger search
+                var form = qInput.closest('form');
+                if (form) htmx.trigger(form, 'submit');
+            }
+        } else if (facet === 'geo') {
+            var qInput = document.querySelector('input[name=q]');
+            if (qInput) {
+                if (qInput.value.indexOf('geo:any') >= 0) {
+                    qInput.value = qInput.value.replace(/\bgeo:any\b/g, '').trim();
+                } else {
+                    var q = qInput.value.replace(/\bgeo:\S+/g, '').trim();
+                    qInput.value = (q ? q + ' ' : '') + 'geo:any';
+                }
+                var form = qInput.closest('form');
+                if (form) htmx.trigger(form, 'submit');
+            }
+        }
+    }
+
+    // Re-fetch facets after results update
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+        if (e.detail.target && e.detail.target.id === 'results') {
+            updateToggleBtn(isOpen());
+            fetchFacets();
+        }
+    });
+
+    init();
+    return { toggle: toggle, fetchFacets: fetchFacets, isOpen: isOpen };
+})();
+
 // --- Browse context for detail page navigation ---
 (function() {
     function storeBrowseContext() {
@@ -2468,6 +2827,7 @@ if (window.damHelp) {
             { keys: '-', desc: 'Zoom out' }
         ]},
         { title: 'Views', shortcuts: [
+            { keys: 'f', desc: 'Toggle facet sidebar' },
             { keys: 'm', desc: 'Toggle map view' }
         ]},
         { title: 'General', shortcuts: [

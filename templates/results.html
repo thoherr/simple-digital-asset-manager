@@ -38,6 +38,12 @@
         {% endif %}
     </div>
 
+    <div class="sidebar-controls">
+        <button class="sidebar-toggle-btn" id="sidebar-toggle" title="Toggle filter sidebar (f)" onclick="if(window.damFacets)damFacets.toggle()">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="2" y1="4" x2="14" y2="4"/><line x1="4" y1="8" x2="14" y2="8"/><line x1="6" y1="12" x2="14" y2="12"/><circle cx="3" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
+        </button>
+    </div>
+
     <div class="stack-controls">
         <button class="stack-toggle-btn{% if collapse_stacks %} active{% endif %}" id="stack-collapse-toggle" title="Collapse/expand stacks">&#8862;</button>
     </div>

@@ -267,6 +267,7 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/dedup/location", axum::routing::delete(routes::dedup_remove_location_api))
         .route("/api/calendar", axum::routing::get(routes::calendar_api))
         .route("/api/map", axum::routing::get(routes::map_api))
+        .route("/api/facets", axum::routing::get(routes::facets_api))
         .route("/static/htmx.min.js", axum::routing::get(static_assets::htmx_js))
         .route("/static/style.css", axum::routing::get(static_assets::style_css))
         .route("/static/leaflet.min.js", axum::routing::get(static_assets::leaflet_js))

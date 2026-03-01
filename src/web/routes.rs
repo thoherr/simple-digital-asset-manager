@@ -1946,6 +1946,92 @@ pub async fn map_api(
     }
 }
 
+// --- Facets ---
+
+#[derive(Debug, serde::Deserialize)]
+pub struct FacetParams {
+    pub q: Option<String>,
+    #[serde(rename = "type")]
+    pub asset_type: Option<String>,
+    pub tag: Option<String>,
+    pub format: Option<String>,
+    pub volume: Option<String>,
+    pub rating: Option<String>,
+    pub label: Option<String>,
+    pub collection: Option<String>,
+    pub path: Option<String>,
+    pub stacks: Option<String>,
+}
+
+/// GET /api/facets — facet counts for the browse sidebar.
+pub async fn facets_api(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<FacetParams>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+
+        let query = params.q.as_deref().unwrap_or("");
+        let asset_type = params.asset_type.as_deref().unwrap_or("");
+        let tag = params.tag.as_deref().unwrap_or("");
+        let format = params.format.as_deref().unwrap_or("");
+        let volume = params.volume.as_deref().unwrap_or("");
+        let rating_str = params.rating.as_deref().unwrap_or("");
+        let label_str = params.label.as_deref().unwrap_or("");
+        let collection_str = params.collection.as_deref().unwrap_or("");
+        let path_str = params.path.as_deref().unwrap_or("");
+
+        // Normalize path
+        let (normalized_path, path_volume_id) = if !path_str.is_empty() {
+            let registry = DeviceRegistry::new(&state.catalog_root);
+            let vols = registry.list().unwrap_or_default();
+            normalize_path_for_search(path_str, &vols, None)
+        } else {
+            (String::new(), None)
+        };
+
+        let parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        let mut opts = parsed.to_search_options();
+        if !volume.is_empty() {
+            opts.volume = Some(volume);
+        }
+        if let Some(ref vid) = path_volume_id {
+            if opts.volume.is_none() {
+                opts.volume = Some(vid);
+            }
+        }
+        if !normalized_path.is_empty() {
+            opts.path_prefix = Some(&normalized_path);
+        }
+
+        // Collapse stacks (default: yes)
+        let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
+        opts.collapse_stacks = collapse_stacks;
+
+        // Resolve collection filter
+        let collection_ids;
+        if !collection_str.is_empty() {
+            let col_store = crate::collection::CollectionStore::new(catalog.conn());
+            collection_ids = col_store.asset_ids_for_collection(collection_str)
+                .unwrap_or_default();
+            opts.collection_asset_ids = Some(&collection_ids);
+        }
+
+        let facets = catalog.facet_counts(&opts)?;
+        Ok::<_, anyhow::Error>(serde_json::json!(facets))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
 // --- Duplicates ---
 
 #[derive(Debug, serde::Deserialize)]

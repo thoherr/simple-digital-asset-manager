@@ -156,6 +156,28 @@ Next to the sort controls, three grid density buttons let you adjust the thumbna
 
 Your density preference is saved in the browser and preserved across page reloads and navigation.
 
+### Faceted sidebar
+
+The faceted sidebar provides a live breakdown of your current results by rating, color label, format, volume, tag, year, and geolocation. It helps you discover the distribution of values and quickly narrow results.
+
+**Toggle**: Click the filter icon button in the results bar (next to the stack collapse button) or press `f`. The sidebar appears on the left side of the browse page. Your preference is saved in the browser.
+
+**Facet sections**: Each section is a collapsible `<details>` element. Ratings and years include a proportional bar chart. Labels show color dots. Formats, volumes, and tags show counts. The geotagged facet shows a single count of assets with GPS data.
+
+**Click to filter**: Clicking a facet value applies that filter:
+- **Rating**: clicks the corresponding star in the filter row
+- **Label**: clicks the corresponding label dot
+- **Format / Volume**: sets the dropdown value
+- **Tag**: adds the tag chip
+- **Year**: sets a `date:YYYY` filter in the search input
+- **Geo**: toggles `geo:any` in the search input
+
+Active filters are highlighted in the sidebar. Facet counts automatically update when search results change (pagination, sort, or filter changes).
+
+**Collapse state**: Each section remembers its open/closed state in the browser across page loads.
+
+**Responsive**: The sidebar is hidden on viewports narrower than 768px.
+
 ### Sorting
 
 Above the results grid, sort toggle buttons let you order results by **Name**, **Date**, or **Size**. Each button toggles between ascending and descending. The active sort shows a direction arrow. Clicking a sort button updates results immediately.
