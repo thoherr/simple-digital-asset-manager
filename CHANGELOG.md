@@ -2,6 +2,23 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v1.8.6
+
+### New Features
+- **Incremental verify** — `dam verify --max-age <DAYS>` skips files verified within the given number of days, enabling fast periodic checks on large catalogs. `--force` overrides the skip and re-verifies everything. Configurable default via `[verify] max_age_days` in `dam.toml`.
+- **Search negation and OR operators** — prefix any filter or free-text term with `-` to exclude matches (`-tag:rejected`, `-sunset`). Use commas within a filter value for OR logic (`tag:alice,bob`, `format:nef,cr3`, `label:Red,Orange`). Combinable: `type:image,video -format:xmp`.
+
+### Enhancements
+- **Recipe verified_at persistence** — verify now persists `verified_at` timestamps to sidecar YAML for both variant locations and recipe locations, so incremental verify works correctly across catalog rebuilds.
+- **Show command recipe details** — `dam show` now displays variant hash and volume:path for each recipe, matching the detail level shown for variant locations.
+- **Fix orphaned XMP script** — added `--remove` flag to `scripts/fix-orphaned-xmp.py` for deleting the orphaned standalone asset after relocation.
+
+### Bug Fixes
+- **Fix verify recipe hash mismatch** — verify was passing the recipe's `content_hash` where the variant's `content_hash` was expected when updating `verified_at`, causing recipe verification timestamps to not persist correctly.
+
+### Testing
+- Added 11 new tests covering verify data flows: `is_recently_verified` edge cases, `get_location_verified_at` queries, `VerifyConfig` parsing, and 4 end-to-end integration tests (JSON output, `--max-age` skip, `--force` override, recipe `verified_at` round-trip).
+
 ## v1.8.5
 
 ### Enhancements

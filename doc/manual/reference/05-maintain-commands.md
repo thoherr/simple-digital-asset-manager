@@ -13,7 +13,7 @@ dam-verify -- re-hash files on disk and compare against stored content hashes
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] verify [PATHS...] [OPTIONS]
+dam [GLOBAL FLAGS] verify [PATHS...] [--max-age DAYS] [--force] [OPTIONS]
 ```
 
 ### DESCRIPTION
@@ -24,7 +24,9 @@ Verifies file integrity by re-hashing files on disk and comparing the computed S
 
 **Path mode** (with paths): Scans files at the given paths on disk and looks them up in the catalog by content hash. In addition to the catalog mode statuses, can report UNTRACKED files — files on disk whose content hash does not match any known variant or recipe.
 
-On successful verification, updates the `verified_at` timestamp on each file location record.
+On successful verification, updates the `verified_at` timestamp on each file location record (persisted to both SQLite catalog and sidecar YAML for variant and recipe locations).
+
+**Incremental verify**: Use `--max-age` to skip files that were verified recently. Only files whose `verified_at` timestamp is older than the given number of days (or never verified) are re-hashed. This enables fast periodic checks on large catalogs. `--force` overrides the skip and re-verifies everything. A default `max_age_days` can be set in `dam.toml` under `[verify]`.
 
 **Result statuses:**
 
@@ -56,13 +58,19 @@ Offline volumes are silently skipped.
 **--asset \<ID\>**
 : Verify only the file locations of a specific asset. Supports prefix matching.
 
+**--max-age \<DAYS\>**
+: Skip files verified within the given number of days. Enables incremental verification.
+
+**--force**
+: Override `--max-age` and re-verify all files.
+
 **--include \<GROUP\>**
 : Include additional file type groups. Can be specified multiple times.
 
 **--skip \<GROUP\>**
 : Skip file type groups. Can be specified multiple times.
 
-`--json` outputs a `VerifyResult` with `verified`, `failed`, `modified`, `skipped`, `missing` counters and detail arrays.
+`--json` outputs a `VerifyResult` with `verified`, `failed`, `modified`, `skipped`, `skipped_recent`, `missing` counters and detail arrays.
 
 `--log` prints per-file verification status and timing to stderr.
 
@@ -90,6 +98,18 @@ Verify a specific directory:
 
 ```bash
 dam verify /Volumes/Photos/Capture/2026-02-22
+```
+
+Incremental verify — skip files checked in the last 30 days:
+
+```bash
+dam verify --max-age 30
+```
+
+Force re-verify everything, ignoring recent timestamps:
+
+```bash
+dam verify --force --max-age 30
 ```
 
 Verify and check for failures in a script:

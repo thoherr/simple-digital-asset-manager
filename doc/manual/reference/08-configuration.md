@@ -226,6 +226,24 @@ prefer = "Selects"
 
 ---
 
+## [verify] Section
+
+Controls incremental verify behavior for `dam verify`.
+
+### max_age_days
+
+- **Type:** integer (optional)
+- **Default:** none
+
+Default value for the `--max-age` flag. When set, `dam verify` skips files verified within the given number of days. The CLI `--max-age` flag overrides this value. `--force` overrides both.
+
+```toml
+[verify]
+max_age_days = 30
+```
+
+---
+
 ## Full Example
 
 A complete `dam.toml` with all options set and annotated:
@@ -272,6 +290,10 @@ smart_previews = true
 [dedup]
 # Default path substring for --prefer (keep files whose path contains this).
 prefer = "Selects"
+
+[verify]
+# Skip files verified within this many days (incremental verify).
+max_age_days = 30
 ```
 
 ---
@@ -323,6 +345,7 @@ When a field is absent from `dam.toml`, these defaults apply:
 | `import.auto_tags` | `[]` |
 | `import.smart_previews` | `false` |
 | `dedup.prefer` | none |
+| `verify.max_age_days` | none |
 
 ---
 

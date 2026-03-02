@@ -170,7 +170,7 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - `tag(asset_id, tags)` — add tags to an asset.
 - `relocate(asset_id, target_volume)` — move all variants of an asset to another volume. Supports `--remove-source` (move instead of copy) and `--dry-run`.
 - `find_duplicates() -> Vec<DuplicateGroup>` — find variants with same hash on multiple locations.
-- `verify(paths, volume, asset) -> VerifyResult` — re-hash files on disk and compare against stored content hashes. Reports `Ok`, `Mismatch`, `Modified` (recipe with changed hash), `Missing`, `Skipped`, or `Untracked`. Modified recipes are not treated as failures — their stored hash is updated. Supports path mode (verify specific files/dirs), catalog mode (verify all locations), `--volume`, `--asset`, and `--include`/`--skip` filters.
+- `verify(paths, volume, asset, config) -> VerifyResult` — re-hash files on disk and compare against stored content hashes. Reports `Ok`, `Mismatch`, `Modified` (recipe with changed hash), `Missing`, `Skipped`, `SkippedRecent`, or `Untracked`. Modified recipes are not treated as failures — their stored hash is updated. Supports path mode (verify specific files/dirs), catalog mode (verify all locations), `--volume`, `--asset`, `--include`/`--skip` filters, `--max-age` (skip files verified within N days), and `--force` (override `--max-age`). Persists `verified_at` timestamps to sidecar YAML for both variant and recipe locations.
 - `refresh(paths, volume, asset_id, dry_run, media) -> RefreshResult` — re-read metadata from changed recipe/sidecar files. Iterates recipe file locations, compares on-disk hash to stored hash, and for changed files re-extracts XMP metadata and updates catalog + sidecar. Reports `Unchanged`, `Refreshed`, `Missing`, or `Offline`. When `media` is true, also scans JPEG/TIFF variant files and re-extracts embedded XMP metadata. Lighter than `sync` — only touches metadata, never file locations.
 - `fix_roles(paths, volume, asset, apply) -> FixRolesResult` — scan multi-variant assets with a RAW variant and re-role non-RAW variants from `Original` to `Export`. Assets with only non-RAW variants are untouched. Dry-run by default; `--apply` writes changes to both sidecar YAML and SQLite catalog.
 - `cleanup(volume, apply) -> CleanupResult` — remove stale location/recipe records, orphaned assets, and orphaned previews.
@@ -183,6 +183,8 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 **Query capabilities**:
 - Filter by: tags, date range, asset type, format, rating (`rating:N` exact, `rating:N+` minimum), color label (`label:Red`), date (`date:2026-02-25` prefix match, `dateFrom:` inclusive lower bound, `dateUntil:` inclusive upper bound), camera model, lens, ISO, focal length, aperture, dimensions, volume, online/offline status
 - Location health filters: `orphan:true` (no file locations), `missing:true` (files missing from disk), `stale:N` (not verified in N days), `volume:none` (no locations on online volumes)
+- Negation: `-` prefix excludes matches (`-tag:rejected`, `-sunset`)
+- OR within filters: comma operator (`tag:alice,bob`, `format:nef,cr3`, `label:Red,Orange`)
 - Full-text search over name, filename, description, and source metadata
 - Sort by: date, name, file size, import date
 - Output: asset list with summary info, or detailed asset view
@@ -400,7 +402,7 @@ dam tag <asset-id> [--remove] <tags...>           # add/remove tags
 dam edit <id> [--name N] [--description T] [--rating R] [--label C] [--clear-*]  # edit metadata
 dam group <variant-hashes...>                     # group variants into one asset
 dam relocate <id> <vol> [--remove-source] [--dry-run]  # copy/move asset
-dam verify [PATHS...] [--volume V] [--asset ID] [--include G] [--skip G]  # check file integrity
+dam verify [PATHS...] [--volume V] [--asset ID] [--include G] [--skip G] [--max-age N] [--force]  # check file integrity
 dam sync <PATHS...> [--volume V] [--apply] [--remove-stale]  # reconcile catalog with disk
 dam refresh [PATHS...] [--volume V] [--asset ID] [--dry-run] [--media]  # re-read metadata from changed sidecars
 dam update-location <id> --from <old> --to <new> [--volume V]  # update path after manual move
