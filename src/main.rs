@@ -327,6 +327,14 @@ enum Commands {
         /// Skip default file type groups (e.g. audio, xmp)
         #[arg(long, display_order = 13)]
         skip: Vec<String>,
+
+        /// Skip files verified within this many days (overrides dam.toml [verify] max_age_days)
+        #[arg(long, display_order = 14)]
+        max_age: Option<u64>,
+
+        /// Verify all files regardless of last verification time
+        #[arg(long, display_order = 15)]
+        force: bool,
     },
 
     /// Sync catalog with disk changes (moved/modified/missing files)
@@ -1624,12 +1632,18 @@ fn main() {
 
             Ok(())
         }
-        Commands::Verify { paths, volume, asset, include, skip } => {
+        Commands::Verify { paths, volume, asset, include, skip, max_age, force } => {
             use dam::asset_service::FileTypeFilter;
 
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+
+            let max_age_days: Option<u64> = if force {
+                None
+            } else {
+                max_age.or(config.verify.max_age_days)
+            };
 
             // Build file type filter (same logic as import)
             let mut filter = FileTypeFilter::default();
@@ -1663,6 +1677,7 @@ fn main() {
                     volume.as_deref(),
                     asset.as_deref(),
                     &filter,
+                    max_age_days,
                     |path, status, elapsed| {
                         let label = match status {
                             VerifyStatus::Ok => "OK",
@@ -1670,6 +1685,7 @@ fn main() {
                             VerifyStatus::Modified => "MODIFIED",
                             VerifyStatus::Missing => "MISSING",
                             VerifyStatus::Skipped => "SKIPPED",
+                            VerifyStatus::SkippedRecent => "RECENT",
                             VerifyStatus::Untracked => "UNTRACKED",
                         };
                         let name = path.file_name()
@@ -1684,6 +1700,7 @@ fn main() {
                     volume.as_deref(),
                     asset.as_deref(),
                     &filter,
+                    max_age_days,
                     |_, _, _| {},
                 )?
             };
@@ -1706,6 +1723,15 @@ fn main() {
                 }
                 if result.failed > 0 {
                     parts.push(format!("{} FAILED", result.failed));
+                }
+                if result.skipped_recent > 0 {
+                    let age_label = max_age_days
+                        .map(|d| format!("{d} days"))
+                        .unwrap_or_else(|| "max age".to_string());
+                    parts.push(format!(
+                        "{} skipped (verified within {})",
+                        result.skipped_recent, age_label
+                    ));
                 }
                 if result.skipped > 0 {
                     parts.push(format!("{} skipped", result.skipped));

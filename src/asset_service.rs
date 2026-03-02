@@ -217,6 +217,7 @@ pub enum VerifyStatus {
     Modified,
     Missing,
     Skipped,
+    SkippedRecent,
     Untracked,
 }
 
@@ -227,7 +228,19 @@ pub struct VerifyResult {
     pub failed: usize,
     pub modified: usize,
     pub skipped: usize,
+    pub skipped_recent: usize,
     pub errors: Vec<String>,
+}
+
+/// Check if a verified_at timestamp is within `max_age_days` of now.
+fn is_recently_verified(verified_at: Option<&str>, max_age_days: u64) -> bool {
+    if let Some(ts) = verified_at {
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
+            let age = chrono::Utc::now() - dt.with_timezone(&chrono::Utc);
+            return age.num_days() < max_age_days as i64;
+        }
+    }
+    false
 }
 
 /// Status of a single file during sync.
@@ -1537,6 +1550,7 @@ impl AssetService {
         volume_filter: Option<&str>,
         asset_filter: Option<&str>,
         filter: &FileTypeFilter,
+        max_age_days: Option<u64>,
         on_file: impl Fn(&Path, VerifyStatus, Duration),
     ) -> Result<VerifyResult> {
         let content_store = ContentStore::new(&self.catalog_root);
@@ -1549,6 +1563,7 @@ impl AssetService {
             failed: 0,
             modified: 0,
             skipped: 0,
+            skipped_recent: 0,
             errors: Vec::new(),
         };
 
@@ -1587,6 +1602,19 @@ impl AssetService {
                 let relative_path = file_path
                     .strip_prefix(&volume.mount_point)
                     .unwrap_or(file_path);
+
+                // Skip recently verified files
+                if let Some(days) = max_age_days {
+                    let verified_at = catalog.get_location_verified_at(
+                        &volume.id.to_string(),
+                        &relative_path.to_string_lossy(),
+                    )?;
+                    if is_recently_verified(verified_at.as_deref(), days) {
+                        result.skipped_recent += 1;
+                        on_file(file_path, VerifyStatus::SkippedRecent, file_start.elapsed());
+                        continue;
+                    }
+                }
 
                 // Hash the file
                 let hash = match content_store.hash_file(file_path) {
@@ -1717,6 +1745,7 @@ impl AssetService {
                             &variant.content_hash,
                             loc,
                             false,
+                            max_age_days,
                             &mut result,
                             &on_file,
                         )?;
@@ -1734,6 +1763,7 @@ impl AssetService {
                         &recipe.content_hash,
                         &recipe.location,
                         true,
+                        max_age_days,
                         &mut result,
                         &on_file,
                     )?;
@@ -1756,6 +1786,7 @@ impl AssetService {
         content_hash: &str,
         loc: &FileLocation,
         is_recipe: bool,
+        max_age_days: Option<u64>,
         result: &mut VerifyResult,
         on_file: &impl Fn(&Path, VerifyStatus, Duration),
     ) -> Result<()> {
@@ -1765,6 +1796,18 @@ impl AssetService {
         if let Some(filter_vol) = volume_filter {
             if loc.volume_id != filter_vol.id {
                 return Ok(());
+            }
+        }
+
+        // Skip recently verified files
+        if let Some(days) = max_age_days {
+            if let Some(ref verified_at) = loc.verified_at {
+                let age = chrono::Utc::now() - *verified_at;
+                if age.num_days() < days as i64 {
+                    result.skipped_recent += 1;
+                    on_file(&loc.relative_path, VerifyStatus::SkippedRecent, file_start.elapsed());
+                    return Ok(());
+                }
             }
         }
 

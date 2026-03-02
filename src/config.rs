@@ -141,6 +141,17 @@ fn is_default_dedup(d: &DedupConfig) -> bool {
     *d == DedupConfig::default()
 }
 
+/// Verify behavior configuration.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct VerifyConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_age_days: Option<u64>,
+}
+
+fn is_default_verify(v: &VerifyConfig) -> bool {
+    *v == VerifyConfig::default()
+}
+
 /// Catalog configuration stored in dam.toml.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CatalogConfig {
@@ -154,6 +165,8 @@ pub struct CatalogConfig {
     pub import: ImportConfig,
     #[serde(default, skip_serializing_if = "is_default_dedup")]
     pub dedup: DedupConfig,
+    #[serde(default, skip_serializing_if = "is_default_verify")]
+    pub verify: VerifyConfig,
 }
 
 impl Default for CatalogConfig {
@@ -164,6 +177,7 @@ impl Default for CatalogConfig {
             serve: ServeConfig::default(),
             import: ImportConfig::default(),
             dedup: DedupConfig::default(),
+            verify: VerifyConfig::default(),
         }
     }
 }
@@ -374,6 +388,7 @@ max_edge = 1000
                 ..Default::default()
             },
             dedup: DedupConfig::default(),
+            verify: VerifyConfig::default(),
         };
         let toml_str = toml::to_string_pretty(&original).unwrap();
         let parsed: CatalogConfig = toml::from_str(&toml_str).unwrap();
@@ -518,6 +533,7 @@ max_edge = 1000
                 ..Default::default()
             },
             dedup: DedupConfig::default(),
+            verify: VerifyConfig::default(),
         };
         original.save(dir.path()).unwrap();
         let loaded = CatalogConfig::load(dir.path()).unwrap();

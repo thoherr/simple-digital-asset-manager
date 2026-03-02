@@ -1636,6 +1636,34 @@ impl Catalog {
         Ok(())
     }
 
+    /// Get the verified_at timestamp for a file location or recipe at this volume+path.
+    pub fn get_location_verified_at(
+        &self,
+        volume_id: &str,
+        relative_path: &str,
+    ) -> Result<Option<String>> {
+        // Check file_locations first
+        let mut stmt = self.conn.prepare(
+            "SELECT verified_at FROM file_locations WHERE volume_id = ?1 AND relative_path = ?2 LIMIT 1",
+        )?;
+        let mut rows = stmt.query(rusqlite::params![volume_id, relative_path])?;
+        if let Some(row) = rows.next()? {
+            let verified_at: Option<String> = row.get(0)?;
+            if verified_at.is_some() {
+                return Ok(verified_at);
+            }
+        }
+        // Fall back to recipes table
+        let mut stmt = self.conn.prepare(
+            "SELECT verified_at FROM recipes WHERE volume_id = ?1 AND relative_path = ?2 LIMIT 1",
+        )?;
+        let mut rows = stmt.query(rusqlite::params![volume_id, relative_path])?;
+        if let Some(row) = rows.next()? {
+            return Ok(row.get(0)?);
+        }
+        Ok(None)
+    }
+
     /// Check if a recipe with the given content hash exists.
     pub fn has_recipe_by_content_hash(&self, content_hash: &str) -> Result<bool> {
         let count: i64 = self.conn.query_row(
