@@ -12,11 +12,13 @@ data is probably ways to complicated, maybe a "last one wins" approach is suffic
 
 ## UX / UI
 
-### Text field with chips
+### ~~Text field with chips~~ — **DONE** (v1.8.7, format filter)
 
-Instead of the current, single selection drop down in the upper search area, we could have a text field with (one or
-more) chips entry (selectable like tags), which should behave as logical or for the query
-for file formats (maybe also types, volumes and collections; check usability and consistency).
+Implemented as a **grouped multi-select dropdown panel** for the format filter on the browse page. A compact trigger button opens a scrollable panel with formats organized into five categories (RAW, Image, Video, Audio, Other). Each category has a group-level toggle checkbox ("All RAW", etc.) and individual format checkboxes with variant counts (e.g., `NEF (42)`). Selected formats are OR-combined in the backend query (`format=jpg,nef,mp4`).
+
+The trigger button label adapts smartly: "All formats" when empty, the format name when one is selected, the group name when an entire group is selected ("All RAW"), or a compact summary with overflow ("JPG +2...") for mixed selections — full list shown as hover tooltip. Group toggles support indeterminate state for partial selections. Checkbox changes trigger search immediately (no debounce). State persists across browser back/forward via URL params and popstate handler.
+
+Could still be extended to types, volumes, and collections if the same pattern proves useful there.
 
 ### ~~Complex queries~~ **DONE** (v1.8.6)
 

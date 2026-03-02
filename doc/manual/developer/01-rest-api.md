@@ -19,7 +19,7 @@ Returns the asset browse grid with search, filtering, sorting, and pagination.
 | `q`          | string | `""`        | Free-text search query (supports filter syntax)  |
 | `type`       | string | `""`        | Asset type filter (e.g. `image`, `video`)        |
 | `tag`        | string | `""`        | Tag filter                                       |
-| `format`     | string | `""`        | File format filter (e.g. `NEF`, `JPEG`)          |
+| `format`     | string | `""`        | File format filter, comma-separated for OR (e.g. `nef,cr3`) |
 | `volume`     | string | `""`        | Volume label filter                              |
 | `rating`     | string | `""`        | Rating filter (`5` exact, `3+` minimum)          |
 | `label`      | string | `""`        | Color label filter (e.g. `Red`, `Green`)         |
@@ -650,7 +650,7 @@ Returns per-day asset counts for a given year, respecting all search filters. Us
 | `q`          | string | `""`           | Free-text search query (supports filter syntax)  |
 | `type`       | string | `""`           | Asset type filter                                |
 | `tag`        | string | `""`           | Tag filter                                       |
-| `format`     | string | `""`           | File format filter                               |
+| `format`     | string | `""`           | File format filter, comma-separated for OR       |
 | `volume`     | string | `""`           | Volume ID filter                                 |
 | `rating`     | string | `""`           | Rating filter                                    |
 | `label`      | string | `""`           | Color label filter                               |
