@@ -18,7 +18,7 @@ Instead of the current, single selection drop down in the upper search area, we 
 more) chips entry (selectable like tags), which should behave as logical or for the query
 for file formats (maybe also types, volumes and collections; check usability and consistency).
 
-### Complex queries
+### ~~Complex queries~~ **DONE** (v1.8.6)
 
 Currently we only have simple queries, and all of them are anded in the query.
 Some sort of logical query language could be useful (e.g. "find all vacation images, but not from france"
@@ -44,6 +44,5 @@ running commands, whereas we often know that we just have to delete (and maybe r
 
 ## Documentation
 
-### ~~Cross References in the PDF manual do not work (they link to the *.md file) - BUG
- **DONE** (v1.8.5)
+### ~~Cross References in the PDF manual do not work (they link to the *.md file) - BUG~~ **DONE** (v1.8.5)
  
