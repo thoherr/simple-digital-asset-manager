@@ -352,14 +352,26 @@ impl SearchSort {
 /// Options for paginated search.
 pub struct SearchOptions<'a> {
     pub text: Option<&'a str>,
-    pub asset_type: Option<&'a str>,
-    pub tag: Option<&'a str>,
-    pub format: Option<&'a str>,
+    pub text_exclude: &'a [String],
+    pub asset_types: &'a [String],
+    pub asset_types_exclude: &'a [String],
+    pub tags: &'a [String],
+    pub tags_exclude: &'a [String],
+    pub formats: &'a [String],
+    pub formats_exclude: &'a [String],
+    pub color_labels: &'a [String],
+    pub color_labels_exclude: &'a [String],
+    pub cameras: &'a [String],
+    pub cameras_exclude: &'a [String],
+    pub lenses: &'a [String],
+    pub lenses_exclude: &'a [String],
+    pub collections: &'a [String],
+    pub collections_exclude: &'a [String],
+    pub path_prefixes: &'a [String],
+    pub path_prefixes_exclude: &'a [String],
     pub volume: Option<&'a str>,
     pub rating_min: Option<u8>,
     pub rating_exact: Option<u8>,
-    pub camera: Option<&'a str>,
-    pub lens: Option<&'a str>,
     pub iso_min: Option<i64>,
     pub iso_max: Option<i64>,
     pub focal_min: Option<f64>,
@@ -373,9 +385,8 @@ pub struct SearchOptions<'a> {
     pub stale_days: Option<u64>,
     pub missing_asset_ids: Option<&'a [String]>,
     pub no_online_locations: Option<&'a [String]>,
-    pub color_label: Option<&'a str>,
-    pub path_prefix: Option<&'a str>,
     pub collection_asset_ids: Option<&'a [String]>,
+    pub collection_exclude_ids: Option<&'a [String]>,
     pub copies_exact: Option<u64>,
     pub copies_min: Option<u64>,
     pub date_prefix: Option<&'a str>,
@@ -394,14 +405,26 @@ impl<'a> Default for SearchOptions<'a> {
     fn default() -> Self {
         Self {
             text: None,
-            asset_type: None,
-            tag: None,
-            format: None,
+            text_exclude: &[],
+            asset_types: &[],
+            asset_types_exclude: &[],
+            tags: &[],
+            tags_exclude: &[],
+            formats: &[],
+            formats_exclude: &[],
+            color_labels: &[],
+            color_labels_exclude: &[],
+            cameras: &[],
+            cameras_exclude: &[],
+            lenses: &[],
+            lenses_exclude: &[],
+            collections: &[],
+            collections_exclude: &[],
+            path_prefixes: &[],
+            path_prefixes_exclude: &[],
             volume: None,
             rating_min: None,
             rating_exact: None,
-            camera: None,
-            lens: None,
             iso_min: None,
             iso_max: None,
             focal_min: None,
@@ -415,9 +438,8 @@ impl<'a> Default for SearchOptions<'a> {
             stale_days: None,
             missing_asset_ids: None,
             no_online_locations: None,
-            color_label: None,
-            path_prefix: None,
             collection_asset_ids: None,
+            collection_exclude_ids: None,
             copies_exact: None,
             copies_min: None,
             date_prefix: None,
@@ -1092,11 +1114,29 @@ impl Catalog {
         rating_min: Option<u8>,
         rating_exact: Option<u8>,
     ) -> Result<Vec<SearchRow>> {
+        let asset_types_vec;
+        let tags_vec;
+        let formats_vec;
         let opts = SearchOptions {
             text,
-            asset_type,
-            tag,
-            format: format,
+            asset_types: if let Some(t) = asset_type {
+                asset_types_vec = vec![t.to_string()];
+                &asset_types_vec
+            } else {
+                &[]
+            },
+            tags: if let Some(t) = tag {
+                tags_vec = vec![t.to_string()];
+                &tags_vec
+            } else {
+                &[]
+            },
+            formats: if let Some(f) = format {
+                formats_vec = vec![f.to_string()];
+                &formats_vec
+            } else {
+                &[]
+            },
             rating_min,
             rating_exact,
             per_page: u32::MAX,
@@ -2091,9 +2131,9 @@ impl Catalog {
         let mut needs_fl_join = opts.volume.is_some();
         let mut needs_v_join = false;
 
+        // --- Text search (positive) ---
         if let Some(text) = opts.text {
             if !text.is_empty() {
-                // Text search uses bv (best variant) — no v join needed
                 clauses.push(
                     "(a.name LIKE ? OR bv.original_filename LIKE ? OR a.description LIKE ? OR bv.source_metadata LIKE ?)".to_string(),
                 );
@@ -2104,56 +2144,93 @@ impl Catalog {
                 params.push(Box::new(pattern));
             }
         }
-        if let Some(asset_type) = opts.asset_type {
-            if !asset_type.is_empty() {
-                clauses.push("a.asset_type = ?".to_string());
-                params.push(Box::new(asset_type.to_lowercase()));
+
+        // --- Text exclusion ---
+        // Use IFNULL to handle NULL columns: NULL LIKE '%x%' returns NULL,
+        // and NOT(NULL OR ...) = NULL which is falsy, so we must coalesce.
+        for term in opts.text_exclude {
+            clauses.push(
+                "NOT (IFNULL(a.name,'') LIKE ? OR bv.original_filename LIKE ? OR IFNULL(a.description,'') LIKE ? OR bv.source_metadata LIKE ?)".to_string(),
+            );
+            let pattern = format!("%{term}%");
+            params.push(Box::new(pattern.clone()));
+            params.push(Box::new(pattern.clone()));
+            params.push(Box::new(pattern.clone()));
+            params.push(Box::new(pattern));
+        }
+
+        // --- Asset type (equality filter on a.asset_type) ---
+        Self::add_equality_filter(&mut clauses, &mut params, opts.asset_types, opts.asset_types_exclude, "a.asset_type", &mut false, false);
+
+        // --- Tags (hierarchy-aware LIKE) ---
+        // Positive: each entry is ANDed; commas within an entry are ORed
+        for tag_entry in opts.tags {
+            let values: Vec<&str> = tag_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            if values.len() == 1 {
+                Self::add_tag_clause(&mut clauses, &mut params, values[0], false);
+            } else {
+                // Multiple comma values — OR group
+                let mut or_parts = Vec::new();
+                for v in &values {
+                    or_parts.extend(Self::tag_like_parts(&mut params, v));
+                }
+                clauses.push(format!("({})", or_parts.join(" OR ")));
             }
         }
-        if let Some(tag) = opts.tag {
-            if !tag.is_empty() {
-                for t in tag.split(',') {
-                    let t = t.trim();
-                    if !t.is_empty() {
-                        // Convert user-facing form to storage form for matching:
-                        // `/` → `|` (hierarchy), `\/` → `/` (literal)
-                        let stored = crate::tag_util::tag_input_to_storage(t);
-                        if t != stored {
-                            // Conversion changed the input — match both forms.
-                            // Handles hierarchy (`animals/birds` → `animals|birds`)
-                            // and literal slash tags (`f\/1.4` → `f/1.4`).
-                            // Raw fallback catches tags with literal `/` that were
-                            // stored before the `|` convention (e.g. `f/1.4`).
-                            clauses.push(
-                                "(a.tags LIKE ? OR a.tags LIKE ? OR a.tags LIKE ?)".to_string(),
-                            );
-                            params.push(Box::new(format!("%\"{stored}\"%")));
-                            params.push(Box::new(format!("%\"{stored}|%")));
-                            params.push(Box::new(format!("%\"{t}\"%")));
-                        } else {
-                            // Match exact tag OR hierarchical children (e.g. tag:animals
-                            // matches "animals" and "animals|birds|eagles")
-                            clauses.push("(a.tags LIKE ? OR a.tags LIKE ?)".to_string());
-                            params.push(Box::new(format!("%\"{stored}\"%")));
-                            params.push(Box::new(format!("%\"{stored}|%")));
-                        }
-                    }
+        // Negative: each entry is ANDed as NOT; commas within an entry are ORed
+        for tag_entry in opts.tags_exclude {
+            let values: Vec<&str> = tag_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            let mut or_parts = Vec::new();
+            for v in &values {
+                or_parts.extend(Self::tag_like_parts(&mut params, v));
+            }
+            clauses.push(format!("NOT ({})", or_parts.join(" OR ")));
+        }
+
+        // --- Format (equality on v.format) ---
+        {
+            let include: Vec<&str> = opts.formats.iter()
+                .flat_map(|e| e.split(',').map(|s| s.trim()))
+                .filter(|s| !s.is_empty())
+                .collect();
+            let exclude: Vec<&str> = opts.formats_exclude.iter()
+                .flat_map(|e| e.split(',').map(|s| s.trim()))
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !include.is_empty() || !exclude.is_empty() {
+                needs_v_join = true;
+            }
+            if include.len() == 1 {
+                clauses.push("v.format = ?".to_string());
+                params.push(Box::new(include[0].to_lowercase()));
+            } else if include.len() > 1 {
+                let placeholders: Vec<&str> = include.iter().map(|_| "?").collect();
+                clauses.push(format!("v.format IN ({})", placeholders.join(",")));
+                for v in &include {
+                    params.push(Box::new(v.to_lowercase()));
+                }
+            }
+            if exclude.len() == 1 {
+                clauses.push("v.format != ?".to_string());
+                params.push(Box::new(exclude[0].to_lowercase()));
+            } else if exclude.len() > 1 {
+                let placeholders: Vec<&str> = exclude.iter().map(|_| "?").collect();
+                clauses.push(format!("v.format NOT IN ({})", placeholders.join(",")));
+                for v in &exclude {
+                    params.push(Box::new(v.to_lowercase()));
                 }
             }
         }
-        if let Some(format_filter) = opts.format {
-            if !format_filter.is_empty() {
-                clauses.push("v.format = ?".to_string());
-                params.push(Box::new(format_filter.to_lowercase()));
-                needs_v_join = true;
-            }
-        }
+
+        // --- Volume ---
         if let Some(volume) = opts.volume {
             if !volume.is_empty() {
                 clauses.push("fl.volume_id = ?".to_string());
                 params.push(Box::new(volume.to_string()));
             }
         }
+
+        // --- Rating ---
         if let Some(min) = opts.rating_min {
             clauses.push("a.rating >= ?".to_string());
             params.push(Box::new(min as i64));
@@ -2162,35 +2239,47 @@ impl Catalog {
             clauses.push("a.rating = ?".to_string());
             params.push(Box::new(exact as i64));
         }
-        if let Some(label) = opts.color_label {
-            if !label.is_empty() {
-                clauses.push("a.color_label = ?".to_string());
-                params.push(Box::new(label.to_string()));
-            }
-        }
-        if let Some(prefix) = opts.path_prefix {
-            if !prefix.is_empty() {
-                clauses.push("fl.relative_path LIKE ?".to_string());
-                params.push(Box::new(format!("{prefix}%")));
+
+        // --- Color label (equality on a.color_label) ---
+        Self::add_equality_filter(&mut clauses, &mut params, opts.color_labels, opts.color_labels_exclude, "a.color_label", &mut false, false);
+
+        // --- Path prefix (LIKE on fl.relative_path) ---
+        {
+            let include: Vec<&str> = opts.path_prefixes.iter()
+                .flat_map(|e| e.split(',').map(|s| s.trim()))
+                .filter(|s| !s.is_empty())
+                .collect();
+            let exclude: Vec<&str> = opts.path_prefixes_exclude.iter()
+                .flat_map(|e| e.split(',').map(|s| s.trim()))
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !include.is_empty() || !exclude.is_empty() {
                 needs_fl_join = true;
+            }
+            if include.len() == 1 {
+                clauses.push("fl.relative_path LIKE ?".to_string());
+                params.push(Box::new(format!("{}%", include[0])));
+            } else if include.len() > 1 {
+                let mut or_parts = Vec::new();
+                for v in &include {
+                    or_parts.push("fl.relative_path LIKE ?".to_string());
+                    params.push(Box::new(format!("{v}%")));
+                }
+                clauses.push(format!("({})", or_parts.join(" OR ")));
+            }
+            for v in &exclude {
+                clauses.push("fl.relative_path NOT LIKE ?".to_string());
+                params.push(Box::new(format!("{v}%")));
             }
         }
 
-        // Metadata column filters — these reference v.* so need v join
-        if let Some(camera) = opts.camera {
-            if !camera.is_empty() {
-                clauses.push("v.camera_model LIKE ?".to_string());
-                params.push(Box::new(format!("%{camera}%")));
-                needs_v_join = true;
-            }
-        }
-        if let Some(lens) = opts.lens {
-            if !lens.is_empty() {
-                clauses.push("v.lens_model LIKE ?".to_string());
-                params.push(Box::new(format!("%{lens}%")));
-                needs_v_join = true;
-            }
-        }
+        // --- Camera (LIKE on v.camera_model) ---
+        Self::add_like_filter(&mut clauses, &mut params, opts.cameras, opts.cameras_exclude, "v.camera_model", &mut needs_v_join);
+
+        // --- Lens (LIKE on v.lens_model) ---
+        Self::add_like_filter(&mut clauses, &mut params, opts.lenses, opts.lenses_exclude, "v.lens_model", &mut needs_v_join);
+
+        // --- Numeric variant filters ---
         if let Some(min) = opts.iso_min {
             clauses.push("v.iso >= ?".to_string());
             params.push(Box::new(min));
@@ -2241,7 +2330,6 @@ impl Catalog {
 
         // Location health filters
         if opts.orphan {
-            // Use subquery referencing variants table directly (no v alias needed)
             clauses.push(
                 "NOT EXISTS (SELECT 1 FROM file_locations fl2 JOIN variants v2 ON fl2.content_hash = v2.content_hash WHERE v2.asset_id = a.id)"
                     .to_string(),
@@ -2258,7 +2346,7 @@ impl Catalog {
         }
         if let Some(ids) = opts.missing_asset_ids {
             if ids.is_empty() {
-                clauses.push("0".to_string()); // no matches
+                clauses.push("0".to_string());
             } else {
                 let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
                 clauses.push(format!("a.id IN ({})", placeholders.join(",")));
@@ -2269,7 +2357,6 @@ impl Catalog {
         }
         if let Some(online_ids) = opts.no_online_locations {
             if !online_ids.is_empty() {
-                // Use subquery — no v alias needed
                 let placeholders: Vec<&str> = online_ids.iter().map(|_| "?").collect();
                 clauses.push(format!(
                     "NOT EXISTS (SELECT 1 FROM file_locations fl2 \
@@ -2281,13 +2368,12 @@ impl Catalog {
                     params.push(Box::new(id.clone()));
                 }
             }
-            // If online_ids is empty, every asset matches volume:none (no clause needed)
         }
 
         // Collection filter: restrict to a pre-computed set of asset IDs
         if let Some(ids) = opts.collection_asset_ids {
             if ids.is_empty() {
-                clauses.push("0".to_string()); // no matches
+                clauses.push("0".to_string());
             } else {
                 let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
                 clauses.push(format!("a.id IN ({})", placeholders.join(",")));
@@ -2297,7 +2383,18 @@ impl Catalog {
             }
         }
 
-        // Copies filter: count file_locations across all variants of an asset
+        // Collection exclude: exclude a pre-computed set of asset IDs
+        if let Some(ids) = opts.collection_exclude_ids {
+            if !ids.is_empty() {
+                let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+                clauses.push(format!("a.id NOT IN ({})", placeholders.join(",")));
+                for id in ids {
+                    params.push(Box::new(id.clone()));
+                }
+            }
+        }
+
+        // Copies filter
         if let Some(n) = opts.copies_exact {
             clauses.push(format!(
                 "(SELECT COUNT(*) FROM file_locations fl2 \
@@ -2315,7 +2412,7 @@ impl Catalog {
             ));
         }
 
-        // Date filters — uses string comparison on RFC3339 created_at
+        // Date filters
         if let Some(prefix) = opts.date_prefix {
             if !prefix.is_empty() {
                 clauses.push("a.created_at LIKE ?".to_string());
@@ -2330,14 +2427,13 @@ impl Catalog {
         }
         if let Some(until) = opts.date_until {
             if !until.is_empty() {
-                // Convert inclusive upper bound to exclusive next-day
                 let exclusive = next_date_bound(until);
                 clauses.push("a.created_at < ?".to_string());
                 params.push(Box::new(exclusive));
             }
         }
 
-        // Stack collapse: only show pick (position 0) or unstacked assets
+        // Stack collapse
         if opts.collapse_stacks {
             clauses.push("(a.stack_id IS NULL OR a.stack_position = 0)".to_string());
         }
@@ -2381,6 +2477,120 @@ impl Catalog {
         }
 
         (where_clause, params, needs_fl_join, needs_v_join)
+    }
+
+    /// Helper: generate tag LIKE clause parts for a single tag value.
+    /// Returns a Vec of SQL expressions (each with params already pushed).
+    fn tag_like_parts(params: &mut Vec<Box<dyn rusqlite::types::ToSql>>, tag: &str) -> Vec<String> {
+        let stored = crate::tag_util::tag_input_to_storage(tag);
+        if tag != stored {
+            params.push(Box::new(format!("%\"{stored}\"%")));
+            params.push(Box::new(format!("%\"{stored}|%")));
+            params.push(Box::new(format!("%\"{tag}\"%")));
+            vec![
+                "a.tags LIKE ?".to_string(),
+                "a.tags LIKE ?".to_string(),
+                "a.tags LIKE ?".to_string(),
+            ]
+        } else {
+            params.push(Box::new(format!("%\"{stored}\"%")));
+            params.push(Box::new(format!("%\"{stored}|%")));
+            vec![
+                "a.tags LIKE ?".to_string(),
+                "a.tags LIKE ?".to_string(),
+            ]
+        }
+    }
+
+    /// Helper: add a single positive tag clause (AND).
+    fn add_tag_clause(clauses: &mut Vec<String>, params: &mut Vec<Box<dyn rusqlite::types::ToSql>>, tag: &str, negate: bool) {
+        let parts = Self::tag_like_parts(params, tag);
+        let inner = parts.join(" OR ");
+        if negate {
+            clauses.push(format!("NOT ({inner})"));
+        } else {
+            clauses.push(format!("({inner})"));
+        }
+    }
+
+    /// Helper: add equality filter with IN/NOT IN for comma-OR and negation.
+    /// Uses IFNULL for NOT conditions to handle nullable columns correctly
+    /// (NULL != 'x' returns NULL, which is falsy — we want NULL to survive exclusion).
+    fn add_equality_filter(
+        clauses: &mut Vec<String>,
+        params: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
+        entries: &[String],
+        exclude_entries: &[String],
+        column: &str,
+        _needs_join: &mut bool,
+        _is_join_col: bool,
+    ) {
+        let include: Vec<&str> = entries.iter()
+            .flat_map(|e| e.split(',').map(|s| s.trim()))
+            .filter(|s| !s.is_empty())
+            .collect();
+        if include.len() == 1 {
+            clauses.push(format!("{column} = ?"));
+            params.push(Box::new(include[0].to_lowercase()));
+        } else if include.len() > 1 {
+            let placeholders: Vec<&str> = include.iter().map(|_| "?").collect();
+            clauses.push(format!("{column} IN ({})", placeholders.join(",")));
+            for v in &include {
+                params.push(Box::new(v.to_lowercase()));
+            }
+        }
+        let exclude: Vec<&str> = exclude_entries.iter()
+            .flat_map(|e| e.split(',').map(|s| s.trim()))
+            .filter(|s| !s.is_empty())
+            .collect();
+        if exclude.len() == 1 {
+            clauses.push(format!("({column} IS NULL OR {column} != ?)"));
+            params.push(Box::new(exclude[0].to_lowercase()));
+        } else if exclude.len() > 1 {
+            let placeholders: Vec<&str> = exclude.iter().map(|_| "?").collect();
+            clauses.push(format!("({column} IS NULL OR {column} NOT IN ({}))", placeholders.join(",")));
+            for v in &exclude {
+                params.push(Box::new(v.to_lowercase()));
+            }
+        }
+    }
+
+    /// Helper: add LIKE filter with OR groups for comma-separated values.
+    /// Uses `IS NULL OR NOT LIKE` for exclusions to handle nullable columns.
+    fn add_like_filter(
+        clauses: &mut Vec<String>,
+        params: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
+        entries: &[String],
+        exclude_entries: &[String],
+        column: &str,
+        needs_join: &mut bool,
+    ) {
+        let include: Vec<&str> = entries.iter()
+            .flat_map(|e| e.split(',').map(|s| s.trim()))
+            .filter(|s| !s.is_empty())
+            .collect();
+        let exclude: Vec<&str> = exclude_entries.iter()
+            .flat_map(|e| e.split(',').map(|s| s.trim()))
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !include.is_empty() || !exclude.is_empty() {
+            *needs_join = true;
+        }
+        if include.len() == 1 {
+            clauses.push(format!("{column} LIKE ?"));
+            params.push(Box::new(format!("%{}%", include[0])));
+        } else if include.len() > 1 {
+            let mut or_parts = Vec::new();
+            for v in &include {
+                or_parts.push(format!("{column} LIKE ?"));
+                params.push(Box::new(format!("%{v}%")));
+            }
+            clauses.push(format!("({})", or_parts.join(" OR ")));
+        }
+        for v in &exclude {
+            clauses.push(format!("({column} IS NULL OR {column} NOT LIKE ?)"));
+            params.push(Box::new(format!("%{v}%")));
+        }
     }
 
     /// Paginated search with dynamic filters and sorting.
@@ -5362,8 +5572,9 @@ mod tests {
     #[test]
     fn search_by_camera() {
         let catalog = setup_metadata_catalog();
+        let cam = vec!["X-T5".to_string()];
         let opts = SearchOptions {
-            camera: Some("X-T5"),
+            cameras: &cam,
             per_page: u32::MAX,
             ..Default::default()
         };
@@ -5375,8 +5586,9 @@ mod tests {
     #[test]
     fn search_by_camera_partial() {
         let catalog = setup_metadata_catalog();
+        let cam = vec!["Z 6".to_string()];
         let opts = SearchOptions {
-            camera: Some("Z 6"),
+            cameras: &cam,
             per_page: u32::MAX,
             ..Default::default()
         };

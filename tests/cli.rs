@@ -7138,3 +7138,147 @@ fn stack_from_tag_no_wildcard_errors() {
         .failure()
         .stderr(predicate::str::contains("{}"));
 }
+
+// ── negation and OR search tests ─────────────────────────────────
+
+#[test]
+fn search_negated_tag_excludes_matching() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let f1 = create_test_file(&root, "good.jpg", b"good image data");
+    let f2 = create_test_file(&root, "bad.jpg", b"bad image data");
+
+    dam().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
+    dam().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
+
+    // Tag f2 as "rejected"
+    let output = dam().current_dir(&root).args(["search", "-q", "bad"]).output().unwrap();
+    let bad_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    dam().current_dir(&root).args(["tag", &bad_id, "rejected"]).assert().success();
+
+    // Tag f1 as "keeper"
+    let output = dam().current_dir(&root).args(["search", "-q", "good"]).output().unwrap();
+    let good_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    dam().current_dir(&root).args(["tag", &good_id, "keeper"]).assert().success();
+
+    // -tag:rejected should find good but not bad
+    // Use `--` to separate flags from the query containing `-`
+    let output = dam().current_dir(&root).args(["search", "-q", "--", "-tag:rejected"]).output().unwrap();
+    let ids = String::from_utf8_lossy(&output.stdout);
+    assert!(ids.contains(&good_id), "should include non-rejected asset");
+    assert!(!ids.contains(&bad_id), "should exclude rejected asset");
+}
+
+#[test]
+fn search_negated_format_excludes_matching() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let f1 = create_test_file(&root, "photo.jpg", b"jpeg data here");
+    let f2 = create_test_file(&root, "raw.arw", b"raw data here");
+
+    dam().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
+    dam().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
+
+    // -format:arw should exclude the raw file
+    let output = dam().current_dir(&root).args(["search", "--json", "--", "-format:arw"]).output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("photo.jpg"), "should include jpg");
+    assert!(!stdout.contains("raw.arw"), "should exclude arw");
+}
+
+#[test]
+fn search_comma_or_format() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let f1 = create_test_file(&root, "a.jpg", b"jpg data");
+    let f2 = create_test_file(&root, "b.png", b"png data");
+    let f3 = create_test_file(&root, "c.tif", b"tif data");
+
+    dam().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
+    dam().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
+    dam().current_dir(&root).args(["import", f3.to_str().unwrap()]).assert().success();
+
+    // format:jpg,png should find both jpg and png but not tif
+    let output = dam().current_dir(&root).args(["search", "--json", "format:jpg,png"]).output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("a.jpg"), "should include jpg");
+    assert!(stdout.contains("b.png"), "should include png");
+    assert!(!stdout.contains("c.tif"), "should exclude tif");
+}
+
+#[test]
+fn search_repeated_tags_and() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let f1 = create_test_file(&root, "both.jpg", b"both tags data");
+    let f2 = create_test_file(&root, "onlya.jpg", b"only a tag data");
+
+    dam().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
+    dam().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
+
+    let output = dam().current_dir(&root).args(["search", "-q", "both"]).output().unwrap();
+    let both_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let output = dam().current_dir(&root).args(["search", "-q", "onlya"]).output().unwrap();
+    let onlya_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Tag both assets with "landscape"
+    dam().current_dir(&root).args(["tag", &both_id, "landscape"]).assert().success();
+    dam().current_dir(&root).args(["tag", &onlya_id, "landscape"]).assert().success();
+
+    // Tag only the first with "sunset"
+    dam().current_dir(&root).args(["tag", &both_id, "sunset"]).assert().success();
+
+    // tag:landscape tag:sunset should only match the asset with both tags
+    let output = dam().current_dir(&root).args(["search", "-q", "tag:landscape tag:sunset"]).output().unwrap();
+    let ids = String::from_utf8_lossy(&output.stdout);
+    assert!(ids.contains(&both_id), "should include asset with both tags");
+    assert!(!ids.contains(&onlya_id), "should exclude asset with only one tag");
+}
+
+#[test]
+fn search_comma_or_tag() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let f1 = create_test_file(&root, "alice.jpg", b"alice data");
+    let f2 = create_test_file(&root, "bob.jpg", b"bob data");
+    let f3 = create_test_file(&root, "carol.jpg", b"carol data");
+
+    dam().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
+    dam().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
+    dam().current_dir(&root).args(["import", f3.to_str().unwrap()]).assert().success();
+
+    let output = dam().current_dir(&root).args(["search", "-q", "alice"]).output().unwrap();
+    let alice_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let output = dam().current_dir(&root).args(["search", "-q", "bob"]).output().unwrap();
+    let bob_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let output = dam().current_dir(&root).args(["search", "-q", "carol"]).output().unwrap();
+    let carol_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    dam().current_dir(&root).args(["tag", &alice_id, "tagA"]).assert().success();
+    dam().current_dir(&root).args(["tag", &bob_id, "tagB"]).assert().success();
+    dam().current_dir(&root).args(["tag", &carol_id, "tagC"]).assert().success();
+
+    // tag:tagA,tagB should find alice and bob but not carol
+    let output = dam().current_dir(&root).args(["search", "-q", "tag:tagA,tagB"]).output().unwrap();
+    let ids = String::from_utf8_lossy(&output.stdout);
+    assert!(ids.contains(&alice_id), "should include alice (tagA)");
+    assert!(ids.contains(&bob_id), "should include bob (tagB)");
+    assert!(!ids.contains(&carol_id), "should exclude carol (tagC)");
+}
+
+#[test]
+fn search_negated_text_excludes_matching() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let f1 = create_test_file(&root, "sunset_beach.jpg", b"beach data");
+    let f2 = create_test_file(&root, "sunset_mountain.jpg", b"mountain data");
+
+    dam().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
+    dam().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
+
+    // "sunset -mountain" should find beach but not mountain
+    let output = dam().current_dir(&root).args(["search", "--json", "--", "sunset -mountain"]).output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("sunset_beach"), "should include beach");
+    assert!(!stdout.contains("sunset_mountain"), "should exclude mountain");
+}

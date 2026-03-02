@@ -40,6 +40,30 @@ dam search 'path:"Photos/Family Trip"'
 
 Note the outer single quotes to prevent your shell from stripping the inner double quotes.
 
+**Negation** excludes matching assets by prefixing any filter or free-text term with `-`:
+
+```
+dam search "-tag:rejected"               # exclude rejected assets
+dam search "landscape -tag:processed"    # landscapes not yet processed
+dam search "-format:xmp -type:other"     # exclude XMP files and "other" types
+dam search "-sunset"                     # exclude free-text match on "sunset"
+```
+
+**OR within a filter** matches any of several values using commas:
+
+```
+dam search "tag:alice,bob"               # tagged alice OR bob (or both)
+dam search "format:nef,cr3"              # NEF or CR3 format
+dam search "type:image,video"            # images or videos
+dam search "label:Red,Orange"            # Red or Orange labeled
+```
+
+**Repeated filters = AND**. To require multiple tags, repeat the filter:
+
+```
+dam search "tag:landscape tag:sunset"    # BOTH landscape AND sunset tags
+```
+
 ---
 
 ## Search Filters Quick Reference

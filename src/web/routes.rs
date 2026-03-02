@@ -63,16 +63,26 @@ pub async fn browse_page(
         let path_str = params.path.as_deref().unwrap_or("");
         let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
 
+        let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+
         // Normalize absolute path → volume-relative + implicit volume filter
-        let (normalized_path, path_volume_id) = if !path_str.is_empty() {
+        let path_volume_id = if !path_str.is_empty() {
             let registry = DeviceRegistry::new(&state.catalog_root);
             let vols = registry.list().unwrap_or_default();
-            normalize_path_for_search(path_str, &vols, None)
+            let (normalized, vol_id) = normalize_path_for_search(path_str, &vols, None);
+            if !normalized.is_empty() {
+                parsed.path_prefixes.push(normalized);
+            }
+            vol_id
         } else {
-            (String::new(), None)
+            None
         };
 
-        let parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        // Push collection from dropdown into parsed struct
+        if !collection_str.is_empty() {
+            parsed.collections.push(collection_str.to_string());
+        }
+
         let mut opts = parsed.to_search_options();
         if !volume.is_empty() {
             opts.volume = Some(volume);
@@ -82,17 +92,37 @@ pub async fn browse_page(
                 opts.volume = Some(vid);
             }
         }
-        if !normalized_path.is_empty() {
-            opts.path_prefix = Some(&normalized_path);
+
+        // Resolve collection filter to asset IDs
+        let collection_ids;
+        if !parsed.collections.is_empty() {
+            let col_store = crate::collection::CollectionStore::new(catalog.conn());
+            let mut all_ids = std::collections::HashSet::new();
+            for col_entry in parsed.collections.iter() {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = col_store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_ids = all_ids.into_iter().collect::<Vec<_>>();
+            opts.collection_asset_ids = Some(&collection_ids);
         }
 
-        // Resolve collection filter
-        let collection_ids;
-        if !collection_str.is_empty() {
+        // Resolve collection exclude IDs
+        let collection_exclude_ids;
+        if !parsed.collections_exclude.is_empty() {
             let col_store = crate::collection::CollectionStore::new(catalog.conn());
-            collection_ids = col_store.asset_ids_for_collection(collection_str)
-                .unwrap_or_default();
-            opts.collection_asset_ids = Some(&collection_ids);
+            let mut all_ids = std::collections::HashSet::new();
+            for col_entry in parsed.collections_exclude.iter() {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = col_store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
+            opts.collection_exclude_ids = Some(&collection_exclude_ids);
         }
 
         let per_page = state.per_page;
@@ -234,16 +264,26 @@ pub async fn search_api(
         let path_str = params.path.as_deref().unwrap_or("");
         let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
 
+        let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+
         // Normalize absolute path → volume-relative + implicit volume filter
-        let (normalized_path, path_volume_id) = if !path_str.is_empty() {
+        let path_volume_id = if !path_str.is_empty() {
             let registry = DeviceRegistry::new(&state.catalog_root);
             let vols = registry.list().unwrap_or_default();
-            normalize_path_for_search(path_str, &vols, None)
+            let (normalized, vol_id) = normalize_path_for_search(path_str, &vols, None);
+            if !normalized.is_empty() {
+                parsed.path_prefixes.push(normalized);
+            }
+            vol_id
         } else {
-            (String::new(), None)
+            None
         };
 
-        let parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        // Push collection from dropdown into parsed struct
+        if !collection_str.is_empty() {
+            parsed.collections.push(collection_str.to_string());
+        }
+
         let mut opts = parsed.to_search_options();
         if !volume.is_empty() {
             opts.volume = Some(volume);
@@ -253,17 +293,37 @@ pub async fn search_api(
                 opts.volume = Some(vid);
             }
         }
-        if !normalized_path.is_empty() {
-            opts.path_prefix = Some(&normalized_path);
+
+        // Resolve collection filter to asset IDs
+        let collection_ids;
+        if !parsed.collections.is_empty() {
+            let col_store = crate::collection::CollectionStore::new(catalog.conn());
+            let mut all_ids = std::collections::HashSet::new();
+            for col_entry in parsed.collections.iter() {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = col_store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_ids = all_ids.into_iter().collect::<Vec<_>>();
+            opts.collection_asset_ids = Some(&collection_ids);
         }
 
-        // Resolve collection filter
-        let collection_ids;
-        if !collection_str.is_empty() {
+        // Resolve collection exclude IDs
+        let collection_exclude_ids;
+        if !parsed.collections_exclude.is_empty() {
             let col_store = crate::collection::CollectionStore::new(catalog.conn());
-            collection_ids = col_store.asset_ids_for_collection(collection_str)
-                .unwrap_or_default();
-            opts.collection_asset_ids = Some(&collection_ids);
+            let mut all_ids = std::collections::HashSet::new();
+            for col_entry in parsed.collections_exclude.iter() {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = col_store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
+            opts.collection_exclude_ids = Some(&collection_exclude_ids);
         }
 
         let per_page = state.per_page;
@@ -332,15 +392,26 @@ pub async fn page_ids_api(
         let path_str = params.path.as_deref().unwrap_or("");
         let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
 
-        let (normalized_path, path_volume_id) = if !path_str.is_empty() {
+        let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+
+        // Normalize absolute path → volume-relative + implicit volume filter
+        let path_volume_id = if !path_str.is_empty() {
             let registry = DeviceRegistry::new(&state.catalog_root);
             let vols = registry.list().unwrap_or_default();
-            normalize_path_for_search(path_str, &vols, None)
+            let (normalized, vol_id) = normalize_path_for_search(path_str, &vols, None);
+            if !normalized.is_empty() {
+                parsed.path_prefixes.push(normalized);
+            }
+            vol_id
         } else {
-            (String::new(), None)
+            None
         };
 
-        let parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        // Push collection from dropdown into parsed struct
+        if !collection_str.is_empty() {
+            parsed.collections.push(collection_str.to_string());
+        }
+
         let mut opts = parsed.to_search_options();
         if !volume.is_empty() {
             opts.volume = Some(volume);
@@ -350,16 +421,37 @@ pub async fn page_ids_api(
                 opts.volume = Some(vid);
             }
         }
-        if !normalized_path.is_empty() {
-            opts.path_prefix = Some(&normalized_path);
+
+        // Resolve collection filter to asset IDs
+        let collection_ids;
+        if !parsed.collections.is_empty() {
+            let col_store = crate::collection::CollectionStore::new(catalog.conn());
+            let mut all_ids = std::collections::HashSet::new();
+            for col_entry in parsed.collections.iter() {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = col_store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_ids = all_ids.into_iter().collect::<Vec<_>>();
+            opts.collection_asset_ids = Some(&collection_ids);
         }
 
-        let collection_ids;
-        if !collection_str.is_empty() {
+        // Resolve collection exclude IDs
+        let collection_exclude_ids;
+        if !parsed.collections_exclude.is_empty() {
             let col_store = crate::collection::CollectionStore::new(catalog.conn());
-            collection_ids = col_store.asset_ids_for_collection(collection_str)
-                .unwrap_or_default();
-            opts.collection_asset_ids = Some(&collection_ids);
+            let mut all_ids = std::collections::HashSet::new();
+            for col_entry in parsed.collections_exclude.iter() {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = col_store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
+            opts.collection_exclude_ids = Some(&collection_exclude_ids);
         }
 
         let per_page = state.per_page;
@@ -800,15 +892,15 @@ fn merge_search_params(
 ) -> ParsedSearch {
     let mut parsed = parse_search_query(query);
 
-    // Explicit dropdown params override parsed values
+    // Explicit dropdown params add to the parsed Vecs (don't replace)
     if !asset_type.is_empty() {
-        parsed.asset_type = Some(asset_type.to_string());
+        parsed.asset_types.push(asset_type.to_string());
     }
     if !tag.is_empty() {
-        parsed.tag = Some(tag.to_string());
+        parsed.tags.push(tag.to_string());
     }
     if !format.is_empty() {
-        parsed.format = Some(format.to_string());
+        parsed.formats.push(format.to_string());
     }
     if !rating_str.is_empty() {
         let (rating_min, rating_exact) = parse_rating_filter(rating_str);
@@ -822,7 +914,7 @@ fn merge_search_params(
         }
     }
     if !label.is_empty() {
-        parsed.color_label = Some(label.to_string());
+        parsed.color_labels.push(label.to_string());
     }
 
     parsed
@@ -2030,16 +2122,26 @@ pub async fn calendar_api(
         let collection_str = params.collection.as_deref().unwrap_or("");
         let path_str = params.path.as_deref().unwrap_or("");
 
-        // Normalize path
-        let (normalized_path, path_volume_id) = if !path_str.is_empty() {
+        let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+
+        // Normalize absolute path → volume-relative + implicit volume filter
+        let path_volume_id = if !path_str.is_empty() {
             let registry = DeviceRegistry::new(&state.catalog_root);
             let vols = registry.list().unwrap_or_default();
-            normalize_path_for_search(path_str, &vols, None)
+            let (normalized, vol_id) = normalize_path_for_search(path_str, &vols, None);
+            if !normalized.is_empty() {
+                parsed.path_prefixes.push(normalized);
+            }
+            vol_id
         } else {
-            (String::new(), None)
+            None
         };
 
-        let parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        // Push collection from dropdown into parsed struct
+        if !collection_str.is_empty() {
+            parsed.collections.push(collection_str.to_string());
+        }
+
         let mut opts = parsed.to_search_options();
         if !volume.is_empty() {
             opts.volume = Some(volume);
@@ -2049,21 +2151,41 @@ pub async fn calendar_api(
                 opts.volume = Some(vid);
             }
         }
-        if !normalized_path.is_empty() {
-            opts.path_prefix = Some(&normalized_path);
-        }
 
         // Collapse stacks (default: yes)
         let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
         opts.collapse_stacks = collapse_stacks;
 
-        // Resolve collection filter
+        // Resolve collection filter to asset IDs
         let collection_ids;
-        if !collection_str.is_empty() {
+        if !parsed.collections.is_empty() {
             let col_store = crate::collection::CollectionStore::new(catalog.conn());
-            collection_ids = col_store.asset_ids_for_collection(collection_str)
-                .unwrap_or_default();
+            let mut all_ids = std::collections::HashSet::new();
+            for col_entry in parsed.collections.iter() {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = col_store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_ids = all_ids.into_iter().collect::<Vec<_>>();
             opts.collection_asset_ids = Some(&collection_ids);
+        }
+
+        // Resolve collection exclude IDs
+        let collection_exclude_ids;
+        if !parsed.collections_exclude.is_empty() {
+            let col_store = crate::collection::CollectionStore::new(catalog.conn());
+            let mut all_ids = std::collections::HashSet::new();
+            for col_entry in parsed.collections_exclude.iter() {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = col_store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
+            opts.collection_exclude_ids = Some(&collection_exclude_ids);
         }
 
         let counts = catalog.calendar_counts(year, &opts)?;
@@ -2124,16 +2246,26 @@ pub async fn map_api(
         let path_str = params.path.as_deref().unwrap_or("");
         let limit = params.limit.unwrap_or(10_000);
 
-        // Normalize path
-        let (normalized_path, path_volume_id) = if !path_str.is_empty() {
+        let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+
+        // Normalize absolute path → volume-relative + implicit volume filter
+        let path_volume_id = if !path_str.is_empty() {
             let registry = DeviceRegistry::new(&state.catalog_root);
             let vols = registry.list().unwrap_or_default();
-            normalize_path_for_search(path_str, &vols, None)
+            let (normalized, vol_id) = normalize_path_for_search(path_str, &vols, None);
+            if !normalized.is_empty() {
+                parsed.path_prefixes.push(normalized);
+            }
+            vol_id
         } else {
-            (String::new(), None)
+            None
         };
 
-        let parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        // Push collection from dropdown into parsed struct
+        if !collection_str.is_empty() {
+            parsed.collections.push(collection_str.to_string());
+        }
+
         let mut opts = parsed.to_search_options();
         if !volume.is_empty() {
             opts.volume = Some(volume);
@@ -2143,21 +2275,41 @@ pub async fn map_api(
                 opts.volume = Some(vid);
             }
         }
-        if !normalized_path.is_empty() {
-            opts.path_prefix = Some(&normalized_path);
-        }
 
         // Collapse stacks (default: yes)
         let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
         opts.collapse_stacks = collapse_stacks;
 
-        // Resolve collection filter
+        // Resolve collection filter to asset IDs
         let collection_ids;
-        if !collection_str.is_empty() {
+        if !parsed.collections.is_empty() {
             let col_store = crate::collection::CollectionStore::new(catalog.conn());
-            collection_ids = col_store.asset_ids_for_collection(collection_str)
-                .unwrap_or_default();
+            let mut all_ids = std::collections::HashSet::new();
+            for col_entry in parsed.collections.iter() {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = col_store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_ids = all_ids.into_iter().collect::<Vec<_>>();
             opts.collection_asset_ids = Some(&collection_ids);
+        }
+
+        // Resolve collection exclude IDs
+        let collection_exclude_ids;
+        if !parsed.collections_exclude.is_empty() {
+            let col_store = crate::collection::CollectionStore::new(catalog.conn());
+            let mut all_ids = std::collections::HashSet::new();
+            for col_entry in parsed.collections_exclude.iter() {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = col_store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
+            opts.collection_exclude_ids = Some(&collection_exclude_ids);
         }
 
         let preview_ext = &state.preview_ext;
@@ -2232,16 +2384,26 @@ pub async fn facets_api(
         let collection_str = params.collection.as_deref().unwrap_or("");
         let path_str = params.path.as_deref().unwrap_or("");
 
-        // Normalize path
-        let (normalized_path, path_volume_id) = if !path_str.is_empty() {
+        let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+
+        // Normalize absolute path → volume-relative + implicit volume filter
+        let path_volume_id = if !path_str.is_empty() {
             let registry = DeviceRegistry::new(&state.catalog_root);
             let vols = registry.list().unwrap_or_default();
-            normalize_path_for_search(path_str, &vols, None)
+            let (normalized, vol_id) = normalize_path_for_search(path_str, &vols, None);
+            if !normalized.is_empty() {
+                parsed.path_prefixes.push(normalized);
+            }
+            vol_id
         } else {
-            (String::new(), None)
+            None
         };
 
-        let parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        // Push collection from dropdown into parsed struct
+        if !collection_str.is_empty() {
+            parsed.collections.push(collection_str.to_string());
+        }
+
         let mut opts = parsed.to_search_options();
         if !volume.is_empty() {
             opts.volume = Some(volume);
@@ -2251,21 +2413,41 @@ pub async fn facets_api(
                 opts.volume = Some(vid);
             }
         }
-        if !normalized_path.is_empty() {
-            opts.path_prefix = Some(&normalized_path);
-        }
 
         // Collapse stacks (default: yes)
         let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
         opts.collapse_stacks = collapse_stacks;
 
-        // Resolve collection filter
+        // Resolve collection filter to asset IDs
         let collection_ids;
-        if !collection_str.is_empty() {
+        if !parsed.collections.is_empty() {
             let col_store = crate::collection::CollectionStore::new(catalog.conn());
-            collection_ids = col_store.asset_ids_for_collection(collection_str)
-                .unwrap_or_default();
+            let mut all_ids = std::collections::HashSet::new();
+            for col_entry in parsed.collections.iter() {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = col_store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_ids = all_ids.into_iter().collect::<Vec<_>>();
             opts.collection_asset_ids = Some(&collection_ids);
+        }
+
+        // Resolve collection exclude IDs
+        let collection_exclude_ids;
+        if !parsed.collections_exclude.is_empty() {
+            let col_store = crate::collection::CollectionStore::new(catalog.conn());
+            let mut all_ids = std::collections::HashSet::new();
+            for col_entry in parsed.collections_exclude.iter() {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = col_store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
+            opts.collection_exclude_ids = Some(&collection_exclude_ids);
         }
 
         let facets = catalog.facet_counts(&opts)?;

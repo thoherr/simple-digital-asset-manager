@@ -39,16 +39,17 @@ impl SavedSearch {
         }
 
         // Structured filters extracted from query
-        if let Some(ref t) = parsed.asset_type {
+        // For now, only use the first element if multiple are present
+        if let Some(t) = parsed.asset_types.first() {
             params.push(format!("type={}", urlencoded(t)));
         }
-        if let Some(ref t) = parsed.tag {
+        if let Some(t) = parsed.tags.first() {
             params.push(format!("tag={}", urlencoded(t)));
         }
-        if let Some(ref f) = parsed.format {
+        if let Some(f) = parsed.formats.first() {
             params.push(format!("format={}", urlencoded(f)));
         }
-        if let Some(ref l) = parsed.color_label {
+        if let Some(l) = parsed.color_labels.first() {
             params.push(format!("label={}", urlencoded(l)));
         }
 

@@ -6,6 +6,54 @@ All filters combine with AND -- every filter must match for an asset to appear i
 
 ---
 
+## Negation and OR Syntax
+
+### Negation (Excluding Results)
+
+Prefix any filter or free-text term with `-` to exclude matches:
+
+```
+dam search "-tag:rejected"               # exclude assets with the "rejected" tag
+dam search "-format:xmp"                 # exclude XMP files
+dam search "-type:other"                 # exclude "other" type assets
+dam search "-label:Red"                  # exclude Red labeled assets
+dam search "-camera:phone"               # exclude phone camera shots
+dam search "landscape -tag:processed"    # landscapes that aren't tagged processed
+dam search "-sunset"                     # exclude free-text match on "sunset"
+```
+
+Negation works with all filter types and free-text terms.
+
+### OR Within a Filter (Comma Operator)
+
+Use commas within a single filter value to match any of the given options (OR logic):
+
+```
+dam search "tag:alice,bob"               # assets tagged alice OR bob (or both)
+dam search "format:nef,cr3"              # NEF or CR3 format
+dam search "type:image,video"            # images or videos
+dam search "label:Red,Orange"            # Red or Orange labeled assets
+dam search "rating:4,5"                  # 4-star or 5-star assets
+```
+
+The comma operator works within a single filter value. To require multiple tags, repeat the filter:
+
+```
+dam search "tag:landscape tag:sunset"    # assets with BOTH landscape AND sunset tags
+```
+
+### Combining Negation and OR
+
+Negation and OR can be combined in complex queries:
+
+```
+dam search "type:image,video -format:xmp"              # images or videos, but not XMP files
+dam search "tag:landscape,portrait -label:Red"         # landscape or portrait, excluding Red labeled
+dam search "format:nef,cr3 -tag:rejected rating:3+"    # RAW files (NEF or CR3), not rejected, 3+ stars
+```
+
+---
+
 ## Free Text
 
 **Syntax:** any token that does not match a recognized `prefix:value` pattern

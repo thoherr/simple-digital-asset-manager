@@ -52,16 +52,33 @@ pub fn parse_date_input(s: &str) -> Result<DateTime<Utc>> {
 }
 
 /// Parsed search query with all supported filter prefixes.
+///
+/// Multi-value fields (Vecs) support:
+/// - **Repeated filters** = AND: `tag:landscape tag:sunset` (must have both)
+/// - **Comma within a value** = OR: `tag:alice,bob` (either tag matches)
+/// - **`-` prefix** = negation: `-tag:rejected` excludes matching assets
 #[derive(Debug, Default)]
 pub struct ParsedSearch {
     pub text: Option<String>,
-    pub asset_type: Option<String>,
-    pub tag: Option<String>,
-    pub format: Option<String>,
+    pub text_exclude: Vec<String>,
+    pub asset_types: Vec<String>,
+    pub asset_types_exclude: Vec<String>,
+    pub tags: Vec<String>,
+    pub tags_exclude: Vec<String>,
+    pub formats: Vec<String>,
+    pub formats_exclude: Vec<String>,
+    pub color_labels: Vec<String>,
+    pub color_labels_exclude: Vec<String>,
+    pub cameras: Vec<String>,
+    pub cameras_exclude: Vec<String>,
+    pub lenses: Vec<String>,
+    pub lenses_exclude: Vec<String>,
+    pub collections: Vec<String>,
+    pub collections_exclude: Vec<String>,
+    pub path_prefixes: Vec<String>,
+    pub path_prefixes_exclude: Vec<String>,
     pub rating_min: Option<u8>,
     pub rating_exact: Option<u8>,
-    pub camera: Option<String>,
-    pub lens: Option<String>,
     pub iso_min: Option<i64>,
     pub iso_max: Option<i64>,
     pub focal_min: Option<f64>,
@@ -75,9 +92,6 @@ pub struct ParsedSearch {
     pub stale_days: Option<u64>,
     pub missing: bool,
     pub volume_none: bool,
-    pub color_label: Option<String>,
-    pub collection: Option<String>,
-    pub path_prefix: Option<String>,
     pub copies_exact: Option<u64>,
     pub copies_min: Option<u64>,
     pub date_prefix: Option<String>,
@@ -93,13 +107,25 @@ impl ParsedSearch {
     pub fn to_search_options(&self) -> SearchOptions<'_> {
         SearchOptions {
             text: self.text.as_deref(),
-            asset_type: self.asset_type.as_deref(),
-            tag: self.tag.as_deref(),
-            format: self.format.as_deref(),
+            text_exclude: &self.text_exclude,
+            asset_types: &self.asset_types,
+            asset_types_exclude: &self.asset_types_exclude,
+            tags: &self.tags,
+            tags_exclude: &self.tags_exclude,
+            formats: &self.formats,
+            formats_exclude: &self.formats_exclude,
+            color_labels: &self.color_labels,
+            color_labels_exclude: &self.color_labels_exclude,
+            cameras: &self.cameras,
+            cameras_exclude: &self.cameras_exclude,
+            lenses: &self.lenses,
+            lenses_exclude: &self.lenses_exclude,
+            collections: &self.collections,
+            collections_exclude: &self.collections_exclude,
+            path_prefixes: &self.path_prefixes,
+            path_prefixes_exclude: &self.path_prefixes_exclude,
             rating_min: self.rating_min,
             rating_exact: self.rating_exact,
-            camera: self.camera.as_deref(),
-            lens: self.lens.as_deref(),
             iso_min: self.iso_min,
             iso_max: self.iso_max,
             focal_min: self.focal_min,
@@ -115,8 +141,6 @@ impl ParsedSearch {
                 .collect(),
             orphan: self.orphan,
             stale_days: self.stale_days,
-            color_label: self.color_label.as_deref(),
-            path_prefix: self.path_prefix.as_deref(),
             copies_exact: self.copies_exact,
             copies_min: self.copies_min,
             date_prefix: self.date_prefix.as_deref(),
@@ -194,13 +218,33 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
     let mut text_parts = Vec::new();
 
     for token in tokenize_query(query) {
-        if let Some(value) = token.strip_prefix("type:") {
-            parsed.asset_type = Some(value.to_string());
-        } else if let Some(value) = token.strip_prefix("tag:") {
-            parsed.tag = Some(value.to_string());
-        } else if let Some(value) = token.strip_prefix("format:") {
-            parsed.format = Some(value.to_string());
-        } else if let Some(value) = token.strip_prefix("rating:") {
+        // Detect negation prefix
+        let (negated, token_body) = if token.starts_with('-') && token.len() > 1 && token.as_bytes()[1] != b'-' {
+            (true, &token[1..])
+        } else {
+            (false, token.as_str())
+        };
+
+        if let Some(value) = token_body.strip_prefix("type:") {
+            if negated {
+                parsed.asset_types_exclude.push(value.to_string());
+            } else {
+                parsed.asset_types.push(value.to_string());
+            }
+        } else if let Some(value) = token_body.strip_prefix("tag:") {
+            if negated {
+                parsed.tags_exclude.push(value.to_string());
+            } else {
+                parsed.tags.push(value.to_string());
+            }
+        } else if let Some(value) = token_body.strip_prefix("format:") {
+            if negated {
+                parsed.formats_exclude.push(value.to_string());
+            } else {
+                parsed.formats.push(value.to_string());
+            }
+        } else if let Some(value) = token_body.strip_prefix("rating:") {
+            // Rating doesn't support negation — ignore the `-` prefix
             if let Some(num_str) = value.strip_suffix('+') {
                 if let Ok(n) = num_str.parse::<u8>() {
                     parsed.rating_min = Some(n);
@@ -208,17 +252,25 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
             } else if let Ok(n) = value.parse::<u8>() {
                 parsed.rating_exact = Some(n);
             }
-        } else if let Some(value) = token.strip_prefix("camera:") {
-            parsed.camera = Some(value.to_string());
-        } else if let Some(value) = token.strip_prefix("lens:") {
-            parsed.lens = Some(value.to_string());
-        } else if let Some(value) = token.strip_prefix("iso:") {
-            parse_int_range(&value, &mut parsed.iso_min, &mut parsed.iso_max);
-        } else if let Some(value) = token.strip_prefix("focal:") {
-            parse_float_range(&value, &mut parsed.focal_min, &mut parsed.focal_max);
-        } else if let Some(value) = token.strip_prefix("f:") {
-            parse_float_range(&value, &mut parsed.f_min, &mut parsed.f_max);
-        } else if let Some(value) = token.strip_prefix("width:") {
+        } else if let Some(value) = token_body.strip_prefix("camera:") {
+            if negated {
+                parsed.cameras_exclude.push(value.to_string());
+            } else {
+                parsed.cameras.push(value.to_string());
+            }
+        } else if let Some(value) = token_body.strip_prefix("lens:") {
+            if negated {
+                parsed.lenses_exclude.push(value.to_string());
+            } else {
+                parsed.lenses.push(value.to_string());
+            }
+        } else if let Some(value) = token_body.strip_prefix("iso:") {
+            parse_int_range(value, &mut parsed.iso_min, &mut parsed.iso_max);
+        } else if let Some(value) = token_body.strip_prefix("focal:") {
+            parse_float_range(value, &mut parsed.focal_min, &mut parsed.focal_max);
+        } else if let Some(value) = token_body.strip_prefix("f:") {
+            parse_float_range(value, &mut parsed.f_min, &mut parsed.f_max);
+        } else if let Some(value) = token_body.strip_prefix("width:") {
             if let Some(num_str) = value.strip_suffix('+') {
                 if let Ok(n) = num_str.parse::<i64>() {
                     parsed.width_min = Some(n);
@@ -226,7 +278,7 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
             } else if let Ok(n) = value.parse::<i64>() {
                 parsed.width_min = Some(n);
             }
-        } else if let Some(value) = token.strip_prefix("height:") {
+        } else if let Some(value) = token_body.strip_prefix("height:") {
             if let Some(num_str) = value.strip_suffix('+') {
                 if let Ok(n) = num_str.parse::<i64>() {
                     parsed.height_min = Some(n);
@@ -234,43 +286,55 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
             } else if let Ok(n) = value.parse::<i64>() {
                 parsed.height_min = Some(n);
             }
-        } else if let Some(value) = token.strip_prefix("meta:") {
+        } else if let Some(value) = token_body.strip_prefix("meta:") {
             if let Some((key, val)) = value.split_once('=') {
                 parsed.meta_filters.push((key.to_string(), val.to_string()));
             }
-        } else if token == "orphan:true" {
+        } else if token_body == "orphan:true" {
             parsed.orphan = true;
-        } else if token == "missing:true" {
+        } else if token_body == "missing:true" {
             parsed.missing = true;
-        } else if let Some(value) = token.strip_prefix("stale:") {
+        } else if let Some(value) = token_body.strip_prefix("stale:") {
             if let Ok(days) = value.parse::<u64>() {
                 parsed.stale_days = Some(days);
             }
-        } else if token == "volume:none" {
+        } else if token_body == "volume:none" {
             parsed.volume_none = true;
-        } else if let Some(value) = token.strip_prefix("label:") {
-            parsed.color_label = Some(value.to_string());
-        } else if let Some(value) = token.strip_prefix("collection:") {
-            parsed.collection = Some(value.to_string());
-        } else if let Some(value) = token.strip_prefix("path:") {
-            parsed.path_prefix = Some(value.to_string());
-        } else if let Some(value) = token.strip_prefix("copies:") {
+        } else if let Some(value) = token_body.strip_prefix("label:") {
+            if negated {
+                parsed.color_labels_exclude.push(value.to_string());
+            } else {
+                parsed.color_labels.push(value.to_string());
+            }
+        } else if let Some(value) = token_body.strip_prefix("collection:") {
+            if negated {
+                parsed.collections_exclude.push(value.to_string());
+            } else {
+                parsed.collections.push(value.to_string());
+            }
+        } else if let Some(value) = token_body.strip_prefix("path:") {
+            if negated {
+                parsed.path_prefixes_exclude.push(value.to_string());
+            } else {
+                parsed.path_prefixes.push(value.to_string());
+            }
+        } else if let Some(value) = token_body.strip_prefix("copies:") {
             if let Some(num_str) = value.strip_suffix('+') {
                 parsed.copies_min = num_str.parse().ok();
             } else {
                 parsed.copies_exact = value.parse().ok();
             }
-        } else if let Some(value) = token.strip_prefix("date:") {
+        } else if let Some(value) = token_body.strip_prefix("date:") {
             parsed.date_prefix = Some(value.to_string());
-        } else if let Some(value) = token.strip_prefix("dateFrom:") {
+        } else if let Some(value) = token_body.strip_prefix("dateFrom:") {
             parsed.date_from = Some(value.to_string());
-        } else if let Some(value) = token.strip_prefix("dateUntil:") {
+        } else if let Some(value) = token_body.strip_prefix("dateUntil:") {
             parsed.date_until = Some(value.to_string());
-        } else if token == "stacked:true" {
+        } else if token_body == "stacked:true" {
             parsed.stacked = Some(true);
-        } else if token == "stacked:false" {
+        } else if token_body == "stacked:false" {
             parsed.stacked = Some(false);
-        } else if let Some(value) = token.strip_prefix("geo:") {
+        } else if let Some(value) = token_body.strip_prefix("geo:") {
             if value == "any" {
                 parsed.has_gps = Some(true);
             } else if value == "none" {
@@ -291,6 +355,12 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
                     parsed.geo_bbox = Some((parts[0], parts[1], parts[2], parts[3]));
                 }
             }
+        } else if negated {
+            // Negated free text: -word
+            text_parts.push(token_body.to_string());
+            // Actually this should go to text_exclude
+            text_parts.pop();
+            parsed.text_exclude.push(token_body.to_string());
         } else {
             text_parts.push(token);
         }
@@ -553,18 +623,19 @@ impl QueryEngine {
     pub fn search(&self, query: &str) -> Result<Vec<SearchRow>> {
         let mut parsed = parse_search_query(query);
 
-        // Normalize path: ~, ./, ../, /absolute → volume-relative + volume filter
+        // Normalize path prefixes: ~, ./, ../, /absolute → volume-relative + volume filter
         let path_volume_id: Option<String>;
-        if parsed.path_prefix.is_some() {
+        if !parsed.path_prefixes.is_empty() {
             let registry = DeviceRegistry::new(&self.catalog_root);
             let volumes = registry.list()?;
             let cwd = std::env::current_dir().ok();
+            // Normalize the first path prefix (CLI context)
             let (normalized, vol_id) = normalize_path_for_search(
-                parsed.path_prefix.as_deref().unwrap(),
+                &parsed.path_prefixes[0],
                 &volumes,
                 cwd.as_deref(),
             );
-            parsed.path_prefix = Some(normalized);
+            parsed.path_prefixes[0] = normalized;
             path_volume_id = vol_id;
         } else {
             path_volume_id = None;
@@ -604,12 +675,37 @@ impl QueryEngine {
             opts.missing_asset_ids = Some(&missing_ids);
         }
 
-        // Pre-compute collection asset IDs
+        // Pre-compute collection asset IDs (include)
         let collection_ids;
-        if let Some(ref col_name) = parsed.collection {
+        if !parsed.collections.is_empty() {
             let store = crate::collection::CollectionStore::new(catalog.conn());
-            collection_ids = store.asset_ids_for_collection(col_name)?;
+            // OR across all collection entries, then intersect
+            let mut all_ids = HashSet::new();
+            for col_entry in &parsed.collections {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_ids = all_ids.into_iter().collect::<Vec<_>>();
             opts.collection_asset_ids = Some(&collection_ids);
+        }
+
+        // Pre-compute collection exclude IDs
+        let collection_exclude_ids;
+        if !parsed.collections_exclude.is_empty() {
+            let store = crate::collection::CollectionStore::new(catalog.conn());
+            let mut all_ids = HashSet::new();
+            for col_entry in &parsed.collections_exclude {
+                for col_name in col_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if let Ok(ids) = store.asset_ids_for_collection(col_name) {
+                        all_ids.extend(ids);
+                    }
+                }
+            }
+            collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
+            opts.collection_exclude_ids = Some(&collection_exclude_ids);
         }
 
         // Pre-compute online volume IDs for volume:none
@@ -1934,14 +2030,14 @@ mod tests {
     #[test]
     fn parse_camera_filter() {
         let p = parse_search_query("camera:fuji");
-        assert_eq!(p.camera.as_deref(), Some("fuji"));
+        assert_eq!(p.cameras, vec!["fuji"]);
         assert!(p.text.is_none());
     }
 
     #[test]
     fn parse_lens_filter() {
         let p = parse_search_query("lens:56mm");
-        assert_eq!(p.lens.as_deref(), Some("56mm"));
+        assert_eq!(p.lenses, vec!["56mm"]);
     }
 
     #[test]
@@ -2023,7 +2119,7 @@ mod tests {
     #[test]
     fn parse_mixed_filters_with_text() {
         let p = parse_search_query("camera:fuji sunset iso:400 landscape");
-        assert_eq!(p.camera.as_deref(), Some("fuji"));
+        assert_eq!(p.cameras, vec!["fuji"]);
         assert_eq!(p.iso_min, Some(400));
         assert_eq!(p.iso_max, Some(400));
         assert_eq!(p.text.as_deref(), Some("sunset landscape"));
@@ -2032,9 +2128,9 @@ mod tests {
     #[test]
     fn parse_existing_filters_still_work() {
         let p = parse_search_query("type:image tag:nature format:jpg rating:3+");
-        assert_eq!(p.asset_type.as_deref(), Some("image"));
-        assert_eq!(p.tag.as_deref(), Some("nature"));
-        assert_eq!(p.format.as_deref(), Some("jpg"));
+        assert_eq!(p.asset_types, vec!["image"]);
+        assert_eq!(p.tags, vec!["nature"]);
+        assert_eq!(p.formats, vec!["jpg"]);
         assert_eq!(p.rating_min, Some(3));
         assert!(p.rating_exact.is_none());
     }
@@ -2042,7 +2138,7 @@ mod tests {
     #[test]
     fn parse_quoted_tag_with_spaces() {
         let p = parse_search_query(r#"tag:"Fools Theater" rating:4+"#);
-        assert_eq!(p.tag.as_deref(), Some("Fools Theater"));
+        assert_eq!(p.tags, vec!["Fools Theater"]);
         assert_eq!(p.rating_min, Some(4));
         assert!(p.text.is_none());
     }
@@ -2050,27 +2146,27 @@ mod tests {
     #[test]
     fn parse_quoted_camera_and_lens() {
         let p = parse_search_query(r#"camera:"Canon EOS R5" lens:"RF 50mm f/1.2""#);
-        assert_eq!(p.camera.as_deref(), Some("Canon EOS R5"));
-        assert_eq!(p.lens.as_deref(), Some("RF 50mm f/1.2"));
+        assert_eq!(p.cameras, vec!["Canon EOS R5"]);
+        assert_eq!(p.lenses, vec!["RF 50mm f/1.2"]);
     }
 
     #[test]
     fn parse_quoted_label() {
         let p = parse_search_query(r#"label:"light blue" type:image"#);
-        assert_eq!(p.color_label.as_deref(), Some("light blue"));
-        assert_eq!(p.asset_type.as_deref(), Some("image"));
+        assert_eq!(p.color_labels, vec!["light blue"]);
+        assert_eq!(p.asset_types, vec!["image"]);
     }
 
     #[test]
     fn parse_quoted_collection() {
         let p = parse_search_query(r#"collection:"My Favorites""#);
-        assert_eq!(p.collection.as_deref(), Some("My Favorites"));
+        assert_eq!(p.collections, vec!["My Favorites"]);
     }
 
     #[test]
     fn parse_mixed_quoted_and_unquoted() {
         let p = parse_search_query(r#"sunset tag:"Fools Theater" rating:5"#);
-        assert_eq!(p.tag.as_deref(), Some("Fools Theater"));
+        assert_eq!(p.tags, vec!["Fools Theater"]);
         assert_eq!(p.rating_exact, Some(5));
         assert_eq!(p.text.as_deref(), Some("sunset"));
     }
@@ -2129,7 +2225,7 @@ mod tests {
         let p = parse_search_query("orphan:true stale:7 tag:landscape");
         assert!(p.orphan);
         assert_eq!(p.stale_days, Some(7));
-        assert_eq!(p.tag.as_deref(), Some("landscape"));
+        assert_eq!(p.tags, vec!["landscape"]);
         assert!(!p.missing);
         assert!(!p.volume_none);
     }
@@ -2137,37 +2233,37 @@ mod tests {
     #[test]
     fn parse_label_filter() {
         let p = parse_search_query("label:Red");
-        assert_eq!(p.color_label.as_deref(), Some("Red"));
+        assert_eq!(p.color_labels, vec!["Red"]);
         assert!(p.text.is_none());
     }
 
     #[test]
     fn parse_label_with_other_filters() {
         let p = parse_search_query("label:Blue tag:landscape sunset");
-        assert_eq!(p.color_label.as_deref(), Some("Blue"));
-        assert_eq!(p.tag.as_deref(), Some("landscape"));
+        assert_eq!(p.color_labels, vec!["Blue"]);
+        assert_eq!(p.tags, vec!["landscape"]);
         assert_eq!(p.text.as_deref(), Some("sunset"));
     }
 
     #[test]
     fn parse_path_filter() {
         let p = parse_search_query("path:Capture/2026-02-22");
-        assert_eq!(p.path_prefix.as_deref(), Some("Capture/2026-02-22"));
+        assert_eq!(p.path_prefixes, vec!["Capture/2026-02-22"]);
         assert!(p.text.is_none());
     }
 
     #[test]
     fn parse_path_filter_quoted() {
         let p = parse_search_query(r#"path:"Photos/My Trip""#);
-        assert_eq!(p.path_prefix.as_deref(), Some("Photos/My Trip"));
+        assert_eq!(p.path_prefixes, vec!["Photos/My Trip"]);
     }
 
     #[test]
     fn parse_path_with_other_filters() {
         let p = parse_search_query("path:Capture/2026 rating:3+ tag:landscape");
-        assert_eq!(p.path_prefix.as_deref(), Some("Capture/2026"));
+        assert_eq!(p.path_prefixes, vec!["Capture/2026"]);
         assert_eq!(p.rating_min, Some(3));
-        assert_eq!(p.tag.as_deref(), Some("landscape"));
+        assert_eq!(p.tags, vec!["landscape"]);
         assert!(p.text.is_none());
     }
 
@@ -2194,7 +2290,7 @@ mod tests {
         let p = parse_search_query("copies:3+ rating:4+ tag:landscape");
         assert_eq!(p.copies_min, Some(3));
         assert_eq!(p.rating_min, Some(4));
-        assert_eq!(p.tag.as_deref(), Some("landscape"));
+        assert_eq!(p.tags, vec!["landscape"]);
     }
 
     // ── date filter parse tests ─────────────────────────────────────
@@ -2236,7 +2332,7 @@ mod tests {
         let p = parse_search_query("dateFrom:2026-01-01 dateUntil:2026-12-31 tag:landscape");
         assert_eq!(p.date_from.as_deref(), Some("2026-01-01"));
         assert_eq!(p.date_until.as_deref(), Some("2026-12-31"));
-        assert_eq!(p.tag.as_deref(), Some("landscape"));
+        assert_eq!(p.tags, vec!["landscape"]);
     }
 
     #[test]
@@ -2273,6 +2369,147 @@ mod tests {
         assert!((w - 10.0).abs() < 0.001);
         assert!((n - 55.0).abs() < 0.001);
         assert!((e - 15.0).abs() < 0.001);
+    }
+
+    // ── negation and OR parse tests ────────────────────────────────
+
+    #[test]
+    fn parse_negated_tag() {
+        let p = parse_search_query("-tag:rejected");
+        assert!(p.tags.is_empty());
+        assert_eq!(p.tags_exclude, vec!["rejected"]);
+        assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_negated_format() {
+        let p = parse_search_query("-format:xmp");
+        assert!(p.formats.is_empty());
+        assert_eq!(p.formats_exclude, vec!["xmp"]);
+    }
+
+    #[test]
+    fn parse_negated_type() {
+        let p = parse_search_query("-type:other");
+        assert!(p.asset_types.is_empty());
+        assert_eq!(p.asset_types_exclude, vec!["other"]);
+    }
+
+    #[test]
+    fn parse_negated_label() {
+        let p = parse_search_query("-label:Red");
+        assert!(p.color_labels.is_empty());
+        assert_eq!(p.color_labels_exclude, vec!["Red"]);
+    }
+
+    #[test]
+    fn parse_negated_camera() {
+        let p = parse_search_query("-camera:phone");
+        assert!(p.cameras.is_empty());
+        assert_eq!(p.cameras_exclude, vec!["phone"]);
+    }
+
+    #[test]
+    fn parse_negated_lens() {
+        let p = parse_search_query("-lens:kit");
+        assert!(p.lenses.is_empty());
+        assert_eq!(p.lenses_exclude, vec!["kit"]);
+    }
+
+    #[test]
+    fn parse_negated_collection() {
+        let p = parse_search_query("-collection:Rejects");
+        assert!(p.collections.is_empty());
+        assert_eq!(p.collections_exclude, vec!["Rejects"]);
+    }
+
+    #[test]
+    fn parse_negated_path() {
+        let p = parse_search_query("-path:Trash");
+        assert!(p.path_prefixes.is_empty());
+        assert_eq!(p.path_prefixes_exclude, vec!["Trash"]);
+    }
+
+    #[test]
+    fn parse_negated_text() {
+        let p = parse_search_query("sunset -boring");
+        assert_eq!(p.text.as_deref(), Some("sunset"));
+        assert_eq!(p.text_exclude, vec!["boring"]);
+    }
+
+    #[test]
+    fn parse_negated_quoted_tag() {
+        let p = parse_search_query(r#"-tag:"Fools Theater""#);
+        assert_eq!(p.tags_exclude, vec!["Fools Theater"]);
+        assert!(p.tags.is_empty());
+    }
+
+    #[test]
+    fn parse_comma_or_format() {
+        let p = parse_search_query("format:nef,cr3");
+        assert_eq!(p.formats, vec!["nef,cr3"]);
+    }
+
+    #[test]
+    fn parse_comma_or_tag() {
+        let p = parse_search_query("tag:alice,bob");
+        assert_eq!(p.tags, vec!["alice,bob"]);
+    }
+
+    #[test]
+    fn parse_comma_or_type() {
+        let p = parse_search_query("type:image,video");
+        assert_eq!(p.asset_types, vec!["image,video"]);
+    }
+
+    #[test]
+    fn parse_repeated_tags_are_and() {
+        let p = parse_search_query("tag:landscape tag:sunset");
+        assert_eq!(p.tags, vec!["landscape", "sunset"]);
+    }
+
+    #[test]
+    fn parse_combined_negation_or_and() {
+        let p = parse_search_query("tag:alice,bob tag:portrait -tag:rejected -type:other");
+        assert_eq!(p.tags, vec!["alice,bob", "portrait"]);
+        assert_eq!(p.tags_exclude, vec!["rejected"]);
+        assert_eq!(p.asset_types_exclude, vec!["other"]);
+    }
+
+    #[test]
+    fn parse_negation_does_not_affect_rating() {
+        // Rating doesn't support negation — the `-` is ignored
+        let p = parse_search_query("-rating:3+");
+        assert_eq!(p.rating_min, Some(3));
+        assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_negation_with_all_filters() {
+        let p = parse_search_query("tag:keep -tag:reject format:nef,cr3 -format:xmp label:Red -label:Blue camera:nikon -camera:phone");
+        assert_eq!(p.tags, vec!["keep"]);
+        assert_eq!(p.tags_exclude, vec!["reject"]);
+        assert_eq!(p.formats, vec!["nef,cr3"]);
+        assert_eq!(p.formats_exclude, vec!["xmp"]);
+        assert_eq!(p.color_labels, vec!["Red"]);
+        assert_eq!(p.color_labels_exclude, vec!["Blue"]);
+        assert_eq!(p.cameras, vec!["nikon"]);
+        assert_eq!(p.cameras_exclude, vec!["phone"]);
+    }
+
+    #[test]
+    fn parse_multiple_text_excludes() {
+        let p = parse_search_query("sunset -boring -blurry");
+        assert_eq!(p.text.as_deref(), Some("sunset"));
+        assert_eq!(p.text_exclude, vec!["boring", "blurry"]);
+    }
+
+    #[test]
+    fn parse_double_dash_not_negated() {
+        // A token starting with `--` should not be treated as negation
+        let p = parse_search_query("--help");
+        assert_eq!(p.text.as_deref(), Some("--help"));
+        assert!(p.text_exclude.is_empty());
     }
 
     // ── group recipe preservation tests ──────────────────────────────
