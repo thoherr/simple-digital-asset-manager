@@ -1856,6 +1856,13 @@ impl AssetService {
                         &volume.id.to_string(),
                         &loc.relative_path.to_string_lossy(),
                     )?;
+                    self.update_sidecar_recipe_verified_at(
+                        metadata_store,
+                        catalog,
+                        content_hash,
+                        loc.volume_id,
+                        &loc.relative_path,
+                    )?;
                 } else {
                     catalog.update_verified_at(
                         content_hash,
@@ -1965,6 +1972,40 @@ impl AssetService {
                         changed = true;
                     }
                 }
+            }
+        }
+
+        if changed {
+            metadata_store.save(&asset)?;
+        }
+
+        Ok(())
+    }
+
+    /// Update the sidecar YAML with a recipe's verified_at timestamp.
+    fn update_sidecar_recipe_verified_at(
+        &self,
+        metadata_store: &MetadataStore,
+        catalog: &Catalog,
+        variant_hash: &str,
+        volume_id: Uuid,
+        relative_path: &Path,
+    ) -> Result<()> {
+        let asset_id = match catalog.find_asset_id_by_variant(variant_hash)? {
+            Some(id) => id,
+            None => return Ok(()),
+        };
+        let uuid: Uuid = asset_id.parse()?;
+        let mut asset = metadata_store.load(uuid)?;
+        let now = chrono::Utc::now();
+
+        let mut changed = false;
+        for recipe in &mut asset.recipes {
+            if recipe.location.volume_id == volume_id
+                && recipe.location.relative_path == relative_path
+            {
+                recipe.location.verified_at = Some(now);
+                changed = true;
             }
         }
 
