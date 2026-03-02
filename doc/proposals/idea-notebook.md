@@ -37,7 +37,7 @@ Since the CLI can provide information in machine readable JSON format, one or mo
 with pictures of Alices birthday and copy the two highest rated images with Bob to a sd card" (where the names would
 of cource have been tagged). Or maybe we come up with another, more useful example.
 
-### delete command
+### ~~delete command~~ — **DONE** (v1.8.7)
 
 Would be ver useful if we have orphaned files or other import bugs. Currently this is solved by quite complex and long
 running commands, whereas we often know that we just have to delete (and maybe re-import) a certain asset.
