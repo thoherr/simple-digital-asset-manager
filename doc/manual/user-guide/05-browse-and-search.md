@@ -483,6 +483,68 @@ dam stats --all --json
 
 ---
 
+## Exporting Files
+
+The `dam export` command copies files matching a search query to a target directory — useful for client deliveries, sharing, or copying to external media.
+
+### Basic Export
+
+Export the best variant of each matching asset:
+
+```
+dam export "rating:5 tag:portfolio" /tmp/delivery/
+```
+
+### Layout Modes
+
+**Flat** (default) — all files in one directory:
+
+```
+dam export "collection:Selects" /tmp/flat/
+```
+
+Filename collisions from different assets are resolved by appending a hash suffix (e.g., `DSC_001_a1b2c3d4.jpg`).
+
+**Mirror** — preserves source directory structure:
+
+```
+dam export "tag:landscape" /Volumes/USB/export --layout mirror
+```
+
+When assets span multiple volumes, each volume's files are placed under a `<volume-label>/` prefix.
+
+### Options
+
+Export all variants (not just the best):
+
+```
+dam export "tag:portfolio" /tmp/all/ --all-variants
+```
+
+Include sidecars (`.xmp`, `.cos`, etc.):
+
+```
+dam export "collection:Print" /tmp/handoff/ --include-sidecars
+```
+
+Create symlinks instead of copies:
+
+```
+dam export "type:image" ~/links/ --symlink
+```
+
+Preview without writing files:
+
+```
+dam export "rating:4+" /tmp/test/ --dry-run
+```
+
+Re-running an export skips files that already exist with matching content. Use `--overwrite` to force re-copy.
+
+For the full command reference, see [export](../reference/04-retrieve-commands.md#dam-export).
+
+---
+
 ## Related Topics
 
 - [Organizing Assets](04-organize.md) -- tags, editing, collections, and saved searches

@@ -222,7 +222,7 @@ Quick reference of all dam commands, organized by workflow stage:
 | **Setup** | `init`, `volume add`, `volume list`, `volume combine`, `volume remove` | Create catalog, register and manage storage volumes |
 | **Ingest** | `import`, `tag`, `edit`, `group`, `auto-group` | Bring files in, apply metadata, merge variants |
 | **Organize** | `collection` (`col`), `saved-search` (`ss`) | Curate static and smart albums |
-| **Retrieve** | `search`, `show`, `duplicates`, `stats`, `serve` | Find assets, inspect details, browse in web UI |
+| **Retrieve** | `search`, `show`, `export`, `duplicates`, `stats`, `serve` | Find assets, inspect details, export files, browse in web UI |
 | **Maintain** | `verify`, `sync`, `refresh`, `cleanup`, `relocate`, `update-location`, `generate-previews`, `fix-roles`, `fix-dates`, `rebuild-catalog` | Integrity checks, disk reconciliation, housekeeping |
 
 Commands with aliases are shown with the alias in parentheses. For example, `dam col add` is equivalent to `dam collection add`, and `dam ss run` is equivalent to `dam saved-search run`.

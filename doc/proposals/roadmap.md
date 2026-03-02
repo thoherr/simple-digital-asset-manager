@@ -1,6 +1,6 @@
 # Roadmap: Planned & Proposed Features
 
-Consolidated list of unimplemented features and new ideas, organized by theme. Items from `enhancements.md` and `proposal-future-enhancements.md` are merged here with updated priorities reflecting the current state of the project (v1.8.7).
+Consolidated list of unimplemented features and new ideas, organized by theme. Items from `enhancements.md` and `proposal-future-enhancements.md` are merged here with updated priorities reflecting the current state of the project (v1.8.9).
 
 The main focus is on an **optimized workflow for finding, evaluating, and managing the best images** from a large multi-year archive, and on getting a **clear overview of assets** across volumes.
 
@@ -121,17 +121,19 @@ File system watcher (via `notify` crate) that auto-imports/syncs when files chan
 ### 7. Export Command
 
 ```
-dam export <query> --target <path> [--format <preset>] [--include-sidecars] [--dry-run]
+dam export <query> <target> [--layout flat|mirror] [--symlink] [--all-variants] [--include-sidecars] [--dry-run] [--overwrite]
 ```
 
 Export matching assets to a directory, optionally with sidecars.
 
 **Use cases:**
-- `dam export "rating:5 tag:portfolio" --target /tmp/delivery/` — gather best-of for client delivery
-- `dam export "collection:Print" --target /Volumes/USB/ --include-sidecars` — with XMP/COS for another workstation
-- `dam export "tag:instagram" --target ~/Export/ --format flat` — flat directory for social media
+- `dam export "rating:5 tag:portfolio" /tmp/delivery/` — gather best-of for client delivery
+- `dam export "collection:Print" /Volumes/USB/ --include-sidecars` — with XMP/COS for another workstation
+- `dam export "tag:instagram" ~/Export/` — flat directory for social media
 
-**Options:** Copy vs. symlink, mirror source paths vs. flat, filename conflict resolution (hash suffix, sequence number), primary variant only vs. all variants.
+**Options:** Copy vs. symlink, mirror source paths vs. flat, filename conflict resolution (hash suffix), best variant only vs. all variants, sidecar inclusion, dry-run, overwrite.
+
+> **Status (v1.8.9):** Fully implemented. Flat layout with hash-suffix collision resolution, mirror layout preserving directory structure (multi-volume gets volume-label prefix). Symlink mode. Best-variant-only (default) or all-variants. Sidecar inclusion. Dry-run. Overwrite. SHA-256 integrity verification on copy. Supports `--json`, `--log`, `--time`.
 
 ---
 
@@ -229,11 +231,11 @@ Each facet updates counts in real time based on the current filter combination (
 | 4 | AI tagging & similarity | High | Very high | Discovery / organization | |
 | 5 | Import profiles | Low | Medium | Workflow convenience | |
 | 6 | Watch mode | Medium | Medium | Workflow automation | |
-| 7 | Export command | Medium | Medium | Delivery | |
+| 7 | Export command | Medium | Medium | Delivery | **Done** (v1.8.9) |
 | 8 | Undo / edit history | Medium | Medium | Safety | |
 | 9 | IPTC metadata | Medium | Low–Medium | Professional workflow | |
 | 10 | Drag-and-drop | Low | Low | UX polish | |
 | 11 | Statistics dashboard | Medium | Medium | Overview / insights | |
 | 12 | Faceted browse sidebar | Medium | High | Overview / discovery | **Done** (v1.8.1) |
 
-Items 1, 2, 3, and 12 are complete as of v1.8.7, delivering the core "find and evaluate the best images" workflow with compare view, smart previews, spatial browsing via the map view, and faceted overview sidebar. The highest-priority remaining item is 4 (AI tagging). Item 11 provides additional "overview of assets" dimension.
+Items 1, 2, 3, 7, and 12 are complete as of v1.8.9, delivering the core "find and evaluate the best images" workflow with compare view, smart previews, spatial browsing via the map view, faceted overview sidebar, and file export for delivery. The highest-priority remaining item is 4 (AI tagging). Item 11 provides additional "overview of assets" dimension.

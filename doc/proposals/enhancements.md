@@ -2,7 +2,7 @@
 
 Ideas for new functionality, UI/UX improvements, and workflow additions, organized by impact and implementation scope.
 
-Watch mode and export are specified separately in [`proposal-future-enhancements.md`](proposal-future-enhancements.md).
+Watch mode is specified separately in [`proposal-future-enhancements.md`](proposal-future-enhancements.md). Export is now implemented (v1.8.9).
 
 ---
 
@@ -298,4 +298,4 @@ Ranked by impact-to-effort ratio, building on existing infrastructure:
 
 Items 1–7, 9–12, and 14 are complete (13 of 14 items). The remaining items are 8 (import profiles) and 13 (drag-and-drop).
 
-Watch mode and export are specified in [`proposal-future-enhancements.md`](proposal-future-enhancements.md) and in the [roadmap](roadmap.md).
+Watch mode is specified in [`proposal-future-enhancements.md`](proposal-future-enhancements.md) and in the [roadmap](roadmap.md). Export was implemented in v1.8.9.

@@ -27,20 +27,17 @@ File system watcher (via `notify` crate) that auto-imports/syncs when files chan
 
 ## 2. Export Command
 
+> **Status (v1.8.9):** Fully implemented. See `dam export --help` for usage.
+
 ```
-dam export <query> --target <path> [--format <preset>] [--include-sidecars]
+dam export <query> <target> [--layout flat|mirror] [--symlink] [--all-variants] [--include-sidecars] [--dry-run] [--overwrite]
 ```
 
 Export matching assets to a directory, optionally with sidecars. Useful for preparing files for delivery or for feeding into another tool.
 
 **Use cases:**
-- `dam export "rating:5 tag:portfolio" --target /tmp/delivery/` — gather best-of selections for client delivery
-- `dam export "collection:Print" --target /Volumes/USB/ --include-sidecars` — export with XMP/COS sidecars for handoff to another workstation
-- `dam export "tag:instagram" --target ~/Export/ --format flat` — flat directory (no subdirectories) for social media upload
+- `dam export "rating:5 tag:portfolio" /tmp/delivery/` — gather best-of selections for client delivery
+- `dam export "collection:Print" /Volumes/USB/ --include-sidecars` — export with XMP/COS sidecars for handoff to another workstation
+- `dam export "tag:instagram" ~/Export/` — flat directory (no subdirectories) for social media upload
 
-**Design considerations:**
-- Copy vs. symlink options
-- Directory structure preservation (mirror source paths vs. flat)
-- Filename conflict resolution (hash suffix, sequence number)
-- Whether to export only the primary variant or all variants
-- Dry-run mode for preview
+**Implemented features:** Copy or symlink, flat (hash-suffix collision resolution) or mirror (preserves directory structure with volume-label prefix), best variant or all variants, sidecar inclusion, dry-run, overwrite, SHA-256 integrity verification, `--json`/`--log`/`--time`.

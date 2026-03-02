@@ -77,7 +77,7 @@ graph TD
 
 | Module | File(s) | Purpose |
 |--------|---------|---------|
-| `asset_service` | `src/asset_service.rs` | Orchestrates import, grouping, auto-grouping, relocate, and preview generation. Coordinates between content store, metadata store, catalog, EXIF/XMP readers, and preview generator. Entry point for all write operations that involve multiple subsystems. |
+| `asset_service` | `src/asset_service.rs` | Orchestrates import, export, grouping, auto-grouping, relocate, delete, and preview generation. Coordinates between content store, metadata store, catalog, EXIF/XMP readers, and preview generator. Entry point for all write operations that involve multiple subsystems. |
 | `catalog` | `src/catalog.rs` | SQLite database operations: schema creation, migrations, CRUD for assets/variants/recipes/locations, search queries with pagination and filtering, statistics, and tag management. Provides `Catalog::open()` (with migrations) and `Catalog::open_fast()` (skip migrations, for per-request use in the web server). |
 | `collection` | `src/collection.rs` | Collection (static album) persistence. Dual storage: SQLite tables (`collections`, `collection_assets`) for fast queries, plus `collections.yaml` at catalog root for rebuild resilience. Provides `CollectionStore` with create, list, add/remove assets, and export/import operations. |
 | `config` | `src/config.rs` | Parses and validates `dam.toml` configuration file. Defines `CatalogConfig` with sub-structs `PreviewConfig` (max_edge, format, quality), `ServeConfig` (port, bind), and `ImportConfig` (exclude globs, auto_tags). All sections are optional with sensible defaults. |

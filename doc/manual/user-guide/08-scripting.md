@@ -54,6 +54,26 @@ echo "Done."
 dam stats
 ```
 
+### Exporting for Delivery
+
+Export rated picks to a client folder with sidecars:
+
+```bash
+dam export "rating:4+ collection:ClientProject" /tmp/delivery/ --include-sidecars --log
+```
+
+Mirror directory structure to a USB drive:
+
+```bash
+dam export "tag:portfolio" /Volumes/USB/export/ --layout mirror
+```
+
+Dry-run first to check what would be exported:
+
+```bash
+dam export "collection:Print" /tmp/test/ --dry-run --json | jq '{files: .files_exported, size: .total_bytes}'
+```
+
 ### Reporting with jq
 
 Generate a tab-separated report of all 5-star assets with their tags:

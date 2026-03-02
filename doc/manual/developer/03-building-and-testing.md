@@ -32,7 +32,7 @@ Produces an optimized binary at `target/release/dam`. Significantly faster runti
 cargo test
 ```
 
-Runs approximately 583 tests total: ~395 unit tests and ~188 integration tests.
+Runs approximately 693 tests total: ~465 unit tests and ~228 integration tests.
 
 ### Unit Tests Only
 
@@ -40,7 +40,7 @@ Runs approximately 583 tests total: ~395 unit tests and ~188 integration tests.
 cargo test --lib
 ```
 
-Runs the ~395 unit tests embedded in library source files (`#[cfg(test)]` modules within `src/`).
+Runs the ~465 unit tests embedded in library source files (`#[cfg(test)]` modules within `src/`).
 
 ### Integration Tests Only
 
@@ -48,7 +48,7 @@ Runs the ~395 unit tests embedded in library source files (`#[cfg(test)]` module
 cargo test --test integration
 ```
 
-Runs the ~188 integration tests defined in `tests/integration.rs`. These tests exercise the full system through the CLI binary and library API, using temporary catalogs and volumes.
+Runs the ~228 integration tests defined in `tests/cli.rs`. These tests exercise the full system through the CLI binary and library API, using temporary catalogs and volumes.
 
 ### Run a Specific Test
 

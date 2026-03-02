@@ -218,6 +218,113 @@ dam show a1b2c --json | jq '.variants[].file_locations[]'
 
 ---
 
+## dam export
+
+### NAME
+
+dam-export -- copy files matching a search query to a directory
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] export <QUERY> <TARGET> [OPTIONS]
+```
+
+### DESCRIPTION
+
+Exports files from the catalog to a target directory. Searches for assets matching the query, resolves their file locations on online volumes, and copies (or symlinks) files to the target.
+
+By default, only the **best variant** per asset is exported (Export > Processed > Original, image formats preferred, file size tiebreaker). Use `--all-variants` to export every variant.
+
+**Layout modes**:
+
+- **`flat`** (default): All files placed in the target root. Filename collisions (different content, same filename) are resolved by appending `_<8-char-hash>` before the extension. Files with identical content hashes reuse the same target path.
+- **`mirror`**: Preserves the source volume-relative directory structure. When files span multiple volumes, each volume's files are placed under a `<volume-label>/` prefix to avoid path collisions.
+
+Files are copied with SHA-256 integrity verification. Existing files at the target path are skipped if their content hash matches (use `--overwrite` to force re-copy).
+
+### ARGUMENTS
+
+**QUERY** (required)
+: Search query string (same syntax as `dam search`).
+
+**TARGET** (required)
+: Target directory path. Created automatically if it does not exist (except in `--dry-run` mode).
+
+### OPTIONS
+
+**--layout \<MODE\>**
+: File layout mode: `flat` (default) or `mirror`.
+
+**--symlink**
+: Create symbolic links instead of copying files. On Unix, uses `std::os::unix::fs::symlink`; on Windows, uses `std::os::windows::fs::symlink_file`.
+
+**--all-variants**
+: Export every variant of each matching asset. Default is best variant only.
+
+**--include-sidecars**
+: Also copy recipe/sidecar files (`.xmp`, `.cos`, `.cot`, `.cop`, `.pp3`, `.dop`, `.on1`) alongside the exported variants.
+
+**--dry-run**
+: Report the export plan without writing any files or creating directories.
+
+**--overwrite**
+: Re-copy files even if the target already contains a file with a matching content hash. Default behavior skips matching files.
+
+`--json` outputs an `ExportResult` object with fields: `dry_run`, `assets_matched`, `files_exported`, `files_skipped`, `sidecars_exported`, `total_bytes`, `errors`.
+
+### EXAMPLES
+
+Export best-of picks to a delivery folder:
+
+```bash
+dam export "rating:5 tag:portfolio" /tmp/delivery/
+```
+
+Export with directory structure preserved:
+
+```bash
+dam export "collection:Print" /Volumes/USB/export --layout mirror
+```
+
+Include sidecars for another workstation:
+
+```bash
+dam export "tag:client" /tmp/handoff/ --include-sidecars
+```
+
+Create symlinks instead of copies:
+
+```bash
+dam export "type:image rating:4+" ~/links/ --symlink
+```
+
+Export all variants (RAW + processed):
+
+```bash
+dam export "tag:portfolio" /tmp/all/ --all-variants
+```
+
+Dry run to see what would be exported:
+
+```bash
+dam export "collection:Best" /tmp/test/ --dry-run
+```
+
+JSON output for scripting:
+
+```bash
+dam --json export "rating:5" /tmp/out/ | jq '.files_exported'
+```
+
+### SEE ALSO
+
+[search](#dam-search) -- find assets to export.
+[relocate](05-maintain-commands.md#dam-relocate) -- move/copy asset files between volumes with catalog updates.
+[CLI Conventions](00-cli-conventions.md) -- global flags, scripting patterns.
+
+---
+
 ## dam duplicates
 
 ### NAME
@@ -610,4 +717,4 @@ dam serve --log --time
 ---
 
 Previous: [Organize Commands](03-organize-commands.md) -- `collection`, `saved-search`, `stack`.
-Next: [Maintain Commands](05-maintain-commands.md) -- `verify`, `sync`, `refresh`, `cleanup`, `relocate`, `update-location`, `generate-previews`, `fix-roles`, `rebuild-catalog`.
+Next: [Maintain Commands](05-maintain-commands.md) -- `verify`, `sync`, `refresh`, `cleanup`, `relocate`, `update-location`, `generate-previews`, `fix-roles`, `fix-dates`, `rebuild-catalog`.

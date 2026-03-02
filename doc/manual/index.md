@@ -25,7 +25,7 @@ Man-page style documentation for every command, filter, and configuration option
 - [Setup Commands](reference/01-setup-commands.md) — `init`, `volume add`, `volume list`, `volume combine`, `volume remove`
 - [Ingest Commands](reference/02-ingest-commands.md) — `import`, `tag`, `edit`, `group`, `auto-group`
 - [Organize Commands](reference/03-organize-commands.md) — `collection`, `saved-search`
-- [Retrieve Commands](reference/04-retrieve-commands.md) — `search`, `show`, `duplicates`, `stats`, `serve`
+- [Retrieve Commands](reference/04-retrieve-commands.md) — `search`, `show`, `export`, `duplicates`, `stats`, `serve`
 - [Maintain Commands](reference/05-maintain-commands.md) — `verify`, `sync`, `refresh`, `cleanup`, `relocate`, `update-location`, `generate-previews`, `fix-roles`, `fix-dates`, `rebuild-catalog`
 - [Search Filters](reference/06-search-filters.md) — Complete filter syntax reference
 - [Format Templates](reference/07-format-templates.md) — Output format presets, custom templates, placeholders
@@ -42,4 +42,4 @@ Technical documentation for integrators and contributors.
 
 ---
 
-**Version**: v1.8.7 | **Source**: [GitHub](https://github.com/tblck/dam) | **License**: See repository
+**Version**: v1.8.9 | **Source**: [GitHub](https://github.com/tblck/dam) | **License**: See repository
