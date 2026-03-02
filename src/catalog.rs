@@ -3122,6 +3122,17 @@ impl Catalog {
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    /// List all variant formats with their counts (for grouped format filter).
+    pub fn list_all_format_counts(&self) -> Result<Vec<(String, u64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT format, COUNT(*) as cnt FROM variants GROUP BY format ORDER BY cnt DESC",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?))
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     /// List all volumes from the catalog's volumes table.
     pub fn list_volumes(&self) -> Result<Vec<(String, String)>> {
         let mut stmt = self.conn.prepare(

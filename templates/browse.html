@@ -26,7 +26,7 @@
       hx-get="/"
       hx-target="#results"
       hx-push-url="true"
-      hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": getSelectedTags().join(","), "format": document.querySelector("[name=format]").value, "volume": (document.querySelector("[name=volume]") || {value:""}).value, "collection": (document.querySelector("[name=collection]") || {value:""}).value, "path": (document.querySelector("[name=path]") || {value:""}).value, "rating": getFilterRating(), "label": getFilterLabel(), "sort": new URLSearchParams(window.location.search).get("sort") || "date_desc", "page": "1", "stacks": getStackCollapse()}'>
+      hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": getSelectedTags().join(","), "format": (window.damFormats ? window.damFormats.getSelected() : ""), "volume": (document.querySelector("[name=volume]") || {value:""}).value, "collection": (document.querySelector("[name=collection]") || {value:""}).value, "path": (document.querySelector("[name=path]") || {value:""}).value, "rating": getFilterRating(), "label": getFilterLabel(), "sort": new URLSearchParams(window.location.search).get("sort") || "date_desc", "page": "1", "stacks": getStackCollapse()}'>
     <div class="search-row">
         <input type="text" name="q" placeholder="Search assets..." value="{{ query }}" autocomplete="off">
     </div>
@@ -59,12 +59,25 @@
             <option value="audio"{% if asset_type == "audio" %} selected{% endif %}>Audio</option>
             <option value="document"{% if asset_type == "document" %} selected{% endif %}>Document</option>
         </select>
-        <select name="format">
-            <option value="">All formats</option>
-            {% for f in all_formats %}
-            <option value="{{ f.name }}"{% if format_filter == f.name %} selected{% endif %}>{{ f.name }}</option>
-            {% endfor %}
-        </select>
+        <div class="format-filter" id="format-filter">
+            <button type="button" class="format-filter-trigger" id="format-trigger">All formats</button>
+            <div class="format-filter-panel" id="format-panel">
+                {% for g in format_groups %}
+                <div class="format-group" data-group="{{ g.key }}">
+                    <label class="format-group-header">
+                        <input type="checkbox" class="format-group-toggle" data-group="{{ g.key }}">
+                        All {{ g.label }}
+                    </label>
+                    {% for f in g.formats %}
+                    <label class="format-option">
+                        <input type="checkbox" class="format-cb" value="{{ f.name }}" data-group="{{ g.key }}">
+                        {{ f.name }} <span class="format-count">({{ f.count }})</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
         {% if !all_volumes.is_empty() %}
         <select name="volume">
             <option value="">All volumes</option>
@@ -285,6 +298,7 @@
         var form = document.querySelector('.search-bar');
         if (form) htmx.trigger(form, 'submit');
     }
+    window.triggerSearch = triggerSearch;
 
     // Debounced auto-search for text inputs
     var _searchTimer = null;
@@ -681,6 +695,128 @@
                 .catch(function(err) { console.error('Save search error:', err); });
         });
     }
+})();
+
+// --- Format multi-select filter ---
+(function() {
+    var trigger = document.getElementById('format-trigger');
+    var panel = document.getElementById('format-panel');
+    if (!trigger || !panel) return;
+
+    var initialFormats = "{{ format_filter }}";
+    var allCbs = panel.querySelectorAll('.format-cb');
+    var groupToggles = panel.querySelectorAll('.format-group-toggle');
+
+    // Build group membership map
+    var groupFormats = {};
+    groupToggles.forEach(function(gt) {
+        var key = gt.getAttribute('data-group');
+        groupFormats[key] = [];
+        panel.querySelectorAll('.format-cb[data-group="' + key + '"]').forEach(function(cb) {
+            groupFormats[key].push(cb);
+        });
+    });
+
+    function getSelectedFormats() {
+        var vals = [];
+        allCbs.forEach(function(cb) { if (cb.checked) vals.push(cb.value); });
+        return vals.join(',');
+    }
+
+    function updateGroupToggle(groupKey) {
+        var cbs = groupFormats[groupKey];
+        if (!cbs) return;
+        var toggle = panel.querySelector('.format-group-toggle[data-group="' + groupKey + '"]');
+        if (!toggle) return;
+        var total = cbs.length;
+        var checked = cbs.filter(function(c) { return c.checked; }).length;
+        toggle.checked = checked === total;
+        toggle.indeterminate = checked > 0 && checked < total;
+    }
+
+    function updateTriggerText() {
+        var selected = [];
+        allCbs.forEach(function(cb) { if (cb.checked) selected.push(cb.value); });
+        if (selected.length === 0) {
+            trigger.textContent = 'All formats';
+            trigger.title = '';
+            return;
+        }
+        var tooltip = selected.join(', ');
+        if (selected.length === 1) {
+            trigger.textContent = selected[0];
+        } else {
+            // Check if exactly one full group is selected
+            var groupLabel = null;
+            for (var key in groupFormats) {
+                var cbs = groupFormats[key];
+                var allChecked = cbs.every(function(c) { return c.checked; });
+                var noneOthers = true;
+                allCbs.forEach(function(c) {
+                    if (c.getAttribute('data-group') !== key && c.checked) noneOthers = false;
+                });
+                if (allChecked && noneOthers && cbs.length === selected.length) {
+                    var lbl = panel.querySelector('.format-group[data-group="' + key + '"] .format-group-header');
+                    if (lbl) groupLabel = lbl.textContent.trim();
+                    break;
+                }
+            }
+            trigger.textContent = groupLabel || (selected[0] + ' +' + (selected.length - 1) + '\u2026');
+        }
+        trigger.title = tooltip;
+    }
+
+    // Initialize from URL/template value
+    if (initialFormats) {
+        var initSet = initialFormats.split(',').reduce(function(m, v) { m[v] = true; return m; }, {});
+        allCbs.forEach(function(cb) {
+            if (initSet[cb.value]) cb.checked = true;
+        });
+        groupToggles.forEach(function(gt) { updateGroupToggle(gt.getAttribute('data-group')); });
+        updateTriggerText();
+    }
+
+    // Panel toggle
+    trigger.addEventListener('click', function(e) {
+        e.stopPropagation();
+        panel.classList.toggle('open');
+    });
+    document.addEventListener('click', function(e) {
+        if (!panel.contains(e.target) && e.target !== trigger) {
+            panel.classList.remove('open');
+        }
+    });
+
+    // Individual checkbox
+    allCbs.forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            updateGroupToggle(cb.getAttribute('data-group'));
+            updateTriggerText();
+            triggerSearch();
+        });
+    });
+
+    // Group header toggle
+    groupToggles.forEach(function(gt) {
+        gt.addEventListener('change', function() {
+            var key = gt.getAttribute('data-group');
+            var cbs = groupFormats[key];
+            cbs.forEach(function(cb) { cb.checked = gt.checked; });
+            updateTriggerText();
+            triggerSearch();
+        });
+    });
+
+    // Restore state on popstate (URL back/forward)
+    window.addEventListener('popstate', function() {
+        var urlFormat = new URLSearchParams(window.location.search).get('format') || '';
+        var fmtSet = urlFormat ? urlFormat.split(',').reduce(function(m, v) { m[v] = true; return m; }, {}) : {};
+        allCbs.forEach(function(cb) { cb.checked = !!fmtSet[cb.value]; });
+        groupToggles.forEach(function(gt) { updateGroupToggle(gt.getAttribute('data-group')); });
+        updateTriggerText();
+    });
+
+    window.damFormats = { getSelected: getSelectedFormats };
 })();
 
 // --- Batch selection ---

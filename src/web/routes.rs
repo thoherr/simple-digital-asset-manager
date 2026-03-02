@@ -13,10 +13,10 @@ use crate::device_registry::DeviceRegistry;
 
 use super::templates::{
     format_size, link_cards, AssetCard, AssetPage, BackupPage, BrowsePage, CollectionOption,
-    CompareAsset, ComparePage, DateFragment, DescriptionFragment, DuplicatesPage, FormatOption,
-    LabelFragment, NameFragment, PreviewFragment, RatingFragment, ResultsPartial, SavedSearchChip,
-    SavedSearchEntry, SavedSearchesPage, StackMemberCard, StatsPage, TagOption, TagTreeEntry,
-    TagsFragment, TagsPage, VolumeOption,
+    CompareAsset, ComparePage, DateFragment, DescriptionFragment, DuplicatesPage, FormatGroup,
+    FormatOption, LabelFragment, NameFragment, PreviewFragment, RatingFragment, ResultsPartial,
+    SavedSearchChip, SavedSearchEntry, SavedSearchesPage, StackMemberCard, StatsPage, TagOption,
+    TagTreeEntry, TagsFragment, TagsPage, VolumeOption,
 };
 use super::AppState;
 
@@ -163,10 +163,7 @@ pub async fn browse_page(
             .into_iter()
             .map(|(name, count)| TagOption { name, count })
             .collect();
-        let all_formats: Vec<FormatOption> = state.dropdown_cache.get_formats(&catalog)
-            .into_iter()
-            .map(|name| FormatOption { name })
-            .collect();
+        let format_groups = build_format_groups(state.dropdown_cache.get_formats(&catalog));
         let all_volumes: Vec<VolumeOption> = state.dropdown_cache.get_volumes(&catalog)
             .into_iter()
             .map(|(id, label)| VolumeOption { id, label })
@@ -205,7 +202,7 @@ pub async fn browse_page(
             per_page,
             total_pages,
             all_tags,
-            all_formats,
+            format_groups,
             all_volumes,
             all_collections,
             collection: collection_str.to_string(),
@@ -879,6 +876,48 @@ pub async fn backup_page(State(state): State<Arc<AppState>>) -> Response {
 }
 
 use crate::query::ParsedSearch;
+
+/// Classify a format extension into a group key.
+fn classify_format(fmt: &str) -> &'static str {
+    if crate::asset_service::is_raw_extension(fmt) {
+        return "raw";
+    }
+    match fmt {
+        "jpg" | "jpeg" | "png" | "tiff" | "tif" | "webp" | "heic" | "heif" | "gif" | "bmp"
+        | "svg" | "ico" | "psd" | "xcf" => "image",
+        "mp4" | "mov" | "avi" | "mkv" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg"
+        | "3gp" | "mts" | "m2ts" => "video",
+        "mp3" | "wav" | "flac" | "aac" | "ogg" | "wma" | "m4a" | "aiff" | "alac" => "audio",
+        _ => "other",
+    }
+}
+
+/// Build grouped format options from (name, count) pairs.
+fn build_format_groups(format_counts: Vec<(String, u64)>) -> Vec<FormatGroup> {
+    let group_order: &[(&str, &str)] = &[
+        ("raw", "RAW"),
+        ("image", "Image"),
+        ("video", "Video"),
+        ("audio", "Audio"),
+        ("other", "Other"),
+    ];
+    let mut groups: std::collections::HashMap<&str, Vec<FormatOption>> =
+        std::collections::HashMap::new();
+    for (name, count) in format_counts {
+        let key = classify_format(&name);
+        groups.entry(key).or_default().push(FormatOption { name, count });
+    }
+    group_order
+        .iter()
+        .filter_map(|&(key, label)| {
+            groups.remove(key).map(|formats| FormatGroup {
+                key: key.to_string(),
+                label: label.to_string(),
+                formats,
+            })
+        })
+        .collect()
+}
 
 /// Parse the `q` param through `parse_search_query` and overlay explicit dropdown params.
 /// Returns a `ParsedSearch` (owned) that can be converted to `SearchOptions` by the caller.
@@ -2529,7 +2568,7 @@ pub async fn duplicates_page(
         }
 
         let all_formats: Vec<FormatOption> = state.dropdown_cache.get_formats(&catalog)
-            .into_iter().map(|name| FormatOption { name }).collect();
+            .into_iter().map(|(name, count)| FormatOption { name, count }).collect();
         let all_volumes: Vec<VolumeOption> = state.dropdown_cache.get_volumes(&catalog)
             .into_iter().map(|(id, label)| VolumeOption { id, label }).collect();
 

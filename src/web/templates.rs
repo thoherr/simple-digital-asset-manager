@@ -138,6 +138,14 @@ pub struct TagOption {
 /// Format option for dropdowns.
 pub struct FormatOption {
     pub name: String,
+    pub count: u64,
+}
+
+/// Grouped format options for the multi-select format filter.
+pub struct FormatGroup {
+    pub key: String,
+    pub label: String,
+    pub formats: Vec<FormatOption>,
 }
 
 /// Volume option for dropdowns.
@@ -215,7 +223,7 @@ pub struct BrowsePage {
     pub per_page: u32,
     pub total_pages: u32,
     pub all_tags: Vec<TagOption>,
-    pub all_formats: Vec<FormatOption>,
+    pub format_groups: Vec<FormatGroup>,
     pub all_volumes: Vec<VolumeOption>,
     pub all_collections: Vec<CollectionOption>,
     pub collection: String,

@@ -155,6 +155,53 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
 .filter-row select:first-of-type {
     margin-left: auto;
 }
+/* Format multi-select filter */
+.format-filter { position: relative; }
+.format-filter-trigger {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    background: var(--bg-input);
+    cursor: pointer;
+    min-width: 100px;
+    max-width: 200px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: inherit;
+    font-family: inherit;
+}
+.format-filter-panel {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 220px;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    z-index: 100;
+    margin-top: 2px;
+    padding: 0.3rem 0;
+}
+.format-filter-panel.open { display: block; }
+.format-group + .format-group { border-top: 1px solid var(--border); margin-top: 0.2rem; padding-top: 0.2rem; }
+.format-group-header {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.75rem; font-weight: 600; font-size: 0.85rem; cursor: pointer;
+}
+.format-option {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.2rem 0.75rem 0.2rem 1.5rem; cursor: pointer; font-size: 0.85rem;
+}
+.format-option:hover { background: var(--badge-bg); }
+.format-count { color: var(--text-muted); font-size: 0.8em; }
+
 .path-filter-input {
     padding: 0.5rem 0.75rem;
     border: 1px solid var(--border);

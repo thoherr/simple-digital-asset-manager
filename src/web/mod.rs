@@ -20,7 +20,7 @@ use crate::query::QueryEngine;
 /// Populated lazily on first access, invalidated by write endpoints.
 struct DropdownCacheInner {
     tags: Option<Vec<(String, u64)>>,
-    formats: Option<Vec<String>>,
+    formats: Option<Vec<(String, u64)>>,
     volumes: Option<Vec<(String, String)>>,
     collections: Option<Vec<String>>,
 }
@@ -54,7 +54,7 @@ impl DropdownCache {
         tags
     }
 
-    pub fn get_formats(&self, catalog: &Catalog) -> Vec<String> {
+    pub fn get_formats(&self, catalog: &Catalog) -> Vec<(String, u64)> {
         if let Some(cached) = self.inner.read().unwrap().formats.as_ref() {
             return cached.clone();
         }
@@ -62,7 +62,7 @@ impl DropdownCache {
         if let Some(cached) = w.formats.as_ref() {
             return cached.clone();
         }
-        let formats = catalog.list_all_formats().unwrap_or_default();
+        let formats = catalog.list_all_format_counts().unwrap_or_default();
         w.formats = Some(formats.clone());
         formats
     }
