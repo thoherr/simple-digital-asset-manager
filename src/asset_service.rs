@@ -1744,7 +1744,7 @@ impl AssetService {
                             volume_filter_resolved.as_ref(),
                             &variant.content_hash,
                             loc,
-                            false,
+                            None,
                             max_age_days,
                             &mut result,
                             &on_file,
@@ -1762,7 +1762,7 @@ impl AssetService {
                         volume_filter_resolved.as_ref(),
                         &recipe.content_hash,
                         &recipe.location,
-                        true,
+                        Some(&recipe.variant_hash),
                         max_age_days,
                         &mut result,
                         &on_file,
@@ -1785,7 +1785,7 @@ impl AssetService {
         volume_filter: Option<&Volume>,
         content_hash: &str,
         loc: &FileLocation,
-        is_recipe: bool,
+        recipe_variant_hash: Option<&str>,
         max_age_days: Option<u64>,
         result: &mut VerifyResult,
         on_file: &impl Fn(&Path, VerifyStatus, Duration),
@@ -1850,16 +1850,16 @@ impl AssetService {
         match content_store.verify(content_hash, &full_path) {
             Ok(true) => {
                 result.verified += 1;
-                if is_recipe {
+                if let Some(variant_hash) = recipe_variant_hash {
                     catalog.update_recipe_verified_at(
-                        content_hash,
+                        variant_hash,
                         &volume.id.to_string(),
                         &loc.relative_path.to_string_lossy(),
                     )?;
                     self.update_sidecar_recipe_verified_at(
                         metadata_store,
                         catalog,
-                        content_hash,
+                        variant_hash,
                         loc.volume_id,
                         &loc.relative_path,
                     )?;
@@ -1880,7 +1880,7 @@ impl AssetService {
                 on_file(&full_path, VerifyStatus::Ok, file_start.elapsed());
             }
             Ok(false) => {
-                if is_recipe {
+                if let Some(variant_hash) = recipe_variant_hash {
                     // Recipe files are expected to change — report as modified, not failed
                     let new_hash = content_store.hash_file(&full_path)?;
 
@@ -1893,7 +1893,7 @@ impl AssetService {
                     }
 
                     // Update the sidecar file
-                    if let Some(asset_id) = catalog.find_asset_id_by_variant(content_hash)? {
+                    if let Some(asset_id) = catalog.find_asset_id_by_variant(variant_hash)? {
                         let uuid: Uuid = asset_id.parse()?;
                         let mut asset = metadata_store.load(uuid)?;
                         if let Some(recipe) = asset.recipes.iter_mut().find(|r| {
@@ -1908,9 +1908,9 @@ impl AssetService {
                                 .unwrap_or("");
                             if ext.eq_ignore_ascii_case("xmp") {
                                 let xmp = crate::xmp_reader::extract(&full_path);
-                                reapply_xmp_data(&xmp, &mut asset, content_hash);
+                                reapply_xmp_data(&xmp, &mut asset, variant_hash);
                                 catalog.insert_asset(&asset)?;
-                                if let Some(v) = asset.variants.iter().find(|v| v.content_hash == content_hash) {
+                                if let Some(v) = asset.variants.iter().find(|v| v.content_hash == variant_hash) {
                                     catalog.insert_variant(v)?;
                                 }
                             }
