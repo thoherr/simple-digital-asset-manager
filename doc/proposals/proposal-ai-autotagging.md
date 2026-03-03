@@ -401,6 +401,117 @@ Default label vocabulary (~100 common photography categories) would be embedded 
 
 ---
 
+## Future Extension: Face Recognition
+
+Auto-tagging with CLIP/SigLIP classifies images by *category* ("portrait", "group photo", "person") but cannot identify *who* is in a photo. Recognizing specific individuals (e.g., "Thomas", "Anna") requires a separate face recognition pipeline. This section documents how face recognition could be added as a follow-on feature, reusing the ONNX runtime and embedding infrastructure from the auto-tagging implementation.
+
+### Why CLIP Cannot Do This
+
+CLIP maps images and text into a shared semantic space. It understands *what* things look like conceptually, but has no memory of specific instances. It can match "a photo of a person wearing glasses" but cannot learn that a particular face belongs to "Thomas". Individual identity requires a dedicated face embedding model trained to produce unique, stable vectors per person.
+
+### How Face Recognition Works
+
+The pipeline used by Apple Photos, Google Photos, Immich, and Lightroom is well-established:
+
+1. **Face detection** -- locate face bounding boxes in each image. Models: SCRFD, RetinaFace, or MediaPipe Face Detection. Outputs: coordinates + confidence for each face.
+2. **Face embedding** -- encode each detected face crop into a 128-512 dimensional vector. Models: ArcFace, FaceNet, AdaFace. The vector is a compact "fingerprint" of that face's identity.
+3. **Face clustering** -- group similar face embeddings across the entire library using unsupervised clustering (DBSCAN, HDBSCAN, or Chinese Whispers). Each cluster represents one person. No labels needed at this stage.
+4. **User labeling** -- the user names clusters: "this cluster is Thomas", "this one is Anna". From then on, new photos containing a face close to a named cluster are automatically tagged with that person's name (e.g., `people/Thomas`).
+5. **Incremental updates** -- when new photos are imported, faces are detected, embedded, and matched against existing clusters/named identities. New unknown faces form new unnamed clusters.
+
+### ONNX Models Required
+
+| Model | Purpose | ONNX Size | Notes |
+|-------|---------|-----------|-------|
+| SCRFD-2.5GF | Face detection | ~3 MB | Lightweight, accurate. Used by Immich and InsightFace |
+| ArcFace-R50 | Face embedding (128-dim) | ~85 MB (FP32) / ~22 MB (INT8) | State-of-the-art face recognition. InsightFace ecosystem |
+| ArcFace-R18 | Face embedding (smaller) | ~30 MB (FP32) / ~8 MB (INT8) | Faster, slightly less accurate |
+
+Both models run on the same `ort` ONNX Runtime already required for auto-tagging. No additional runtime dependencies.
+
+### Schema
+
+```sql
+CREATE TABLE IF NOT EXISTS faces (
+    id INTEGER PRIMARY KEY,
+    asset_id TEXT NOT NULL REFERENCES assets(id),
+    variant_hash TEXT NOT NULL,
+    bbox_x REAL NOT NULL,           -- normalized 0..1
+    bbox_y REAL NOT NULL,
+    bbox_w REAL NOT NULL,
+    bbox_h REAL NOT NULL,
+    confidence REAL NOT NULL,
+    embedding BLOB NOT NULL,        -- 128 x f32 = 512 bytes per face
+    cluster_id INTEGER,
+    person_name TEXT,               -- user-assigned label, NULL until named
+    UNIQUE(asset_id, bbox_x, bbox_y, bbox_w, bbox_h)
+);
+CREATE INDEX idx_faces_asset ON faces(asset_id);
+CREATE INDEX idx_faces_cluster ON faces(cluster_id);
+CREATE INDEX idx_faces_person ON faces(person_name);
+```
+
+Storage overhead: ~0.5 KB per detected face. For a library with 100,000 photos and an average of 0.5 faces per photo: ~25 MB.
+
+### CLI Interface
+
+```
+dam faces [--asset <id>] [--volume <label>] [--query <QUERY>]
+          [--cluster] [--apply] [--json] [--log] [--time]
+dam faces label <CLUSTER_ID> <NAME>
+dam faces list [--unnamed]
+dam faces show <NAME>
+```
+
+- `dam faces` without `--cluster` detects and embeds faces (stores to DB). Report-only by default.
+- `dam faces --cluster` runs clustering on all unlabeled face embeddings.
+- `dam faces label 42 "Thomas"` names cluster 42. All faces in that cluster are tagged `people/Thomas` using the existing hierarchical tag system.
+- `dam faces list` shows all known people with face counts. `--unnamed` shows unnamed clusters.
+- `dam faces show "Thomas"` lists assets containing Thomas.
+
+### Web UI
+
+- **People page** (`/people`): grid of face cluster thumbnails, each showing a representative face crop, the assigned name (or "Unknown #42"), and a count. Click to browse all photos of that person. Inline rename.
+- **Asset detail page**: detected faces highlighted with bounding boxes on hover. Each face shows its name or cluster ID. Click to assign/change name.
+- **Browse filter**: `person:Thomas` search filter to find all photos containing Thomas.
+
+### What CLIP Can Still Contribute
+
+CLIP is useful for *attribute-based* person description alongside face identity:
+
+- "a photo of a child" / "a photo of an elderly person"
+- "a photo of someone wearing glasses"
+- "a photo of someone in a wedding dress"
+- "a group photo" / "a selfie"
+
+These categorical tags complement face identity tags. Auto-tagging might produce `portrait, people/Thomas, outdoors` where `portrait` comes from CLIP and `people/Thomas` comes from face recognition.
+
+### Implementation Effort
+
+| Phase | Effort |
+|-------|--------|
+| Face detection (SCRFD via `ort`) | 1 day |
+| Face embedding (ArcFace via `ort`) | 1 day |
+| Face clustering (DBSCAN in pure Rust) | 1 day |
+| Schema + face store | 0.5 day |
+| CLI commands | 1 day |
+| Web UI (people page, detail overlays, browse filter) | 2 days |
+| Tests | 1 day |
+| **Total** | **~7-8 days** |
+
+This assumes the ONNX runtime, model manager, and embedding infrastructure from auto-tagging are already in place. Without that foundation, add ~3 days for shared infrastructure.
+
+### Recommended Approach
+
+Build face recognition as a **Phase 2** after auto-tagging ships:
+
+1. **Phase 1**: Auto-tagging with CLIP/SigLIP (this proposal). Proves out the ONNX runtime integration, model manager, embedding store, and the `--features ai` build flag.
+2. **Phase 2**: Face recognition. Adds SCRFD + ArcFace models to the existing model manager. Reuses the same `ort` session management. New `faces` table alongside the existing `embeddings` table. Face identity tags flow through the existing tag system and XMP write-back.
+
+The total additional disk cost for face recognition models is modest: ~25 MB (INT8) on top of the ~85-340 MB already required for auto-tagging.
+
+---
+
 ## Alternative: Start with Option C, Migrate to A
 
 A lower-effort first step (2-3 days) would be to shell out to Ollama's API (`POST http://localhost:11434/api/generate` with a vision model) for tag suggestions. This avoids all the ONNX/model complexity but requires Ollama installed. Could serve as a prototype to validate the UX before investing in the embedded approach.
@@ -442,6 +553,10 @@ A lower-effort first step (2-3 days) would be to shell out to Ollama's API (`POS
 - [Ollama structured outputs](https://ollama.com/blog/structured-outputs)
 - [PhotoPrism vision model comparison](https://docs.photoprism.app/developer-guide/vision/model-comparison/)
 - [Moondream](https://moondream.ai/)
+
+### Face Recognition
+- [InsightFace (ArcFace, SCRFD)](https://github.com/deepinsight/insightface)
+- [Immich facial recognition](https://immich.app/docs/features/facial-recognition/)
 
 ### Real-World Implementations
 - [Immich smart search (uses CLIP)](https://docs.immich.app/features/searching/)
