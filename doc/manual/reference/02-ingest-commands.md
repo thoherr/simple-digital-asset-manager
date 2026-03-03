@@ -563,5 +563,133 @@ dam auto-group --apply --json | jq '{merged: .total_donors_merged, moved: .total
 
 ---
 
+## dam auto-tag
+
+> **Feature-gated**: requires building with `--features ai`. Not available in default builds.
+
+### NAME
+
+dam-auto-tag -- suggest or apply tags to images using AI (SigLIP zero-shot classification)
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] auto-tag [OPTIONS]
+dam [GLOBAL FLAGS] auto-tag --download
+dam [GLOBAL FLAGS] auto-tag --remove-model
+dam [GLOBAL FLAGS] auto-tag --list-models
+dam [GLOBAL FLAGS] auto-tag --similar <ASSET_ID>
+```
+
+### DESCRIPTION
+
+Uses SigLIP ViT-B/16-256 (a vision-language model) to classify images against a configurable tag vocabulary via zero-shot classification. Each image is encoded into a 768-dimensional embedding, scored against all label embeddings using sigmoid scoring, and labels above the confidence threshold are suggested as tags.
+
+By default runs in **report-only mode** -- shows suggested tags without applying them. Use `--apply` to write suggested tags to assets.
+
+The model files (~207 MB quantized ONNX) are downloaded from HuggingFace on first use. Use `--download` to pre-download, `--remove-model` to delete cached files, and `--list-models` to show model status and file sizes.
+
+**Image selection**: For each asset, the command looks for the best available image in this order: smart preview (2560px) → regular preview (800px) → original file on an online volume. Non-image assets (video, audio, documents) are skipped.
+
+**Embedding storage**: Image embeddings are stored in the SQLite catalog (`embeddings` table) for reuse. The `--similar` flag uses these stored embeddings to find visually similar assets by cosine similarity.
+
+**Default labels**: ~100 photography categories are built in (landscape, portrait, architecture, animals, food, etc.). Override with a custom labels file via `--labels`.
+
+**Prompt template**: Each label is wrapped with a prompt template (default: `"a photograph of {}"`) before text encoding. Configurable via `[ai] prompt` in `dam.toml`.
+
+### OPTIONS
+
+**--query \<QUERY\>**
+: Filter which assets to process using the same search syntax as `dam search`.
+
+**--asset \<ID\>**
+: Process a single asset by ID (supports prefix matching).
+
+**--volume \<LABEL\>**
+: Process only assets on a specific volume.
+
+**--threshold \<FLOAT\>**
+: Minimum confidence score to suggest a tag (default: 0.25). Range: 0.0 to 1.0. Higher values produce fewer but more confident suggestions.
+
+**--labels \<FILE\>**
+: Path to a custom labels file (one label per line). Overrides the built-in default labels.
+
+**--apply**
+: Write suggested tags to assets. Without this flag, tags are only reported.
+
+**--download**
+: Download model files from HuggingFace if not already present. Returns early after download.
+
+**--remove-model**
+: Delete cached model files from disk. Returns early.
+
+**--list-models**
+: Show model download status and file sizes. Returns early.
+
+**--similar \<ASSET_ID\>**
+: Find the 20 most visually similar assets to the given asset, using stored embeddings. The target asset must have been previously processed by `auto-tag`.
+
+`--json` outputs an `AutoTagResult` with `assets_processed`, `assets_skipped`, `tags_suggested`, `tags_applied`, `errors`, `dry_run`, and per-asset `suggestions`.
+
+`--log` prints per-asset status to stderr.
+
+### EXAMPLES
+
+Download the model (first-time setup):
+
+```bash
+dam auto-tag --download
+```
+
+Preview suggested tags for all images (report-only):
+
+```bash
+dam auto-tag
+```
+
+Auto-tag a specific asset and apply the tags:
+
+```bash
+dam auto-tag --asset a1b2c3d4 --apply
+```
+
+Auto-tag images matching a search query with a higher threshold:
+
+```bash
+dam auto-tag --query "type:image rating:4+" --threshold 0.4 --apply
+```
+
+Use a custom labels file:
+
+```bash
+dam auto-tag --labels my-labels.txt --apply
+```
+
+Find visually similar images:
+
+```bash
+dam auto-tag --similar a1b2c3d4
+```
+
+Show model status:
+
+```bash
+dam auto-tag --list-models
+```
+
+Auto-tag with JSON output for scripting:
+
+```bash
+dam auto-tag --query "tag:unreviewed" --json | jq '.suggestions[] | {asset: .asset_id, tags: [.suggested_tags[].tag]}'
+```
+
+### SEE ALSO
+
+[tag](#dam-tag) -- manually add or remove tags.
+[search](04-retrieve-commands.md#dam-search) -- `tag:` filter for finding tagged assets.
+[Configuration](08-configuration.md#ai-section) -- `[ai]` section for default threshold, labels, and prompt template.
+
+---
+
 Previous: [Setup Commands](01-setup-commands.md) -- `init`, `volume add`, `volume list`.
 Next: [Organize Commands](03-organize-commands.md) -- `collection`, `saved-search`.

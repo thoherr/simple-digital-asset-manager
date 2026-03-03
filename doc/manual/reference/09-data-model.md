@@ -96,6 +96,12 @@ erDiagram
         string query "search filter string"
         string sort "optional sort order"
     }
+
+    Embedding {
+        string asset_id PK "parent asset"
+        blob embedding "768 x f32 vector"
+        string model "model identifier"
+    }
 ```
 
 ---
@@ -250,6 +256,20 @@ A named query (smart album) stored in `searches.toml`. Re-evaluated every time i
 | `query` | String | Search filter string in the same syntax as `dam search` (e.g. `type:image tag:landscape rating:4+`). |
 | `sort` | Option\<String\> | Sort order (e.g. `date_desc`, `name_asc`). Omitted means default (`date_desc`). |
 
+### Embedding
+
+> Only present when built with `--features ai`.
+
+A stored image embedding vector for an asset, used by `dam auto-tag` for classification and `--similar` for visual similarity search.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `asset_id` | String | Primary key. Foreign key to the parent Asset. |
+| `embedding` | Blob | 768-dimensional float32 vector (3072 bytes), stored as little-endian binary. |
+| `model` | String | Model identifier (default: `siglip-vit-b16-256`). Ensures embeddings from different models are not compared. |
+
+Storage overhead: ~3 KB per asset. For 100,000 assets: ~300 MB in SQLite.
+
 ---
 
 ## Variant Roles
@@ -302,7 +322,7 @@ catalog/
 
 A single `catalog.db` file providing fast indexed queries. Contains denormalized columns for efficient browse-grid rendering. The catalog is always rebuildable from the YAML sidecars via `dam rebuild-catalog` -- it is a performance optimization, not a source of truth.
 
-**Tables**: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `collections`, `collection_assets`, `stacks`
+**Tables**: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `collections`, `collection_assets`, `stacks`, `embeddings` (with `--features ai`)
 
 **Performance indexes** (created automatically via schema migrations):
 

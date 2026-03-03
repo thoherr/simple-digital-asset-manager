@@ -58,6 +58,8 @@ Current previews are 800px thumbnails — enough for browse cards but too small 
 
 ### 4. AI-Assisted Tagging & Visual Similarity
 
+> **Status (v2.0.1):** Core functionality implemented. `dam auto-tag` uses SigLIP ViT-B/16-256 via ONNX Runtime for zero-shot classification against ~100 built-in photography categories. Feature-gated behind `--features ai`. Model files (~207 MB quantized) downloaded from HuggingFace on first use. Embeddings stored for `--similar` visual similarity search. Configurable via `[ai]` section in `dam.toml`. **Not yet implemented**: multi-tier model selection (mobile/standard/accurate), Ollama VLM integration, web UI "Suggest tags" button.
+
 Integrate with a local vision model to suggest tags from image content and enable visual similarity search.
 
 **Command:** `dam auto-tag [--asset <id>] [--model clip] [--threshold 0.5] [--apply]`

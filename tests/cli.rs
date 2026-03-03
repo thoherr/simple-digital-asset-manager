@@ -8367,18 +8367,24 @@ mod auto_tag {
         let img_path = root.join("test.jpg");
         img.save(&img_path).unwrap();
 
-        // Import and get asset ID
-        let import_output = dam()
+        // Import
+        dam()
             .current_dir(&root)
-            .args(["import", img_path.to_str().unwrap(), "--json"])
+            .args(["import", img_path.to_str().unwrap()])
             .assert()
             .success();
 
-        let import_stdout = String::from_utf8_lossy(&import_output.get_output().stdout);
-        let import_json: serde_json::Value = serde_json::from_str(&import_stdout).unwrap();
-        let asset_id = import_json["assets"][0]["asset_id"]
-            .as_str()
-            .unwrap();
+        // Get asset ID via search
+        let search_output = dam()
+            .current_dir(&root)
+            .args(["search", "-q", "type:image"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let asset_id = String::from_utf8(search_output).unwrap();
+        let asset_id = asset_id.trim();
         let short_id = &asset_id[..8];
 
         dam()

@@ -411,6 +411,39 @@ abc3f7c9...  DSC_0042.nef
 
 This is useful for identifying redundant copies, verifying backups, or cleaning up after file reorganization. See the [maintenance chapter](07-maintenance.md) for more on managing file locations.
 
+## AI Auto-Tagging
+
+> Requires building with `--features ai`. See [Building & Testing](../developer/03-building-and-testing.md).
+
+After importing, you can use AI to automatically suggest tags for your images:
+
+```
+# First time: download the SigLIP model (~207 MB)
+dam auto-tag --download
+
+# Preview suggested tags (report-only)
+dam auto-tag --query "type:image"
+
+# Apply suggested tags
+dam auto-tag --query "type:image" --apply
+```
+
+The command uses SigLIP ViT-B/16-256 for zero-shot classification against ~100 built-in photography categories (landscape, portrait, architecture, animals, etc.). Tags above the confidence threshold (default 0.25) are suggested. Use `--threshold` to adjust sensitivity.
+
+You can provide a custom label vocabulary:
+
+```
+dam auto-tag --labels my-labels.txt --apply
+```
+
+Image embeddings are stored in the catalog, enabling visual similarity search:
+
+```
+dam auto-tag --similar <asset-id>
+```
+
+See the [auto-tag reference](../reference/02-ingest-commands.md#dam-auto-tag) for all options and the [configuration reference](../reference/08-configuration.md#ai-section) for `[ai]` settings in `dam.toml`.
+
 ---
 
 Next: [Organizing Assets](04-organize.md) -- tags, ratings, labels, grouping, collections, and saved searches.

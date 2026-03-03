@@ -1,4 +1,6 @@
-# Proposal: AI Auto-Tagging
+# Proposal: AI Auto-Tagging — IMPLEMENTED (v2.0.1)
+
+> **Status**: Implemented in v2.0.1 using SigLIP ViT-B/16-256 (Option A with ONNX Runtime). The implementation uses a single model tier (`standard` = SigLIP ViT-B/16-256), feature-gated behind `--features ai`. Multi-tier model selection and Ollama integration are deferred to a future version. See `dam auto-tag --help` for usage.
 
 Zero-shot image classification using CLIP/SigLIP embeddings for automated tag suggestions, plus visual similarity search as a bonus feature.
 

@@ -18,6 +18,15 @@ cargo build --release
 
 Produces an optimized binary at `target/release/dam`. Significantly faster runtime performance. Use this for production deployment.
 
+### AI Feature Build
+
+```bash
+cargo build --features ai
+cargo build --release --features ai
+```
+
+Enables the `dam auto-tag` command with SigLIP-based zero-shot image classification. Adds ONNX Runtime (`ort`), `ndarray`, and `tokenizers` as dependencies. The ONNX Runtime shared library is downloaded automatically during build. Without `--features ai`, these dependencies are not compiled and the `auto-tag` command is not available.
+
 ### Requirements
 
 - **Rust edition**: 2021 (stable toolchain)
@@ -32,7 +41,7 @@ Produces an optimized binary at `target/release/dam`. Significantly faster runti
 cargo test
 ```
 
-Runs approximately 693 tests total: ~465 unit tests and ~228 integration tests.
+Runs approximately 693 tests total: ~465 unit tests and ~228 integration tests. With `--features ai`, adds ~41 unit tests and ~13 integration tests.
 
 ### Unit Tests Only
 
@@ -159,6 +168,9 @@ Generates `doc/manual/dam-manual.pdf` from the 21 Markdown source files. The scr
 | `glob-match` | Filename glob matching for import exclusion patterns |
 | `chrono` | Date/time handling with serde support |
 | `anyhow` / `thiserror` | Error handling |
+| `ort` | ONNX Runtime bindings for AI inference (optional, `ai` feature) |
+| `ndarray` | N-dimensional array operations for tensor manipulation (optional, `ai` feature) |
+| `tokenizers` | HuggingFace tokenizer for SentencePiece text encoding (optional, `ai` feature) |
 
 ### Dev Dependencies
 
@@ -175,6 +187,8 @@ These tools are not Rust dependencies but are invoked as subprocesses for specif
 - **dcraw** or **LibRaw** (`dcraw_emu`) -- RAW image preview extraction. Used to decode camera-native formats (NEF, ARW, CR2, CR3, etc.) into RGB data for thumbnail generation. LibRaw's `dcraw_emu` is preferred when available.
 
 - **ffmpeg** -- Video thumbnail extraction. Used to capture a frame from video files (MP4, MOV, AVI, etc.) for preview generation.
+
+- **curl** -- Model file download for AI auto-tagging (only with `--features ai`). Used to download ONNX model files from HuggingFace. Available by default on macOS and most Linux distributions.
 
 To check if these tools are available:
 

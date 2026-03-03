@@ -15,6 +15,7 @@ A command-line digital asset manager built in Rust, designed for large collectio
 - **Stacks** — group burst shots and similar-scene images into collapsible stacks, showing only the "pick" in the browse grid
 - **Hierarchical tags** — tree-structured keywords with Lightroom `lr:hierarchicalSubject` interop
 - **Saved searches & collections** — smart albums (dynamic queries) and static albums (curated lists)
+- **AI auto-tagging** — zero-shot image classification using SigLIP ViT-B/16-256 for automated tag suggestions, plus visual similarity search via stored embeddings (optional, requires `--features ai`)
 - **Web UI** — browser-based interface with search, inline editing, batch operations, keyboard navigation, lightbox viewer, dark mode, grid density controls, calendar heatmap, faceted sidebar, and OS integration (reveal in Finder, open terminal)
 - **Flexible output** — JSON on all commands, custom format templates, quiet mode for scripting
 
@@ -43,9 +44,9 @@ dam serve
 
 ## Commands
 
-28 commands covering setup, import, search, editing, maintenance, and more:
+29 commands covering setup, import, search, editing, maintenance, and more:
 
-`init` · `volume add/list/combine/remove` · `import` · `delete` · `export` · `search` · `show` · `edit` · `tag` · `group` · `auto-group` · `stack` · `duplicates` · `dedup` · `generate-previews` · `relocate` · `verify` · `sync` · `refresh` · `cleanup` · `stats` · `backup-status` · `fix-roles` · `fix-dates` · `rebuild-catalog` · `saved-search` · `collection` · `serve`
+`init` · `volume add/list/combine/remove` · `import` · `delete` · `export` · `search` · `show` · `edit` · `tag` · `group` · `auto-group` · `auto-tag` · `stack` · `duplicates` · `dedup` · `generate-previews` · `relocate` · `verify` · `sync` · `refresh` · `cleanup` · `stats` · `backup-status` · `fix-roles` · `fix-dates` · `rebuild-catalog` · `saved-search` · `collection` · `serve`
 
 **Global flags**: `--json`, `--log`, `--debug`, `--time`. Run `dam --help` or `dam <command> --help` for usage.
 
@@ -76,8 +77,13 @@ Configuration is documented in the [Configuration Reference](doc/manual/referenc
 
 - **dcraw** or **LibRaw** (dcraw_emu) — RAW file preview extraction
 - **ffmpeg** — video thumbnail extraction
+- **curl** — model file download for AI auto-tagging (only needed with `--features ai`)
 
 These are optional. When missing, RAW and video files get an info card preview instead.
+
+## AI Auto-Tagging (Optional Feature)
+
+Build with `cargo build --features ai` to enable the `dam auto-tag` command. This uses SigLIP ViT-B/16-256 (via ONNX Runtime) for zero-shot image classification against a configurable tag vocabulary. Model files (~207 MB) are downloaded on first use from HuggingFace. Embeddings are stored for visual similarity search (`dam auto-tag --similar <asset-id>`). See the [Configuration Reference](doc/manual/reference/08-configuration.md) for `[ai]` settings.
 
 ## Technology
 

@@ -243,7 +243,9 @@ See [item 5](#5-backup-coverage-report) above.
 
 ---
 
-### 15. AI-Assisted Tagging
+### 15. AI-Assisted Tagging — IMPLEMENTED (v2.0.1)
+
+> **Status:** Core functionality implemented. See `dam auto-tag --help` and [`proposal-ai-autotagging.md`](proposal-ai-autotagging.md) for details. Uses SigLIP ViT-B/16-256 via ONNX Runtime, feature-gated behind `--features ai`. **Remaining**: web UI "Suggest tags" button, multi-model tiers, Ollama integration.
 
 Integrate with a local vision model or API to suggest tags from image content.
 

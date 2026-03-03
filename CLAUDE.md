@@ -20,8 +20,8 @@ A digital asset manager designed for large collections of images and videos (ter
 - **Platforms**: macOS, Linux, Windows
 - **Interface**: CLI-first (`dam` command)
 - **Catalog**: SQLite (cache/index), YAML sidecar files (source of truth)
-- **Key crates**: clap, sha2, serde, rusqlite, kamadak-exif, quick-xml, regex, image, imageproc, ab_glyph, lofty, uuid, axum, askama, tokio, tower-http, toml, glob-match
-- **External tools**: dcraw/libraw (RAW previews), ffmpeg (video thumbnails)
+- **Key crates**: clap, sha2, serde, rusqlite, kamadak-exif, quick-xml, regex, image, imageproc, ab_glyph, lofty, uuid, axum, askama, tokio, tower-http, toml, glob-match; **optional (ai feature)**: ort, ndarray, tokenizers
+- **External tools**: dcraw/libraw (RAW previews), ffmpeg (video thumbnails), curl (AI model download)
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Core layers: CLI → Core Library (Asset Service, Content Store, Metadata Store,
 
 Core CLI is functional. See `doc/specification.md` for full requirements.
 
-**Implemented commands**: `init`, `volume add/list/combine/remove`, `import`, `delete`, `export`, `search`, `show`, `tag`, `edit`, `group`, `auto-group`, `stack`, `duplicates`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `relocate`, `update-location`, `verify`, `sync`, `refresh`, `cleanup`, `dedup`, `backup-status`, `stats`, `serve`, `saved-search`, `collection`
+**Implemented commands**: `init`, `volume add/list/combine/remove`, `import`, `delete`, `export`, `search`, `show`, `tag`, `edit`, `group`, `auto-group`, `auto-tag`, `stack`, `duplicates`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `relocate`, `update-location`, `verify`, `sync`, `refresh`, `cleanup`, `dedup`, `backup-status`, `stats`, `serve`, `saved-search`, `collection`
 
 **Import behavior**:
 - **Stem-based auto-grouping**: Files sharing the same filename stem in the same directory are grouped into one Asset during import. RAW files take priority as the primary variant (defining asset identity and EXIF data). Additional media files become extra variants on the same asset.

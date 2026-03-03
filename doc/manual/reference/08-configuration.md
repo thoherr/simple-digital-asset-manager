@@ -244,6 +244,51 @@ max_age_days = 30
 
 ---
 
+## [ai] Section
+
+> **Feature-gated**: these settings only take effect when dam is built with `--features ai`.
+
+Controls AI auto-tagging behavior for `dam auto-tag`.
+
+### threshold
+
+- **Type:** float (0.0--1.0)
+- **Default:** `0.25`
+- **Validation:** must be between 0.0 and 1.0
+
+Minimum confidence score for a tag to be suggested. Higher values produce fewer but more confident suggestions. Lower values produce more suggestions with more noise.
+
+### labels
+
+- **Type:** string (file path, optional)
+- **Default:** none (uses built-in ~100 photography categories)
+
+Path to a custom labels file (one label per line). When set, overrides the built-in default labels. The CLI `--labels` flag overrides this value.
+
+### model_dir
+
+- **Type:** string (directory path)
+- **Default:** `"~/.dam/models"`
+
+Where to cache downloaded model files. The `~` prefix is expanded to the user's home directory.
+
+### prompt
+
+- **Type:** string
+- **Default:** `"a photograph of {}"`
+
+Text encoder prompt template. The `{}` placeholder is replaced with each label name before encoding. Adjusting the prompt can improve classification accuracy for specific use cases (e.g., `"a photo of a {}"` or `"a professional photograph of {}"`).
+
+```toml
+[ai]
+threshold = 0.3
+labels = "my-labels.txt"
+model_dir = "~/.dam/models"
+prompt = "a photograph of {}"
+```
+
+---
+
 ## Full Example
 
 A complete `dam.toml` with all options set and annotated:
@@ -294,6 +339,13 @@ prefer = "Selects"
 [verify]
 # Skip files verified within this many days (incremental verify).
 max_age_days = 30
+
+# AI auto-tagging settings (only with --features ai).
+[ai]
+threshold = 0.3
+# labels = "my-labels.txt"
+model_dir = "~/.dam/models"
+prompt = "a photograph of {}"
 ```
 
 ---
@@ -346,6 +398,10 @@ When a field is absent from `dam.toml`, these defaults apply:
 | `import.smart_previews` | `false` |
 | `dedup.prefer` | none |
 | `verify.max_age_days` | none |
+| `ai.threshold` | `0.25` |
+| `ai.labels` | none |
+| `ai.model_dir` | `"~/.dam/models"` |
+| `ai.prompt` | `"a photograph of {}"` |
 
 ---
 

@@ -2,6 +2,19 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v2.0.1
+
+### New Features
+- **AI auto-tagging** — `dam auto-tag [--query <QUERY>] [--asset <id>] [--volume <label>] [--threshold 0.25] [--labels <file>] [--apply]` uses SigLIP ViT-B/16-256 (via ONNX Runtime) for zero-shot image classification against a configurable tag vocabulary (~100 default photography categories). Report-only by default; `--apply` writes suggested tags to assets. Feature-gated behind `--features ai` so non-AI users pay zero binary/dependency cost. Model files (~207 MB quantized) downloaded from HuggingFace on first use via `--download`. Model management: `--list-models`, `--remove-model`. Visual similarity search: `--similar <asset-id>` finds the 20 most visually similar assets using stored 768-dim embeddings. Configurable via `[ai]` section in `dam.toml` (threshold, labels file, model directory, prompt template). Supports `--json`, `--log`, `--time`.
+
+### New Modules (ai feature)
+- `src/ai.rs` — SigLIP model wrapper: ONNX session management, image preprocessing (256×256 squash resize, normalize to [-1,1]), SentencePiece tokenization (pad to 64), sigmoid scoring (`logit_scale * dot + logit_bias`), ~100 default photography labels.
+- `src/model_manager.rs` — Download and cache management for SigLIP ONNX model files from HuggingFace (Xenova/siglip-base-patch16-256).
+- `src/embedding_store.rs` — SQLite-backed 768-dim float vector storage with brute-force cosine similarity search.
+
+### Testing
+- Added 41 unit tests for AI modules (preprocessing, tokenization, normalization, cosine similarity, embedding store, model manager) and 13 integration tests covering auto-tag dry run, apply, JSON output, custom labels, threshold, similarity search, and non-image skipping.
+
 ## v1.8.9
 
 ### New Features
