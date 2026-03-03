@@ -166,7 +166,7 @@ pub struct AiConfig {
 }
 
 fn default_ai_threshold() -> f32 {
-    0.25
+    0.1
 }
 
 fn default_ai_model_dir() -> String {
@@ -180,7 +180,7 @@ fn default_ai_prompt() -> String {
 impl Default for AiConfig {
     fn default() -> Self {
         Self {
-            threshold: 0.25,
+            threshold: 0.1,
             labels: None,
             model_dir: "~/.dam/models".to_string(),
             prompt: "a photograph of {}".to_string(),

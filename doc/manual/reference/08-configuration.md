@@ -253,7 +253,7 @@ Controls AI auto-tagging behavior for `dam auto-tag`.
 ### threshold
 
 - **Type:** float (0.0--1.0)
-- **Default:** `0.25`
+- **Default:** `0.1`
 - **Validation:** must be between 0.0 and 1.0
 
 Minimum confidence score for a tag to be suggested. Higher values produce fewer but more confident suggestions. Lower values produce more suggestions with more noise.
@@ -398,7 +398,7 @@ When a field is absent from `dam.toml`, these defaults apply:
 | `import.smart_previews` | `false` |
 | `dedup.prefer` | none |
 | `verify.max_age_days` | none |
-| `ai.threshold` | `0.25` |
+| `ai.threshold` | `0.1` |
 | `ai.labels` | none |
 | `ai.model_dir` | `"~/.dam/models"` |
 | `ai.prompt` | `"a photograph of {}"` |

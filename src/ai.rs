@@ -11,7 +11,9 @@ use ort::value::Tensor;
 use serde::Serialize;
 use tokenizers::Tokenizer;
 
-/// SigLIP sigmoid scoring parameters (from model config).
+/// SigLIP sigmoid scoring parameters (trained weights from google/siglip-base-patch16-256).
+/// `LOGIT_SCALE` is stored as log(scale) — must be exponentiated before use:
+///   logit = exp(LOGIT_SCALE) * dot_product + LOGIT_BIAS
 const LOGIT_SCALE: f32 = 4.713;
 const LOGIT_BIAS: f32 = -12.928;
 
@@ -62,16 +64,31 @@ pub enum AutoTagStatus {
     Error(String),
 }
 
+/// Cached ONNX output metadata (name, number of dimensions).
+#[allow(dead_code)]
+struct OutputInfo {
+    name: String,
+    ndim: Option<usize>,
+}
+
 /// SigLIP vision-language model wrapper.
 pub struct SigLipModel {
     vision: Session,
     text: Session,
     tokenizer: Tokenizer,
+    debug: bool,
+    vision_outputs: Vec<OutputInfo>,
+    text_outputs: Vec<OutputInfo>,
 }
 
 impl SigLipModel {
     /// Load ONNX sessions and tokenizer from the model directory.
     pub fn load(model_dir: &Path) -> Result<Self> {
+        Self::load_with_debug(model_dir, false)
+    }
+
+    /// Load ONNX sessions with debug logging enabled.
+    pub fn load_with_debug(model_dir: &Path, debug: bool) -> Result<Self> {
         let vision_path = model_dir.join("onnx").join("vision_model_quantized.onnx");
         let text_path = model_dir.join("onnx").join("text_model_quantized.onnx");
         let tokenizer_path = model_dir.join("tokenizer.json");
@@ -123,6 +140,34 @@ impl SigLipModel {
             .commit_from_file(&text_path)
             .with_context(|| format!("Failed to load text model from {}", text_path.display()))?;
 
+        // Cache output metadata (names + dimensionality from dtype)
+        let vision_outputs: Vec<OutputInfo> = vision.outputs().iter().map(|o| {
+            let ndim = match o.dtype() {
+                ort::value::ValueType::Tensor { shape, .. } => Some(shape.len()),
+                _ => None,
+            };
+            OutputInfo { name: o.name().to_string(), ndim }
+        }).collect();
+
+        let text_outputs: Vec<OutputInfo> = text.outputs().iter().map(|o| {
+            let ndim = match o.dtype() {
+                ort::value::ValueType::Tensor { shape, .. } => Some(shape.len()),
+                _ => None,
+            };
+            OutputInfo { name: o.name().to_string(), ndim }
+        }).collect();
+
+        if debug {
+            eprintln!("  [debug] vision model outputs:");
+            for (i, o) in vision.outputs().iter().enumerate() {
+                eprintln!("    [{i}] '{}' {:?}", o.name(), o.dtype());
+            }
+            eprintln!("  [debug] text model outputs:");
+            for (i, o) in text.outputs().iter().enumerate() {
+                eprintln!("    [{i}] '{}' {:?}", o.name(), o.dtype());
+            }
+        }
+
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
             .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
 
@@ -130,6 +175,9 @@ impl SigLipModel {
             vision,
             text,
             tokenizer,
+            debug,
+            vision_outputs,
+            text_outputs,
         })
     }
 
@@ -142,11 +190,7 @@ impl SigLipModel {
             ort::inputs!["pixel_values" => input_value],
         )?;
 
-        let embedding = outputs[0]
-            .try_extract_array::<f32>()
-            .context("Failed to extract vision embedding tensor")?;
-
-        let emb: Vec<f32> = embedding.iter().copied().collect();
+        let emb = extract_pooled_embedding(&outputs, &self.vision_outputs, "vision", self.debug)?;
         Ok(l2_normalize(&emb))
     }
 
@@ -163,21 +207,17 @@ impl SigLipModel {
             ort::inputs!["input_ids" => input_value],
         )?;
 
-        let embeddings = outputs[0]
-            .try_extract_array::<f32>()
-            .context("Failed to extract text embedding tensor")?;
+        let pooled = extract_pooled_embedding(&outputs, &self.text_outputs, "text", self.debug)?;
+        let shape_dim = pooled.len();
+        let batch_size = texts.len();
 
-        let shape = embeddings.shape();
-        let batch_size = shape[0];
-
+        // If the pooled output is [batch, dim], split into per-item embeddings
+        let dim = shape_dim / batch_size;
         let mut result = Vec::with_capacity(batch_size);
         for i in 0..batch_size {
-            let emb: Vec<f32> = embeddings
-                .index_axis(Axis(0), i)
-                .iter()
-                .copied()
-                .collect();
-            result.push(l2_normalize(&emb));
+            let start = i * dim;
+            let end = start + dim;
+            result.push(l2_normalize(&pooled[start..end]));
         }
 
         Ok(result)
@@ -192,6 +232,36 @@ impl SigLipModel {
         label_embs: &[Vec<f32>],
         threshold: f32,
     ) -> Vec<AutoTagSuggestion> {
+        Self::classify_impl(image_emb, labels, label_embs, threshold, false)
+    }
+
+    /// Classify with optional debug output showing per-label scoring details.
+    pub fn classify_debug(
+        &self,
+        image_emb: &[f32],
+        labels: &[String],
+        label_embs: &[Vec<f32>],
+        threshold: f32,
+    ) -> Vec<AutoTagSuggestion> {
+        Self::classify_impl(image_emb, labels, label_embs, threshold, true)
+    }
+
+    fn classify_impl(
+        image_emb: &[f32],
+        labels: &[String],
+        label_embs: &[Vec<f32>],
+        threshold: f32,
+        debug: bool,
+    ) -> Vec<AutoTagSuggestion> {
+        let scale = LOGIT_SCALE.exp();
+
+        if debug {
+            eprintln!("  [debug] scoring: exp({LOGIT_SCALE:.3}) = {scale:.1}, bias = {LOGIT_BIAS:.3}, threshold = {threshold:.3}");
+        }
+
+        // Collect all scores for debug sorting
+        let mut all_scores: Vec<(String, f32, f32, f32)> = Vec::new();
+
         let mut suggestions: Vec<AutoTagSuggestion> = labels
             .iter()
             .zip(label_embs.iter())
@@ -201,8 +271,13 @@ impl SigLipModel {
                     .zip(label_emb.iter())
                     .map(|(a, b)| a * b)
                     .sum();
-                let logit = LOGIT_SCALE * dot + LOGIT_BIAS;
+                let logit = scale * dot + LOGIT_BIAS;
                 let confidence = sigmoid(logit);
+
+                if debug {
+                    all_scores.push((label.clone(), dot, logit, confidence));
+                }
+
                 if confidence >= threshold {
                     Some(AutoTagSuggestion {
                         tag: label.clone(),
@@ -214,9 +289,91 @@ impl SigLipModel {
             })
             .collect();
 
+        if debug {
+            all_scores.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap());
+            let top_n = all_scores.len().min(15);
+            eprintln!("  [debug] top {top_n} label scores:");
+            for (label, dot, logit, conf) in &all_scores[..top_n] {
+                let marker = if *conf >= threshold { ">>>" } else { "   " };
+                eprintln!("  {marker} {label:30} dot={dot:+.4}  logit={logit:+.2}  sigmoid={conf:.4}");
+            }
+        }
+
         suggestions.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
         suggestions
     }
+}
+
+/// Extract the pooled embedding from ONNX model outputs.
+///
+/// ONNX SigLIP encoder models typically have two outputs:
+///   [0] `last_hidden_state` — 3D tensor [batch, seq_len, hidden_dim]
+///   [1] `pooler_output`     — 2D tensor [batch, hidden_dim]
+///
+/// We need the 2D pooled output for cross-modal alignment. Using the 3D
+/// `last_hidden_state` (flattened) produces random-noise dot products because
+/// the embeddings are not in the shared vision-language space.
+fn extract_pooled_embedding(
+    outputs: &ort::session::SessionOutputs,
+    output_meta: &[OutputInfo],
+    model_name: &str,
+    debug: bool,
+) -> Result<Vec<f32>> {
+    let num_outputs = output_meta.len();
+
+    // Debug: log all output shapes
+    if debug {
+        for i in 0..num_outputs {
+            if let Ok(tensor) = outputs[i].try_extract_array::<f32>() {
+                eprintln!("  [debug] {model_name} output[{i}] '{}' shape={:?}", output_meta[i].name, tensor.shape());
+            }
+        }
+    }
+
+    // First pass: look for a 2D output (the pooled embedding)
+    for i in 0..num_outputs {
+        let tensor = outputs[i]
+            .try_extract_array::<f32>()
+            .with_context(|| format!("Failed to extract {model_name} output[{i}] '{}'", output_meta[i].name))?;
+        let shape = tensor.shape();
+
+        if shape.len() == 2 {
+            // [batch, dim] — this is the pooled embedding
+            let emb: Vec<f32> = tensor.iter().copied().collect();
+            if debug {
+                eprintln!("  [debug] using {model_name} output[{i}] '{}' as pooled embedding (dim={})", output_meta[i].name, shape[1]);
+            }
+            return Ok(emb);
+        }
+    }
+
+    // No 2D output found — all outputs are 3D (last_hidden_state only).
+    // Fall back: take first token (CLS) from the first 3D output.
+    for i in 0..num_outputs {
+        let tensor = outputs[i]
+            .try_extract_array::<f32>()
+            .with_context(|| format!("Failed to extract {model_name} output[{i}]"))?;
+        let shape = tensor.shape();
+        if shape.len() == 3 {
+            let dim = shape[2];
+            let emb: Vec<f32> = tensor
+                .index_axis(Axis(0), 0)  // batch 0
+                .index_axis(Axis(0), 0)  // token 0 (CLS)
+                .iter()
+                .copied()
+                .collect();
+            eprintln!(
+                "Warning: {model_name} model has no pooled output; using CLS token from '{}' (dim={dim}). Results may be degraded.",
+                output_meta[i].name
+            );
+            return Ok(emb);
+        }
+    }
+
+    anyhow::bail!(
+        "No suitable embedding output found in {model_name} model. Outputs: {}",
+        output_meta.iter().map(|o| o.name.as_str()).collect::<Vec<_>>().join(", ")
+    )
 }
 
 /// Preprocess an image for SigLIP: resize to 256x256, normalize to [-1, 1].
@@ -575,28 +732,33 @@ mod tests {
         let labels = vec!["similar".to_string(), "different".to_string()];
         let label_embs = vec![similar_emb, different_emb];
 
-        // Both identical unit vectors give dot=1.0, logit=4.713-12.928=-8.215, sigmoid≈0.00027
-        // The similar embedding scores higher than the different one
+        // Identical unit vectors: dot=1.0, logit=exp(4.713)*1.0-12.928≈98.7, sigmoid≈1.0
+        // Orthogonal-ish: dot≈0.036, logit=exp(4.713)*0.036-12.928≈-8.9, sigmoid≈0.0001
         let all = score_and_filter(&image_emb, &labels, &label_embs, 0.0);
         assert_eq!(all.len(), 2);
         assert!(
-            all[0].confidence > all[1].confidence || all[0].tag == "similar",
+            all[0].confidence > all[1].confidence,
             "Expected 'similar' to score higher than 'different'"
         );
+        assert_eq!(all[0].tag, "similar");
+        // Identical vectors should produce a high confidence
+        assert!(all[0].confidence > 0.99, "Expected high confidence for identical vectors, got {}", all[0].confidence);
 
-        // With a threshold above the max score, nothing matches
-        let none = score_and_filter(&image_emb, &labels, &label_embs, 0.5);
-        assert!(none.is_empty(), "Expected no suggestions at high threshold");
+        // With a medium threshold, only the similar label matches
+        let some = score_and_filter(&image_emb, &labels, &label_embs, 0.5);
+        assert_eq!(some.len(), 1, "Expected only 'similar' at threshold 0.5");
+        assert_eq!(some[0].tag, "similar");
     }
 
-    /// Standalone scoring function for testing (mirrors SigLipModel::classify logic).
+    /// Standalone scoring function for testing (mirrors SigLipModel::classify_impl logic).
     fn score_and_filter(
         image_emb: &[f32],
         labels: &[String],
         label_embs: &[Vec<f32>],
         threshold: f32,
     ) -> Vec<AutoTagSuggestion> {
-        labels
+        let scale = LOGIT_SCALE.exp();
+        let mut results: Vec<AutoTagSuggestion> = labels
             .iter()
             .zip(label_embs.iter())
             .filter_map(|(label, label_emb)| {
@@ -605,7 +767,7 @@ mod tests {
                     .zip(label_emb.iter())
                     .map(|(a, b)| a * b)
                     .sum();
-                let logit = LOGIT_SCALE * dot + LOGIT_BIAS;
+                let logit = scale * dot + LOGIT_BIAS;
                 let confidence = sigmoid(logit);
                 if confidence >= threshold {
                     Some(AutoTagSuggestion {
@@ -616,7 +778,9 @@ mod tests {
                     None
                 }
             })
-            .collect()
+            .collect();
+        results.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
+        results
     }
 
     #[test]

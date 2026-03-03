@@ -609,7 +609,7 @@ The model files (~207 MB quantized ONNX) are downloaded from HuggingFace on firs
 : Process only assets on a specific volume.
 
 **--threshold \<FLOAT\>**
-: Minimum confidence score to suggest a tag (default: 0.25). Range: 0.0 to 1.0. Higher values produce fewer but more confident suggestions.
+: Minimum confidence score to suggest a tag (default: 0.1). Range: 0.0 to 1.0. Higher values produce fewer but more confident suggestions.
 
 **--labels \<FILE\>**
 : Path to a custom labels file (one label per line). Overrides the built-in default labels.

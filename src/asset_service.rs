@@ -4835,7 +4835,7 @@ impl AssetService {
             .collect();
 
         // Load model
-        let mut model = SigLipModel::load(model_dir)?;
+        let mut model = SigLipModel::load_with_debug(model_dir, self.debug)?;
 
         // Prepare label texts with prompt template
         let prompted_labels: Vec<String> = labels
@@ -4945,7 +4945,14 @@ impl AssetService {
             }
 
             // Classify
-            let suggestions = model.classify(&image_emb, labels, &label_embs, threshold);
+            let suggestions = if self.debug {
+                eprintln!("  [debug] asset {} — image: {}", &aid[..8.min(aid.len())], image_path.display());
+                let norm: f32 = image_emb.iter().map(|x| x * x).sum::<f32>().sqrt();
+                eprintln!("  [debug] embedding norm: {norm:.6} (expected ~1.0 for L2-normalized)");
+                model.classify_debug(&image_emb, labels, &label_embs, threshold)
+            } else {
+                model.classify(&image_emb, labels, &label_embs, threshold)
+            };
 
             // Filter out tags already on the asset
             let existing_tags: HashSet<String> = details
@@ -4955,7 +4962,13 @@ impl AssetService {
                 .collect();
             let new_suggestions: Vec<_> = suggestions
                 .into_iter()
-                .filter(|s| !existing_tags.contains(&s.tag.to_lowercase()))
+                .filter(|s| {
+                    let dominated = existing_tags.contains(&s.tag.to_lowercase());
+                    if dominated && self.debug {
+                        eprintln!("  [debug] skipping '{}' ({:.2}%) — tag already exists on asset", s.tag, s.confidence * 100.0);
+                    }
+                    !dominated
+                })
                 .collect();
 
             result.tags_suggested += new_suggestions.len();

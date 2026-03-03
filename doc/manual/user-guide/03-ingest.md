@@ -428,7 +428,7 @@ dam auto-tag --query "type:image"
 dam auto-tag --query "type:image" --apply
 ```
 
-The command uses SigLIP ViT-B/16-256 for zero-shot classification against ~100 built-in photography categories (landscape, portrait, architecture, animals, etc.). Tags above the confidence threshold (default 0.25) are suggested. Use `--threshold` to adjust sensitivity.
+The command uses SigLIP ViT-B/16-256 for zero-shot classification against ~100 built-in photography categories (landscape, portrait, architecture, animals, etc.). Tags above the confidence threshold (default 0.1) are suggested. Use `--threshold` to adjust sensitivity.
 
 You can provide a custom label vocabulary:
 

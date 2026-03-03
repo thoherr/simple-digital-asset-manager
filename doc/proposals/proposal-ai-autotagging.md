@@ -383,7 +383,7 @@ Recommendation: embed minimal BPE. Label vocabularies are short (50-200 labels),
 [ai]
 model = "standard"              # mobile | standard | accurate | ollama:<name>
 labels = "labels.txt"           # custom label vocabulary file (one per line)
-threshold = 0.25                # minimum confidence to suggest
+threshold = 0.1                 # minimum confidence to suggest
 model_dir = "~/.dam/models"     # where to cache downloaded models
 prompt = "a photograph of a {}"  # text encoder prompt template ({} = tag name)
 ```

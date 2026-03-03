@@ -197,7 +197,7 @@ enum Commands {
         #[arg(long, display_order = 3)]
         volume: Option<String>,
 
-        /// Confidence threshold (0.0–1.0, default from dam.toml or 0.25)
+        /// Confidence threshold (0.0–1.0, default from dam.toml or 0.1)
         #[arg(long, display_order = 10)]
         threshold: Option<f32>,
 
@@ -1870,7 +1870,7 @@ fn main() {
                         // No stored embedding — encode it now
                         let config_preview = &config.preview;
                         let service = AssetService::new(&catalog_root, cli.debug, config_preview);
-                        let mut model = dam::ai::SigLipModel::load(&model_dir)?;
+                        let mut model = dam::ai::SigLipModel::load_with_debug(&model_dir, cli.debug)?;
                         let registry = DeviceRegistry::new(&catalog_root);
                         let volumes = registry.list()?;
                         let online_volumes: std::collections::HashMap<String, &dam::models::Volume> =
