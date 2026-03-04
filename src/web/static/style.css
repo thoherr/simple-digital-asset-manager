@@ -725,6 +725,15 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     font-weight: bold;
 }
 .ai-tag-dismiss:hover { opacity: 0.7; }
+.ai-tag-existing {
+    opacity: 0.55;
+}
+.ai-tag-existing-label {
+    font-size: 0.65em;
+    opacity: 0.7;
+    font-style: italic;
+    margin-left: 2px;
+}
 
 .edit-pencil {
     all: unset;

@@ -3090,6 +3090,7 @@ async fn serve_smart_file(path: &std::path::Path, filename: &str) -> Response {
 pub struct SuggestTagsResponse {
     pub tag: String,
     pub confidence: f32,
+    pub existing: bool,
 }
 
 /// POST /api/asset/{id}/suggest-tags — suggest tags for an asset using AI.
@@ -3215,7 +3216,7 @@ fn suggest_tags_inner(
     let threshold = state.ai_config.threshold;
     let suggestions = model.classify(&image_emb, &label_list, &label_embs, threshold);
 
-    // Filter out tags already on the asset
+    // Mark tags already on the asset
     let existing: std::collections::HashSet<String> = details
         .tags
         .iter()
@@ -3224,10 +3225,13 @@ fn suggest_tags_inner(
 
     let result: Vec<SuggestTagsResponse> = suggestions
         .into_iter()
-        .filter(|s| !existing.contains(&s.tag.to_lowercase()))
-        .map(|s| SuggestTagsResponse {
-            tag: s.tag,
-            confidence: s.confidence,
+        .map(|s| {
+            let is_existing = existing.contains(&s.tag.to_lowercase());
+            SuggestTagsResponse {
+                tag: s.tag,
+                confidence: s.confidence,
+                existing: is_existing,
+            }
         })
         .collect();
 

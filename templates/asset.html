@@ -623,15 +623,26 @@
                 container.style.display = 'block';
                 return;
             }
-            var html = '<div class="ai-suggestions-header"><span style="font-size:0.85rem;color:var(--text-muted);">AI suggestions:</span> <button class="btn btn-sm" onclick="acceptAllTags()">Accept all</button></div>';
+            var hasNew = suggestions.some(function(s) { return !s.existing; });
+            var html = '<div class="ai-suggestions-header"><span style="font-size:0.85rem;color:var(--text-muted);">AI suggestions:</span>';
+            if (hasNew) html += ' <button class="btn btn-sm" onclick="acceptAllTags()">Accept new</button>';
+            html += '</div>';
             suggestions.forEach(function(s) {
                 var pct = Math.round(s.confidence * 100);
-                html += '<span class="ai-tag-suggestion" data-tag="' + s.tag.replace(/"/g,'&quot;') + '">' +
-                    s.tag +
-                    '<span class="ai-tag-confidence">' + pct + '%</span>' +
-                    '<span class="ai-tag-accept" title="Accept" onclick="acceptTag(this)">&#10003;</span>' +
-                    '<span class="ai-tag-dismiss" title="Dismiss" onclick="this.closest(\'.ai-tag-suggestion\').remove();">&times;</span>' +
-                    '</span>';
+                if (s.existing) {
+                    html += '<span class="ai-tag-suggestion ai-tag-existing" data-tag="' + s.tag.replace(/"/g,'&quot;') + '">' +
+                        s.tag +
+                        '<span class="ai-tag-confidence">' + pct + '%</span>' +
+                        '<span class="ai-tag-existing-label">already applied</span>' +
+                        '</span>';
+                } else {
+                    html += '<span class="ai-tag-suggestion" data-tag="' + s.tag.replace(/"/g,'&quot;') + '">' +
+                        s.tag +
+                        '<span class="ai-tag-confidence">' + pct + '%</span>' +
+                        '<span class="ai-tag-accept" title="Accept" onclick="acceptTag(this)">&#10003;</span>' +
+                        '<span class="ai-tag-dismiss" title="Dismiss" onclick="this.closest(\'.ai-tag-suggestion\').remove();">&times;</span>' +
+                        '</span>';
+                }
             });
             container.innerHTML = html;
             container.style.display = 'block';
@@ -669,7 +680,7 @@
     };
 
     window.acceptAllTags = function() {
-        var chips = document.querySelectorAll('#tag-suggestions .ai-tag-suggestion');
+        var chips = document.querySelectorAll('#tag-suggestions .ai-tag-suggestion:not(.ai-tag-existing)');
         var tags = [];
         chips.forEach(function(c) { tags.push(c.getAttribute('data-tag')); });
         if (tags.length === 0) return;
