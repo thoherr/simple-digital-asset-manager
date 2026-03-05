@@ -595,6 +595,53 @@ Pure assets-table filter, no JOIN required. Uses the composite index on `(latitu
 
 ---
 
+## faces
+
+**Syntax:** `faces:any` | `faces:none` | `faces:<N>` | `faces:<N>+`
+
+**Description:** Filters by the number of detected faces on an asset. Requires the `ai` feature for face detection to have been run.
+
+**Modes:**
+
+| Form | Description |
+|------|-------------|
+| `faces:any` | Assets with at least one detected face |
+| `faces:none` | Assets with no detected faces |
+| `faces:3` | Assets with exactly 3 detected faces |
+| `faces:2+` | Assets with 2 or more detected faces |
+
+**Examples:**
+
+```
+dam search "faces:any"                     # all assets with faces
+dam search "faces:none type:image"         # images without detected faces
+dam search "faces:3"                       # group portraits (exactly 3 faces)
+dam search "faces:2+ tag:portrait"         # portraits with multiple people
+```
+
+**SQL behavior:** Uses the denormalized `face_count` column on the assets table. Pure assets-table filter, no JOIN required.
+
+---
+
+## person
+
+**Syntax:** `person:<name>` or `person:"<multi-word name>"`
+
+**Description:** Filters to assets that contain at least one face assigned to the named person. Supports quoted values for multi-word names.
+
+**Examples:**
+
+```
+dam search "person:Alice"
+dam search 'person:"John Smith"'
+dam search "person:Alice rating:4+"
+dam search "-person:Alice"                 # exclude assets with Alice
+```
+
+**SQL behavior:** Looks up the person ID by name, then filters via `WHERE EXISTS (SELECT 1 FROM faces WHERE faces.asset_id = a.id AND faces.person_id = ?)`.
+
+---
+
 ## Combining Filters
 
 All filters are combined with AND logic. Every specified filter must match for an asset to appear in results. Free-text terms are also AND-combined with all prefix filters.
@@ -702,6 +749,8 @@ dam search "camera:fuji"
 | `stale:` | yes | no | yes |
 | `stacked:` | yes | no | yes |
 | `geo:` | yes | yes (query input) | yes |
+| `faces:` | yes | yes (query input) | yes |
+| `person:` | yes | yes (dropdown) | yes |
 
 ---
 

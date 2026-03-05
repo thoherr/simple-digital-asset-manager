@@ -2,6 +2,32 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v2.2.0
+
+### New Features
+- **Face detection** (feature-gated: `--features ai`) — `dam faces detect [--query <Q>] [--asset <id>] [--volume <label>] [--apply]` detects faces in images using YuNet ONNX model. Stores face bounding boxes, confidence scores, and 512-dim ArcFace embeddings. Generates 150×150 JPEG crop thumbnails in `faces/` directory. Reports faces found per asset. Supports `--json`, `--log`, `--time`.
+- **Face auto-clustering** — `dam faces cluster [--query <Q>] [--asset <id>] [--volume <label>] [--threshold <F>] [--apply]` groups similar face embeddings into unnamed person groups using greedy single-linkage clustering. Default threshold 0.5 (configurable via `[ai] face_cluster_threshold`). Without `--apply` shows dry-run cluster sizes. Scope filters (`--query`, `--asset`, `--volume`) limit which faces are clustered.
+- **People management CLI** — `dam faces people [--json]` lists all people with face counts. `dam faces name <ID> <NAME>` names a person. `dam faces merge <TARGET> <SOURCE>` merges two people. `dam faces delete-person <ID>` deletes a person. `dam faces unassign <FACE_ID>` removes a face from its person.
+- **People web page** (`/people`) — gallery grid of person cards with representative face crop thumbnails, names, face counts. Inline rename, merge, delete. "Cluster" button to run auto-clustering from the UI.
+- **Asset detail faces section** — detected faces shown as chips with crop thumbnails and confidence scores. "Detect faces" button triggers on-demand detection. Assign/unassign faces to people via dropdown.
+- **Browse face filters** — `faces:any` / `faces:none` / `faces:N` / `faces:N+` filter by face count. `person:<name>` / `-person:<name>` filter by assigned person. Person dropdown in browse filter row.
+- **Batch face detection** — "Detect faces" button in browse batch toolbar for selected assets.
+- **Face count badge** on browse cards (like variant count badge).
+- **Denormalized `face_count` column** on assets table for fast filtering.
+
+### New API Endpoints
+- `GET /api/asset/{id}/faces`, `POST /api/asset/{id}/detect-faces`, `POST /api/batch/detect-faces`
+- `GET /people`, `GET /api/people`, `PUT /api/people/{id}/name`, `POST /api/people/{id}/merge`, `DELETE /api/people/{id}`
+- `PUT /api/faces/{face_id}/assign`, `DELETE /api/faces/{face_id}/unassign`, `POST /api/faces/cluster`
+
+### New Modules (ai feature)
+- `src/face.rs` — FaceDetector: YuNet detection + ArcFace recognition ONNX pipeline, multi-stride output decoder, face crop generation
+- `src/face_store.rs` — FaceStore: SQLite-backed face/people persistence, embedding clustering, auto-cluster
+
+### Bug Fixes
+- Fix multi-stride YuNet model output parsing (12 separate tensors at strides 8/16/32)
+- Fix `dam faces detect --asset` finding zero results (use direct asset ID resolution)
+
 ## v2.1.2
 
 ### New Features

@@ -434,6 +434,8 @@ A fixed toolbar appears at the bottom of the screen whenever one or more assets 
 
 **Auto-tag** (requires `--features ai`): analyzes each selected asset with the SigLIP vision model and applies suggested tags above the configured confidence threshold. A confirmation dialog shows the count of selected assets. After processing, a summary reports how many tags were applied. This button only appears when the server is compiled with the `ai` feature.
 
+**Detect faces** (requires `--features ai`): runs face detection on each selected asset's preview image using YuNet and ArcFace. Detected faces are stored with bounding boxes, embeddings, and crop thumbnails. A summary reports how many faces were found. This button only appears when the server is compiled with the `ai` feature.
+
 After every batch operation, the selection clears and the results grid refreshes to reflect the changes. All toolbar buttons are disabled during the operation to prevent double submissions.
 
 ### Keyboard shortcuts for selection
@@ -586,6 +588,37 @@ The stats page displays:
 - **Verification health**: overall coverage bar, plus a per-volume breakdown of verification status
 
 This is the web equivalent of `dam stats --all` on the command line. See [Browsing & Searching](05-browse-and-search.md) for the CLI stats command.
+
+
+## People Page
+
+> Requires `--features ai` compilation.
+
+Navigate to `/people` or click "People" in the navigation bar to manage detected faces and named people.
+
+The people page displays:
+
+- **Person cards**: each person is shown as a card with a representative face crop thumbnail, name (or "Unknown" for unnamed clusters), and the number of detected faces. Click a card to browse assets containing that person.
+- **Inline rename**: click the name on a person card to edit it in place.
+- **Merge**: drag a person card onto another to merge them, or use the merge controls.
+- **Delete**: click the delete button on a person card to remove the person (faces become unassigned).
+- **Cluster button**: runs face auto-clustering from the UI, grouping unassigned faces into new person groups.
+
+Faces are detected via `dam faces detect` on the CLI, the "Detect faces" button on the asset detail page, or the batch "Detect faces" button on the browse toolbar. After detection, use clustering (CLI or web UI) to group faces into people, then name them.
+
+### Asset detail faces section
+
+On the asset detail page, a "Faces" section appears when faces have been detected for the asset:
+
+- **Face chips**: each detected face is shown as a small chip with the crop thumbnail and confidence score.
+- **Detect faces button**: triggers on-demand face detection for the asset.
+- **Person assignment**: a dropdown on each face chip lets you assign or unassign the face to a person.
+
+### Browse face filters
+
+- **Person dropdown**: in the browse filter row, a person dropdown (when people exist) lets you filter to assets containing a specific person.
+- **Face count badge**: browse cards show a face count badge next to the variant count badge.
+- **Query filters**: `faces:any`, `faces:none`, `faces:N`, `faces:N+`, `person:<name>` work in the query input.
 
 
 ## Backup Status Page

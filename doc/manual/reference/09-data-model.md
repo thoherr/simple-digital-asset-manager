@@ -102,6 +102,30 @@ erDiagram
         blob embedding "768 x f32 vector"
         string model "model identifier"
     }
+
+    Face {
+        UUID id PK
+        UUID asset_id FK "parent asset"
+        UUID person_id FK "assigned person, optional"
+        real bbox_x "normalized 0-1"
+        real bbox_y "normalized 0-1"
+        real bbox_w "normalized 0-1"
+        real bbox_h "normalized 0-1"
+        real confidence "detection score"
+        blob embedding "512 x f32 ArcFace vector"
+        string crop_path "path to face crop JPEG"
+        datetime created_at
+    }
+
+    Person {
+        UUID id PK
+        string name "optional, user-assigned"
+        UUID representative_face_id FK "thumbnail face"
+        datetime created_at
+    }
+
+    Asset ||--o{ Face : "detected faces"
+    Face }o--o| Person : "assigned to"
 ```
 
 ---
@@ -133,6 +157,7 @@ The top-level entity. An Asset represents a single logical media item -- "photo 
 | `best_variant_hash` | String | Content hash of the best display variant (see [Display Priority](#display-priority)). Used for the browse grid JOIN. |
 | `primary_variant_format` | String | Identity format of the asset. Prefers Original+RAW, then Original+any, then best variant's format. Shown on browse cards (e.g. "NEF"). |
 | `variant_count` | Integer | Number of variants. Shown as a badge on browse cards (e.g. "3v"). |
+| `face_count` | Integer | Number of detected faces. Shown as a badge on browse cards. Only present with `--features ai`. |
 | `stack_id` | Option\<UUID\> | Foreign key to the Stack this asset belongs to. `None` if unstacked. |
 | `stack_position` | Option\<Integer\> | Position within the stack (0 = pick). `None` if unstacked. |
 
@@ -274,6 +299,41 @@ Storage overhead: ~3 KB per asset. For 100,000 assets: ~300 MB in SQLite.
 
 **Opportunistic storage**: Embeddings are stored not only by `dam auto-tag` and `dam embed`, but also opportunistically by the web UI "Suggest tags" and batch "Auto-tag" endpoints. This means using AI features in the web UI gradually builds up the similarity search index.
 
+### Face
+
+> Only present when built with `--features ai`.
+
+A detected face within an asset image, with bounding box, confidence, recognition embedding, and optional person assignment.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Primary key. |
+| `asset_id` | UUID | Foreign key to the parent Asset. |
+| `person_id` | Option\<UUID\> | Foreign key to the assigned Person. `None` if unassigned. |
+| `bbox_x` | f32 | Bounding box X position (normalized 0–1). |
+| `bbox_y` | f32 | Bounding box Y position (normalized 0–1). |
+| `bbox_w` | f32 | Bounding box width (normalized 0–1). |
+| `bbox_h` | f32 | Bounding box height (normalized 0–1). |
+| `confidence` | f32 | Detection confidence score (0–1). |
+| `embedding` | Blob | 512-dimensional float32 ArcFace vector (2048 bytes), stored as little-endian binary. |
+| `crop_path` | Option\<String\> | Path to 150×150 JPEG face crop thumbnail (relative to catalog root). |
+| `created_at` | DateTime\<Utc\> | When the face was detected. |
+
+Storage overhead: ~2 KB per face (embedding + metadata). Face crops: ~5–15 KB each as JPEG.
+
+### Person
+
+> Only present when built with `--features ai`.
+
+A named or unnamed person group linking detected faces across assets.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Primary key. |
+| `name` | Option\<String\> | User-assigned name. `None` for unnamed clusters. |
+| `representative_face_id` | Option\<UUID\> | Foreign key to the face used as the person's thumbnail. |
+| `created_at` | DateTime\<Utc\> | When the person record was created. |
+
 ---
 
 ## Variant Roles
@@ -326,7 +386,7 @@ catalog/
 
 A single `catalog.db` file providing fast indexed queries. Contains denormalized columns for efficient browse-grid rendering. The catalog is always rebuildable from the YAML sidecars via `dam rebuild-catalog` -- it is a performance optimization, not a source of truth.
 
-**Tables**: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `collections`, `collection_assets`, `stacks`, `embeddings` (with `--features ai`)
+**Tables**: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `collections`, `collection_assets`, `stacks`, `embeddings`, `faces`, `people` (last three with `--features ai`)
 
 **Performance indexes** (created automatically via schema migrations):
 
@@ -346,6 +406,7 @@ A single `catalog.db` file providing fast indexed queries. Contains denormalized
 | `stacks.yaml` | YAML | Stack definitions with ordered asset ID lists |
 | `dam.toml` | TOML | User configuration (preview settings, serve settings, import settings) |
 | `previews/<prefix>/<hash>.jpg` | JPEG | Preview thumbnails keyed by variant content hash |
+| `faces/<prefix>/<face_id>.jpg` | JPEG | Face crop thumbnails (150×150, with `--features ai`) |
 
 ### Content-Addressable Identity
 

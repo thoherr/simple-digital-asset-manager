@@ -286,12 +286,28 @@ Where to cache downloaded model files. The `~` prefix is expanded to the user's 
 
 Text encoder prompt template. The `{}` placeholder is replaced with each label name before encoding. Adjusting the prompt can improve classification accuracy for specific use cases (e.g., `"a photo of a {}"` or `"a professional photograph of {}"`).
 
+### face_cluster_threshold
+
+- **Type:** float (0.0--1.0)
+- **Default:** `0.5`
+
+Similarity threshold for face auto-clustering. Higher values require faces to be more similar to be grouped into the same person. Lower values produce larger groups with more potential false matches.
+
+### face_min_confidence
+
+- **Type:** float (0.0--1.0)
+- **Default:** `0.5`
+
+Minimum confidence score for a face detection to be stored. Faces below this threshold are discarded during detection.
+
 ```toml
 [ai]
 threshold = 0.3
 labels = "my-labels.txt"
 model_dir = "~/.dam/models"
 prompt = "a photograph of {}"
+face_cluster_threshold = 0.5
+face_min_confidence = 0.5
 ```
 
 ---
@@ -411,6 +427,8 @@ When a field is absent from `dam.toml`, these defaults apply:
 | `ai.labels` | none |
 | `ai.model_dir` | `"~/.dam/models"` |
 | `ai.prompt` | `"a photograph of {}"` |
+| `ai.face_cluster_threshold` | `0.5` |
+| `ai.face_min_confidence` | `0.5` |
 
 ---
 

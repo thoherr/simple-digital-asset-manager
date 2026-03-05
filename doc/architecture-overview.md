@@ -22,6 +22,8 @@ The system is organized in four layers, from top to bottom:
 - **Collection Store** — manages static album collections (dual storage: SQLite for queries + YAML for rebuild persistence).
 - **Saved Search Store** — manages named search queries (stored in TOML).
 - **Stack Store** — manages asset stacks / scene groupings (dual storage: SQLite `stacks` table + `stacks.yaml` for rebuild persistence). Stacks collapse multiple assets into a single pick in the browse grid.
+- **Face Detection Service** *(feature-gated: `--features ai`)* — detects faces in asset images using YuNet ONNX model, computes 512-dim ArcFace recognition embeddings, generates face crop thumbnails. Multi-stride output decoder for YuNet model variants.
+- **Face Store** *(feature-gated: `--features ai`)* — SQLite-backed persistence for detected faces (`faces` table) and named people (`people` table). Greedy single-linkage clustering for auto-grouping similar faces. Denormalized `face_count` on assets table for fast filtering.
 
 ### 3. Storage Layer
 - **Local Catalog** — always available on local disk. Contains asset index, cached metadata, thumbnails, volume registry, collection and stack membership. Small compared to originals.

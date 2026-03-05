@@ -16,6 +16,7 @@ A command-line digital asset manager built in Rust, designed for large collectio
 - **Hierarchical tags** — tree-structured keywords with Lightroom `lr:hierarchicalSubject` interop
 - **Saved searches & collections** — smart albums (dynamic queries) and static albums (curated lists)
 - **AI auto-tagging** — zero-shot image classification using SigLIP vision-language models (ViT-B/16-256 or ViT-L/16-256) for automated tag suggestions, plus visual similarity search via stored embeddings (optional, requires `--features ai`)
+- **Face recognition** — detect faces with YuNet, generate ArcFace embeddings, auto-cluster into people groups, and manage named people across your catalog (optional, requires `--features ai`)
 - **Web UI** — browser-based interface with search, inline editing, batch operations, keyboard navigation, lightbox viewer, dark mode, grid density controls, calendar heatmap, faceted sidebar, and OS integration (reveal in Finder, open terminal)
 - **Flexible output** — JSON on all commands, custom format templates, quiet mode for scripting
 
@@ -44,9 +45,9 @@ dam serve
 
 ## Commands
 
-30 commands covering setup, import, search, editing, maintenance, and more:
+31 commands covering setup, import, search, editing, maintenance, and more:
 
-`init` · `volume add/list/combine/remove` · `import` · `delete` · `export` · `search` · `show` · `edit` · `tag` · `group` · `auto-group` · `auto-tag` · `embed` · `stack` · `duplicates` · `dedup` · `generate-previews` · `relocate` · `verify` · `sync` · `refresh` · `cleanup` · `stats` · `backup-status` · `fix-roles` · `fix-dates` · `rebuild-catalog` · `saved-search` · `collection` · `serve`
+`init` · `volume add/list/combine/remove` · `import` · `delete` · `export` · `search` · `show` · `edit` · `tag` · `group` · `auto-group` · `auto-tag` · `embed` · `faces` · `stack` · `duplicates` · `dedup` · `generate-previews` · `relocate` · `verify` · `sync` · `refresh` · `cleanup` · `stats` · `backup-status` · `fix-roles` · `fix-dates` · `rebuild-catalog` · `saved-search` · `collection` · `serve`
 
 **Global flags**: `--json`, `--log`, `--debug`, `--time`. Run `dam --help` or `dam <command> --help` for usage.
 
@@ -84,6 +85,24 @@ These are optional. When missing, RAW and video files get an info card preview i
 ## AI Auto-Tagging (Optional Feature)
 
 Build with `cargo build --features ai` to enable AI-powered commands. This uses SigLIP vision-language models (via ONNX Runtime) for zero-shot image classification against a configurable tag vocabulary. Two models are available: ViT-B/16-256 (~207 MB, default) and ViT-L/16-256 (~670 MB, higher accuracy). Select with `--model` or `[ai] model` in `dam.toml`. Model files are downloaded from HuggingFace on first use. Commands: `dam auto-tag` for tag suggestion/application, `dam embed` for batch embedding generation, and `dam auto-tag --similar <id>` for visual similarity search. The web UI "Suggest tags" and "Auto-tag" buttons also store embeddings opportunistically. Similarity search uses an in-memory index for sub-millisecond results at any scale. See the [Configuration Reference](doc/manual/reference/08-configuration.md) for `[ai]` settings.
+
+## Face Recognition (Optional Feature)
+
+Build with `cargo build --features ai` to enable face detection and people management. Uses two ONNX models: YuNet for face detection (bounding boxes + landmarks) and ArcFace for face recognition (512-dim embeddings). Models are downloaded via `dam faces download`.
+
+**CLI workflow**: detect faces → cluster into groups → name people:
+
+```
+dam faces download                                    # download YuNet + ArcFace models
+dam faces detect --query "type:image" --apply         # detect faces in images
+dam faces cluster --apply                             # group similar faces into people
+dam faces people                                      # list unnamed person groups
+dam faces name <person-id> "Alice"                    # name a person
+```
+
+**Web UI**: `/people` page with person gallery, asset detail face chips with assign/unassign, browse filter by `faces:` and `person:` filters, batch face detection from the browse toolbar.
+
+**Search filters**: `faces:any` / `faces:none` / `faces:N` / `faces:N+` (face count), `person:<name>` (assigned person). **Config**: `[ai] face_cluster_threshold` (default 0.5), `[ai] face_min_confidence` (default 0.5).
 
 ## Technology
 

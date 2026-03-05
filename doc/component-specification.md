@@ -72,6 +72,36 @@ Known recipe extensions: `.xmp` (Adobe/Lightroom/CaptureOne), `.cos` / `.cot` / 
 | location | FileLocation | Where the recipe file lives (primary identity for dedup) |
 | verified_at | DateTime | Last time hash was verified at this location |
 
+### Face
+
+> Only present when built with `--features ai`.
+
+A detected face within an asset image, stored with bounding box, confidence, and recognition embedding.
+
+| Field | Type | Description |
+|---|---|---|
+| id | UUID | Stable identifier |
+| asset_id | UUID | Parent asset |
+| person_id | Option<UUID> | Assigned person (NULL if unassigned) |
+| bbox_x, bbox_y, bbox_w, bbox_h | f32 | Bounding box in normalized coordinates [0, 1] |
+| confidence | f32 | Detection confidence score |
+| embedding | Vec<f32> | 512-dimensional ArcFace recognition embedding |
+| crop_path | Option<String> | Path to 150×150 JPEG face crop thumbnail |
+| created_at | DateTime | When the face was detected |
+
+### Person
+
+> Only present when built with `--features ai`.
+
+A named or unnamed person group, linking detected faces across assets.
+
+| Field | Type | Description |
+|---|---|---|
+| id | UUID | Stable identifier |
+| name | Option<String> | User-assigned name (NULL until named) |
+| representative_face_id | Option<UUID> | Face used as the person's thumbnail |
+| created_at | DateTime | When the person was created |
+
 ### Stack
 A scene grouping that collapses multiple assets into a single pick in the browse grid. Anonymous (no name or description), position-based ordering. Stacks auto-dissolve when reduced to one member or fewer.
 
@@ -141,7 +171,7 @@ recipes:
 
 **Responsibility**: fast queryable index over all metadata. Rebuilt from sidecar files.
 
-**Tables** mirror the data model: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `stacks`, `collections`, `collection_assets`.
+**Tables** mirror the data model: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `stacks`, `collections`, `collection_assets`, `faces`, `people` (with `--features ai`).
 
 This is a **derived cache**, not the source of truth. Running `dam rebuild-catalog` regenerates it from sidecar files. This means:
 - No data loss if the SQLite file is deleted.
@@ -364,7 +394,45 @@ After each write, the file is re-hashed and the recipe's `content_hash` is updat
 
 **Favorite field**: Each saved search has a `favorite: bool` field (default `false`). Only favorites are shown as chips on the browse page. The `/saved-searches` management page shows all searches and allows toggling favorites.
 
-### 16. Stack Store
+### 16. Face Detection Service
+
+> Only present when built with `--features ai`.
+
+**Responsibility**: detect faces in asset images and compute recognition embeddings.
+
+**Module**: `src/face.rs` — `FaceDetector` struct wrapping YuNet (detection) and ArcFace (recognition) ONNX sessions.
+
+**Pipeline**:
+1. Load and resize image to YuNet input dimensions (320×320 or 640×640)
+2. Run YuNet face detection — produces bounding boxes, landmarks, and confidence scores
+3. For each detected face: align and crop the face region, resize to 112×112
+4. Run ArcFace recognition — produces a 512-dimensional L2-normalized embedding
+5. Generate a 150×150 JPEG crop thumbnail for UI display
+
+**Multi-stride decoding**: YuNet outputs 12 separate tensors at strides 8, 16, and 32 (4 tensors per stride: bounding boxes, landmarks, confidence logits, and class scores). The decoder handles both single-tensor and multi-stride output formats.
+
+### 17. Face Store
+
+> Only present when built with `--features ai`.
+
+**Responsibility**: persist and query face detections and people in SQLite.
+
+**Module**: `src/face_store.rs` — `FaceStore` struct backed by `faces` and `people` tables.
+
+**Operations**:
+- `insert_face(face)` — store a detected face with bbox, confidence, embedding, and crop path
+- `faces_for_asset(asset_id)` — list all faces detected in an asset
+- `create_person()` — create a new unnamed person
+- `name_person(id, name)` — assign a name to a person
+- `assign_face(face_id, person_id)` — link a face to a person
+- `unassign_face(face_id)` — remove a face from its person
+- `merge_people(target_id, source_id)` — move all faces from source to target person
+- `delete_person(id)` — delete a person (faces become unassigned)
+- `auto_cluster(threshold, apply)` — group similar face embeddings into people using greedy single-linkage clustering
+
+**Clustering algorithm**: Loads all unassigned face embeddings, computes pairwise cosine similarity, and greedily links faces that exceed the threshold into groups. Each group becomes a new person. Singletons (groups of 1) are skipped.
+
+### 18. Stack Store
 
 **Responsibility**: manage asset stacks (scene groupings).
 
@@ -415,6 +483,7 @@ dam generate-previews [PATHS...] [--asset ID] [--volume V] [--include G] [--skip
 dam stats [--types] [--volumes] [--tags] [--verified] [--all] [--limit N]  # catalog statistics
 dam auto-group [QUERY] [--apply]                  # group assets by filename stem
 dam embed [--query Q] [--asset ID] [--volume V] [--model M] [--force]  # generate embeddings (ai feature)
+dam faces detect|cluster|people|name|merge|delete-person|unassign|download  # face recognition (ai feature)
 dam fix-roles [PATHS...] [--volume V] [--asset ID] [--apply]  # fix variant roles in RAW+non-RAW groups
 dam saved-search save|list|run|delete             # manage saved searches (alias: ss, save supports --favorite)
 dam collection create|list|show|add|remove|delete # manage collections (alias: col)

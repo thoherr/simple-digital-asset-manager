@@ -530,6 +530,121 @@ dam ss run "Five Stars" --format ids | xargs dam col add "Portfolio"
 
 ---
 
+## People Management (Face Recognition)
+
+> Requires `cargo build --features ai`.
+
+dam can detect faces in your images, group them into people, and let you search by person. This is an AI-powered feature that uses YuNet for face detection and ArcFace for face recognition.
+
+### Setup
+
+Download the required models first:
+
+```
+dam faces download
+```
+
+This downloads the YuNet face detection model (~230 KB) and ArcFace recognition model (~28 MB) to the model cache directory.
+
+### Detecting faces
+
+Run face detection on your catalog:
+
+```
+dam faces detect --query "type:image" --apply
+```
+
+This finds faces in each image's preview, stores bounding boxes and embeddings, and generates face crop thumbnails. Use `--log` for per-asset progress.
+
+You can scope detection to a specific shoot or volume:
+
+```
+dam faces detect --query "path:Capture/2026-03" --apply
+dam faces detect --volume "Photos" --apply
+dam faces detect --asset a1b2c3d4 --apply
+```
+
+### Clustering faces into people
+
+After detection, cluster similar faces into groups:
+
+```
+dam faces cluster --apply
+```
+
+This uses greedy single-linkage clustering to group faces that look similar enough (default threshold 0.5). Each group becomes an unnamed person.
+
+Adjust the threshold for stricter or looser grouping:
+
+```
+dam faces cluster --threshold 0.6 --apply    # stricter (fewer false matches)
+dam faces cluster --threshold 0.4 --apply    # looser (more grouped together)
+```
+
+### Naming people
+
+List the discovered people and name them:
+
+```
+dam faces people
+dam faces name 550e8400-... "Alice"
+dam faces name 661f9511-... "Bob"
+```
+
+### Managing people
+
+Merge duplicate person groups:
+
+```
+dam faces merge 550e8400-... 661f9511-...    # merge source into target
+```
+
+Remove a face from a person (misidentification):
+
+```
+dam faces unassign face-uuid-...
+```
+
+Delete a person entirely (faces become unassigned):
+
+```
+dam faces delete-person 550e8400-...
+```
+
+### Searching by face and person
+
+Use the `faces:` and `person:` search filters:
+
+```
+dam search "faces:any"                # assets with detected faces
+dam search "faces:none type:image"    # images without faces
+dam search "faces:2+"                # group photos (2+ faces)
+dam search "person:Alice"            # assets containing Alice
+dam search "person:Alice rating:4+"  # Alice's best photos
+```
+
+### Web UI
+
+The web UI provides a complete face management experience:
+
+- **People page** (`/people`) — gallery grid of person cards with thumbnails, names, and face counts. Inline rename, merge, and delete. "Cluster" button for on-demand clustering.
+- **Asset detail page** — faces section shows detected faces as chips with crop thumbnails and confidence scores. "Detect faces" button for on-demand detection. Assign/unassign faces to people via dropdown.
+- **Browse filters** — person dropdown in the filter row, and `faces:` filter in the query input.
+- **Batch toolbar** — "Detect faces" button processes all selected assets.
+- **Browse cards** — face count badge alongside variant count.
+
+### Configuration
+
+In `dam.toml`:
+
+```toml
+[ai]
+face_cluster_threshold = 0.5    # clustering similarity threshold
+face_min_confidence = 0.5       # minimum detection confidence
+```
+
+---
+
 ## Putting It All Together
 
 A typical organizing workflow after import might look like this:

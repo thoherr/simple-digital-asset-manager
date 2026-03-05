@@ -33,7 +33,7 @@ Core layers: CLI → Core Library (Asset Service, Content Store, Metadata Store,
 
 Core CLI is functional. See `doc/specification.md` for full requirements.
 
-**Implemented commands**: `init`, `volume add/list/combine/remove`, `import`, `delete`, `export`, `search`, `show`, `tag`, `edit`, `group`, `auto-group`, `auto-tag`, `embed`, `stack`, `duplicates`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `relocate`, `update-location`, `verify`, `sync`, `refresh`, `cleanup`, `dedup`, `backup-status`, `stats`, `serve`, `saved-search`, `collection`
+**Implemented commands**: `init`, `volume add/list/combine/remove`, `import`, `delete`, `export`, `search`, `show`, `tag`, `edit`, `group`, `auto-group`, `auto-tag`, `embed`, `faces`, `stack`, `duplicates`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `relocate`, `update-location`, `verify`, `sync`, `refresh`, `cleanup`, `dedup`, `backup-status`, `stats`, `serve`, `saved-search`, `collection`
 
 **Import behavior**:
 - **Stem-based auto-grouping**: Files sharing the same filename stem in the same directory are grouped into one Asset during import. RAW files take priority as the primary variant (defining asset identity and EXIF data). Additional media files become extra variants on the same asset.
@@ -76,6 +76,20 @@ Core CLI is functional. See `doc/specification.md` for full requirements.
 
 - **Embed command** (feature-gated `--features ai`): `dam embed [--query <Q>] [--asset <id>] [--volume <label>] [--model <id>] [--force]`. Batch-generates image embeddings for visual similarity search without tagging. Requires at least one scope filter. For each asset: finds best image (smart preview > regular preview > original), encodes with SigLIP, stores in `embeddings` table. Skips assets that already have an embedding (override with `--force`). Reports embedded/skipped/error counts. Supports `--json`, `--log`, `--time`. Web UI "Suggest tags" and batch "Auto-tag" also store embeddings opportunistically.
 - **In-memory embedding index**: `EmbeddingIndex` in `embedding_store.rs` loads all embeddings for a model into a contiguous `Vec<f32>` buffer on first similarity query, then caches in `AppState` (via `std::sync::RwLock`). Search uses dot product (SigLIP embeddings are L2-normalized) with a `BinaryHeap` min-heap for top-K selection. At 100k assets (~300 MB), search completes in <10ms. Updated in-place when new embeddings are stored via any web code path.
+- **Faces command** (feature-gated `--features ai`): Face detection, recognition, and people management. Uses YuNet ONNX model for face detection (bounding boxes, landmarks, confidence) and ArcFace for 512-dim face embeddings. Models downloaded via `dam faces download`. Subcommands:
+  - `dam faces detect [--query <Q>] [--asset <id>] [--volume <label>] [--apply]` — detect faces in images, store bounding boxes, embeddings, and generate 150×150 JPEG crop thumbnails in `faces/<prefix>/<face_id>.jpg`. Reports faces found per asset. Supports `--json`, `--log`, `--time`.
+  - `dam faces cluster [--query <Q>] [--asset <id>] [--volume <label>] [--threshold <F>] [--apply]` — group similar face embeddings into unnamed person groups using greedy single-linkage clustering. Default threshold 0.5 (configurable via `[ai] face_cluster_threshold`). Scope filters limit which faces are clustered. Without `--apply` shows dry-run cluster sizes.
+  - `dam faces people [--json]` — list all people with face counts.
+  - `dam faces name <ID> <NAME>` — name a person.
+  - `dam faces merge <TARGET> <SOURCE>` — merge two people (moves all faces from source to target).
+  - `dam faces delete-person <ID>` — delete a person (faces become unassigned).
+  - `dam faces unassign <FACE_ID>` — remove a face from its person.
+  - `dam faces download` — download YuNet and ArcFace ONNX models.
+  - Data model: `faces` table (id, asset_id, person_id, bbox, confidence, embedding, crop_path, created_at), `people` table (id, name, representative_face_id, created_at). Denormalized `face_count` column on `assets` table for fast filtering.
+  - Search filters: `faces:any` / `faces:none` / `faces:N` / `faces:N+` (face count), `person:<name>` / `-person:<name>` (assigned person). Person dropdown in browse filter row.
+  - Web UI: `/people` page with person gallery (cards with face crop thumbnails, names, face counts, inline rename/merge/delete, cluster button). Asset detail page faces section (face chips with crop thumbnails and confidence, "Detect faces" button, assign/unassign dropdown). Browse cards show face count badge. Batch "Detect faces" button in toolbar. API: `GET /api/asset/{id}/faces`, `POST /api/asset/{id}/detect-faces`, `POST /api/batch/detect-faces`, `GET /people`, `GET /api/people`, `PUT /api/people/{id}/name`, `POST /api/people/{id}/merge`, `DELETE /api/people/{id}`, `PUT /api/faces/{face_id}/assign`, `DELETE /api/faces/{face_id}/unassign`, `POST /api/faces/cluster`.
+  - Config: `[ai] face_cluster_threshold` (default 0.5), `[ai] face_min_confidence` (default 0.5).
+  - Modules: `src/face.rs` (FaceDetector: YuNet + ArcFace ONNX pipeline, multi-stride output decoder, face crop generation), `src/face_store.rs` (FaceStore: SQLite persistence, clustering, people management).
 
 **Output formatting**:
 - **Global `--json` flag**: Available on all commands. Outputs structured JSON to stdout; human-readable messages go to stderr. All data types (`SearchRow`, `AssetDetails`, `ImportResult`, `VerifyResult`, `SyncResult`, `CleanupResult`, `RelocateResult`, `DuplicateEntry`) derive `serde::Serialize`.

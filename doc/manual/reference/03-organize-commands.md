@@ -969,5 +969,313 @@ dam st show a1b2c3d4-... --json
 
 ---
 
+---
+
+## dam faces detect
+
+### NAME
+
+dam-faces-detect -- detect faces in asset images
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] faces detect [--query <Q>] [--asset <id>] [--volume <label>] [--apply]
+```
+
+### DESCRIPTION
+
+Detects faces in asset preview images using the YuNet ONNX model. For each detected face, computes a 512-dimensional ArcFace embedding and generates a 150×150 JPEG crop thumbnail. Requires the `ai` feature (`cargo build --features ai`).
+
+Without `--apply`, runs in report-only mode showing how many faces would be detected. With `--apply`, stores face records in the catalog and generates crop thumbnails.
+
+Requires at least one scope filter (`--query`, `--asset`, or `--volume`) to prevent accidental full-catalog processing. Models must be downloaded first with `dam faces download`.
+
+### OPTIONS
+
+**--query \<Q\>**
+: Search query to scope which assets are processed.
+
+**--asset \<id\>**
+: Process a single asset by ID.
+
+**--volume \<label\>**
+: Process assets on a specific volume.
+
+**--apply**
+: Actually store detected faces (default is dry run).
+
+`--json`, `--log`, `--time` for output control.
+
+### EXAMPLES
+
+Detect faces in all images (dry run):
+
+```bash
+dam faces detect --query "type:image"
+```
+
+Detect and store faces for a single asset:
+
+```bash
+dam faces detect --asset a1b2c3d4 --apply
+```
+
+Detect faces on a specific volume with logging:
+
+```bash
+dam faces detect --volume "Photos" --apply --log
+```
+
+### SEE ALSO
+
+[faces cluster](#dam-faces-cluster) -- group detected faces into people.
+[faces download](#dam-faces-download) -- download required models.
+
+---
+
+## dam faces cluster
+
+### NAME
+
+dam-faces-cluster -- group similar faces into people
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] faces cluster [--query <Q>] [--asset <id>] [--volume <label>] [--threshold <F>] [--apply]
+```
+
+### DESCRIPTION
+
+Groups similar face embeddings into unnamed person groups using greedy single-linkage clustering. Faces that have already been assigned to a person are skipped.
+
+The threshold controls how similar two faces must be to be grouped together (0.0–1.0, higher = stricter). Default is 0.5, configurable via `[ai] face_cluster_threshold` in `dam.toml`.
+
+Without `--apply`, shows a dry-run report of cluster sizes. With `--apply`, creates person records and assigns faces.
+
+Scope filters (`--query`, `--asset`, `--volume`) limit which faces are considered for clustering.
+
+### OPTIONS
+
+**--query \<Q\>**
+: Scope clustering to faces on assets matching this query.
+
+**--asset \<id\>**
+: Scope clustering to faces on a single asset.
+
+**--volume \<label\>**
+: Scope clustering to faces on assets on a specific volume.
+
+**--threshold \<F\>**
+: Similarity threshold for clustering (default 0.5).
+
+**--apply**
+: Actually create person groups (default is dry run).
+
+`--json`, `--log`, `--time` for output control.
+
+### EXAMPLES
+
+Preview clustering results:
+
+```bash
+dam faces cluster
+```
+
+Apply clustering with a stricter threshold:
+
+```bash
+dam faces cluster --threshold 0.6 --apply
+```
+
+Cluster only faces from a specific shoot:
+
+```bash
+dam faces cluster --query "path:Capture/2026-03" --apply
+```
+
+### SEE ALSO
+
+[faces detect](#dam-faces-detect) -- detect faces first.
+[faces name](#dam-faces-name) -- name the resulting person groups.
+
+---
+
+## dam faces people
+
+### NAME
+
+dam-faces-people -- list all people
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] faces people
+```
+
+### DESCRIPTION
+
+Lists all people in the catalog with their names (if assigned) and face counts.
+
+### EXAMPLES
+
+```bash
+dam faces people
+dam faces people --json
+```
+
+### SEE ALSO
+
+[faces name](#dam-faces-name) -- name a person.
+
+---
+
+## dam faces name
+
+### NAME
+
+dam-faces-name -- name a person
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] faces name <PERSON_ID> <NAME>
+```
+
+### DESCRIPTION
+
+Assigns a human-readable name to a person. Person IDs are shown by `dam faces people`.
+
+### ARGUMENTS
+
+**PERSON_ID** (required)
+: The person's UUID.
+
+**NAME** (required)
+: The name to assign.
+
+### EXAMPLES
+
+```bash
+dam faces name 550e8400-... "Alice"
+```
+
+---
+
+## dam faces merge
+
+### NAME
+
+dam-faces-merge -- merge two people
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] faces merge <TARGET_ID> <SOURCE_ID>
+```
+
+### DESCRIPTION
+
+Moves all faces from the source person to the target person, then deletes the source person. Useful for combining duplicate person groups after clustering.
+
+### ARGUMENTS
+
+**TARGET_ID** (required)
+: The person to keep.
+
+**SOURCE_ID** (required)
+: The person to merge into the target (deleted after merge).
+
+### EXAMPLES
+
+```bash
+dam faces merge 550e8400-... 661f9511-...
+```
+
+---
+
+## dam faces delete-person
+
+### NAME
+
+dam-faces-delete-person -- delete a person
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] faces delete-person <PERSON_ID>
+```
+
+### DESCRIPTION
+
+Deletes a person record. All faces assigned to this person become unassigned (they are not deleted).
+
+### ARGUMENTS
+
+**PERSON_ID** (required)
+: The person's UUID.
+
+### EXAMPLES
+
+```bash
+dam faces delete-person 550e8400-...
+```
+
+---
+
+## dam faces unassign
+
+### NAME
+
+dam-faces-unassign -- remove a face from its person
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] faces unassign <FACE_ID>
+```
+
+### DESCRIPTION
+
+Removes the person assignment from a single face. The face record is preserved; only the person link is cleared.
+
+### ARGUMENTS
+
+**FACE_ID** (required)
+: The face's UUID.
+
+### EXAMPLES
+
+```bash
+dam faces unassign a1b2c3d4-...
+```
+
+---
+
+## dam faces download
+
+### NAME
+
+dam-faces-download -- download face detection models
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] faces download
+```
+
+### DESCRIPTION
+
+Downloads the YuNet face detection model and ArcFace face recognition model from HuggingFace. Models are cached in the model directory (default `~/.cache/dam/models`, configurable via `[ai] model_dir` in `dam.toml`).
+
+### EXAMPLES
+
+```bash
+dam faces download
+```
+
+---
+
 Previous: [Ingest Commands](02-ingest-commands.md) -- `import`, `tag`, `edit`, `group`, `auto-group`.
 Next: [Retrieve Commands](04-retrieve-commands.md) -- `search`, `show`, `duplicates`, `stats`, `serve`.

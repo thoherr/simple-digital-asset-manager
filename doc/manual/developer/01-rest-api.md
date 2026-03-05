@@ -81,6 +81,16 @@ Returns an HTML page listing all collections with a "New Collection" button.
 curl http://localhost:8080/collections
 ```
 
+### `GET /people` -- People Page
+
+*Requires `--features ai` compilation.*
+
+Returns an HTML page showing all detected people with face crop thumbnails, names, face counts, and management controls (rename, merge, delete). Includes a "Cluster" button to run auto-clustering from the UI.
+
+```bash
+curl http://localhost:8080/people
+```
+
 ### `GET /backup` -- Backup Status Page
 
 Returns an HTML page showing backup health: summary cards (total assets, at-risk count, min copies), volume distribution bar chart, coverage by purpose table, and volume gaps table.
@@ -676,6 +686,41 @@ curl -X POST http://localhost:8080/api/batch/auto-tag \
   -d '{"asset_ids": ["uuid-1", "uuid-2", "uuid-3"]}'
 ```
 
+### `POST /api/batch/detect-faces` -- Batch Face Detection
+
+*Requires `--features ai` compilation.*
+
+Detects faces in the preview images of the selected assets using YuNet + ArcFace. Stores face records, embeddings, and crop thumbnails.
+
+**Content-Type**: `application/json`
+
+**Request body**:
+```json
+{
+  "asset_ids": ["uuid-1", "uuid-2", "uuid-3"]
+}
+```
+
+| Field      | Type     | Description            |
+|------------|----------|------------------------|
+| `asset_ids` | string[] | Array of asset UUIDs  |
+
+**Response**:
+```json
+{
+  "succeeded": 3,
+  "failed": 0,
+  "faces_detected": 7,
+  "errors": []
+}
+```
+
+```bash
+curl -X POST http://localhost:8080/api/batch/detect-faces \
+  -H "Content-Type: application/json" \
+  -d '{"asset_ids": ["uuid-1", "uuid-2", "uuid-3"]}'
+```
+
 ### `POST /api/batch/auto-group` -- Auto-Group by Stem
 
 Groups selected assets by filename stem using fuzzy prefix matching. Merges donor variants into target assets (shortest stem, preferring RAW originals).
@@ -706,6 +751,216 @@ Groups selected assets by filename stem using fuzzy prefix matching. Merges dono
 curl -X POST http://localhost:8080/api/batch/auto-group \
   -H "Content-Type: application/json" \
   -d '{"asset_ids": ["uuid-1", "uuid-2", "uuid-3"]}'
+```
+
+---
+
+## Face & People APIs
+
+*All face and people endpoints require `--features ai` compilation.*
+
+### `GET /api/asset/{id}/faces` -- List Faces for Asset
+
+Returns all detected faces for an asset as a JSON array.
+
+**Response**: `application/json`
+
+```json
+[
+  {
+    "id": "face-uuid-1",
+    "asset_id": "asset-uuid",
+    "person_id": "person-uuid",
+    "bbox_x": 0.25,
+    "bbox_y": 0.15,
+    "bbox_w": 0.12,
+    "bbox_h": 0.18,
+    "confidence": 0.95,
+    "created_at": "2026-03-05T10:30:00Z"
+  }
+]
+```
+
+```bash
+curl http://localhost:8080/api/asset/{id}/faces
+```
+
+### `POST /api/asset/{id}/detect-faces` -- Detect Faces in Asset
+
+Runs face detection on a single asset's preview image. Stores detected faces with embeddings and crop thumbnails.
+
+**Response**: `application/json`
+
+```json
+{
+  "faces_detected": 3
+}
+```
+
+```bash
+curl -X POST http://localhost:8080/api/asset/{id}/detect-faces
+```
+
+### `GET /api/people` -- List All People
+
+Returns all people with face counts as a JSON array.
+
+**Response**: `application/json`
+
+```json
+[
+  {
+    "id": "person-uuid",
+    "name": "Alice",
+    "face_count": 42,
+    "representative_face_id": "face-uuid"
+  }
+]
+```
+
+```bash
+curl http://localhost:8080/api/people
+```
+
+### `PUT /api/people/{id}/name` -- Name a Person
+
+Sets or updates the name of a person.
+
+**Content-Type**: `application/json`
+
+**Request body**:
+```json
+{
+  "name": "Alice"
+}
+```
+
+**Response**:
+```json
+{
+  "status": "ok"
+}
+```
+
+```bash
+curl -X PUT http://localhost:8080/api/people/{id}/name \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Alice"}'
+```
+
+### `POST /api/people/{id}/merge` -- Merge People
+
+Merges the source person into the target person. All faces from the source are reassigned to the target.
+
+**Content-Type**: `application/json`
+
+**Request body**:
+```json
+{
+  "source_id": "person-uuid-to-merge"
+}
+```
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "faces_moved": 15
+}
+```
+
+```bash
+curl -X POST http://localhost:8080/api/people/{id}/merge \
+  -H "Content-Type: application/json" \
+  -d '{"source_id": "person-uuid-to-merge"}'
+```
+
+### `DELETE /api/people/{id}` -- Delete a Person
+
+Deletes a person. All faces assigned to this person become unassigned.
+
+**Response**:
+```json
+{
+  "status": "ok"
+}
+```
+
+```bash
+curl -X DELETE http://localhost:8080/api/people/{id}
+```
+
+### `PUT /api/faces/{face_id}/assign` -- Assign Face to Person
+
+Assigns a face to a person.
+
+**Content-Type**: `application/json`
+
+**Request body**:
+```json
+{
+  "person_id": "person-uuid"
+}
+```
+
+**Response**:
+```json
+{
+  "status": "ok"
+}
+```
+
+```bash
+curl -X PUT http://localhost:8080/api/faces/{face_id}/assign \
+  -H "Content-Type: application/json" \
+  -d '{"person_id": "person-uuid"}'
+```
+
+### `DELETE /api/faces/{face_id}/unassign` -- Unassign Face from Person
+
+Removes the person assignment from a face.
+
+**Response**:
+```json
+{
+  "status": "ok"
+}
+```
+
+```bash
+curl -X DELETE http://localhost:8080/api/faces/{face_id}/unassign
+```
+
+### `POST /api/faces/cluster` -- Auto-Cluster Faces
+
+Runs auto-clustering on unassigned faces, grouping similar faces into new person records.
+
+**Content-Type**: `application/json`
+
+**Request body** (optional):
+```json
+{
+  "threshold": 0.5
+}
+```
+
+| Field       | Type  | Default | Description                         |
+|-------------|-------|---------|-------------------------------------|
+| `threshold` | float | 0.5     | Similarity threshold for clustering |
+
+**Response**:
+```json
+{
+  "people_created": 12,
+  "faces_assigned": 87,
+  "singletons_skipped": 5
+}
+```
+
+```bash
+curl -X POST http://localhost:8080/api/faces/cluster \
+  -H "Content-Type: application/json" \
+  -d '{"threshold": 0.5}'
 ```
 
 ---

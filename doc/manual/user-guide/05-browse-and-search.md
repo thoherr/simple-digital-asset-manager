@@ -96,6 +96,8 @@ All filters can be combined in a single query. Remaining tokens become free-text
 | Missing files | `missing:true` | `missing:true` |
 | Stale verification | `stale:<days>` | `stale:30` |
 | Stacked | `stacked:true` or `stacked:false` | `stacked:true` |
+| Face count | `faces:any`, `faces:none`, `faces:N`, `faces:N+` | `faces:2+` |
+| Person | `person:<name>` | `person:Alice`, `person:"John Smith"` |
 
 **Hierarchical tag matching**: The `tag:` filter matches hierarchically. Searching for `tag:animals` finds assets tagged `animals`, `animals/birds`, `animals/birds/eagles`, and any other descendant of `animals`. To match only the exact tag, use the full path (e.g., `tag:animals/birds/eagles`).
 
