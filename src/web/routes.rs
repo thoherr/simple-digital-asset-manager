@@ -3990,6 +3990,33 @@ pub async fn unassign_face_api(
     }
 }
 
+/// DELETE /api/faces/{face_id} — delete a face detection (e.g., false positive).
+#[cfg(feature = "ai")]
+pub async fn delete_face_api(
+    State(state): State<Arc<AppState>>,
+    Path(face_id): Path<String>,
+) -> Response {
+    let catalog_root = state.catalog_root.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let face_store = crate::face_store::FaceStore::new(catalog.conn());
+        if let Some(asset_id) = face_store.delete_face(&face_id)? {
+            catalog.update_face_count(&asset_id)?;
+            // Remove crop thumbnail
+            let prefix = &face_id[..2.min(face_id.len())];
+            let crop = catalog_root.join("faces").join(prefix).join(format!("{face_id}.jpg"));
+            let _ = std::fs::remove_file(crop);
+        }
+        Ok::<_, anyhow::Error>(())
+    }).await;
+
+    match result {
+        Ok(Ok(())) => Json(serde_json::json!({"ok": true})).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{e:#}")}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{e}")}))).into_response(),
+    }
+}
+
 /// GET /people — people gallery page.
 #[cfg(feature = "ai")]
 pub async fn people_page(

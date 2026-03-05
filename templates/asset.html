@@ -91,6 +91,7 @@
                             <option value="__new__">+ New person</option>
                         </select>
                         {% endif %}
+                        <button class="face-delete" data-face-id="{{ f.face_id }}" title="Delete face">&#128465;</button>
                     </div>
                 </div>
                 {% endfor %}
@@ -160,6 +161,18 @@
                         .then(function(r) { return r.json(); })
                         .then(function() { window.location.reload(); })
                         .catch(function(err) { alert('Unassign failed: ' + err.message); });
+                });
+            });
+
+            document.querySelectorAll('.face-delete').forEach(function(btn) {
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (!confirm('Delete this face detection?')) return;
+                    var faceId = this.dataset.faceId;
+                    fetch('/api/faces/' + faceId, {method: 'DELETE'})
+                        .then(function(r) { return r.json(); })
+                        .then(function() { window.location.reload(); })
+                        .catch(function(err) { alert('Delete failed: ' + err.message); });
                 });
             });
         })();

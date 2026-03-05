@@ -383,6 +383,10 @@ fn build_router(state: Arc<AppState>) -> Router {
                 "/api/faces/{face_id}/unassign",
                 axum::routing::delete(routes::unassign_face_api),
             )
+            .route(
+                "/api/faces/{face_id}",
+                axum::routing::delete(routes::delete_face_api),
+            )
             .route("/people", axum::routing::get(routes::people_page))
             .route("/api/people", axum::routing::get(routes::list_people_api).post(routes::create_person_api))
             .route(

@@ -3076,3 +3076,16 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     background: var(--bg-input);
     color: var(--text);
 }
+.face-delete {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    padding: 0 2px;
+    opacity: 0.5;
+}
+.face-delete:hover {
+    opacity: 1;
+    color: var(--danger, #c00);
+}

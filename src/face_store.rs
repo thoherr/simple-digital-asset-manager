@@ -341,6 +341,25 @@ impl<'a> FaceStore<'a> {
         Ok(count as u32)
     }
 
+    /// Delete a single face by ID. Returns the asset_id if the face existed.
+    pub fn delete_face(&self, face_id: &str) -> Result<Option<String>> {
+        let asset_id: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT asset_id FROM faces WHERE id = ?1",
+                rusqlite::params![face_id],
+                |row| row.get(0),
+            )
+            .ok();
+        if asset_id.is_some() {
+            self.conn.execute(
+                "DELETE FROM faces WHERE id = ?1",
+                rusqlite::params![face_id],
+            )?;
+        }
+        Ok(asset_id)
+    }
+
     /// Delete a person and unassign their faces.
     pub fn delete_person(&self, person_id: &str) -> Result<()> {
         self.conn.execute(
