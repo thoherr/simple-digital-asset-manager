@@ -409,6 +409,15 @@ fn parse_detections(
         }
     }
 
+    // Try multi-stride YuNet format: cls_8/16/32, obj_8/16/32, bbox_8/16/32, kps_8/16/32
+    if num_outputs == 12 {
+        let has_strides = output_names.iter().any(|n| n.contains("cls_")) &&
+            output_names.iter().any(|n| n.contains("bbox_"));
+        if has_strides {
+            return parse_yunet_multi_stride(outputs, output_names, input_w, input_h, min_confidence, debug);
+        }
+    }
+
     // Fallback: try separate loc/conf/iou outputs
     if num_outputs >= 2 {
         return parse_multi_output_detections(outputs, num_outputs, output_names, input_w, input_h, min_confidence);
@@ -457,6 +466,162 @@ fn parse_yunet_2d(
 
     faces.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
     Ok(faces)
+}
+
+/// Parse YuNet multi-stride format with separate cls/obj/bbox/kps outputs at strides 8, 16, 32.
+///
+/// Decoding follows the OpenCV implementation:
+///   score = sqrt(clamp(cls, 0, 1) * clamp(obj, 0, 1))
+///   cx = (col + bbox[0]) * stride,  cy = (row + bbox[1]) * stride
+///   w  = exp(bbox[2]) * stride,     h  = exp(bbox[3]) * stride
+///   landmark_x = (col + kps[k*2]) * stride, landmark_y = (row + kps[k*2+1]) * stride
+fn parse_yunet_multi_stride(
+    outputs: &ort::session::SessionOutputs,
+    output_names: &[String],
+    input_w: f32,
+    input_h: f32,
+    min_confidence: f32,
+    debug: bool,
+) -> Result<Vec<DetectedFace>> {
+    let strides: &[u32] = &[8, 16, 32];
+
+    // Build name→index map
+    let name_idx: std::collections::HashMap<&str, usize> = output_names.iter().enumerate()
+        .map(|(i, n)| (n.as_str(), i))
+        .collect();
+
+    let mut candidates: Vec<(f32, f32, f32, f32, f32, [(f32, f32); 5], f32)> = Vec::new();
+
+    for (si, &stride) in strides.iter().enumerate() {
+        let cols = (input_w as u32 / stride) as usize;
+        let rows = (input_h as u32 / stride) as usize;
+
+        let suffix = format!("_{stride}");
+        let cls_name = format!("cls{suffix}");
+        let obj_name = format!("obj{suffix}");
+        let bbox_name = format!("bbox{suffix}");
+        let kps_name = format!("kps{suffix}");
+
+        let cls_idx = name_idx.get(cls_name.as_str()).copied()
+            .unwrap_or(si);
+        let obj_idx = name_idx.get(obj_name.as_str()).copied()
+            .unwrap_or(si + strides.len());
+        let bbox_idx = name_idx.get(bbox_name.as_str()).copied()
+            .unwrap_or(si + strides.len() * 2);
+        let kps_idx = name_idx.get(kps_name.as_str()).copied()
+            .unwrap_or(si + strides.len() * 3);
+
+        let cls_tensor = outputs[cls_idx].try_extract_array::<f32>()
+            .context("Failed to extract cls tensor")?;
+        let obj_tensor = outputs[obj_idx].try_extract_array::<f32>()
+            .context("Failed to extract obj tensor")?;
+        let bbox_tensor = outputs[bbox_idx].try_extract_array::<f32>()
+            .context("Failed to extract bbox tensor")?;
+        let kps_tensor = outputs[kps_idx].try_extract_array::<f32>()
+            .context("Failed to extract kps tensor")?;
+
+        let cls_flat: Vec<f32> = cls_tensor.iter().copied().collect();
+        let obj_flat: Vec<f32> = obj_tensor.iter().copied().collect();
+        let bbox_flat: Vec<f32> = bbox_tensor.iter().copied().collect();
+        let kps_flat: Vec<f32> = kps_tensor.iter().copied().collect();
+
+        let n = cols * rows;
+        for r in 0..rows {
+            for c in 0..cols {
+                let idx = r * cols + c;
+                if idx >= n { break; }
+
+                let cls_score = cls_flat.get(idx).copied().unwrap_or(0.0).clamp(0.0, 1.0);
+                let obj_score = obj_flat.get(idx).copied().unwrap_or(0.0).clamp(0.0, 1.0);
+                let score = (cls_score * obj_score).sqrt();
+
+                if score < min_confidence {
+                    continue;
+                }
+
+                let b = idx * 4;
+                let cx = (c as f32 + bbox_flat.get(b).copied().unwrap_or(0.0)) * stride as f32;
+                let cy = (r as f32 + bbox_flat.get(b + 1).copied().unwrap_or(0.0)) * stride as f32;
+                let w = bbox_flat.get(b + 2).copied().unwrap_or(0.0).exp() * stride as f32;
+                let h = bbox_flat.get(b + 3).copied().unwrap_or(0.0).exp() * stride as f32;
+
+                // Convert center to top-left
+                let x = cx - w * 0.5;
+                let y = cy - h * 0.5;
+
+                let k = idx * 10;
+                let mut landmarks = [(0.0f32, 0.0f32); 5];
+                for lm in 0..5 {
+                    let lx = (c as f32 + kps_flat.get(k + lm * 2).copied().unwrap_or(0.0)) * stride as f32;
+                    let ly = (r as f32 + kps_flat.get(k + lm * 2 + 1).copied().unwrap_or(0.0)) * stride as f32;
+                    landmarks[lm] = (lx / input_w, ly / input_h);
+                }
+
+                candidates.push((x, y, w, h, score, landmarks, score));
+            }
+        }
+    }
+
+    if debug {
+        eprintln!("  [debug] multi-stride: {} candidates before NMS", candidates.len());
+    }
+
+    // Simple greedy NMS
+    candidates.sort_by(|a, b| b.4.partial_cmp(&a.4).unwrap());
+    let nms_threshold = 0.3f32;
+    let mut keep = vec![true; candidates.len()];
+
+    for i in 0..candidates.len() {
+        if !keep[i] { continue; }
+        for j in (i + 1)..candidates.len() {
+            if !keep[j] { continue; }
+            let iou = compute_iou(
+                candidates[i].0, candidates[i].1, candidates[i].2, candidates[i].3,
+                candidates[j].0, candidates[j].1, candidates[j].2, candidates[j].3,
+            );
+            if iou > nms_threshold {
+                keep[j] = false;
+            }
+        }
+    }
+
+    let faces: Vec<DetectedFace> = candidates.iter().zip(keep.iter())
+        .filter(|(_, &k)| k)
+        .map(|(&(x, y, w, h, score, landmarks, _), _)| {
+            DetectedFace {
+                bbox_x: (x / input_w).clamp(0.0, 1.0),
+                bbox_y: (y / input_h).clamp(0.0, 1.0),
+                bbox_w: (w / input_w).clamp(0.0, 1.0),
+                bbox_h: (h / input_h).clamp(0.0, 1.0),
+                confidence: score,
+                landmarks,
+            }
+        })
+        .collect();
+
+    if debug {
+        eprintln!("  [debug] multi-stride: {} faces after NMS", faces.len());
+    }
+
+    Ok(faces)
+}
+
+/// Compute IoU (intersection over union) between two boxes in (x, y, w, h) format.
+fn compute_iou(x1: f32, y1: f32, w1: f32, h1: f32, x2: f32, y2: f32, w2: f32, h2: f32) -> f32 {
+    let inter_x = x1.max(x2);
+    let inter_y = y1.max(y2);
+    let inter_r = (x1 + w1).min(x2 + w2);
+    let inter_b = (y1 + h1).min(y2 + h2);
+
+    let inter_w = (inter_r - inter_x).max(0.0);
+    let inter_h = (inter_b - inter_y).max(0.0);
+    let inter_area = inter_w * inter_h;
+
+    let area1 = w1 * h1;
+    let area2 = w2 * h2;
+    let union_area = area1 + area2 - inter_area;
+
+    if union_area <= 0.0 { 0.0 } else { inter_area / union_area }
 }
 
 /// Fallback parser for multi-output detection models (loc + conf + iou).
