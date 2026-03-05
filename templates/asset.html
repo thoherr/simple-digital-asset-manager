@@ -106,8 +106,6 @@
                     .then(function(res) {
                         if (!res.ok) {
                             alert('Detection failed: ' + (res.data.error || 'Unknown error'));
-                        } else {
-                            alert(res.data.faces_detected + ' face(s) detected.');
                         }
                         window.location.reload();
                     })
