@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}People - DAM{% endblock %}
+
+{% block nav_extra %}{% if ai_enabled %}<a href="/people">People</a>{% endif %}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>People</h1>
+    <div class="page-actions">
+        <button class="btn" id="cluster-btn">Cluster unassigned faces</button>
+    </div>
+</div>
+
+{% if people.is_empty() %}
+<p class="empty-state">No people found. Detect faces first with <code>dam faces detect</code>, then cluster them with the button above or <code>dam faces cluster --apply</code>.</p>
+{% else %}
+<div class="people-grid">
+    {% for p in people %}
+    <div class="person-card" data-id="{{ p.id }}">
+        <a href="/?person={{ p.name|urlencode }}">
+            {% if let Some(url) = p.crop_url %}
+            <img src="{{ url }}" class="person-thumb" alt="{{ p.name }}">
+            {% else %}
+            <div class="person-thumb person-thumb-placeholder">&#128100;</div>
+            {% endif %}
+        </a>
+        <div class="person-info">
+            <span class="person-name" data-id="{{ p.id }}">{{ p.name }}</span>
+            <span class="person-count">{{ p.face_count }} face{% if p.face_count != 1 %}s{% endif %}</span>
+        </div>
+        <div class="person-actions">
+            <button class="btn btn-small person-rename" data-id="{{ p.id }}" title="Rename">&#9998;</button>
+            <button class="btn btn-small btn-danger person-delete" data-id="{{ p.id }}" title="Delete">&#215;</button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<script>
+(function() {
+    document.getElementById('cluster-btn').addEventListener('click', function() {
+        if (!confirm('Auto-cluster unassigned faces into groups? This will create unnamed people from similar face embeddings.')) return;
+        this.disabled = true;
+        this.textContent = 'Clustering...';
+        fetch('/api/faces/cluster', {method: 'POST'})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                alert(data.people_created + ' people created, ' + data.faces_assigned + ' faces assigned, ' + data.singletons_skipped + ' singletons skipped.');
+                window.location.reload();
+            })
+            .catch(function(err) {
+                alert('Clustering failed: ' + err.message);
+                window.location.reload();
+            });
+    });
+
+    document.querySelectorAll('.person-rename').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = this.dataset.id;
+            var nameEl = this.closest('.person-card').querySelector('.person-name');
+            var newName = prompt('Enter new name:', nameEl.textContent);
+            if (!newName || newName === nameEl.textContent) return;
+            fetch('/api/people/' + id + '/name', {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: newName})
+            })
+            .then(function(r) { return r.json(); })
+            .then(function() { nameEl.textContent = newName; })
+            .catch(function(err) { alert('Rename failed: ' + err.message); });
+        });
+    });
+
+    document.querySelectorAll('.person-delete').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = this.dataset.id;
+            var card = this.closest('.person-card');
+            var name = card.querySelector('.person-name').textContent;
+            if (!confirm('Delete person "' + name + '"? Their faces will be unassigned.')) return;
+            fetch('/api/people/' + id, {method: 'DELETE'})
+                .then(function(r) { return r.json(); })
+                .then(function() { card.remove(); })
+                .catch(function(err) { alert('Delete failed: ' + err.message); });
+        });
+    });
+})();
+</script>
+{% endblock %}

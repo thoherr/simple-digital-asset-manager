@@ -2,6 +2,8 @@
 
 {% block title %}Browse - DAM{% endblock %}
 
+{% block nav_extra %}{% if ai_enabled %}<a href="/people">People</a>{% endif %}{% endblock %}
+
 {% block extra_head %}
 <link rel="stylesheet" href="/static/leaflet.css">
 <link rel="stylesheet" href="/static/MarkerCluster.css">
@@ -91,6 +93,14 @@
             <option value="">All collections</option>
             {% for c in all_collections %}
             <option value="{{ c.name }}"{% if collection == c.name %} selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
+        {% if ai_enabled && !all_people.is_empty() %}
+        <select name="person">
+            <option value="">All people</option>
+            {% for p in all_people %}
+            <option value="{{ p.name }}"{% if person == p.name %} selected{% endif %}>{{ p.name }}</option>
             {% endfor %}
         </select>
         {% endif %}
@@ -232,6 +242,7 @@
         {% if ai_enabled %}
         <span class="batch-sep"></span>
         <button class="batch-btn" id="batch-autotag">Auto-tag</button>
+        <button class="batch-btn" id="batch-detect-faces">Detect faces</button>
         {% endif %}
     </div>
 </div>
@@ -1411,6 +1422,32 @@
             .catch(function(err) {
                 setButtonsBusy(false);
                 alert('Auto-tag failed: ' + err.message);
+            });
+        });
+    }
+
+    var detectFacesBtn = document.getElementById('batch-detect-faces');
+    if (detectFacesBtn) {
+        detectFacesBtn.addEventListener('click', function() {
+            if (selected.size === 0 || batchBusy) return;
+            if (!confirm('Detect faces in ' + selected.size + ' selected asset(s)?')) return;
+            setButtonsBusy(true);
+            fetch('/api/batch/detect-faces', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({asset_ids: Array.from(selected)})
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                setButtonsBusy(false);
+                alert(data.faces_detected + ' face(s) detected in ' + data.succeeded + ' asset(s).' +
+                    (data.errors && data.errors.length > 0 ? ' ' + data.errors.length + ' error(s).' : ''));
+                clearSelection();
+                htmx.ajax('GET', buildSearchUrl(), {target: '#results', swap: 'innerHTML'});
+            })
+            .catch(function(err) {
+                setButtonsBusy(false);
+                alert('Detect faces failed: ' + err.message);
             });
         });
     }

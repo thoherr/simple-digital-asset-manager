@@ -100,6 +100,11 @@ pub struct ParsedSearch {
     pub stacked: Option<bool>,
     pub geo_bbox: Option<(f64, f64, f64, f64)>,  // (south, west, north, east)
     pub has_gps: Option<bool>,
+    pub has_faces: Option<bool>,
+    pub face_count_min: Option<u32>,
+    pub face_count_exact: Option<u32>,
+    pub persons: Vec<String>,
+    pub persons_exclude: Vec<String>,
 }
 
 impl ParsedSearch {
@@ -149,6 +154,9 @@ impl ParsedSearch {
             stacked_filter: self.stacked,
             geo_bbox: self.geo_bbox,
             has_gps: self.has_gps,
+            has_faces: self.has_faces,
+            face_count_min: self.face_count_min,
+            face_count_exact: self.face_count_exact,
             ..Default::default()
         }
     }
@@ -354,6 +362,24 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
                     // geo:south,west,north,east
                     parsed.geo_bbox = Some((parts[0], parts[1], parts[2], parts[3]));
                 }
+            }
+        } else if let Some(value) = token_body.strip_prefix("faces:") {
+            if value == "any" {
+                parsed.has_faces = Some(true);
+            } else if value == "none" {
+                parsed.has_faces = Some(false);
+            } else if let Some(num_str) = value.strip_suffix('+') {
+                if let Ok(n) = num_str.parse::<u32>() {
+                    parsed.face_count_min = Some(n);
+                }
+            } else if let Ok(n) = value.parse::<u32>() {
+                parsed.face_count_exact = Some(n);
+            }
+        } else if let Some(value) = token_body.strip_prefix("person:") {
+            if negated {
+                parsed.persons_exclude.push(value.to_string());
+            } else {
+                parsed.persons.push(value.to_string());
             }
         } else if negated {
             // Negated free text: -word
@@ -706,6 +732,54 @@ impl QueryEngine {
             }
             collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
             opts.collection_exclude_ids = Some(&collection_exclude_ids);
+        }
+
+        // Pre-compute person asset IDs (include)
+        let person_ids;
+        if !parsed.persons.is_empty() {
+            #[cfg(feature = "ai")]
+            {
+                let face_store = crate::face_store::FaceStore::new(catalog.conn());
+                let mut all_ids = std::collections::HashSet::new();
+                for person_entry in &parsed.persons {
+                    for person_name in person_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                        if let Ok(ids) = face_store.find_person_asset_ids(person_name) {
+                            all_ids.extend(ids);
+                        }
+                    }
+                }
+                person_ids = all_ids.into_iter().collect::<Vec<_>>();
+                opts.person_asset_ids = Some(&person_ids);
+            }
+            #[cfg(not(feature = "ai"))]
+            {
+                person_ids = Vec::new();
+                opts.person_asset_ids = Some(&person_ids);
+            }
+        }
+
+        // Pre-compute person exclude IDs
+        let person_exclude_ids;
+        if !parsed.persons_exclude.is_empty() {
+            #[cfg(feature = "ai")]
+            {
+                let face_store = crate::face_store::FaceStore::new(catalog.conn());
+                let mut all_ids = std::collections::HashSet::new();
+                for person_entry in &parsed.persons_exclude {
+                    for person_name in person_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                        if let Ok(ids) = face_store.find_person_asset_ids(person_name) {
+                            all_ids.extend(ids);
+                        }
+                    }
+                }
+                person_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
+                opts.person_exclude_ids = Some(&person_exclude_ids);
+            }
+            #[cfg(not(feature = "ai"))]
+            {
+                person_exclude_ids = Vec::new();
+                opts.person_exclude_ids = Some(&person_exclude_ids);
+            }
         }
 
         // Pre-compute online volume IDs for volume:none

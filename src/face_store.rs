@@ -35,6 +35,14 @@ pub struct Person {
     pub created_at: String,
 }
 
+/// Result of auto-clustering faces into people groups.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AutoClusterResult {
+    pub people_created: u32,
+    pub faces_assigned: u32,
+    pub singletons_skipped: u32,
+}
+
 /// A face with its similarity score (from search).
 #[derive(Debug, Clone)]
 pub struct FaceMatch {
@@ -48,6 +56,11 @@ impl<'a> FaceStore<'a> {
     /// Create a new FaceStore backed by the given connection.
     pub fn new(conn: &'a Connection) -> Self {
         Self { conn }
+    }
+
+    /// Access the underlying database connection.
+    pub fn conn(&self) -> &Connection {
+        self.conn
     }
 
     /// Initialize the faces and people tables (idempotent).
@@ -360,6 +373,167 @@ impl<'a> FaceStore<'a> {
             result.push((id, person_id, emb));
         }
         Ok(result)
+    }
+
+    /// Unassign a face from its person (set person_id = NULL).
+    pub fn unassign_face(&self, face_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE faces SET person_id = NULL WHERE id = ?1",
+            rusqlite::params![face_id],
+        )?;
+        Ok(())
+    }
+
+    /// Get a single face by ID (without embedding).
+    pub fn get_face(&self, face_id: &str) -> Result<Option<StoredFace>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, asset_id, person_id, bbox_x, bbox_y, bbox_w, bbox_h, confidence, created_at
+             FROM faces WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query(rusqlite::params![face_id])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(StoredFace {
+                id: row.get(0)?,
+                asset_id: row.get(1)?,
+                person_id: row.get(2)?,
+                bbox_x: row.get(3)?,
+                bbox_y: row.get(4)?,
+                bbox_w: row.get(5)?,
+                bbox_h: row.get(6)?,
+                confidence: row.get(7)?,
+                created_at: row.get(8)?,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    /// Find asset IDs that have faces assigned to a person (by name).
+    pub fn find_person_asset_ids(&self, name: &str) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT f.asset_id FROM faces f
+             JOIN people p ON f.person_id = p.id
+             WHERE p.name = ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![name], |row| row.get(0))?;
+        rows.collect::<Result<Vec<String>, _>>().context("Failed to find person asset IDs")
+    }
+
+    /// Find asset IDs that have faces assigned to a person (by person ID).
+    pub fn find_person_asset_ids_by_id(&self, person_id: &str) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT f.asset_id FROM faces f WHERE f.person_id = ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![person_id], |row| row.get(0))?;
+        rows.collect::<Result<Vec<String>, _>>().context("Failed to find person asset IDs")
+    }
+
+    /// Cluster unassigned faces into groups using greedy single-linkage.
+    ///
+    /// Returns clusters (each is a list of face_ids) where each cluster has ≥2 faces.
+    pub fn cluster_faces(&self, threshold: f32) -> Result<Vec<Vec<String>>> {
+        let all = self.all_face_embeddings()?;
+        // Only cluster unassigned faces
+        let unassigned: Vec<(String, Vec<f32>)> = all
+            .into_iter()
+            .filter(|(_, pid, _)| pid.is_none())
+            .map(|(id, _, emb)| (id, emb))
+            .collect();
+
+        if unassigned.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Greedy clustering: each cluster has a centroid (average embedding)
+        let mut clusters: Vec<(Vec<String>, Vec<f32>)> = Vec::new(); // (face_ids, centroid)
+
+        for (face_id, emb) in &unassigned {
+            let mut best_idx = None;
+            let mut best_sim = threshold;
+
+            for (i, (_, centroid)) in clusters.iter().enumerate() {
+                let sim = crate::ai::cosine_similarity(emb, centroid);
+                if sim > best_sim {
+                    best_sim = sim;
+                    best_idx = Some(i);
+                }
+            }
+
+            if let Some(idx) = best_idx {
+                // Add to existing cluster, update centroid (running average)
+                let (ref mut ids, ref mut centroid) = clusters[idx];
+                let n = ids.len() as f32;
+                for (j, val) in emb.iter().enumerate() {
+                    centroid[j] = (centroid[j] * n + val) / (n + 1.0);
+                }
+                ids.push(face_id.clone());
+            } else {
+                // Start a new cluster
+                clusters.push((vec![face_id.clone()], emb.clone()));
+            }
+        }
+
+        // Return only clusters with ≥2 faces
+        Ok(clusters
+            .into_iter()
+            .filter(|(ids, _)| ids.len() >= 2)
+            .map(|(ids, _)| ids)
+            .collect())
+    }
+
+    /// Auto-cluster unassigned faces and create people for each cluster.
+    pub fn auto_cluster(&self, threshold: f32) -> Result<AutoClusterResult> {
+        let clusters = self.cluster_faces(threshold)?;
+
+        let mut people_created = 0u32;
+        let mut faces_assigned = 0u32;
+
+        // Count unassigned singletons (faces not in any cluster with ≥2 members)
+        let total_unassigned: usize = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM faces WHERE person_id IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        let clustered_count: usize = clusters.iter().map(|c| c.len()).sum();
+        let singletons_skipped = (total_unassigned - clustered_count) as u32;
+
+        for face_ids in &clusters {
+            let person_id = self.create_person(None)?;
+
+            // Find the highest-confidence face for representative
+            let mut best_face_id = &face_ids[0];
+            let mut best_confidence = 0.0f32;
+
+            for fid in face_ids {
+                self.assign_face_to_person(fid, &person_id)?;
+                faces_assigned += 1;
+
+                // Get confidence for representative selection
+                let conf: f32 = self
+                    .conn
+                    .query_row(
+                        "SELECT confidence FROM faces WHERE id = ?1",
+                        rusqlite::params![fid],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0.0);
+                if conf > best_confidence {
+                    best_confidence = conf;
+                    best_face_id = fid;
+                }
+            }
+
+            self.set_representative_face(&person_id, best_face_id)?;
+            people_created += 1;
+        }
+
+        Ok(AutoClusterResult {
+            people_created,
+            faces_assigned,
+            singletons_skipped,
+        })
     }
 }
 

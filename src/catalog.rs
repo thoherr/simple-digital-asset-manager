@@ -55,6 +55,8 @@ pub struct SearchRow {
     pub stack_count: Option<u32>,
     /// Manual preview rotation override in degrees (0/90/180/270).
     pub preview_rotation: Option<u16>,
+    /// Number of detected faces in this asset.
+    pub face_count: u32,
 }
 
 impl SearchRow {
@@ -397,6 +399,11 @@ pub struct SearchOptions<'a> {
     pub stacked_filter: Option<bool>,
     pub geo_bbox: Option<(f64, f64, f64, f64)>,
     pub has_gps: Option<bool>,
+    pub has_faces: Option<bool>,
+    pub face_count_min: Option<u32>,
+    pub face_count_exact: Option<u32>,
+    pub person_asset_ids: Option<&'a [String]>,
+    pub person_exclude_ids: Option<&'a [String]>,
     pub sort: SearchSort,
     pub page: u32,
     pub per_page: u32,
@@ -450,6 +457,11 @@ impl<'a> Default for SearchOptions<'a> {
             stacked_filter: None,
             geo_bbox: None,
             has_gps: None,
+            has_faces: None,
+            face_count_min: None,
+            face_count_exact: None,
+            person_asset_ids: None,
+            person_exclude_ids: None,
             sort: SearchSort::DateDesc,
             page: 1,
             per_page: 60,
@@ -622,10 +634,23 @@ impl Catalog {
         // Preview rotation override
         let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN preview_rotation INTEGER");
         self.backfill_gps_columns();
+        // Face count denormalized column
+        let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN face_count INTEGER NOT NULL DEFAULT 0");
+        #[cfg(feature = "ai")]
+        {
+            let _ = self.conn.execute_batch(
+                "UPDATE assets SET face_count = (SELECT COUNT(*) FROM faces WHERE asset_id = assets.id) WHERE face_count = 0 AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='faces')",
+            );
+        }
+        let _ = self.conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_assets_face_count ON assets(face_count) WHERE face_count > 0",
+        );
+
         // Embeddings table for AI features
         #[cfg(feature = "ai")]
         {
             let _ = crate::embedding_store::EmbeddingStore::initialize(&self.conn);
+            let _ = crate::face_store::FaceStore::initialize(&self.conn);
         }
     }
 
@@ -644,7 +669,8 @@ impl Catalog {
                 variant_count INTEGER NOT NULL DEFAULT 0,
                 latitude REAL,
                 longitude REAL,
-                preview_rotation INTEGER
+                preview_rotation INTEGER,
+                face_count INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS variants (
@@ -785,6 +811,12 @@ impl Catalog {
         )?;
         self.backfill_gps_columns();
 
+        // Face count denormalized column
+        let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN face_count INTEGER NOT NULL DEFAULT 0");
+        let _ = self.conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_assets_face_count ON assets(face_count) WHERE face_count > 0",
+        );
+
         Ok(())
     }
 
@@ -841,6 +873,16 @@ impl Catalog {
         self.conn.execute(
             "UPDATE assets SET preview_rotation = ?1 WHERE id = ?2",
             rusqlite::params![rotation.map(|r| r as i64), asset_id],
+        )?;
+        Ok(())
+    }
+
+    /// Update the denormalized face_count for an asset.
+    /// Recomputes from the faces table (requires faces table to exist).
+    pub fn update_face_count(&self, asset_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE assets SET face_count = (SELECT COUNT(*) FROM faces WHERE asset_id = ?1) WHERE id = ?1",
+            rusqlite::params![asset_id],
         )?;
         Ok(())
     }
@@ -2500,6 +2542,47 @@ impl Catalog {
             }
         }
 
+        // Face filters (use denormalized face_count column)
+        if let Some(has_faces) = opts.has_faces {
+            if has_faces {
+                clauses.push("a.face_count > 0".to_string());
+            } else {
+                clauses.push("a.face_count = 0".to_string());
+            }
+        }
+        if let Some(min) = opts.face_count_min {
+            clauses.push("a.face_count >= ?".to_string());
+            params.push(Box::new(min as i64));
+        }
+        if let Some(exact) = opts.face_count_exact {
+            clauses.push("a.face_count = ?".to_string());
+            params.push(Box::new(exact as i64));
+        }
+
+        // Person filter: restrict to pre-computed asset IDs
+        if let Some(ids) = opts.person_asset_ids {
+            if ids.is_empty() {
+                clauses.push("0".to_string());
+            } else {
+                let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+                clauses.push(format!("a.id IN ({})", placeholders.join(",")));
+                for id in ids {
+                    params.push(Box::new(id.clone()));
+                }
+            }
+        }
+
+        // Person exclude filter
+        if let Some(ids) = opts.person_exclude_ids {
+            if !ids.is_empty() {
+                let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+                clauses.push(format!("a.id NOT IN ({})", placeholders.join(",")));
+                for id in ids {
+                    params.push(Box::new(id.clone()));
+                }
+            }
+        }
+
         let where_clause = if clauses.is_empty() {
             " WHERE 1=1".to_string()
         } else {
@@ -2636,7 +2719,7 @@ impl Catalog {
             "SELECT a.id, a.name, a.asset_type, a.created_at, bv.original_filename, bv.format, \
              a.tags, a.description, bv.content_hash, a.rating, a.color_label, \
              a.primary_variant_format, a.variant_count, a.stack_id, s.member_count, \
-             a.preview_rotation \
+             a.preview_rotation, a.face_count \
              FROM assets a \
              JOIN variants bv ON bv.content_hash = a.best_variant_hash \
              LEFT JOIN stacks s ON s.id = a.stack_id",
@@ -2673,6 +2756,7 @@ impl Catalog {
             let variant_count_val: i64 = row.get(12)?;
             let stack_member_count: Option<i64> = row.get(14)?;
             let rotation_val: Option<i64> = row.get(15)?;
+            let face_count_val: i64 = row.get::<_, Option<i64>>(16)?.unwrap_or(0);
             Ok(SearchRow {
                 asset_id: row.get(0)?,
                 name: row.get(1)?,
@@ -2690,6 +2774,7 @@ impl Catalog {
                 stack_id: row.get(13)?,
                 stack_count: stack_member_count.map(|n| n as u32),
                 preview_rotation: rotation_val.map(|r| r as u16),
+                face_count: face_count_val as u32,
             })
         })?;
 

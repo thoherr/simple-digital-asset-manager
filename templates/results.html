@@ -130,6 +130,7 @@
                 <span class="badge">{{ card.format }}</span>
                 {% if card.variant_count > 1 %}<span class="badge badge-count">{{ card.variant_count }}v</span>{% endif %}
                 {% if let Some(sc) = card.stack_count %}<span class="badge badge-stack" title="Stack of {{ sc }}">&#8862; {{ sc }}</span>{% endif %}
+                {% if card.face_count > 0 %}<span class="badge" title="{{ card.face_count }} face(s)">&#128100; {{ card.face_count }}</span>{% endif %}
                 <span>{{ card.date }}</span>
             </div>
             {% if card.rating.is_some() && card.rating.unwrap() > 0 %}

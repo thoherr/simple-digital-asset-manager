@@ -165,6 +165,10 @@ pub struct AiConfig {
     pub model_dir: String,
     #[serde(default = "default_ai_prompt")]
     pub prompt: String,
+    #[serde(default = "default_face_cluster_threshold")]
+    pub face_cluster_threshold: f32,
+    #[serde(default = "default_face_min_confidence")]
+    pub face_min_confidence: f32,
 }
 
 fn default_ai_model() -> String {
@@ -183,6 +187,14 @@ fn default_ai_prompt() -> String {
     "a photograph of {}".to_string()
 }
 
+fn default_face_cluster_threshold() -> f32 {
+    0.5
+}
+
+fn default_face_min_confidence() -> f32 {
+    0.5
+}
+
 impl Default for AiConfig {
     fn default() -> Self {
         Self {
@@ -191,6 +203,8 @@ impl Default for AiConfig {
             labels: None,
             model_dir: "~/.dam/models".to_string(),
             prompt: "a photograph of {}".to_string(),
+            face_cluster_threshold: 0.5,
+            face_min_confidence: 0.5,
         }
     }
 }

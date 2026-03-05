@@ -54,6 +54,7 @@ pub struct AssetCard {
     pub prev_id: Option<String>,
     pub next_id: Option<String>,
     pub preview_rotation: Option<u16>,
+    pub face_count: u32,
 }
 
 impl AssetCard {
@@ -79,6 +80,7 @@ impl AssetCard {
             prev_id: None,
             next_id: None,
             preview_rotation: row.preview_rotation,
+            face_count: row.face_count,
         }
     }
 
@@ -159,6 +161,12 @@ pub struct CollectionOption {
     pub name: String,
 }
 
+/// Person option for dropdowns.
+pub struct PersonOption {
+    pub id: String,
+    pub name: String,
+}
+
 /// Pre-computed variant for template rendering.
 pub struct VariantRow {
     pub role: String,
@@ -226,8 +234,10 @@ pub struct BrowsePage {
     pub format_groups: Vec<FormatGroup>,
     pub all_volumes: Vec<VolumeOption>,
     pub all_collections: Vec<CollectionOption>,
+    pub all_people: Vec<PersonOption>,
     pub collection: String,
     pub path: String,
+    pub person: String,
     pub saved_searches: Vec<SavedSearchChip>,
     pub collapse_stacks: bool,
     pub ai_enabled: bool,
@@ -278,11 +288,37 @@ pub struct AssetPage {
     pub prev_id: Option<String>,
     pub next_id: Option<String>,
     pub ai_enabled: bool,
+    pub faces: Vec<FaceRow>,
+    pub all_people: Vec<PersonOption>,
+}
+
+/// A detected face on the asset detail page.
+pub struct FaceRow {
+    pub face_id: String,
+    pub crop_url: Option<String>,
+    pub confidence_pct: u32,
+    pub person_name: Option<String>,
+    pub person_id: Option<String>,
 }
 
 /// Collections the asset belongs to, shown on asset detail page.
 pub struct AssetCollectionChip {
     pub name: String,
+}
+
+/// Person card for the people gallery page.
+pub struct PersonCard {
+    pub id: String,
+    pub name: String,
+    pub face_count: usize,
+    pub crop_url: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "people.html")]
+pub struct PeoplePage {
+    pub people: Vec<PersonCard>,
+    pub ai_enabled: bool,
 }
 
 /// A member of a stack, shown on asset detail page.
@@ -389,6 +425,8 @@ impl AssetPage {
             prev_id: None,
             next_id: None,
             ai_enabled: false,
+            faces: Vec::new(),
+            all_people: Vec::new(),
         }
     }
 }

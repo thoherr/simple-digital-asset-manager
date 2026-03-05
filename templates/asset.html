@@ -2,6 +2,8 @@
 
 {% block title %}{{ display_name }} - DAM{% endblock %}
 
+{% block nav_extra %}{% if ai_enabled %}<a href="/people">People</a>{% endif %}{% endblock %}
+
 {% block content %}
 <div class="asset-nav">
     <span class="nav-loading-spinner" id="nav-prev-loading"></span>
@@ -63,6 +65,94 @@
             <button id="find-similar-btn" class="btn btn-sm" onclick="findSimilar()">Find similar</button>
             <div id="similar-results" style="display:none"></div>
         </details>
+
+        <details{% if !faces.is_empty() %} open{% endif %}>
+            <summary>Faces ({{ faces.len() }})</summary>
+            <button class="btn btn-sm" id="detect-faces-btn">Detect faces</button>
+            <div id="faces-section" class="faces-section">
+                {% for f in faces %}
+                <div class="face-chip" data-face-id="{{ f.face_id }}">
+                    {% if let Some(url) = f.crop_url %}
+                    <img src="{{ url }}" class="face-thumb" alt="Face">
+                    {% else %}
+                    <div class="face-thumb face-thumb-placeholder">&#128100;</div>
+                    {% endif %}
+                    <div class="face-meta">
+                        <span class="face-confidence">{{ f.confidence_pct }}%</span>
+                        {% if let Some(name) = f.person_name %}
+                        <a href="/?person={{ name|urlencode }}" class="face-person-name">{{ name }}</a>
+                        <button class="face-unassign" data-face-id="{{ f.face_id }}" title="Unassign">&times;</button>
+                        {% else %}
+                        <select class="face-assign-select" data-face-id="{{ f.face_id }}">
+                            <option value="">Assign to...</option>
+                            {% for p in all_people %}
+                            <option value="{{ p.id }}">{{ p.name }}</option>
+                            {% endfor %}
+                            <option value="__new__">+ New person</option>
+                        </select>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </details>
+        <script>
+        (function() {
+            document.getElementById('detect-faces-btn').addEventListener('click', function() {
+                this.disabled = true;
+                this.textContent = 'Detecting...';
+                fetch('/api/asset/{{ asset_id }}/detect-faces', {method: 'POST'})
+                    .then(function(r) { return r.json().then(function(data) { return {ok: r.ok, data: data}; }); })
+                    .then(function(res) {
+                        if (!res.ok) {
+                            alert('Detection failed: ' + (res.data.error || 'Unknown error'));
+                        } else {
+                            alert(res.data.faces_detected + ' face(s) detected.');
+                        }
+                        window.location.reload();
+                    })
+                    .catch(function(err) {
+                        alert('Detection failed: ' + err.message);
+                        window.location.reload();
+                    });
+            });
+
+            document.querySelectorAll('.face-assign-select').forEach(function(sel) {
+                sel.addEventListener('change', function() {
+                    var faceId = this.dataset.faceId;
+                    var personId = this.value;
+                    if (!personId) return;
+                    if (personId === '__new__') {
+                        var name = prompt('Enter person name:');
+                        if (!name) { this.value = ''; return; }
+                        fetch('/api/faces/cluster', {method: 'POST'})
+                            .then(function() { window.location.reload(); })
+                            .catch(function() { window.location.reload(); });
+                        return;
+                    }
+                    fetch('/api/faces/' + faceId + '/assign', {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({person_id: personId})
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function() { window.location.reload(); })
+                    .catch(function(err) { alert('Assign failed: ' + err.message); });
+                });
+            });
+
+            document.querySelectorAll('.face-unassign').forEach(function(btn) {
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    var faceId = this.dataset.faceId;
+                    fetch('/api/faces/' + faceId + '/unassign', {method: 'DELETE'})
+                        .then(function(r) { return r.json(); })
+                        .then(function() { window.location.reload(); })
+                        .catch(function(err) { alert('Unassign failed: ' + err.message); });
+                });
+            });
+        })();
+        </script>
         {% endif %}
 
         {% if !collections.is_empty() %}

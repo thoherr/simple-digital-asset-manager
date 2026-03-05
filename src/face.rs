@@ -26,7 +26,7 @@ pub struct FaceModelSpec {
 pub const DETECTION_MODEL: FaceModelSpec = FaceModelSpec {
     id: "yunet-face-detection",
     display_name: "YuNet Face Detection",
-    hf_repo: "onnx-community/yunet-face-detection-onnx",
+    hf_repo: "opencv/face_detection_yunet",
     filename: "face_detection_yunet_2023mar.onnx",
     approx_size: 230_000,
 };
@@ -35,8 +35,8 @@ pub const DETECTION_MODEL: FaceModelSpec = FaceModelSpec {
 pub const RECOGNITION_MODEL: FaceModelSpec = FaceModelSpec {
     id: "arcface-resnet100",
     display_name: "ArcFace ResNet-100",
-    hf_repo: "onnx-community/arcface-resnet100-int8",
-    filename: "arcface_resnet100_int8.onnx",
+    hf_repo: "onnxmodelzoo/arcfaceresnet100-11-int8",
+    filename: "arcfaceresnet100-11-int8.onnx",
     approx_size: 28_000_000,
 };
 
@@ -551,6 +551,58 @@ fn parse_multi_output_detections(
 
     faces.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
     Ok(faces)
+}
+
+/// Crop a face from an image and save as a 150×150 JPEG thumbnail.
+///
+/// Saves to `faces/<face_id[0..2]>/<face_id>.jpg` under `catalog_root`.
+/// Returns the path on success; errors are non-fatal.
+pub fn save_face_crop(
+    image_path: &Path,
+    face: &DetectedFace,
+    face_id: &str,
+    catalog_root: &Path,
+) -> Result<std::path::PathBuf> {
+    let img = image::open(image_path)
+        .with_context(|| format!("Failed to open image for face crop: {}", image_path.display()))?;
+
+    let w = img.width() as f32;
+    let h = img.height() as f32;
+
+    // Crop with 20% padding (same as embed_face)
+    let pad = 0.2;
+    let crop_x = ((face.bbox_x - face.bbox_w * pad) * w).max(0.0) as u32;
+    let crop_y = ((face.bbox_y - face.bbox_h * pad) * h).max(0.0) as u32;
+    let crop_w = ((face.bbox_w * (1.0 + 2.0 * pad)) * w).min(w - crop_x as f32) as u32;
+    let crop_h = ((face.bbox_h * (1.0 + 2.0 * pad)) * h).min(h - crop_y as f32) as u32;
+
+    let crop_w = crop_w.max(1);
+    let crop_h = crop_h.max(1);
+
+    let cropped = img.crop_imm(crop_x, crop_y, crop_w, crop_h);
+    let resized = cropped.resize_exact(150, 150, image::imageops::FilterType::CatmullRom);
+
+    let prefix = &face_id[..2.min(face_id.len())];
+    let dir = catalog_root.join("faces").join(prefix);
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("Failed to create faces dir: {}", dir.display()))?;
+
+    let path = dir.join(format!("{face_id}.jpg"));
+    resized
+        .save(&path)
+        .with_context(|| format!("Failed to save face crop: {}", path.display()))?;
+
+    Ok(path)
+}
+
+/// Check if a face crop thumbnail exists.
+pub fn face_crop_exists(face_id: &str, catalog_root: &Path) -> bool {
+    let prefix = &face_id[..2.min(face_id.len())];
+    catalog_root
+        .join("faces")
+        .join(prefix)
+        .join(format!("{face_id}.jpg"))
+        .exists()
 }
 
 /// L2-normalize a vector.

@@ -13,10 +13,11 @@ use crate::device_registry::DeviceRegistry;
 
 use super::templates::{
     format_size, link_cards, AssetCard, AssetPage, BackupPage, BrowsePage, CollectionOption,
-    CompareAsset, ComparePage, DateFragment, DescriptionFragment, DuplicatesPage, FormatGroup,
-    FormatOption, LabelFragment, NameFragment, PreviewFragment, RatingFragment, ResultsPartial,
-    SavedSearchChip, SavedSearchEntry, SavedSearchesPage, StackMemberCard, StatsPage, TagOption,
-    TagTreeEntry, TagsFragment, TagsPage, VolumeOption,
+    CompareAsset, ComparePage, DateFragment, DescriptionFragment, DuplicatesPage, FaceRow,
+    FormatGroup, FormatOption, LabelFragment, NameFragment, PeoplePage, PersonCard, PersonOption,
+    PreviewFragment, RatingFragment, ResultsPartial, SavedSearchChip, SavedSearchEntry,
+    SavedSearchesPage, StackMemberCard, StatsPage, TagOption, TagTreeEntry, TagsFragment,
+    TagsPage, VolumeOption,
 };
 use super::AppState;
 
@@ -32,6 +33,7 @@ pub struct SearchParams {
     pub label: Option<String>,
     pub collection: Option<String>,
     pub path: Option<String>,
+    pub person: Option<String>,
     pub sort: Option<String>,
     pub page: Option<u32>,
     pub stacks: Option<String>,
@@ -61,6 +63,7 @@ pub async fn browse_page(
 
         let collection_str = params.collection.as_deref().unwrap_or("");
         let path_str = params.path.as_deref().unwrap_or("");
+        let person_str = params.person.as_deref().unwrap_or("");
         let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
 
         let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
@@ -81,6 +84,11 @@ pub async fn browse_page(
         // Push collection from dropdown into parsed struct
         if !collection_str.is_empty() {
             parsed.collections.push(collection_str.to_string());
+        }
+
+        // Push person from dropdown into parsed struct
+        if !person_str.is_empty() {
+            parsed.persons.push(person_str.to_string());
         }
 
         let mut opts = parsed.to_search_options();
@@ -123,6 +131,30 @@ pub async fn browse_page(
             }
             collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
             opts.collection_exclude_ids = Some(&collection_exclude_ids);
+        }
+
+        // Resolve person filter to asset IDs
+        let person_ids;
+        if !parsed.persons.is_empty() {
+            #[cfg(feature = "ai")]
+            {
+                let face_store = crate::face_store::FaceStore::new(catalog.conn());
+                let mut all_ids = std::collections::HashSet::new();
+                for person_entry in parsed.persons.iter() {
+                    for person_name in person_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                        if let Ok(ids) = face_store.find_person_asset_ids(person_name) {
+                            all_ids.extend(ids);
+                        }
+                    }
+                }
+                person_ids = all_ids.into_iter().collect::<Vec<_>>();
+                opts.person_asset_ids = Some(&person_ids);
+            }
+            #[cfg(not(feature = "ai"))]
+            {
+                person_ids = Vec::<String>::new();
+                opts.person_asset_ids = Some(&person_ids);
+            }
         }
 
         let per_page = state.per_page;
@@ -173,6 +205,14 @@ pub async fn browse_page(
             .map(|name| CollectionOption { name })
             .collect();
 
+        #[cfg(feature = "ai")]
+        let all_people: Vec<PersonOption> = state.dropdown_cache.get_people(&catalog)
+            .into_iter()
+            .map(|(id, name)| PersonOption { id, name })
+            .collect();
+        #[cfg(not(feature = "ai"))]
+        let all_people: Vec<PersonOption> = Vec::new();
+
         let saved_searches = crate::saved_search::load(&state.catalog_root)
             .unwrap_or_default()
             .searches
@@ -205,8 +245,10 @@ pub async fn browse_page(
             format_groups,
             all_volumes,
             all_collections,
+            all_people,
             collection: collection_str.to_string(),
             path: path_str.to_string(),
+            person: person_str.to_string(),
             saved_searches,
             collapse_stacks,
             ai_enabled: state.ai_enabled,
@@ -260,6 +302,7 @@ pub async fn search_api(
 
         let collection_str = params.collection.as_deref().unwrap_or("");
         let path_str = params.path.as_deref().unwrap_or("");
+        let person_str = params.person.as_deref().unwrap_or("");
         let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
 
         let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
@@ -280,6 +323,11 @@ pub async fn search_api(
         // Push collection from dropdown into parsed struct
         if !collection_str.is_empty() {
             parsed.collections.push(collection_str.to_string());
+        }
+
+        // Push person from dropdown into parsed struct
+        if !person_str.is_empty() {
+            parsed.persons.push(person_str.to_string());
         }
 
         let mut opts = parsed.to_search_options();
@@ -322,6 +370,30 @@ pub async fn search_api(
             }
             collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
             opts.collection_exclude_ids = Some(&collection_exclude_ids);
+        }
+
+        // Resolve person filter to asset IDs
+        let person_ids;
+        if !parsed.persons.is_empty() {
+            #[cfg(feature = "ai")]
+            {
+                let face_store = crate::face_store::FaceStore::new(catalog.conn());
+                let mut all_ids = std::collections::HashSet::new();
+                for person_entry in parsed.persons.iter() {
+                    for person_name in person_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                        if let Ok(ids) = face_store.find_person_asset_ids(person_name) {
+                            all_ids.extend(ids);
+                        }
+                    }
+                }
+                person_ids = all_ids.into_iter().collect::<Vec<_>>();
+                opts.person_asset_ids = Some(&person_ids);
+            }
+            #[cfg(not(feature = "ai"))]
+            {
+                person_ids = Vec::<String>::new();
+                opts.person_asset_ids = Some(&person_ids);
+            }
         }
 
         let per_page = state.per_page;
@@ -388,6 +460,7 @@ pub async fn page_ids_api(
 
         let collection_str = params.collection.as_deref().unwrap_or("");
         let path_str = params.path.as_deref().unwrap_or("");
+        let person_str = params.person.as_deref().unwrap_or("");
         let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
 
         let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
@@ -408,6 +481,11 @@ pub async fn page_ids_api(
         // Push collection from dropdown into parsed struct
         if !collection_str.is_empty() {
             parsed.collections.push(collection_str.to_string());
+        }
+
+        // Push person from dropdown into parsed struct
+        if !person_str.is_empty() {
+            parsed.persons.push(person_str.to_string());
         }
 
         let mut opts = parsed.to_search_options();
@@ -450,6 +528,30 @@ pub async fn page_ids_api(
             }
             collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
             opts.collection_exclude_ids = Some(&collection_exclude_ids);
+        }
+
+        // Resolve person filter to asset IDs
+        let person_ids;
+        if !parsed.persons.is_empty() {
+            #[cfg(feature = "ai")]
+            {
+                let face_store = crate::face_store::FaceStore::new(catalog.conn());
+                let mut all_ids = std::collections::HashSet::new();
+                for person_entry in parsed.persons.iter() {
+                    for person_name in person_entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                        if let Ok(ids) = face_store.find_person_asset_ids(person_name) {
+                            all_ids.extend(ids);
+                        }
+                    }
+                }
+                person_ids = all_ids.into_iter().collect::<Vec<_>>();
+                opts.person_asset_ids = Some(&person_ids);
+            }
+            #[cfg(not(feature = "ai"))]
+            {
+                person_ids = Vec::<String>::new();
+                opts.person_asset_ids = Some(&person_ids);
+            }
         }
 
         let per_page = state.per_page;
@@ -561,10 +663,48 @@ pub async fn asset_page(
             .map(|v| (v.id.to_string(), v.is_online))
             .collect();
 
+        // Load faces for asset detail page
+        let (faces, all_people_detail) = {
+            #[cfg(feature = "ai")]
+            {
+                let cat2 = state.catalog()?;
+                let face_store = crate::face_store::FaceStore::new(cat2.conn());
+                let stored_faces = face_store.faces_for_asset(&asset_id).unwrap_or_default();
+                let face_rows: Vec<FaceRow> = stored_faces.iter().map(|f| {
+                    let crop_url = if crate::face::face_crop_exists(&f.id, &state.catalog_root) {
+                        Some(format!("/face/{}/{}.jpg", &f.id[..2.min(f.id.len())], f.id))
+                    } else {
+                        None
+                    };
+                    let person_name = f.person_id.as_ref().and_then(|pid| {
+                        face_store.get_person(pid).ok().flatten().and_then(|p| p.name)
+                    });
+                    FaceRow {
+                        face_id: f.id.clone(),
+                        crop_url,
+                        confidence_pct: (f.confidence * 100.0) as u32,
+                        person_name,
+                        person_id: f.person_id.clone(),
+                    }
+                }).collect();
+                let people: Vec<PersonOption> = state.dropdown_cache.get_people(&cat2)
+                    .into_iter()
+                    .map(|(id, name)| PersonOption { id, name })
+                    .collect();
+                (face_rows, people)
+            }
+            #[cfg(not(feature = "ai"))]
+            {
+                (Vec::<FaceRow>::new(), Vec::<PersonOption>::new())
+            }
+        };
+
         let mut tmpl = AssetPage::from_details(details, preview_url, smart_preview_url, has_smart_preview, collections, stack_members, is_stack_pick, &volume_online);
         tmpl.prev_id = nav_params.prev;
         tmpl.next_id = nav_params.next;
         tmpl.ai_enabled = state.ai_enabled;
+        tmpl.faces = faces;
+        tmpl.all_people = all_people_detail;
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
     .await;
@@ -2066,6 +2206,7 @@ pub struct CalendarParams {
     pub collection: Option<String>,
     pub path: Option<String>,
     pub stacks: Option<String>,
+    pub person: Option<String>,
 }
 
 /// GET /api/calendar — calendar heatmap data.
@@ -2082,6 +2223,7 @@ pub async fn calendar_api(
         });
 
         let query = params.q.as_deref().unwrap_or("");
+        let person_str = params.person.as_deref().unwrap_or("");
         let asset_type = params.asset_type.as_deref().unwrap_or("");
         let tag = params.tag.as_deref().unwrap_or("");
         let format = params.format.as_deref().unwrap_or("");
@@ -2109,6 +2251,11 @@ pub async fn calendar_api(
         // Push collection from dropdown into parsed struct
         if !collection_str.is_empty() {
             parsed.collections.push(collection_str.to_string());
+        }
+
+        // Push person from dropdown into parsed struct
+        if !person_str.is_empty() {
+            parsed.persons.push(person_str.to_string());
         }
 
         let mut opts = parsed.to_search_options();
@@ -2155,6 +2302,30 @@ pub async fn calendar_api(
             }
             collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
             opts.collection_exclude_ids = Some(&collection_exclude_ids);
+        }
+
+        // Resolve person filter to asset IDs
+        let person_ids;
+        if !parsed.persons.is_empty() {
+            #[cfg(feature = "ai")]
+            {
+                let face_store = crate::face_store::FaceStore::new(catalog.conn());
+                let mut all_ids = std::collections::HashSet::new();
+                for pe in parsed.persons.iter() {
+                    for pn in pe.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                        if let Ok(ids) = face_store.find_person_asset_ids(pn) {
+                            all_ids.extend(ids);
+                        }
+                    }
+                }
+                person_ids = all_ids.into_iter().collect::<Vec<_>>();
+                opts.person_asset_ids = Some(&person_ids);
+            }
+            #[cfg(not(feature = "ai"))]
+            {
+                person_ids = Vec::<String>::new();
+                opts.person_asset_ids = Some(&person_ids);
+            }
         }
 
         let counts = catalog.calendar_counts(year, &opts)?;
@@ -2193,6 +2364,7 @@ pub struct MapParams {
     pub path: Option<String>,
     pub stacks: Option<String>,
     pub limit: Option<u32>,
+    pub person: Option<String>,
 }
 
 /// GET /api/map — map markers for geotagged assets.
@@ -2213,6 +2385,7 @@ pub async fn map_api(
         let label_str = params.label.as_deref().unwrap_or("");
         let collection_str = params.collection.as_deref().unwrap_or("");
         let path_str = params.path.as_deref().unwrap_or("");
+        let person_str = params.person.as_deref().unwrap_or("");
         let limit = params.limit.unwrap_or(10_000);
 
         let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
@@ -2233,6 +2406,11 @@ pub async fn map_api(
         // Push collection from dropdown into parsed struct
         if !collection_str.is_empty() {
             parsed.collections.push(collection_str.to_string());
+        }
+
+        // Push person from dropdown into parsed struct
+        if !person_str.is_empty() {
+            parsed.persons.push(person_str.to_string());
         }
 
         let mut opts = parsed.to_search_options();
@@ -2279,6 +2457,30 @@ pub async fn map_api(
             }
             collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
             opts.collection_exclude_ids = Some(&collection_exclude_ids);
+        }
+
+        // Resolve person filter to asset IDs
+        let person_ids;
+        if !parsed.persons.is_empty() {
+            #[cfg(feature = "ai")]
+            {
+                let face_store = crate::face_store::FaceStore::new(catalog.conn());
+                let mut all_ids = std::collections::HashSet::new();
+                for pe in parsed.persons.iter() {
+                    for pn in pe.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                        if let Ok(ids) = face_store.find_person_asset_ids(pn) {
+                            all_ids.extend(ids);
+                        }
+                    }
+                }
+                person_ids = all_ids.into_iter().collect::<Vec<_>>();
+                opts.person_asset_ids = Some(&person_ids);
+            }
+            #[cfg(not(feature = "ai"))]
+            {
+                person_ids = Vec::<String>::new();
+                opts.person_asset_ids = Some(&person_ids);
+            }
         }
 
         let preview_ext = &state.preview_ext;
@@ -2332,6 +2534,7 @@ pub struct FacetParams {
     pub collection: Option<String>,
     pub path: Option<String>,
     pub stacks: Option<String>,
+    pub person: Option<String>,
 }
 
 /// GET /api/facets — facet counts for the browse sidebar.
@@ -2352,6 +2555,7 @@ pub async fn facets_api(
         let label_str = params.label.as_deref().unwrap_or("");
         let collection_str = params.collection.as_deref().unwrap_or("");
         let path_str = params.path.as_deref().unwrap_or("");
+        let person_str = params.person.as_deref().unwrap_or("");
 
         let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
 
@@ -2371,6 +2575,11 @@ pub async fn facets_api(
         // Push collection from dropdown into parsed struct
         if !collection_str.is_empty() {
             parsed.collections.push(collection_str.to_string());
+        }
+
+        // Push person from dropdown into parsed struct
+        if !person_str.is_empty() {
+            parsed.persons.push(person_str.to_string());
         }
 
         let mut opts = parsed.to_search_options();
@@ -2417,6 +2626,30 @@ pub async fn facets_api(
             }
             collection_exclude_ids = all_ids.into_iter().collect::<Vec<_>>();
             opts.collection_exclude_ids = Some(&collection_exclude_ids);
+        }
+
+        // Resolve person filter to asset IDs
+        let person_ids;
+        if !parsed.persons.is_empty() {
+            #[cfg(feature = "ai")]
+            {
+                let face_store = crate::face_store::FaceStore::new(catalog.conn());
+                let mut all_ids = std::collections::HashSet::new();
+                for pe in parsed.persons.iter() {
+                    for pn in pe.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                        if let Ok(ids) = face_store.find_person_asset_ids(pn) {
+                            all_ids.extend(ids);
+                        }
+                    }
+                }
+                person_ids = all_ids.into_iter().collect::<Vec<_>>();
+                opts.person_asset_ids = Some(&person_ids);
+            }
+            #[cfg(not(feature = "ai"))]
+            {
+                person_ids = Vec::<String>::new();
+                opts.person_asset_ids = Some(&person_ids);
+            }
         }
 
         let facets = catalog.facet_counts(&opts)?;
@@ -3555,4 +3788,372 @@ fn find_similar_inner(
         .collect();
 
     Ok(response)
+}
+
+// --- Face recognition handlers (feature-gated) ---
+
+/// GET /api/asset/{id}/faces — list faces for an asset.
+#[cfg(feature = "ai")]
+pub async fn asset_faces(
+    State(state): State<Arc<AppState>>,
+    Path(asset_id): Path<String>,
+) -> Response {
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let face_store = crate::face_store::FaceStore::new(catalog.conn());
+        let faces = face_store.faces_for_asset(&asset_id)?;
+        let result: Vec<serde_json::Value> = faces.iter().map(|f| {
+            let crop_url = if crate::face::face_crop_exists(&f.id, &state.catalog_root) {
+                Some(format!("/face/{}/{}.jpg", &f.id[..2.min(f.id.len())], f.id))
+            } else {
+                None
+            };
+            let person_name = f.person_id.as_ref().and_then(|pid| {
+                face_store.get_person(pid).ok().flatten().and_then(|p| p.name)
+            });
+            serde_json::json!({
+                "face_id": f.id,
+                "confidence": f.confidence,
+                "bbox": [f.bbox_x, f.bbox_y, f.bbox_w, f.bbox_h],
+                "person_id": f.person_id,
+                "person_name": person_name,
+                "crop_url": crop_url,
+            })
+        }).collect();
+        Ok::<_, anyhow::Error>(result)
+    }).await;
+
+    match result {
+        Ok(Ok(faces)) => Json(faces).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
+}
+
+/// POST /api/asset/{id}/detect-faces — detect faces for a single asset.
+#[cfg(feature = "ai")]
+pub async fn detect_faces_for_asset(
+    State(state): State<Arc<AppState>>,
+    Path(asset_id): Path<String>,
+) -> Response {
+    let state2 = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        detect_faces_inner(&state2, &[asset_id])
+    }).await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(msg)) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": msg}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{e}")}))).into_response(),
+    }
+}
+
+/// POST /api/batch/detect-faces — batch detect faces for selected assets.
+#[cfg(feature = "ai")]
+pub async fn batch_detect_faces(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let asset_ids: Vec<String> = body.get("asset_ids")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
+    let state2 = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        detect_faces_inner(&state2, &asset_ids)
+    }).await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(msg)) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": msg}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{e}")}))).into_response(),
+    }
+}
+
+#[cfg(feature = "ai")]
+fn detect_faces_inner(state: &AppState, asset_ids: &[String]) -> Result<serde_json::Value, String> {
+    let face_model_dir = crate::face::resolve_face_model_dir(&state.ai_config);
+    if !crate::face::FaceDetector::models_exist(&face_model_dir) {
+        return Err("Face models not downloaded. Run 'dam faces download' first.".to_string());
+    }
+
+    let mut detector = crate::face::FaceDetector::load(&face_model_dir, false)
+        .map_err(|e| format!("Failed to load face detector: {e:#}"))?;
+
+    let min_confidence = state.ai_config.face_min_confidence;
+    let catalog = state.catalog().map_err(|e| format!("{e:#}"))?;
+    let _ = crate::face_store::FaceStore::initialize(catalog.conn());
+    let face_store = crate::face_store::FaceStore::new(catalog.conn());
+    let engine = state.query_engine();
+    let preview_gen = state.preview_generator();
+    let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
+    let volumes = registry.list().map_err(|e| format!("{e:#}"))?;
+    let online_volumes: std::collections::HashMap<String, &crate::models::Volume> = volumes
+        .iter()
+        .filter(|v| v.is_online)
+        .map(|v| (v.id.to_string(), v))
+        .collect();
+    let service = state.asset_service();
+
+    let mut total_faces = 0u32;
+    let mut total_assets = 0u32;
+    let mut errors: Vec<String> = Vec::new();
+
+    for aid in asset_ids {
+        let details = match engine.show(aid) {
+            Ok(d) => d,
+            Err(e) => { errors.push(format!("{}: {e:#}", &aid[..8.min(aid.len())])); continue; }
+        };
+
+        let image_path = match service.find_image_for_ai(&details, &preview_gen, &online_volumes) {
+            Some(p) => p,
+            None => continue,
+        };
+
+        match detector.detect_and_embed(&image_path, min_confidence) {
+            Ok(face_results) => {
+                // Clear existing faces for this asset
+                let _ = face_store.delete_faces_for_asset(aid);
+                for (face, embedding) in &face_results {
+                    let face_id = uuid::Uuid::new_v4().to_string();
+                    if let Err(e) = face_store.store_face(
+                        &face_id, aid, face.bbox_x, face.bbox_y, face.bbox_w, face.bbox_h,
+                        embedding, face.confidence,
+                    ) {
+                        errors.push(format!("{}: store error: {e:#}", &aid[..8.min(aid.len())]));
+                    } else {
+                        let _ = crate::face::save_face_crop(&image_path, face, &face_id, &state.catalog_root);
+                    }
+                }
+                let _ = catalog.update_face_count(aid);
+                total_faces += face_results.len() as u32;
+                total_assets += 1;
+            }
+            Err(e) => {
+                errors.push(format!("{}: {e:#}", &aid[..8.min(aid.len())]));
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "succeeded": total_assets,
+        "faces_detected": total_faces,
+        "errors": errors,
+    }))
+}
+
+/// PUT /api/faces/{face_id}/assign — assign a face to a person.
+#[cfg(feature = "ai")]
+pub async fn assign_face(
+    State(state): State<Arc<AppState>>,
+    Path(face_id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let person_id: String = match body.get("person_id").and_then(|v| v.as_str()) {
+        Some(pid) => pid.to_string(),
+        None => return (StatusCode::BAD_REQUEST, "Missing person_id").into_response(),
+    };
+
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let face_store = crate::face_store::FaceStore::new(catalog.conn());
+        face_store.assign_face_to_person(&face_id, &person_id)?;
+        state.dropdown_cache.invalidate_people();
+        Ok::<_, anyhow::Error>(())
+    }).await;
+
+    match result {
+        Ok(Ok(())) => Json(serde_json::json!({"ok": true})).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
+}
+
+/// DELETE /api/faces/{face_id}/unassign — unassign a face from its person.
+#[cfg(feature = "ai")]
+pub async fn unassign_face_api(
+    State(state): State<Arc<AppState>>,
+    Path(face_id): Path<String>,
+) -> Response {
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let face_store = crate::face_store::FaceStore::new(catalog.conn());
+        face_store.unassign_face(&face_id)?;
+        state.dropdown_cache.invalidate_people();
+        Ok::<_, anyhow::Error>(())
+    }).await;
+
+    match result {
+        Ok(Ok(())) => Json(serde_json::json!({"ok": true})).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
+}
+
+/// GET /people — people gallery page.
+#[cfg(feature = "ai")]
+pub async fn people_page(
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let face_store = crate::face_store::FaceStore::new(catalog.conn());
+        let people_list = face_store.list_people()?;
+
+        let people: Vec<PersonCard> = people_list.into_iter().map(|(p, count)| {
+            let crop_url = p.representative_face_id.as_ref().and_then(|fid| {
+                if crate::face::face_crop_exists(fid, &state.catalog_root) {
+                    Some(format!("/face/{}/{}.jpg", &fid[..2.min(fid.len())], fid))
+                } else {
+                    None
+                }
+            });
+            PersonCard {
+                name: p.name.unwrap_or_else(|| format!("Unknown ({})", &p.id[..8.min(p.id.len())])),
+                id: p.id,
+                face_count: count,
+                crop_url,
+            }
+        }).collect();
+
+        let tmpl = PeoplePage {
+            people,
+            ai_enabled: true,
+        };
+        Ok::<_, anyhow::Error>(tmpl.render()?)
+    }).await;
+
+    match result {
+        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
+}
+
+/// GET /api/people — JSON list of people (for dropdown).
+#[cfg(feature = "ai")]
+pub async fn list_people_api(
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let face_store = crate::face_store::FaceStore::new(catalog.conn());
+        let people = face_store.list_people()?;
+        let json: Vec<serde_json::Value> = people.into_iter().map(|(p, count)| {
+            serde_json::json!({
+                "id": p.id,
+                "name": p.name,
+                "face_count": count,
+                "representative_face_id": p.representative_face_id,
+            })
+        }).collect();
+        Ok::<_, anyhow::Error>(json)
+    }).await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
+}
+
+/// PUT /api/people/{id}/name — rename a person.
+#[cfg(feature = "ai")]
+pub async fn name_person_api(
+    State(state): State<Arc<AppState>>,
+    Path(person_id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let name: String = match body.get("name").and_then(|v| v.as_str()) {
+        Some(n) => n.to_string(),
+        None => return (StatusCode::BAD_REQUEST, "Missing name").into_response(),
+    };
+
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let face_store = crate::face_store::FaceStore::new(catalog.conn());
+        face_store.name_person(&person_id, &name)?;
+        state.dropdown_cache.invalidate_people();
+        Ok::<_, anyhow::Error>(())
+    }).await;
+
+    match result {
+        Ok(Ok(())) => Json(serde_json::json!({"ok": true})).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
+}
+
+/// POST /api/people/{id}/merge — merge source into target.
+#[cfg(feature = "ai")]
+pub async fn merge_person_api(
+    State(state): State<Arc<AppState>>,
+    Path(target_id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let source_id: String = match body.get("source_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return (StatusCode::BAD_REQUEST, "Missing source_id").into_response(),
+    };
+
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let face_store = crate::face_store::FaceStore::new(catalog.conn());
+        let moved = face_store.merge_people(&target_id, &source_id)?;
+        state.dropdown_cache.invalidate_people();
+        Ok::<_, anyhow::Error>(moved)
+    }).await;
+
+    match result {
+        Ok(Ok(moved)) => Json(serde_json::json!({"ok": true, "faces_moved": moved})).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
+}
+
+/// DELETE /api/people/{id} — delete a person.
+#[cfg(feature = "ai")]
+pub async fn delete_person_api(
+    State(state): State<Arc<AppState>>,
+    Path(person_id): Path<String>,
+) -> Response {
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let face_store = crate::face_store::FaceStore::new(catalog.conn());
+        face_store.delete_person(&person_id)?;
+        state.dropdown_cache.invalidate_people();
+        Ok::<_, anyhow::Error>(())
+    }).await;
+
+    match result {
+        Ok(Ok(())) => Json(serde_json::json!({"ok": true})).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
+}
+
+/// POST /api/faces/cluster — run auto-clustering.
+#[cfg(feature = "ai")]
+pub async fn cluster_faces_api(
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let _ = crate::face_store::FaceStore::initialize(catalog.conn());
+        let face_store = crate::face_store::FaceStore::new(catalog.conn());
+        let threshold = state.ai_config.face_cluster_threshold;
+        let result = face_store.auto_cluster(threshold)?;
+        state.dropdown_cache.invalidate_people();
+        Ok::<_, anyhow::Error>(result)
+    }).await;
+
+    match result {
+        Ok(Ok(result)) => Json(serde_json::json!({
+            "people_created": result.people_created,
+            "faces_assigned": result.faces_assigned,
+            "singletons_skipped": result.singletons_skipped,
+        })).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
 }

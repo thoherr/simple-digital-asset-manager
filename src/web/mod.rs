@@ -26,6 +26,7 @@ struct DropdownCacheInner {
     formats: Option<Vec<(String, u64)>>,
     volumes: Option<Vec<(String, String)>>,
     collections: Option<Vec<String>>,
+    people: Option<Vec<(String, String)>>,
 }
 
 pub struct DropdownCache {
@@ -40,6 +41,7 @@ impl DropdownCache {
                 formats: None,
                 volumes: None,
                 collections: None,
+                people: None,
             }),
         }
     }
@@ -102,12 +104,40 @@ impl DropdownCache {
         collections
     }
 
+    #[cfg(feature = "ai")]
+    pub fn get_people(&self, catalog: &Catalog) -> Vec<(String, String)> {
+        if let Some(cached) = self.inner.read().unwrap().people.as_ref() {
+            return cached.clone();
+        }
+        let mut w = self.inner.write().unwrap();
+        if let Some(cached) = w.people.as_ref() {
+            return cached.clone();
+        }
+        let face_store = crate::face_store::FaceStore::new(catalog.conn());
+        let people: Vec<(String, String)> = face_store
+            .list_people()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(p, _count)| {
+                let display = p.name.unwrap_or_else(|| format!("Unknown ({})", &p.id[..8.min(p.id.len())]));
+                (p.id, display)
+            })
+            .collect();
+        w.people = Some(people.clone());
+        people
+    }
+
     pub fn invalidate_tags(&self) {
         self.inner.write().unwrap().tags = None;
     }
 
     pub fn invalidate_collections(&self) {
         self.inner.write().unwrap().collections = None;
+    }
+
+    #[cfg(feature = "ai")]
+    pub fn invalidate_people(&self) {
+        self.inner.write().unwrap().people = None;
     }
 }
 
@@ -130,6 +160,8 @@ pub struct AppState {
     pub ai_config: AiConfig,
     #[cfg(feature = "ai")]
     pub ai_embedding_index: std::sync::RwLock<Option<crate::embedding_store::EmbeddingIndex>>,
+    #[cfg(feature = "ai")]
+    pub face_detector: tokio::sync::Mutex<Option<crate::face::FaceDetector>>,
 }
 
 impl AppState {
@@ -151,6 +183,7 @@ impl AppState {
             ai_label_cache: tokio::sync::RwLock::new(None),
             ai_config,
             ai_embedding_index: std::sync::RwLock::new(None),
+            face_detector: tokio::sync::Mutex::new(None),
         }
     }
 
@@ -316,6 +349,7 @@ fn build_router(state: Arc<AppState>) -> Router {
 
     #[cfg(feature = "ai")]
     {
+        let faces_dir = state.catalog_root.join("faces");
         router = router
             .route(
                 "/api/asset/{id}/suggest-tags",
@@ -328,7 +362,46 @@ fn build_router(state: Arc<AppState>) -> Router {
             .route(
                 "/api/batch/auto-tag",
                 axum::routing::post(routes::batch_auto_tag),
-            );
+            )
+            .route(
+                "/api/asset/{id}/faces",
+                axum::routing::get(routes::asset_faces),
+            )
+            .route(
+                "/api/asset/{id}/detect-faces",
+                axum::routing::post(routes::detect_faces_for_asset),
+            )
+            .route(
+                "/api/batch/detect-faces",
+                axum::routing::post(routes::batch_detect_faces),
+            )
+            .route(
+                "/api/faces/{face_id}/assign",
+                axum::routing::put(routes::assign_face),
+            )
+            .route(
+                "/api/faces/{face_id}/unassign",
+                axum::routing::delete(routes::unassign_face_api),
+            )
+            .route("/people", axum::routing::get(routes::people_page))
+            .route("/api/people", axum::routing::get(routes::list_people_api))
+            .route(
+                "/api/people/{id}/name",
+                axum::routing::put(routes::name_person_api),
+            )
+            .route(
+                "/api/people/{id}/merge",
+                axum::routing::post(routes::merge_person_api),
+            )
+            .route(
+                "/api/people/{id}",
+                axum::routing::delete(routes::delete_person_api),
+            )
+            .route(
+                "/api/faces/cluster",
+                axum::routing::post(routes::cluster_faces_api),
+            )
+            .nest_service("/face", ServeDir::new(faces_dir));
     }
 
     router
@@ -356,7 +429,8 @@ async fn log_request(
     next: axum::middleware::Next,
 ) -> axum::response::Response {
     let is_preview = req.uri().path().starts_with("/preview/")
-        || req.uri().path().starts_with("/smart-preview/");
+        || req.uri().path().starts_with("/smart-preview/")
+        || req.uri().path().starts_with("/face/");
     let log = state.log_requests;
     let method = if log { Some(req.method().clone()) } else { None };
     let uri = if log { Some(req.uri().clone()) } else { None };
@@ -385,7 +459,9 @@ pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config:
     let state = Arc::new(AppState::new(catalog_root, preview_config, log, dedup_prefer, per_page, ai_config));
 
     // Verify catalog is accessible and run schema migrations once at startup
-    Catalog::open(&state.catalog_root)?;
+    let catalog = Catalog::open(&state.catalog_root)?;
+    let _ = crate::face_store::FaceStore::initialize(catalog.conn());
+    drop(catalog);
 
     let app = build_router(state);
 

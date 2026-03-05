@@ -919,6 +919,50 @@ enum FacesCommands {
 
     /// Show face detection status
     Status,
+
+    /// Auto-cluster unassigned faces into unnamed people
+    Cluster {
+        /// Similarity threshold for clustering (0.0–1.0)
+        #[arg(long)]
+        threshold: Option<f32>,
+
+        /// Apply clustering (default: dry-run showing cluster sizes)
+        #[arg(long)]
+        apply: bool,
+    },
+
+    /// List all people
+    People,
+
+    /// Name (or rename) a person
+    Name {
+        /// Person ID (or prefix)
+        person_id: String,
+
+        /// Name to assign
+        name: String,
+    },
+
+    /// Merge two people (move all faces from source to target)
+    Merge {
+        /// Target person ID (or prefix) — faces are moved here
+        target_id: String,
+
+        /// Source person ID (or prefix) — will be deleted after merge
+        source_id: String,
+    },
+
+    /// Delete a person (unassigns all their faces)
+    DeletePerson {
+        /// Person ID (or prefix) to delete
+        person_id: String,
+    },
+
+    /// Unassign a face from its person
+    Unassign {
+        /// Face ID (or prefix) to unassign
+        face_id: String,
+    },
 }
 
 fn main() {
@@ -2451,8 +2495,17 @@ fn main() {
                                             face.confidence,
                                         ) {
                                             errors.push(format!("{short_id}: store error: {e:#}"));
+                                        } else {
+                                            // Generate face crop thumbnail
+                                            if let Err(e) = dam::face::save_face_crop(&image_path, face, &face_id, &catalog_root) {
+                                                if cli.debug {
+                                                    eprintln!("  {short_id}: face crop error: {e:#}");
+                                                }
+                                            }
                                         }
                                     }
+                                    // Update denormalized face_count
+                                    let _ = catalog.update_face_count(aid);
                                 }
                                 total_faces += n as u32;
                                 total_assets += 1;
@@ -2504,6 +2557,123 @@ fn main() {
                             println!("  Run with --apply to store face detections.");
                         }
                     }
+                    Ok(())
+                }
+                FacesCommands::Cluster { threshold, apply } => {
+                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+
+                    let thresh = threshold.unwrap_or(config.ai.face_cluster_threshold);
+
+                    if apply {
+                        let result = face_store.auto_cluster(thresh)?;
+                        if cli.json {
+                            println!("{}", serde_json::to_string_pretty(&result)?);
+                        } else {
+                            println!(
+                                "Clustered: {} people created, {} faces assigned, {} singletons skipped",
+                                result.people_created, result.faces_assigned, result.singletons_skipped
+                            );
+                        }
+                    } else {
+                        let clusters = face_store.cluster_faces(thresh)?;
+                        let total_faces: usize = clusters.iter().map(|c| c.len()).sum();
+                        if cli.json {
+                            println!("{}", serde_json::json!({
+                                "dry_run": true,
+                                "clusters": clusters.len(),
+                                "faces_in_clusters": total_faces,
+                                "cluster_sizes": clusters.iter().map(|c| c.len()).collect::<Vec<_>>(),
+                                "threshold": thresh,
+                            }));
+                        } else {
+                            println!("Cluster preview (threshold={thresh:.2}):");
+                            for (i, cluster) in clusters.iter().enumerate() {
+                                println!("  Cluster {}: {} faces", i + 1, cluster.len());
+                            }
+                            println!("Total: {} clusters, {} faces", clusters.len(), total_faces);
+                            println!("  Run with --apply to create people and assign faces.");
+                        }
+                    }
+                    Ok(())
+                }
+                FacesCommands::People => {
+                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+
+                    let people = face_store.list_people()?;
+                    if cli.json {
+                        let json_people: Vec<_> = people.iter().map(|(p, count)| {
+                            serde_json::json!({
+                                "id": p.id,
+                                "name": p.name,
+                                "representative_face_id": p.representative_face_id,
+                                "face_count": count,
+                            })
+                        }).collect();
+                        println!("{}", serde_json::to_string_pretty(&json_people)?);
+                    } else {
+                        if people.is_empty() {
+                            println!("No people found. Run 'dam faces cluster --apply' to create people from detected faces.");
+                        } else {
+                            println!("{:<10} {:<30} {}", "ID", "Name", "Faces");
+                            for (person, count) in &people {
+                                let short_id = &person.id[..8.min(person.id.len())];
+                                let name = person.name.as_deref().unwrap_or("(unnamed)");
+                                println!("{:<10} {:<30} {}", short_id, name, count);
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                FacesCommands::Name { person_id, name } => {
+                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+
+                    // Resolve person ID prefix
+                    let full_id = resolve_person_id(&face_store, &person_id)?;
+                    face_store.name_person(&full_id, &name)?;
+                    let short = &full_id[..8.min(full_id.len())];
+                    println!("Named person {short} as \"{name}\"");
+                    Ok(())
+                }
+                FacesCommands::Merge { target_id, source_id } => {
+                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+
+                    let target = resolve_person_id(&face_store, &target_id)?;
+                    let source = resolve_person_id(&face_store, &source_id)?;
+                    let moved = face_store.merge_people(&target, &source)?;
+                    let short_t = &target[..8.min(target.len())];
+                    let short_s = &source[..8.min(source.len())];
+                    println!("Merged {short_s} into {short_t}: {moved} faces moved");
+                    Ok(())
+                }
+                FacesCommands::DeletePerson { person_id } => {
+                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+
+                    let full_id = resolve_person_id(&face_store, &person_id)?;
+                    face_store.delete_person(&full_id)?;
+                    let short = &full_id[..8.min(full_id.len())];
+                    println!("Deleted person {short} (faces unassigned)");
+                    Ok(())
+                }
+                FacesCommands::Unassign { face_id } => {
+                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+
+                    // Resolve face ID prefix
+                    let full_id = resolve_face_id(&face_store, &face_id)?;
+                    face_store.unassign_face(&full_id)?;
+                    let short = &full_id[..8.min(full_id.len())];
+                    println!("Unassigned face {short} from its person");
                     Ok(())
                 }
             }
@@ -4624,6 +4794,41 @@ fn format_size(bytes: u64) -> String {
         format!("{:.1} KB", bytes as f64 / KB as f64)
     } else {
         format!("{bytes} B")
+    }
+}
+
+/// Resolve a person ID prefix to a full ID.
+#[cfg(feature = "ai")]
+fn resolve_person_id(face_store: &dam::face_store::FaceStore, prefix: &str) -> anyhow::Result<String> {
+    let people = face_store.list_people()?;
+    let matches: Vec<_> = people
+        .iter()
+        .filter(|(p, _)| p.id.starts_with(prefix))
+        .collect();
+    match matches.len() {
+        0 => anyhow::bail!("No person found matching '{prefix}'"),
+        1 => Ok(matches[0].0.id.clone()),
+        _ => anyhow::bail!("Ambiguous person ID prefix '{prefix}' — matches {} people", matches.len()),
+    }
+}
+
+/// Resolve a face ID prefix to a full ID.
+#[cfg(feature = "ai")]
+fn resolve_face_id(face_store: &dam::face_store::FaceStore, prefix: &str) -> anyhow::Result<String> {
+    // Try exact match first
+    if let Ok(Some(_)) = face_store.get_face(prefix) {
+        return Ok(prefix.to_string());
+    }
+    // Fall back to prefix search via all faces
+    let conn = face_store.conn();
+    let mut stmt = conn.prepare("SELECT id FROM faces WHERE id LIKE ?1")?;
+    let ids: Vec<String> = stmt
+        .query_map(rusqlite::params![format!("{prefix}%")], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    match ids.len() {
+        0 => anyhow::bail!("No face found matching '{prefix}'"),
+        1 => Ok(ids[0].clone()),
+        _ => anyhow::bail!("Ambiguous face ID prefix '{prefix}' — matches {} faces", ids.len()),
     }
 }
 
