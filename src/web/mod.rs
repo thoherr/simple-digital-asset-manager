@@ -462,9 +462,8 @@ async fn log_request(
 pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool, dedup_prefer: Option<String>, per_page: u32, ai_config: AiConfig) -> Result<()> {
     let state = Arc::new(AppState::new(catalog_root, preview_config, log, dedup_prefer, per_page, ai_config));
 
-    // Verify catalog is accessible and run schema migrations once at startup
+    // Verify catalog is accessible (migrations already ran at program startup)
     let catalog = Catalog::open(&state.catalog_root)?;
-    let _ = crate::face_store::FaceStore::initialize(catalog.conn());
     drop(catalog);
 
     let app = build_router(state);
@@ -485,7 +484,7 @@ pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config:
 pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool, dedup_prefer: Option<String>, per_page: u32) -> Result<()> {
     let state = Arc::new(AppState::new(catalog_root, preview_config, log, dedup_prefer, per_page));
 
-    // Verify catalog is accessible and run schema migrations once at startup
+    // Verify catalog is accessible (migrations already ran at program startup)
     Catalog::open(&state.catalog_root)?;
 
     let app = build_router(state);

@@ -163,8 +163,7 @@ pub async fn browse_page(
         opts.per_page = per_page;
         opts.collapse_stacks = collapse_stacks;
 
-        let total = catalog.search_count(&opts)?;
-        let rows = catalog.search_paginated(&opts)?;
+        let (rows, total) = catalog.search_paginated_with_count(&opts)?;
         let total_pages = ((total as f64) / per_page as f64).ceil() as u32;
         let mut cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
         link_cards(&mut cards);
@@ -402,8 +401,7 @@ pub async fn search_api(
         opts.per_page = per_page;
         opts.collapse_stacks = collapse_stacks;
 
-        let total = catalog.search_count(&opts)?;
-        let rows = catalog.search_paginated(&opts)?;
+        let (rows, total) = catalog.search_paginated_with_count(&opts)?;
         let total_pages = ((total as f64) / per_page as f64).ceil() as u32;
         let mut cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
         link_cards(&mut cards);
@@ -597,8 +595,15 @@ pub async fn asset_page(
     let preview_ext = state.preview_ext.clone();
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let engine = state.query_engine();
-        let details = engine.show(&asset_id)?;
+        // Single catalog connection for the entire request
+        let catalog = state.catalog()?;
+
+        let full_id = catalog
+            .resolve_asset_id(&asset_id)?
+            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+        let details = catalog
+            .load_asset_details(&full_id)?
+            .ok_or_else(|| anyhow::anyhow!("Asset '{full_id}' not found in catalog"))?;
 
         let preview_gen = state.preview_generator();
         let best = crate::models::variant::best_preview_index_details(&details.variants);
@@ -621,37 +626,31 @@ pub async fn asset_page(
         });
 
         // Load collections this asset belongs to
-        let (collections, stack_members, is_stack_pick) = {
-            let catalog = state.catalog()?;
-            let col_store = crate::collection::CollectionStore::new(catalog.conn());
-            let cols = col_store.collections_for_asset(&asset_id).unwrap_or_default();
+        let col_store = crate::collection::CollectionStore::new(catalog.conn());
+        let collections = col_store.collections_for_asset(&full_id).unwrap_or_default();
 
-            let stack_store = crate::stack::StackStore::new(catalog.conn());
-            let (members, is_pick) = match stack_store.stack_for_asset(&asset_id).unwrap_or(None) {
-                Some((_sid, member_ids)) => {
-                    let is_pick = member_ids.first().map_or(false, |id| id == &asset_id);
-                    let mut cards = Vec::new();
-                    for (i, mid) in member_ids.iter().enumerate() {
-                        if mid == &asset_id { continue; }
-                        // Load minimal info for stack member
-                        let name = catalog.get_asset_name(mid).unwrap_or(None)
-                            .unwrap_or_else(|| mid[..8.min(mid.len())].to_string());
-                        let hash = catalog.get_asset_best_variant_hash(mid).unwrap_or(None);
-                        let purl = hash.map(|h| super::templates::preview_url(&h, &preview_ext))
-                            .unwrap_or_default();
-                        cards.push(StackMemberCard {
-                            asset_id: mid.clone(),
-                            display_name: name,
-                            preview_url: purl,
-                            is_pick: i == 0,
-                        });
-                    }
-                    (cards, is_pick)
+        let stack_store = crate::stack::StackStore::new(catalog.conn());
+        let (stack_members, is_stack_pick) = match stack_store.stack_for_asset(&full_id).unwrap_or(None) {
+            Some((_sid, member_ids)) => {
+                let is_pick = member_ids.first().map_or(false, |id| id == &full_id);
+                let mut cards = Vec::new();
+                for (i, mid) in member_ids.iter().enumerate() {
+                    if mid == &full_id { continue; }
+                    let name = catalog.get_asset_name(mid).unwrap_or(None)
+                        .unwrap_or_else(|| mid[..8.min(mid.len())].to_string());
+                    let hash = catalog.get_asset_best_variant_hash(mid).unwrap_or(None);
+                    let purl = hash.map(|h| super::templates::preview_url(&h, &preview_ext))
+                        .unwrap_or_default();
+                    cards.push(StackMemberCard {
+                        asset_id: mid.clone(),
+                        display_name: name,
+                        preview_url: purl,
+                        is_pick: i == 0,
+                    });
                 }
-                None => (Vec::new(), false),
-            };
-
-            (cols, members, is_pick)
+                (cards, is_pick)
+            }
+            None => (Vec::new(), false),
         };
 
         // Build volume online map for reveal-in-finder buttons
@@ -667,9 +666,8 @@ pub async fn asset_page(
         let (faces, all_people_detail) = {
             #[cfg(feature = "ai")]
             {
-                let cat2 = state.catalog()?;
-                let face_store = crate::face_store::FaceStore::new(cat2.conn());
-                let stored_faces = face_store.faces_for_asset(&asset_id).unwrap_or_default();
+                let face_store = crate::face_store::FaceStore::new(catalog.conn());
+                let stored_faces = face_store.faces_for_asset(&full_id).unwrap_or_default();
                 let face_rows: Vec<FaceRow> = stored_faces.iter().map(|f| {
                     let crop_url = if crate::face::face_crop_exists(&f.id, &state.catalog_root) {
                         Some(format!("/face/{}/{}.jpg", &f.id[..2.min(f.id.len())], f.id))
@@ -687,7 +685,7 @@ pub async fn asset_page(
                         person_id: f.person_id.clone(),
                     }
                 }).collect();
-                let people: Vec<PersonOption> = state.dropdown_cache.get_people(&cat2)
+                let people: Vec<PersonOption> = state.dropdown_cache.get_people(&catalog)
                     .into_iter()
                     .map(|(id, name)| PersonOption { id, name })
                     .collect();

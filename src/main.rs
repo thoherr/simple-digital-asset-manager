@@ -683,6 +683,10 @@ enum Commands {
     /// Rebuild SQLite catalog from sidecar files
     #[command(display_order = 51)]
     RebuildCatalog,
+
+    /// Run database schema migrations
+    #[command(display_order = 52)]
+    Migrate,
 }
 
 #[derive(Subcommand)]
@@ -987,6 +991,21 @@ enum FacesCommands {
 fn main() {
     let cli = Cli::parse();
     let start = std::time::Instant::now();
+
+    // Run schema migrations once at startup (if inside a catalog).
+    // This is a no-op if the schema is already up to date.
+    if !matches!(cli.command, Commands::Init) {
+        if let Ok(root) = dam::config::find_catalog_root() {
+            if let Ok(catalog) = Catalog::open_and_migrate(&root) {
+                #[cfg(feature = "ai")]
+                {
+                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
+                    let _ = dam::embedding_store::EmbeddingStore::initialize(catalog.conn());
+                }
+                drop(catalog);
+            }
+        }
+    }
 
     let result: anyhow::Result<()> = (|| match cli.command {
         Commands::Init => {
@@ -5009,6 +5028,21 @@ fn main() {
                     Ok(())
                 }
             }
+        }
+        Commands::Migrate => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog = Catalog::open_and_migrate(&catalog_root)?;
+            #[cfg(feature = "ai")]
+            {
+                let _ = dam::face_store::FaceStore::initialize(catalog.conn());
+                let _ = dam::embedding_store::EmbeddingStore::initialize(catalog.conn());
+            }
+            if cli.json {
+                println!("{}", serde_json::json!({"status": "ok"}));
+            } else {
+                println!("Schema migrations applied successfully.");
+            }
+            Ok(())
         }
     })();
 

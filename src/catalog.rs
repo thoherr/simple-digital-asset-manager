@@ -529,17 +529,26 @@ impl Catalog {
     pub fn open(catalog_root: &Path) -> Result<Self> {
         let db_path = catalog_root.join("catalog.db");
         let conn = Connection::open(&db_path)?;
-        let catalog = Self { conn };
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL;
+             PRAGMA synchronous = NORMAL;
+             PRAGMA cache_size = -20000;
+             PRAGMA mmap_size = 268435456;
+             PRAGMA temp_store = MEMORY;",
+        )?;
+        Ok(Self { conn })
+    }
+
+    /// Open and run schema migrations. Call once at program startup.
+    pub fn open_and_migrate(catalog_root: &Path) -> Result<Self> {
+        let catalog = Self::open(catalog_root)?;
         catalog.run_migrations();
         Ok(catalog)
     }
 
-    /// Open without running migrations — for hot paths where migrations
-    /// have already been applied (e.g. per-request in the web server).
+    /// Alias for `open` — kept for clarity but identical.
     pub fn open_fast(catalog_root: &Path) -> Result<Self> {
-        let db_path = catalog_root.join("catalog.db");
-        let conn = Connection::open(&db_path)?;
-        Ok(Self { conn })
+        Self::open(catalog_root)
     }
 
     /// Access the underlying SQLite connection.
@@ -2715,39 +2724,59 @@ impl Catalog {
     }
 
     /// Paginated search with dynamic filters and sorting.
-    pub fn search_paginated(&self, opts: &SearchOptions) -> Result<Vec<SearchRow>> {
+    /// Returns (rows, total_count) in a single query using COUNT(*) OVER().
+    pub fn search_paginated_with_count(&self, opts: &SearchOptions) -> Result<(Vec<SearchRow>, u64)> {
         let (where_clause, mut params, needs_fl_join, needs_v_join) = Self::build_search_where(opts);
 
-        let mut sql = String::from(
-            "SELECT a.id, a.name, a.asset_type, a.created_at, bv.original_filename, bv.format, \
-             a.tags, a.description, bv.content_hash, a.rating, a.color_label, \
-             a.primary_variant_format, a.variant_count, a.stack_id, s.member_count, \
-             a.preview_rotation, a.face_count \
-             FROM assets a \
-             JOIN variants bv ON bv.content_hash = a.best_variant_hash \
-             LEFT JOIN stacks s ON s.id = a.stack_id",
-        );
-
-        if needs_v_join {
-            sql.push_str(" JOIN variants v ON v.asset_id = a.id");
-        }
-        if needs_fl_join {
-            sql.push_str(" JOIN file_locations fl ON v.content_hash = fl.content_hash");
-        }
-
-        sql.push_str(&where_clause);
-
-        if needs_v_join {
-            sql.push_str(" GROUP BY a.id");
-        }
-
-        sql.push_str(&format!(" ORDER BY {}", opts.sort.to_sql()));
-
-        let page = opts.page.max(1);
-        let offset = (page - 1) as u64 * opts.per_page as u64;
-        sql.push_str(" LIMIT ? OFFSET ?");
-        params.push(Box::new(opts.per_page as u64));
-        params.push(Box::new(offset));
+        // For the common case (no variant-level joins), use COUNT(*) OVER() window function.
+        // For variant-joined queries, use a CTE to avoid incompatibility with GROUP BY.
+        let sql = if needs_v_join {
+            let mut inner = String::from(
+                "WITH matched AS (SELECT DISTINCT a.id \
+                 FROM assets a \
+                 JOIN variants bv ON bv.content_hash = a.best_variant_hash \
+                 JOIN variants v ON v.asset_id = a.id",
+            );
+            if needs_fl_join {
+                inner.push_str(" JOIN file_locations fl ON v.content_hash = fl.content_hash");
+            }
+            inner.push_str(&where_clause);
+            inner.push_str(") SELECT a.id, a.name, a.asset_type, a.created_at, bv.original_filename, bv.format, \
+                 a.tags, a.description, bv.content_hash, a.rating, a.color_label, \
+                 a.primary_variant_format, a.variant_count, a.stack_id, s.member_count, \
+                 a.preview_rotation, a.face_count, \
+                 (SELECT COUNT(*) FROM matched) as total_count \
+                 FROM matched m \
+                 JOIN assets a ON a.id = m.id \
+                 JOIN variants bv ON bv.content_hash = a.best_variant_hash \
+                 LEFT JOIN stacks s ON s.id = a.stack_id");
+            inner.push_str(&format!(" ORDER BY {}", opts.sort.to_sql()));
+            let page = opts.page.max(1);
+            let offset = (page - 1) as u64 * opts.per_page as u64;
+            inner.push_str(" LIMIT ? OFFSET ?");
+            params.push(Box::new(opts.per_page as u64));
+            params.push(Box::new(offset));
+            inner
+        } else {
+            let mut sql = String::from(
+                "SELECT a.id, a.name, a.asset_type, a.created_at, bv.original_filename, bv.format, \
+                 a.tags, a.description, bv.content_hash, a.rating, a.color_label, \
+                 a.primary_variant_format, a.variant_count, a.stack_id, s.member_count, \
+                 a.preview_rotation, a.face_count, \
+                 COUNT(*) OVER() as total_count \
+                 FROM assets a \
+                 JOIN variants bv ON bv.content_hash = a.best_variant_hash \
+                 LEFT JOIN stacks s ON s.id = a.stack_id",
+            );
+            sql.push_str(&where_clause);
+            sql.push_str(&format!(" ORDER BY {}", opts.sort.to_sql()));
+            let page = opts.page.max(1);
+            let offset = (page - 1) as u64 * opts.per_page as u64;
+            sql.push_str(" LIMIT ? OFFSET ?");
+            params.push(Box::new(opts.per_page as u64));
+            params.push(Box::new(offset));
+            sql
+        };
 
         let param_refs: Vec<&dyn rusqlite::types::ToSql> =
             params.iter().map(|p| p.as_ref()).collect();
@@ -2760,7 +2789,8 @@ impl Catalog {
             let stack_member_count: Option<i64> = row.get(14)?;
             let rotation_val: Option<i64> = row.get(15)?;
             let face_count_val: i64 = row.get::<_, Option<i64>>(16)?.unwrap_or(0);
-            Ok(SearchRow {
+            let total: u64 = row.get(17)?;
+            Ok((SearchRow {
                 asset_id: row.get(0)?,
                 name: row.get(1)?,
                 asset_type: row.get(2)?,
@@ -2778,14 +2808,23 @@ impl Catalog {
                 stack_count: stack_member_count.map(|n| n as u32),
                 preview_rotation: rotation_val.map(|r| r as u16),
                 face_count: face_count_val as u32,
-            })
+            }, total))
         })?;
 
         let mut results = Vec::new();
+        let mut total_count = 0u64;
         for row in rows {
-            results.push(row?);
+            let (search_row, total) = row?;
+            total_count = total;
+            results.push(search_row);
         }
-        Ok(results)
+        Ok((results, total_count))
+    }
+
+    /// Paginated search with dynamic filters and sorting.
+    pub fn search_paginated(&self, opts: &SearchOptions) -> Result<Vec<SearchRow>> {
+        let (rows, _total) = self.search_paginated_with_count(opts)?;
+        Ok(rows)
     }
 
     /// Count total results matching the same filters as search_paginated (without LIMIT/OFFSET).
