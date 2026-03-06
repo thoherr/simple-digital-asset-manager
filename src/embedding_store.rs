@@ -139,6 +139,37 @@ impl<'a> EmbeddingStore<'a> {
         Ok(())
     }
 
+    /// Iterate all embeddings for a given model, returning (asset_id, embedding) pairs.
+    pub fn all_embeddings_for_model(&self, model: &str) -> Result<Vec<(String, Vec<f32>)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT asset_id, embedding FROM embeddings WHERE model = ?1")?;
+        let rows = stmt.query_map(rusqlite::params![model], |row| {
+            let id: String = row.get(0)?;
+            let blob: Vec<u8> = row.get(1)?;
+            Ok((id, blob))
+        })?;
+        let mut results = Vec::new();
+        for row in rows {
+            let (id, blob) = row?;
+            results.push((id, blob_to_embedding(&blob)));
+        }
+        Ok(results)
+    }
+
+    /// List all distinct model IDs stored in the embeddings table.
+    pub fn list_models(&self) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT DISTINCT model FROM embeddings ORDER BY model")?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        let mut models = Vec::new();
+        for row in rows {
+            models.push(row?);
+        }
+        Ok(models)
+    }
+
     /// Find the most similar assets by cosine similarity (brute-force scan).
     /// Only compares embeddings from the same model.
     /// Returns `(asset_id, similarity)` pairs sorted by similarity descending.

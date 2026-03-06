@@ -257,6 +257,10 @@ enum Commands {
         /// Re-generate even if embedding already exists
         #[arg(long, display_order = 10)]
         force: bool,
+
+        /// Export all embeddings from SQLite to binary files (no scope required)
+        #[arg(long, display_order = 11)]
+        export: bool,
     },
 
     /// Face detection and recognition (requires --features ai)
@@ -975,6 +979,9 @@ enum FacesCommands {
         /// Face ID (or prefix) to unassign
         face_id: String,
     },
+
+    /// Export faces, people, and embeddings from SQLite to YAML + binary files
+    Export,
 }
 
 fn main() {
@@ -2217,8 +2224,38 @@ fn main() {
             volume,
             model,
             force,
+            export,
         } => {
             use dam::model_manager::ModelManager;
+
+            if export {
+                let catalog_root = dam::config::find_catalog_root()?;
+                let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+                let _ = dam::embedding_store::EmbeddingStore::initialize(catalog.conn());
+                let emb_store = dam::embedding_store::EmbeddingStore::new(catalog.conn());
+
+                let mut total = 0u32;
+                let models = emb_store.list_models()?;
+                for m in &models {
+                    let embeddings = emb_store.all_embeddings_for_model(m)?;
+                    for (asset_id, emb) in &embeddings {
+                        if let Err(e) = dam::embedding_store::write_embedding_binary(&catalog_root, m, asset_id, emb) {
+                            eprintln!("  Warning: {}: {e:#}", &asset_id[..8.min(asset_id.len())]);
+                        } else {
+                            total += 1;
+                        }
+                    }
+                    if !embeddings.is_empty() {
+                        eprintln!("  {}: {} embeddings", m, embeddings.len());
+                    }
+                }
+                if cli.json {
+                    println!("{}", serde_json::json!({"exported": total, "models": models}));
+                } else {
+                    println!("Exported {total} embedding binaries");
+                }
+                return Ok(());
+            }
 
             if query.is_none() && asset.is_none() && volume.is_none() {
                 anyhow::bail!(
@@ -2770,6 +2807,41 @@ fn main() {
                     let _ = face_store.save_all_yaml(&catalog_root);
                     let short = &full_id[..8.min(full_id.len())];
                     println!("Unassigned face {short} from its person");
+                    Ok(())
+                }
+                FacesCommands::Export => {
+                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+
+                    // Export faces + people YAML
+                    face_store.save_all_yaml(&catalog_root)?;
+                    let faces_file = face_store.export_all_faces()?;
+                    let people_file = face_store.export_all_people()?;
+                    println!("Exported {} faces, {} people to YAML", faces_file.faces.len(), people_file.people.len());
+
+                    // Export ArcFace embedding binaries
+                    let mut arcface_count = 0u32;
+                    for face in &faces_file.faces {
+                        if let Ok(Some(emb)) = face_store.get_face_embedding(&face.id) {
+                            if !emb.is_empty() {
+                                if let Err(e) = dam::face_store::write_arcface_binary(&catalog_root, &face.id, &emb) {
+                                    eprintln!("  Warning: {}: {e:#}", &face.id[..8.min(face.id.len())]);
+                                } else {
+                                    arcface_count += 1;
+                                }
+                            }
+                        }
+                    }
+                    println!("Exported {arcface_count} ArcFace embedding binaries");
+
+                    if cli.json {
+                        println!("{}", serde_json::json!({
+                            "faces": faces_file.faces.len(),
+                            "people": people_file.people.len(),
+                            "arcface_binaries": arcface_count,
+                        }));
+                    }
                     Ok(())
                 }
             }
