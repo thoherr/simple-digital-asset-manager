@@ -109,7 +109,7 @@ Für größere Features schreibe ich Proposals, kurze Dokumente, die das Problem
 
 **Rust als Sprache passt hervorragend.** Der Compiler fängt viele Fehler ab, die bei dynamischen Sprachen durchrutschen würden. Wenn Claude einen Typ falsch verwendet oder einen Ownership-Fehler macht, sagt `cargo build` sofort Bescheid. Das ist ein Sicherheitsnetz, das bei Python oder JavaScript fehlt.
 
-**Das Tempo ist real.** 34.500 Zeilen produktiver Rust-Code in 17 Tagen, mit Tests, Dokumentation und Web-UI, entstanden in Arbeitspausen, Abendstunden und auf Zugfahrten. Keine einzige Vollzeit-Woche. Das wäre ohne AI-Unterstützung nicht möglich gewesen, jedenfalls nicht in dieser Qualität und diesem Zeitraum.
+**Eine Vervielfachung meiner Entwicklungsgeschwindigkeit ist tatsächlich erreichbar.** 34.500 Zeilen produktiver Rust-Code in 17 Tagen, mit Tests, Dokumentation und Web-UI, entstanden in Arbeitspausen, Abendstunden und auf Zugfahrten. Keine einzige Vollzeit-Woche. Das wäre ohne AI-Unterstützung nicht möglich gewesen, jedenfalls nicht in dieser Qualität und diesem Zeitraum.
 
 ## Ausblick
 
