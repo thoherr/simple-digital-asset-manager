@@ -85,9 +85,11 @@ A detected face within an asset image, stored with bounding box, confidence, and
 | person_id | Option<UUID> | Assigned person (NULL if unassigned) |
 | bbox_x, bbox_y, bbox_w, bbox_h | f32 | Bounding box in normalized coordinates [0, 1] |
 | confidence | f32 | Detection confidence score |
-| embedding | Vec<f32> | 512-dimensional ArcFace recognition embedding |
+| embedding | Vec<f32> | 512-dimensional ArcFace recognition embedding (also stored as binary file in `embeddings/arcface/`) |
 | crop_path | Option<String> | Path to 150×150 JPEG face crop thumbnail |
 | created_at | DateTime | When the face was detected |
+
+Face records are persisted in both SQLite and `faces.yaml` at the catalog root. ArcFace embeddings are additionally stored as raw binary files (`embeddings/arcface/<2-char prefix>/<face_id>.bin`) for rebuild resilience.
 
 ### Person
 
@@ -101,6 +103,8 @@ A named or unnamed person group, linking detected faces across assets.
 | name | Option<String> | User-assigned name (NULL until named) |
 | representative_face_id | Option<UUID> | Face used as the person's thumbnail |
 | created_at | DateTime | When the person was created |
+
+People records are persisted in both SQLite and `people.yaml` at the catalog root for rebuild resilience.
 
 ### Stack
 A scene grouping that collapses multiple assets into a single pick in the browse grid. Anonymous (no name or description), position-based ordering. Stacks auto-dissolve when reduced to one member or fewer.
@@ -171,9 +175,9 @@ recipes:
 
 **Responsibility**: fast queryable index over all metadata. Rebuilt from sidecar files.
 
-**Tables** mirror the data model: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `stacks`, `collections`, `collection_assets`, `faces`, `people` (with `--features ai`).
+**Tables** mirror the data model: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `stacks`, `collections`, `collection_assets`, `faces`, `people`, `embeddings` (with `--features ai`).
 
-This is a **derived cache**, not the source of truth. Running `dam rebuild-catalog` regenerates it from sidecar files. This means:
+This is a **derived cache**, not the source of truth. Running `dam rebuild-catalog` regenerates it from sidecar files, `collections.yaml`, `stacks.yaml`, `faces.yaml`, `people.yaml`, and embedding binary files. This means:
 - No data loss if the SQLite file is deleted.
 - Sidecars can be edited manually or by external tools.
 - The catalog can include denormalized fields for fast queries (e.g. extracted EXIF date, camera model).

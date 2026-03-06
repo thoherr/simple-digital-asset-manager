@@ -1253,6 +1253,51 @@ dam faces unassign a1b2c3d4-...
 
 ---
 
+## dam faces export
+
+### NAME
+
+dam-faces-export -- export faces and people to YAML and binary files
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] faces export
+```
+
+### DESCRIPTION
+
+Exports all face and people data from the SQLite catalog to file-based storage:
+
+- `faces.yaml` — face records (bounding boxes, confidence, person assignments)
+- `people.yaml` — people records (names, representative faces)
+- `embeddings/arcface/<prefix>/<face_id>.bin` — ArcFace face recognition embeddings as raw binary files
+
+This is a one-time migration command for catalogs that have existing face data in SQLite but no corresponding YAML/binary files (i.e., data created before v2.2.1). After running this command, `rebuild-catalog` will be able to restore face and people data.
+
+Going forward, all face/people write operations automatically persist to both SQLite and files.
+
+### EXAMPLES
+
+Export all face data:
+
+```bash
+dam faces export
+```
+
+Export with JSON output:
+
+```bash
+dam faces export --json
+```
+
+### SEE ALSO
+
+[faces detect](#dam-faces-detect) -- detect faces in images.
+[rebuild-catalog](05-maintain-commands.md#dam-rebuild-catalog) -- rebuilds catalog from files.
+
+---
+
 ## dam faces download
 
 ### NAME

@@ -23,10 +23,11 @@ The system is organized in four layers, from top to bottom:
 - **Saved Search Store** — manages named search queries (stored in TOML).
 - **Stack Store** — manages asset stacks / scene groupings (dual storage: SQLite `stacks` table + `stacks.yaml` for rebuild persistence). Stacks collapse multiple assets into a single pick in the browse grid.
 - **Face Detection Service** *(feature-gated: `--features ai`)* — detects faces in asset images using YuNet ONNX model, computes 512-dim ArcFace recognition embeddings, generates face crop thumbnails. Multi-stride output decoder for YuNet model variants.
-- **Face Store** *(feature-gated: `--features ai`)* — SQLite-backed persistence for detected faces (`faces` table) and named people (`people` table). Greedy single-linkage clustering for auto-grouping similar faces. Denormalized `face_count` on assets table for fast filtering.
+- **Face Store** *(feature-gated: `--features ai`)* — Dual persistence for detected faces and named people: SQLite tables (`faces`, `people`) for fast queries, plus `faces.yaml`/`people.yaml` and ArcFace binary embeddings (`embeddings/arcface/`) for rebuild resilience. Greedy single-linkage clustering for auto-grouping similar faces. Denormalized `face_count` on assets table for fast filtering.
+- **Embedding Store** *(feature-gated: `--features ai`)* — Dual persistence for image embeddings: SQLite `embeddings` table for queries + binary files under `embeddings/<model>/` for rebuild resilience. In-memory `EmbeddingIndex` for fast similarity search.
 
 ### 3. Storage Layer
-- **Local Catalog** — always available on local disk. Contains asset index, cached metadata, thumbnails, volume registry, collection and stack membership. Small compared to originals.
+- **Local Catalog** — always available on local disk. Contains asset index, cached metadata, thumbnails, volume registry, collection and stack membership, face/people data, and image embeddings. Small compared to originals.
 - **Media Volumes** — external/offline drives holding the actual asset files. May be unmounted.
 
 ## Key Design Decisions

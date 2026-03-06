@@ -745,13 +745,14 @@ dam-embed -- batch-generate image embeddings for visual similarity search
 dam [GLOBAL FLAGS] embed --query <QUERY> [OPTIONS]
 dam [GLOBAL FLAGS] embed --asset <ID> [OPTIONS]
 dam [GLOBAL FLAGS] embed --volume <LABEL> [OPTIONS]
+dam [GLOBAL FLAGS] embed --export
 ```
 
 ### DESCRIPTION
 
 Pre-computes image embeddings for visual similarity search (`dam auto-tag --similar` and the web UI "Find similar" button) without applying any tags. This is useful for building up the similarity search index across your catalog.
 
-For each matching asset, the command finds the best available image (smart preview → regular preview → original file on an online volume), encodes it with SigLIP, and stores the embedding in the SQLite catalog's `embeddings` table.
+For each matching asset, the command finds the best available image (smart preview → regular preview → original file on an online volume), encodes it with SigLIP, and stores the embedding in the SQLite catalog's `embeddings` table and as a binary file under `embeddings/<model>/<prefix>/<asset_id>.bin`.
 
 By default, assets that already have a stored embedding for the active model are skipped. Use `--force` to re-generate embeddings (e.g., after switching to a higher-resolution preview).
 
@@ -775,6 +776,9 @@ By default, assets that already have a stored embedding for the active model are
 
 **--force**
 : Re-generate embeddings even if they already exist for the active model.
+
+**--export**
+: Export all existing embeddings from SQLite to binary files. No scope filter required. Useful as a one-time migration to populate the file-based persistence layer from existing data.
 
 `--json` outputs `{embedded, skipped, errors, model, force}`.
 
@@ -816,6 +820,12 @@ Check progress with JSON output:
 
 ```bash
 dam embed --query "*" --json | jq '{embedded, skipped}'
+```
+
+Export all embeddings to binary files (one-time migration):
+
+```bash
+dam embed --export
 ```
 
 ### SEE ALSO

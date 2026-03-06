@@ -102,6 +102,8 @@ dam faces name <person-id> "Alice"                    # name a person
 
 **Web UI**: `/people` page with person gallery, asset detail face chips with assign/unassign, browse filter by `faces:` and `person:` filters, batch face detection from the browse toolbar.
 
+**Data persistence**: Face records, people, and embeddings are stored in both SQLite (for queries) and files (YAML + binary) for rebuild resilience. `dam faces export` migrates existing SQLite data to files; `dam embed --export` does the same for image similarity embeddings.
+
 **Search filters**: `faces:any` / `faces:none` / `faces:N` / `faces:N+` (face count), `person:<name>` (assigned person). **Config**: `[ai] face_cluster_threshold` (default 0.5), `[ai] face_min_confidence` (default 0.5).
 
 ## Technology

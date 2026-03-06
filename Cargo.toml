@@ -1,6 +1,6 @@
 [package]
 name = "dam"
-version = "2.2.0"
+version = "2.2.1"
 edition = "2021"
 description = "A digital asset manager for large collections of images and videos"
 

@@ -412,6 +412,8 @@ Rebuild complete: 1847 assets, 2914 variants, 312 recipes, 3 collections, 45 sta
 - **Sidecar YAML files**: Untouched (they are the source, not the target).
 - **Collections**: Restored from `collections.yaml` at the catalog root.
 - **Stacks**: Restored from `stacks.yaml` at the catalog root (member order and pick assignments are preserved).
+- **Faces and people** *(ai feature)*: Restored from `faces.yaml` and `people.yaml`. ArcFace face embeddings restored from binary files in `embeddings/arcface/`.
+- **Image embeddings** *(ai feature)*: SigLIP embeddings restored from binary files in `embeddings/<model>/`.
 - **Preview files**: Untouched (they are content-addressed by hash).
 - **Volumes**: Re-registered from `volumes.yaml`.
 
