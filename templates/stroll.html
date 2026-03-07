@@ -6,15 +6,7 @@
 
 {% block content %}
 <div class="stroll-page">
-    <div class="stroll-toolbar" id="stroll-toolbar">
-        <div class="stroll-toolbar-inner">
-            <button type="button" class="filter-toggle" id="filter-toggle">&#9660; Filters</button>
-            <label class="stroll-n-label" title="Number of neighbors">
-                <span>Neighbors:</span>
-                <input type="range" id="stroll-n" min="4" max="20" value="{{ neighbor_count }}">
-                <span id="stroll-n-val">{{ neighbor_count }}</span>
-            </label>
-        </div>
+    <div class="stroll-toolbar">
         {% include "filter_bar.html" %}
     </div>
     <div class="stroll-container" id="stroll-container">
@@ -48,6 +40,14 @@
             </div>
         </div>
         {% endfor %}
+    </div>
+
+    <div class="stroll-neighbor-control" id="stroll-neighbor-control">
+        <label class="stroll-n-label" title="Number of neighbors">
+            <span>Neighbors:</span>
+            <input type="range" id="stroll-n" min="5" max="25" value="{{ neighbor_count }}">
+            <span id="stroll-n-val">{{ neighbor_count }}</span>
+        </label>
     </div>
 
     {% if neighbors.is_empty() %}
@@ -395,7 +395,7 @@ function onFilterChange() {
     function strollUrl(id) {
         var q = window.damFilterQuery ? window.damFilterQuery() : '';
         var u = '/stroll?id=' + id;
-        if (currentN !== 10) u += '&n=' + currentN;
+        if (currentN !== 12) u += '&n=' + currentN;
         if (q) u += '&q=' + encodeURIComponent(q);
         return u;
     }

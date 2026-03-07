@@ -293,6 +293,21 @@
         window.damFormats = { getSelected: getSelectedFormats };
     }
 
+    // --- Query input with debounce ---
+    var qInput = document.querySelector('[name=q]');
+    if (qInput) {
+        var _queryTimer = null;
+        qInput.addEventListener('input', function() {
+            clearTimeout(_queryTimer);
+            _queryTimer = setTimeout(onFilterChange, 300);
+        });
+        qInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); clearTimeout(_queryTimer); onFilterChange(); }
+            e.stopPropagation();
+        });
+        qInput.addEventListener('keyup', function(e) { e.stopPropagation(); });
+    }
+
     // --- Dropdown auto-search ---
     document.querySelectorAll('.filter-row select').forEach(function(sel) {
         sel.addEventListener('change', onFilterChange);
@@ -317,7 +332,7 @@
     var filterRow = document.getElementById('filter-row');
     var filterBtn = document.getElementById('filter-toggle');
     if (filterBtn && filterRow) {
-        var hasActiveFilters = "{{ tag }}{{ rating }}{{ label }}{{ format_filter }}{{ asset_type }}{{ volume }}{{ collection }}{{ path }}{{ person }}".length > 0;
+        var hasActiveFilters = "{{ query }}{{ tag }}{{ rating }}{{ label }}{{ format_filter }}{{ asset_type }}{{ volume }}{{ collection }}{{ path }}{{ person }}".length > 0;
         var filterOpen = hasActiveFilters || localStorage.getItem('dam-filter-open') !== 'false';
         function applyFilterState() {
             if (filterOpen) {
@@ -347,6 +362,8 @@
     // Build a query string from current filter state
     window.damFilterQuery = function() {
         var parts = [];
+        var qEl = document.querySelector('[name=q]');
+        if (qEl && qEl.value.trim()) parts.push(qEl.value.trim());
         var tags = getSelectedTags();
         tags.forEach(function(t) {
             var display = tagToDisplay(t);

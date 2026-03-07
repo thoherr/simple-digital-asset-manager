@@ -4250,7 +4250,7 @@ pub async fn stroll_page(
     let state = state.clone();
     let result: Result<Result<StrollPage, String>, _> =
         tokio::task::spawn_blocking(move || {
-            let n = params.n.unwrap_or(10).clamp(4, 20);
+            let n = params.n.unwrap_or(12).clamp(5, 25);
             stroll_page_inner(&state, params.id.as_deref(), params.q.as_deref(), n)
         }).await;
 
@@ -4487,7 +4487,7 @@ pub async fn stroll_neighbors_api(
     };
     let state = state.clone();
     let q = params.q;
-    let n = params.n.unwrap_or(10).clamp(4, 20);
+    let n = params.n.unwrap_or(12).clamp(5, 25);
     let result: Result<Result<serde_json::Value, String>, _> =
         tokio::task::spawn_blocking(move || {
             let page = stroll_page_inner(&state, Some(&asset_id), q.as_deref(), n)?;
