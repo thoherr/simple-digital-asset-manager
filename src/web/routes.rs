@@ -4237,6 +4237,8 @@ pub async fn cluster_faces_api(
 #[derive(Debug, serde::Deserialize)]
 pub struct StrollParams {
     pub id: Option<String>,
+    pub q: Option<String>,
+    pub n: Option<u32>,
 }
 
 /// GET /stroll — visual exploration page
@@ -4247,8 +4249,10 @@ pub async fn stroll_page(
 ) -> Response {
     let state = state.clone();
     let result: Result<Result<StrollPage, String>, _> =
-        tokio::task::spawn_blocking(move || stroll_page_inner(&state, params.id.as_deref()))
-            .await;
+        tokio::task::spawn_blocking(move || {
+            let n = params.n.unwrap_or(10).clamp(4, 20);
+            stroll_page_inner(&state, params.id.as_deref(), params.q.as_deref(), n)
+        }).await;
 
     match result {
         Ok(Ok(page)) => Html(page.render().unwrap_or_default()).into_response(),
@@ -4263,6 +4267,8 @@ pub async fn stroll_page(
 fn stroll_page_inner(
     state: &AppState,
     asset_id: Option<&str>,
+    query: Option<&str>,
+    neighbor_count: u32,
 ) -> Result<StrollPage, String> {
     let catalog = state.catalog().map_err(|e| format!("{e:#}"))?;
     let preview_gen = state.preview_generator();
@@ -4290,6 +4296,20 @@ fn stroll_page_inner(
         std::time::SystemTime::now().hash(&mut hasher);
         let idx = (hasher.finish() as usize) % all.len();
         all[idx].0.clone()
+    };
+
+    // If query filter is active, resolve matching asset IDs
+    let filter_ids: Option<std::collections::HashSet<String>> = if let Some(q) = query {
+        if !q.trim().is_empty() {
+            let engine = state.query_engine();
+            let results = engine.search(q)
+                .map_err(|e| format!("{e:#}"))?;
+            Some(results.into_iter().map(|r| r.asset_id).collect())
+        } else {
+            None
+        }
+    } else {
+        None
     };
 
     // Load center asset details
@@ -4322,6 +4342,8 @@ fn stroll_page_inner(
 
     // Find similar neighbors
     let query_emb = emb_store.get(&center_id, model_id).map_err(|e| format!("{e:#}"))?;
+    // Over-fetch when filtering, to compensate for filtered-out results
+    let fetch_limit = if filter_ids.is_some() { (neighbor_count * 4) as usize } else { neighbor_count as usize };
     let neighbors = if let Some(emb) = query_emb {
         let spec = crate::ai::get_model_spec(model_id)
             .ok_or_else(|| format!("Unknown model: {model_id}"))?;
@@ -4345,10 +4367,14 @@ fn stroll_page_inner(
         let results = {
             let idx_guard = state.ai_embedding_index.read().unwrap();
             let idx = idx_guard.as_ref().unwrap();
-            idx.search(&emb, 10, Some(&center_id))
+            idx.search(&emb, fetch_limit, Some(&center_id))
         };
 
-        results.into_iter().filter_map(|(id, similarity)| {
+        let mut neighbors: Vec<StrollNeighbor> = results.into_iter().filter_map(|(id, similarity)| {
+            // Filter by query if active
+            if let Some(ref fids) = filter_ids {
+                if !fids.contains(&id) { return None; }
+            }
             let cat = state.catalog().ok()?;
             let d = cat.load_asset_details(&id).ok()??;
             let name = d.name.clone().unwrap_or_else(|| {
@@ -4370,7 +4396,9 @@ fn stroll_page_inner(
                 rating: d.rating,
                 color_label: d.color_label.clone(),
             })
-        }).collect()
+        }).collect();
+        neighbors.truncate(neighbor_count as usize);
+        neighbors
     } else {
         Vec::new()
     };
@@ -4378,6 +4406,8 @@ fn stroll_page_inner(
     Ok(StrollPage {
         center,
         neighbors,
+        query: query.unwrap_or("").to_string(),
+        neighbor_count,
         ai_enabled: state.ai_enabled,
     })
 }
@@ -4423,9 +4453,11 @@ pub async fn stroll_neighbors_api(
         None => return (StatusCode::BAD_REQUEST, "Missing id parameter").into_response(),
     };
     let state = state.clone();
+    let q = params.q;
+    let n = params.n.unwrap_or(10).clamp(4, 20);
     let result: Result<Result<serde_json::Value, String>, _> =
         tokio::task::spawn_blocking(move || {
-            let page = stroll_page_inner(&state, Some(&asset_id))?;
+            let page = stroll_page_inner(&state, Some(&asset_id), q.as_deref(), n)?;
             Ok(serde_json::json!({
                 "center": {
                     "asset_id": page.center.asset_id,

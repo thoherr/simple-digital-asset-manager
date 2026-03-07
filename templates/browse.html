@@ -31,8 +31,9 @@
       hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": getSelectedTags().join(","), "format": (window.damFormats ? window.damFormats.getSelected() : ""), "volume": (document.querySelector("[name=volume]") || {value:""}).value, "collection": (document.querySelector("[name=collection]") || {value:""}).value, "path": (document.querySelector("[name=path]") || {value:""}).value, "rating": getFilterRating(), "label": getFilterLabel(), "sort": new URLSearchParams(window.location.search).get("sort") || "date_desc", "page": "1", "stacks": getStackCollapse()}'>
     <div class="search-row">
         <input type="text" name="q" placeholder="Search assets..." value="{{ query }}" autocomplete="off">
+        <button type="button" class="filter-toggle" id="filter-toggle" title="Toggle filters">&#9660; Filters</button>
     </div>
-    <div class="filter-row">
+    <div class="filter-row" id="filter-row">
         <div class="tag-filter" id="tag-filter">
             <div class="tag-filter-chips" id="tag-chips"></div>
             <input type="text" class="tag-filter-input" id="tag-input" placeholder="Filter by tags..." autocomplete="off">
@@ -249,6 +250,29 @@
 
 <script>
 (function() {
+    // Filter row collapse/expand
+    var filterRow = document.getElementById('filter-row');
+    var filterBtn = document.getElementById('filter-toggle');
+    var hasActiveFilters = "{{ tag }}{{ rating }}{{ label }}{{ format_filter }}{{ asset_type }}{{ volume }}{{ collection }}{{ path }}{{ person }}".length > 0;
+    var filterOpen = hasActiveFilters || localStorage.getItem('dam-filter-open') !== 'false';
+    function applyFilterState() {
+        if (filterOpen) {
+            filterRow.style.display = '';
+            filterBtn.innerHTML = '&#9650; Filters';
+            filterBtn.classList.add('active');
+        } else {
+            filterRow.style.display = 'none';
+            filterBtn.innerHTML = '&#9660; Filters';
+            filterBtn.classList.remove('active');
+        }
+    }
+    filterBtn.addEventListener('click', function() {
+        filterOpen = !filterOpen;
+        localStorage.setItem('dam-filter-open', filterOpen);
+        applyFilterState();
+    });
+    applyFilterState();
+
     var allTags = [];
     var initialTagStr = "{{ tag }}";
 

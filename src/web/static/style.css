@@ -138,6 +138,21 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     font-size: 0.95rem;
     background: var(--bg-input);
 }
+.filter-toggle {
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-input);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.filter-toggle:hover, .filter-toggle.active {
+    color: var(--text);
+    border-color: var(--accent, #4a9eff);
+}
 .filter-row {
     display: flex;
     flex-wrap: wrap;
@@ -3097,6 +3112,45 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     align-items: center;
     min-height: 80vh;
     margin: -1rem -1.5rem;
+}
+.stroll-toolbar {
+    width: 100%;
+    padding: 0.5rem 1rem;
+    background: var(--bg-card, #f8f8f8);
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+}
+.stroll-toolbar-inner {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    max-width: 900px;
+    margin: 0 auto;
+}
+.stroll-toolbar-inner input[type="text"] {
+    flex: 1;
+    min-width: 200px;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    background: var(--bg-input);
+    color: var(--text);
+}
+.stroll-n-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.stroll-n-label input[type="range"] {
+    width: 80px;
+}
+#stroll-n-val {
+    min-width: 1.5em;
+    text-align: center;
 }
 .stroll-container {
     position: relative;

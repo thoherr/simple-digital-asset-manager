@@ -640,6 +640,8 @@ pub struct StrollCenter {
 pub struct StrollPage {
     pub center: StrollCenter,
     pub neighbors: Vec<StrollNeighbor>,
+    pub query: String,
+    pub neighbor_count: u32,
     pub ai_enabled: bool,
 }
 

@@ -6,6 +6,17 @@
 
 {% block content %}
 <div class="stroll-page">
+    <div class="stroll-toolbar" id="stroll-toolbar" style="display:none;">
+        <div class="stroll-toolbar-inner">
+            <input type="text" id="stroll-query" placeholder="Filter: tag:landscape rating:4+ ..." value="{{ query }}" autocomplete="off">
+            <label class="stroll-n-label" title="Number of neighbors">
+                <span>Neighbors:</span>
+                <input type="range" id="stroll-n" min="4" max="20" value="{{ neighbor_count }}">
+                <span id="stroll-n-val">{{ neighbor_count }}</span>
+            </label>
+            <button type="button" class="btn btn-sm" id="stroll-apply">Apply</button>
+        </div>
+    </div>
     <div class="stroll-container" id="stroll-container">
         <svg class="stroll-lines" id="stroll-lines"></svg>
 
@@ -61,6 +72,37 @@
     var satellites = Array.from(container.querySelectorAll('.stroll-satellite'));
     var focusIndex = -1; // -1 = center focused
     var isNavigating = false;
+
+    // Toolbar (filter bar) toggle
+    var toolbar = document.getElementById('stroll-toolbar');
+    var queryInput = document.getElementById('stroll-query');
+    var nSlider = document.getElementById('stroll-n');
+    var nVal = document.getElementById('stroll-n-val');
+    var applyBtn = document.getElementById('stroll-apply');
+    var toolbarOpen = false;
+    var currentQuery = queryInput.value;
+    var currentN = parseInt(nSlider.value, 10);
+
+    nSlider.addEventListener('input', function() { nVal.textContent = nSlider.value; });
+
+    function toggleToolbar() {
+        toolbarOpen = !toolbarOpen;
+        toolbar.style.display = toolbarOpen ? '' : 'none';
+        if (toolbarOpen) queryInput.focus();
+    }
+
+    function applyFilters() {
+        currentQuery = queryInput.value.trim();
+        currentN = parseInt(nSlider.value, 10);
+        navigate(centerId);
+    }
+
+    applyBtn.addEventListener('click', applyFilters);
+    queryInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); applyFilters(); }
+        e.stopPropagation(); // don't trigger stroll shortcuts
+    });
+    queryInput.addEventListener('keyup', function(e) { e.stopPropagation(); });
 
     // Compute adaptive sizes based on viewport
     function getSizes() {
@@ -239,7 +281,11 @@
                 break;
             case 'Escape':
                 e.preventDefault();
-                window.history.back();
+                if (toolbarOpen) { toggleToolbar(); } else { window.history.back(); }
+                break;
+            case 'f':
+                e.preventDefault();
+                toggleToolbar();
                 break;
         }
     });
@@ -273,10 +319,12 @@
 
         container.classList.add('stroll-loading');
 
-        fetch('/api/stroll/neighbors?id=' + encodeURIComponent(newId))
+        var apiUrl = '/api/stroll/neighbors?id=' + encodeURIComponent(newId) + '&n=' + currentN;
+        if (currentQuery) apiUrl += '&q=' + encodeURIComponent(currentQuery);
+        fetch(apiUrl)
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                history.pushState({ id: newId }, '', '/stroll?id=' + newId);
+                history.pushState({ id: newId, q: currentQuery, n: currentN }, '', strollUrl(newId));
 
                 centerId = data.center.asset_id;
                 var centerImg = centerEl.querySelector('img');
@@ -343,12 +391,20 @@
     // Handle browser back/forward
     window.addEventListener('popstate', function(e) {
         if (e.state && e.state.id) {
+            if (e.state.q !== undefined) { currentQuery = e.state.q; queryInput.value = currentQuery; }
+            if (e.state.n !== undefined) { currentN = e.state.n; nSlider.value = currentN; nVal.textContent = currentN; }
             navigate(e.state.id);
         }
     });
 
     // Set initial history state
-    history.replaceState({ id: centerId }, '', '/stroll?id=' + centerId);
+    function strollUrl(id) {
+        var u = '/stroll?id=' + id;
+        if (currentN !== 10) u += '&n=' + currentN;
+        if (currentQuery) u += '&q=' + encodeURIComponent(currentQuery);
+        return u;
+    }
+    history.replaceState({ id: centerId, q: currentQuery, n: currentN }, '', strollUrl(centerId));
 
     // Load smart preview for center
     function loadSmartPreview(img) {
@@ -378,7 +434,8 @@
                 { keys: '&#8595;', desc: 'Focus first satellite' },
                 { keys: 'Enter', desc: 'Navigate to focused (or open detail for center)' },
                 { keys: 'd', desc: 'Open detail page for focused asset' },
-                { keys: 'Escape', desc: 'Go back' },
+                { keys: 'f', desc: 'Toggle filter bar' },
+                { keys: 'Escape', desc: 'Close filter bar / go back' },
             ]},
         ]);
     }
