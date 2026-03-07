@@ -292,8 +292,9 @@ function onFilterChange() {
         html += '<div class="stroll-sat-overlay">';
         html += '<span class="stroll-sat-name">' + escapeHtml(n.name) + '</span>';
         if (n.rating && n.rating > 0) {
+            var stars = Math.min(n.rating, 5);
             html += ' <span class="stroll-rating">';
-            for (var s = 0; s < n.rating; s++) html += '&#9733;';
+            for (var s = 0; s < stars; s++) html += '&#9733;';
             html += '</span>';
         }
         if (n.color_label) {
@@ -334,8 +335,9 @@ function onFilterChange() {
                 var overlay = centerEl.querySelector('.stroll-overlay');
                 var nameHtml = '<span class="stroll-name">' + escapeHtml(data.center.name) + '</span>';
                 if (data.center.rating && data.center.rating > 0) {
+                    var cStars = Math.min(data.center.rating, 5);
                     nameHtml += ' <span class="stroll-rating">';
-                    for (var s = 0; s < data.center.rating; s++) nameHtml += '&#9733;';
+                    for (var s = 0; s < cStars; s++) nameHtml += '&#9733;';
                     nameHtml += '</span>';
                 }
                 if (data.center.color_label) {

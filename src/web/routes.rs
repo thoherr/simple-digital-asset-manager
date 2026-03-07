@@ -4334,7 +4334,7 @@ fn stroll_page_inner(
         }),
         preview_url: center_preview.unwrap_or_default(),
         smart_preview_url: center_smart,
-        rating: details.rating,
+        rating: details.rating.map(|r| r.min(5)),
         color_label: details.color_label.clone(),
         format: details.variants.first().map(|v| v.format.clone()).unwrap_or_default(),
         created_at: details.created_at.clone(),
@@ -4393,7 +4393,7 @@ fn stroll_page_inner(
                 preview_url: purl,
                 similarity,
                 similarity_pct: (similarity * 100.0) as u32,
-                rating: d.rating,
+                rating: d.rating.map(|r| r.min(5)),
                 color_label: d.color_label.clone(),
             })
         }).collect();

@@ -5163,7 +5163,7 @@ fn apply_xmp_data(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, variant_h
     if asset.rating.is_none() {
         if let Some(rating_str) = xmp.source_metadata.get("rating") {
             if let Ok(r) = rating_str.parse::<u8>() {
-                asset.rating = Some(r);
+                asset.rating = Some(r.min(5));
             }
         }
     }
@@ -5207,7 +5207,7 @@ fn reapply_xmp_data(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, variant
     // Overwrite rating on re-import (matches overwrite semantics)
     if let Some(rating_str) = xmp.source_metadata.get("rating") {
         if let Ok(r) = rating_str.parse::<u8>() {
-            asset.rating = Some(r);
+            asset.rating = Some(r.min(5));
         }
     }
 
