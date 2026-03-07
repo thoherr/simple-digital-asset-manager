@@ -6,6 +6,7 @@ All notable changes to the Digital Asset Manager are documented here.
 
 ### New Features
 - **`dam migrate` command** — explicit CLI command for running database schema migrations. Migrations now run once at program startup for all commands (not per-connection), making this command useful for manual migration or scripting.
+- **`dam import --embed`** — generate SigLIP image embeddings for visual similarity search during import (requires `--features ai`). Runs as a post-import phase using preview images. Can be enabled permanently via `[import] embeddings = true` in `dam.toml`. Silently skips if the AI model is not downloaded.
 
 ### Performance
 - **SQLite performance pragmas** — all database connections now use WAL journal mode, 256 MB mmap, 20 MB cache, `synchronous=NORMAL`, and in-memory temp store. Significant improvement for read-heavy web UI workloads.

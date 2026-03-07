@@ -365,6 +365,8 @@ Auto-tags are merged with any tags extracted from XMP metadata (deduplicated).
 | `--auto-group` | After import, group new assets with nearby catalog assets by filename stem |
 | `--include <group>` | Enable an additional file type group (repeatable) |
 | `--skip <group>` | Disable a default file type group (repeatable) |
+| `--smart` | Generate smart previews (2560px) for zoom/pan in the web UI |
+| `--embed` | Generate image embeddings for visual similarity search (requires `--features ai`) |
 | `--json` | Structured JSON output to stdout |
 | `--log` | Per-file progress to stderr (`filename -- status (duration)`) |
 | `--time` | Show total elapsed time |
@@ -449,6 +451,23 @@ Image embeddings are stored per model in the catalog, enabling visual similarity
 ```
 dam auto-tag --similar <asset-id>
 ```
+
+### Embedding Generation During Import
+
+To generate embeddings automatically during import (so "Find similar" works immediately), use the `--embed` flag:
+
+```
+dam import --embed /Volumes/PhotosDrive/Photos/2026-02-20/
+```
+
+Or enable it permanently in `dam.toml`:
+
+```toml
+[import]
+embeddings = true
+```
+
+This runs embedding generation as a post-import phase using the preview image for each imported asset. If the AI model is not downloaded, the embedding phase is silently skipped. You can also batch-generate embeddings for existing assets with `dam embed --query "*"`.
 
 See the [auto-tag reference](../reference/02-ingest-commands.md#dam-auto-tag) for all options and the [configuration reference](../reference/08-configuration.md#ai-section) for `[ai]` settings in `dam.toml`.
 

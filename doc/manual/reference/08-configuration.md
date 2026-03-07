@@ -204,6 +204,22 @@ When `true`, import automatically generates smart previews (high-resolution, 256
 smart_previews = true
 ```
 
+### embeddings
+
+> **Feature-gated**: requires building with `--features ai`.
+
+- **Type:** boolean
+- **Default:** `false`
+
+When `true`, import automatically generates SigLIP image embeddings for visual similarity search alongside previews. Equivalent to passing `--embed` on every `dam import` command. Embeddings enable `dam auto-tag --similar` and the web UI "Find similar" button.
+
+Uses the model configured in `[ai] model`. Silently skips if the model is not downloaded. Non-image assets are skipped.
+
+```toml
+[import]
+embeddings = true
+```
+
 ---
 
 ## [dedup] Section
@@ -354,6 +370,8 @@ exclude = [
 auto_tags = ["inbox", "unreviewed"]
 # Generate smart previews during import.
 smart_previews = true
+# Generate embeddings for visual similarity search during import (--features ai).
+embeddings = true
 
 [dedup]
 # Default path substring for --prefer (keep files whose path contains this).
@@ -420,6 +438,7 @@ When a field is absent from `dam.toml`, these defaults apply:
 | `import.exclude` | `[]` |
 | `import.auto_tags` | `[]` |
 | `import.smart_previews` | `false` |
+| `import.embeddings` | `false` |
 | `dedup.prefer` | none |
 | `verify.max_age_days` | none |
 | `ai.model` | `"siglip-vit-b16-256"` |

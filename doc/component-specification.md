@@ -339,7 +339,7 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 **Sections**:
 - `[preview]`: `max_edge` (default 800), `format` ("jpeg"/"webp", default "jpeg"), `quality` (1–100, default 85)
 - `[serve]`: `port` (default 8080), `bind` (default "127.0.0.1"). CLI flags override.
-- `[import]`: `exclude` (glob patterns matched against filenames), `auto_tags` (merged into new assets)
+- `[import]`: `exclude` (glob patterns matched against filenames), `auto_tags` (merged into new assets), `smart_previews` (default false), `embeddings` (default false, feature-gated `--features ai`)
 - `[dedup]`: `prefer` (default path substring for `--prefer` flag, used by CLI and web UI)
 - `default_volume`: fallback volume UUID for import
 
