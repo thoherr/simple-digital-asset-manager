@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+
+{% block title %}Stroll — DAM{% endblock %}
+
+{% block nav_extra %}{% if ai_enabled %}<a href="/stroll" class="active">Stroll</a><a href="/people">People</a>{% endif %}{% endblock %}
+
+{% block content %}
+<div class="stroll-page">
+    <div class="stroll-container" id="stroll-container">
+        <svg class="stroll-lines" id="stroll-lines"></svg>
+
+        <div class="stroll-center" id="stroll-center" data-id="{{ center.asset_id }}">
+            <img src="{{ center.preview_url }}" alt="{{ center.name }}"{% if center.smart_preview_url.is_some() %} data-smart="{{ center.smart_preview_url.as_ref().unwrap() }}"{% endif %}>
+            <div class="stroll-overlay">
+                <span class="stroll-name">{{ center.name }}</span>
+                {% if center.rating.is_some() && center.rating.unwrap() > 0 %}
+                <span class="stroll-rating">{% for i in 1..=5u8 %}{% if i <= center.rating.unwrap() %}&#9733;{% endif %}{% endfor %}</span>
+                {% endif %}
+                {% if center.color_label.is_some() %}
+                <span class="stroll-label-dot" style="background:{{ center.color_label.as_deref().unwrap()|label_color }};"></span>
+                {% endif %}
+            </div>
+        </div>
+
+        {% for n in neighbors %}
+        <div class="stroll-satellite" id="sat-{{ loop.index0 }}" data-id="{{ n.asset_id }}" data-index="{{ loop.index0 }}">
+            <img src="{{ n.preview_url }}" alt="{{ n.name }}" loading="lazy">
+            <span class="stroll-sat-score">{{ n.similarity_pct }}%</span>
+            <div class="stroll-sat-overlay">
+                <span class="stroll-sat-name">{{ n.name }}</span>
+                {% if n.rating.is_some() && n.rating.unwrap() > 0 %}
+                <span class="stroll-rating">{% for i in 1..=5u8 %}{% if i <= n.rating.unwrap() %}&#9733;{% endif %}{% endfor %}</span>
+                {% endif %}
+                {% if n.color_label.is_some() %}
+                <span class="stroll-label-dot" style="background:{{ n.color_label.as_deref().unwrap()|label_color }};"></span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if neighbors.is_empty() %}
+    <div class="stroll-empty">
+        <p>No visual connections found for this asset.</p>
+        <p>Generate embeddings with <code>dam embed</code> to enable visual exploration.</p>
+        <a href="/" class="btn">Back to Browse</a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    var container = document.getElementById('stroll-container');
+    var svgEl = document.getElementById('stroll-lines');
+    var centerEl = document.getElementById('stroll-center');
+    if (!container || !centerEl) return;
+
+    var centerId = centerEl.dataset.id;
+    var satellites = Array.from(container.querySelectorAll('.stroll-satellite'));
+    var focusIndex = -1; // -1 = center focused
+    var isNavigating = false;
+
+    // Compute adaptive sizes based on viewport
+    function getSizes() {
+        var rect = container.getBoundingClientRect();
+        var minDim = Math.min(rect.width, rect.height);
+        // Satellite thumb size: ~10-12% of min dimension, clamped
+        var satSize = Math.max(100, Math.min(180, minDim * 0.13));
+        // Focused satellite: ~1.8x
+        var focSize = Math.max(160, Math.min(290, satSize * 1.8));
+        // Center image: ~40% of min dimension, clamped
+        var centerMax = Math.max(240, Math.min(600, minDim * 0.42));
+        return { satSize: satSize, focSize: focSize, centerMax: centerMax, minDim: minDim };
+    }
+
+    // Apply center size
+    function applyCenterSize() {
+        var s = getSizes();
+        var img = centerEl.querySelector('img');
+        if (img) {
+            img.style.maxWidth = s.centerMax + 'px';
+            img.style.maxHeight = s.centerMax + 'px';
+        }
+    }
+
+    // Position satellites radially
+    function layoutSatellites() {
+        var rect = container.getBoundingClientRect();
+        var cx = rect.width / 2;
+        var cy = rect.height / 2;
+        var n = satellites.length;
+        if (n === 0) return;
+
+        var sizes = getSizes();
+
+        // Radius: leave enough room so satellites don't overlap center or edges
+        // Use ~40% of min dimension, but ensure gap between center and satellites
+        var minRadius = sizes.centerMax / 2 + sizes.focSize / 2 + 20;
+        var maxRadius = Math.min(cx, cy) - sizes.focSize / 2 - 10;
+        var radius = Math.max(minRadius, maxRadius);
+
+        // Apply satellite sizes
+        satellites.forEach(function(sat) {
+            var img = sat.querySelector('img');
+            if (img) {
+                img.style.width = sizes.satSize + 'px';
+                img.style.height = sizes.satSize + 'px';
+            }
+        });
+
+        svgEl.setAttribute('width', rect.width);
+        svgEl.setAttribute('height', rect.height);
+        svgEl.innerHTML = '';
+
+        for (var i = 0; i < n; i++) {
+            var angle = (2 * Math.PI * i / n) - Math.PI / 2; // start from top
+            var x = cx + radius * Math.cos(angle);
+            var y = cy + radius * Math.sin(angle);
+
+            var sat = satellites[i];
+            sat.style.left = x + 'px';
+            sat.style.top = y + 'px';
+
+            // SVG line from center to satellite
+            var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', cx);
+            line.setAttribute('y1', cy);
+            line.setAttribute('x2', x);
+            line.setAttribute('y2', y);
+            line.setAttribute('class', 'stroll-line');
+            svgEl.appendChild(line);
+        }
+    }
+
+    applyCenterSize();
+    layoutSatellites();
+    window.addEventListener('resize', function() {
+        applyCenterSize();
+        layoutSatellites();
+    });
+
+    // Focus management
+    function setFocus(idx) {
+        var sizes = getSizes();
+        // Remove old focus
+        if (focusIndex >= 0 && focusIndex < satellites.length) {
+            satellites[focusIndex].classList.remove('focused');
+            var oldImg = satellites[focusIndex].querySelector('img');
+            if (oldImg) {
+                oldImg.style.width = sizes.satSize + 'px';
+                oldImg.style.height = sizes.satSize + 'px';
+            }
+        }
+        centerEl.classList.remove('focused');
+
+        focusIndex = idx;
+
+        if (idx === -1) {
+            centerEl.classList.add('focused');
+        } else if (idx >= 0 && idx < satellites.length) {
+            satellites[idx].classList.add('focused');
+            var newImg = satellites[idx].querySelector('img');
+            if (newImg) {
+                newImg.style.width = sizes.focSize + 'px';
+                newImg.style.height = sizes.focSize + 'px';
+            }
+        }
+    }
+
+    // Mouse hover on satellites
+    satellites.forEach(function(sat, i) {
+        sat.addEventListener('mouseenter', function() {
+            setFocus(i);
+        });
+        sat.addEventListener('click', function() {
+            navigate(sat.dataset.id);
+        });
+    });
+
+    centerEl.addEventListener('mouseenter', function() {
+        setFocus(-1);
+    });
+
+    centerEl.addEventListener('click', function() {
+        window.location.href = '/asset/' + centerId;
+    });
+
+    // Keyboard navigation
+    document.addEventListener('keydown', function(e) {
+        if (window.damHelp && window.damHelp.isOpen()) return;
+        var el = e.target;
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
+        if (el.tagName === 'INPUT' && el.type !== 'checkbox') return;
+        if (isNavigating) return;
+
+        var n = satellites.length;
+
+        switch (e.key) {
+            case 'ArrowLeft':
+                e.preventDefault();
+                if (n === 0) break;
+                if (focusIndex === -1) {
+                    setFocus(0);
+                } else {
+                    setFocus((focusIndex - 1 + n) % n);
+                }
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                if (n === 0) break;
+                if (focusIndex === -1) {
+                    setFocus(0);
+                } else {
+                    setFocus((focusIndex + 1) % n);
+                }
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                setFocus(-1);
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                if (focusIndex === -1 && n > 0) setFocus(0);
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (focusIndex >= 0 && focusIndex < n) {
+                    navigate(satellites[focusIndex].dataset.id);
+                } else {
+                    window.location.href = '/asset/' + centerId;
+                }
+                break;
+            case 'd':
+                e.preventDefault();
+                var targetId = focusIndex >= 0 ? satellites[focusIndex].dataset.id : centerId;
+                window.location.href = '/asset/' + targetId;
+                break;
+            case 'Escape':
+                e.preventDefault();
+                window.history.back();
+                break;
+        }
+    });
+
+    function labelColorCss(name) {
+        var map = {Red:'#e74c3c',Orange:'#e67e22',Yellow:'#f1c40f',Green:'#27ae60',Blue:'#2980b9',Pink:'#e84393',Purple:'#8e44ad'};
+        return map[name] || name;
+    }
+
+    function buildSatelliteHtml(n) {
+        var html = '<img src="' + escapeAttr(n.preview_url) + '" alt="' + escapeAttr(n.name) + '" loading="lazy">';
+        html += '<span class="stroll-sat-score">' + Math.round(n.similarity * 100) + '%</span>';
+        html += '<div class="stroll-sat-overlay">';
+        html += '<span class="stroll-sat-name">' + escapeHtml(n.name) + '</span>';
+        if (n.rating && n.rating > 0) {
+            html += ' <span class="stroll-rating">';
+            for (var s = 0; s < n.rating; s++) html += '&#9733;';
+            html += '</span>';
+        }
+        if (n.color_label) {
+            html += ' <span class="stroll-label-dot" style="background:' + labelColorCss(n.color_label) + ';"></span>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // Navigate to a new center
+    function navigate(newId) {
+        if (isNavigating) return;
+        isNavigating = true;
+
+        container.classList.add('stroll-loading');
+
+        fetch('/api/stroll/neighbors?id=' + encodeURIComponent(newId))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                history.pushState({ id: newId }, '', '/stroll?id=' + newId);
+
+                centerId = data.center.asset_id;
+                var centerImg = centerEl.querySelector('img');
+                centerImg.src = data.center.preview_url;
+                centerImg.alt = data.center.name;
+                if (data.center.smart_preview_url) {
+                    centerImg.dataset.smart = data.center.smart_preview_url;
+                    loadSmartPreview(centerImg);
+                } else {
+                    delete centerImg.dataset.smart;
+                }
+                centerEl.dataset.id = centerId;
+
+                // Update center overlay
+                var overlay = centerEl.querySelector('.stroll-overlay');
+                var nameHtml = '<span class="stroll-name">' + escapeHtml(data.center.name) + '</span>';
+                if (data.center.rating && data.center.rating > 0) {
+                    nameHtml += ' <span class="stroll-rating">';
+                    for (var s = 0; s < data.center.rating; s++) nameHtml += '&#9733;';
+                    nameHtml += '</span>';
+                }
+                if (data.center.color_label) {
+                    nameHtml += ' <span class="stroll-label-dot" style="background:' + labelColorCss(data.center.color_label) + ';"></span>';
+                }
+                overlay.innerHTML = nameHtml;
+
+                // Remove old satellites
+                satellites.forEach(function(s) { s.remove(); });
+                satellites = [];
+
+                // Create new satellites
+                data.neighbors.forEach(function(n, i) {
+                    var div = document.createElement('div');
+                    div.className = 'stroll-satellite';
+                    div.id = 'sat-' + i;
+                    div.dataset.id = n.asset_id;
+                    div.dataset.index = i;
+                    div.innerHTML = buildSatelliteHtml(n);
+
+                    div.addEventListener('mouseenter', (function(idx) {
+                        return function() { setFocus(idx); };
+                    })(i));
+                    div.addEventListener('click', (function(id) {
+                        return function() { navigate(id); };
+                    })(n.asset_id));
+
+                    container.appendChild(div);
+                    satellites.push(div);
+                });
+
+                focusIndex = -1;
+                applyCenterSize();
+                layoutSatellites();
+                container.classList.remove('stroll-loading');
+                isNavigating = false;
+            })
+            .catch(function(err) {
+                console.error('Stroll navigation failed:', err);
+                container.classList.remove('stroll-loading');
+                isNavigating = false;
+            });
+    }
+
+    // Handle browser back/forward
+    window.addEventListener('popstate', function(e) {
+        if (e.state && e.state.id) {
+            navigate(e.state.id);
+        }
+    });
+
+    // Set initial history state
+    history.replaceState({ id: centerId }, '', '/stroll?id=' + centerId);
+
+    // Load smart preview for center
+    function loadSmartPreview(img) {
+        if (img && img.dataset.smart) {
+            var smart = new Image();
+            smart.onload = function() { img.src = img.dataset.smart; };
+            smart.src = img.dataset.smart;
+        }
+    }
+    loadSmartPreview(centerEl.querySelector('img'));
+
+    function escapeHtml(str) {
+        var d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+    function escapeAttr(str) {
+        return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Register keyboard shortcuts for help panel
+    if (window.damHelp) {
+        window.damHelp.registerShortcuts([
+            { title: 'Navigation', shortcuts: [
+                { keys: '&#8592; &#8594;', desc: 'Cycle focus through satellites' },
+                { keys: '&#8593;', desc: 'Focus center image' },
+                { keys: '&#8595;', desc: 'Focus first satellite' },
+                { keys: 'Enter', desc: 'Navigate to focused (or open detail for center)' },
+                { keys: 'd', desc: 'Open detail page for focused asset' },
+                { keys: 'Escape', desc: 'Go back' },
+            ]},
+        ]);
+    }
+})();
+</script>
+{% endblock %}

@@ -405,6 +405,8 @@ fn build_router(state: Arc<AppState>) -> Router {
                 "/api/faces/cluster",
                 axum::routing::post(routes::cluster_faces_api),
             )
+            .route("/stroll", axum::routing::get(routes::stroll_page))
+            .route("/api/stroll/neighbors", axum::routing::get(routes::stroll_neighbors_api))
             .nest_service("/face", ServeDir::new(faces_dir));
     }
 

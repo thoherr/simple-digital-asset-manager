@@ -19,6 +19,8 @@ use super::templates::{
     SavedSearchesPage, StackMemberCard, StatsPage, TagOption, TagTreeEntry, TagsFragment,
     TagsPage, VolumeOption,
 };
+#[cfg(feature = "ai")]
+use super::templates::{StrollPage, StrollCenter, StrollNeighbor};
 use super::AppState;
 
 #[derive(Debug, serde::Deserialize)]
@@ -4225,6 +4227,230 @@ pub async fn cluster_faces_api(
             "singletons_skipped": result.singletons_skipped,
         })).into_response(),
         Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
+}
+
+// --- Stroll page (visual exploration) ---
+
+#[cfg(feature = "ai")]
+#[derive(Debug, serde::Deserialize)]
+pub struct StrollParams {
+    pub id: Option<String>,
+}
+
+/// GET /stroll — visual exploration page
+#[cfg(feature = "ai")]
+pub async fn stroll_page(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<StrollParams>,
+) -> Response {
+    let state = state.clone();
+    let result: Result<Result<StrollPage, String>, _> =
+        tokio::task::spawn_blocking(move || stroll_page_inner(&state, params.id.as_deref()))
+            .await;
+
+    match result {
+        Ok(Ok(page)) => Html(page.render().unwrap_or_default()).into_response(),
+        Ok(Err(msg)) => {
+            (StatusCode::NOT_FOUND, msg).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
+}
+
+#[cfg(feature = "ai")]
+fn stroll_page_inner(
+    state: &AppState,
+    asset_id: Option<&str>,
+) -> Result<StrollPage, String> {
+    let catalog = state.catalog().map_err(|e| format!("{e:#}"))?;
+    let preview_gen = state.preview_generator();
+    let preview_ext = &state.preview_ext;
+    let model_id = &state.ai_config.model;
+
+    let _ = crate::embedding_store::EmbeddingStore::initialize(catalog.conn());
+    let emb_store = crate::embedding_store::EmbeddingStore::new(catalog.conn());
+
+    // Pick center asset: specified ID, or random asset with embedding
+    let center_id = if let Some(id_prefix) = asset_id {
+        catalog
+            .resolve_asset_id(id_prefix)
+            .map_err(|e| format!("{e:#}"))?
+            .ok_or_else(|| format!("No asset found matching '{id_prefix}'"))?
+    } else {
+        // Pick a random asset that has an embedding
+        let all = emb_store.all_embeddings_for_model(model_id).map_err(|e| format!("{e:#}"))?;
+        if all.is_empty() {
+            return Err("No embeddings found. Run `dam embed` first.".into());
+        }
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        std::time::SystemTime::now().hash(&mut hasher);
+        let idx = (hasher.finish() as usize) % all.len();
+        all[idx].0.clone()
+    };
+
+    // Load center asset details
+    let details = catalog
+        .load_asset_details(&center_id)
+        .map_err(|e| format!("{e:#}"))?
+        .ok_or_else(|| format!("Asset '{center_id}' not found"))?;
+
+    let center_preview = best_preview_for_details(&details, &preview_gen, preview_ext);
+    let center_smart = best_smart_preview_for_details(&details, &preview_gen, preview_ext);
+
+    let center = StrollCenter {
+        asset_id: center_id.clone(),
+        name: details.name.clone().unwrap_or_else(|| {
+            details.variants.first()
+                .and_then(|v| v.locations.first().map(|fl| {
+                    std::path::Path::new(&fl.relative_path)
+                        .file_name().unwrap_or_default()
+                        .to_string_lossy().to_string()
+                }))
+                .unwrap_or_else(|| center_id[..8.min(center_id.len())].to_string())
+        }),
+        preview_url: center_preview.unwrap_or_default(),
+        smart_preview_url: center_smart,
+        rating: details.rating,
+        color_label: details.color_label.clone(),
+        format: details.variants.first().map(|v| v.format.clone()).unwrap_or_default(),
+        created_at: details.created_at.clone(),
+    };
+
+    // Find similar neighbors
+    let query_emb = emb_store.get(&center_id, model_id).map_err(|e| format!("{e:#}"))?;
+    let neighbors = if let Some(emb) = query_emb {
+        let spec = crate::ai::get_model_spec(model_id)
+            .ok_or_else(|| format!("Unknown model: {model_id}"))?;
+
+        // Use in-memory index
+        {
+            let needs_load = state.ai_embedding_index.read().unwrap().is_none();
+            if needs_load {
+                let index = crate::embedding_store::EmbeddingIndex::load(
+                    catalog.conn(), model_id, spec.embedding_dim,
+                ).map_err(|e| format!("{e:#}"))?;
+                *state.ai_embedding_index.write().unwrap() = Some(index);
+            }
+        }
+        {
+            let mut idx_guard = state.ai_embedding_index.write().unwrap();
+            if let Some(ref mut idx) = *idx_guard {
+                idx.upsert(&center_id, &emb);
+            }
+        }
+        let results = {
+            let idx_guard = state.ai_embedding_index.read().unwrap();
+            let idx = idx_guard.as_ref().unwrap();
+            idx.search(&emb, 10, Some(&center_id))
+        };
+
+        results.into_iter().filter_map(|(id, similarity)| {
+            let cat = state.catalog().ok()?;
+            let d = cat.load_asset_details(&id).ok()??;
+            let name = d.name.clone().unwrap_or_else(|| {
+                d.variants.first()
+                    .and_then(|v| v.locations.first().map(|fl| {
+                        std::path::Path::new(&fl.relative_path)
+                            .file_name().unwrap_or_default()
+                            .to_string_lossy().to_string()
+                    }))
+                    .unwrap_or_else(|| id[..8.min(id.len())].to_string())
+            });
+            let purl = best_preview_for_details(&d, &preview_gen, preview_ext)?;
+            Some(StrollNeighbor {
+                asset_id: id,
+                name,
+                preview_url: purl,
+                similarity,
+                similarity_pct: (similarity * 100.0) as u32,
+                rating: d.rating,
+                color_label: d.color_label.clone(),
+            })
+        }).collect()
+    } else {
+        Vec::new()
+    };
+
+    Ok(StrollPage {
+        center,
+        neighbors,
+        ai_enabled: state.ai_enabled,
+    })
+}
+
+#[cfg(feature = "ai")]
+fn best_preview_for_details(
+    details: &crate::catalog::AssetDetails,
+    preview_gen: &crate::preview::PreviewGenerator,
+    ext: &str,
+) -> Option<String> {
+    let idx = crate::models::variant::best_preview_index_details(&details.variants)?;
+    let v = &details.variants[idx];
+    if preview_gen.has_preview(&v.content_hash) {
+        Some(super::templates::preview_url(&v.content_hash, ext))
+    } else {
+        None
+    }
+}
+
+#[cfg(feature = "ai")]
+fn best_smart_preview_for_details(
+    details: &crate::catalog::AssetDetails,
+    preview_gen: &crate::preview::PreviewGenerator,
+    ext: &str,
+) -> Option<String> {
+    let idx = crate::models::variant::best_preview_index_details(&details.variants)?;
+    let v = &details.variants[idx];
+    if preview_gen.has_smart_preview(&v.content_hash) {
+        Some(super::templates::smart_preview_url(&v.content_hash, ext))
+    } else {
+        None
+    }
+}
+
+/// GET /api/stroll/neighbors — JSON neighbor data for navigation
+#[cfg(feature = "ai")]
+pub async fn stroll_neighbors_api(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<StrollParams>,
+) -> Response {
+    let asset_id = match params.id {
+        Some(id) => id,
+        None => return (StatusCode::BAD_REQUEST, "Missing id parameter").into_response(),
+    };
+    let state = state.clone();
+    let result: Result<Result<serde_json::Value, String>, _> =
+        tokio::task::spawn_blocking(move || {
+            let page = stroll_page_inner(&state, Some(&asset_id))?;
+            Ok(serde_json::json!({
+                "center": {
+                    "asset_id": page.center.asset_id,
+                    "name": page.center.name,
+                    "preview_url": page.center.preview_url,
+                    "smart_preview_url": page.center.smart_preview_url,
+                    "rating": page.center.rating,
+                    "color_label": page.center.color_label,
+                    "format": page.center.format,
+                    "created_at": page.center.created_at,
+                },
+                "neighbors": page.neighbors.iter().map(|n| serde_json::json!({
+                    "asset_id": n.asset_id,
+                    "name": n.name,
+                    "preview_url": n.preview_url,
+                    "similarity": n.similarity,
+                    "rating": n.rating,
+                    "color_label": n.color_label,
+                })).collect::<Vec<_>>(),
+            }))
+        }).await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(msg)) => (StatusCode::NOT_FOUND, msg).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
     }
 }

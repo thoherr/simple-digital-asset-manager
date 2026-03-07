@@ -2,7 +2,7 @@
 
 {% block title %}{{ display_name }} - DAM{% endblock %}
 
-{% block nav_extra %}{% if ai_enabled %}<a href="/people">People</a>{% endif %}{% endblock %}
+{% block nav_extra %}{% if ai_enabled %}<a href="/stroll">Stroll</a><a href="/people">People</a>{% endif %}{% endblock %}
 
 {% block content %}
 <div class="asset-nav">
@@ -63,6 +63,7 @@
         <details>
             <summary>Similar images</summary>
             <button id="find-similar-btn" class="btn btn-sm" onclick="findSimilar()">Find similar</button>
+            <a href="/stroll?id={{ asset_id }}" class="btn btn-sm" style="margin-left:4px;">Stroll from here</a>
             <div id="similar-results" style="display:none"></div>
         </details>
 
@@ -712,6 +713,11 @@
             }
             if (lower === 'x') {
                 htmx.ajax('PUT', '/api/asset/' + assetId + '/label', {target:'#label', swap:'innerHTML', values:{label: ''}});
+                return;
+            }
+            if (lower === 's') {
+                e.preventDefault();
+                window.location.href = '/stroll?id=' + assetId;
                 return;
             }
             if (lower === 'l') {

@@ -612,6 +612,37 @@ pub struct ComparePage {
     pub assets: Vec<CompareAsset>,
 }
 
+/// A neighbor asset on the stroll page.
+pub struct StrollNeighbor {
+    pub asset_id: String,
+    pub name: String,
+    pub preview_url: String,
+    pub similarity: f32,
+    pub similarity_pct: u32,
+    pub rating: Option<u8>,
+    pub color_label: Option<String>,
+}
+
+/// The center asset on the stroll page.
+pub struct StrollCenter {
+    pub asset_id: String,
+    pub name: String,
+    pub preview_url: String,
+    pub smart_preview_url: Option<String>,
+    pub rating: Option<u8>,
+    pub color_label: Option<String>,
+    pub format: String,
+    pub created_at: String,
+}
+
+#[derive(Template)]
+#[template(path = "stroll.html")]
+pub struct StrollPage {
+    pub center: StrollCenter,
+    pub neighbors: Vec<StrollNeighbor>,
+    pub ai_enabled: bool,
+}
+
 /// Custom askama filters for templates.
 mod filters {
     pub fn fmt_bytes(bytes: &u64) -> ::askama::Result<String> {

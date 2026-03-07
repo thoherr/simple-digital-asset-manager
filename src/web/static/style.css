@@ -3089,3 +3089,153 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     opacity: 1;
     color: var(--danger, #c00);
 }
+
+/* Stroll page */
+.stroll-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 80vh;
+    margin: -1rem -1.5rem;
+}
+.stroll-container {
+    position: relative;
+    width: 100%;
+    height: calc(100vh - 60px);
+    margin: 0 auto;
+    transition: opacity 0.2s;
+    overflow: hidden;
+}
+.stroll-container.stroll-loading {
+    opacity: 0.4;
+    pointer-events: none;
+}
+.stroll-lines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+}
+.stroll-line {
+    stroke: var(--text-muted, #999);
+    stroke-width: 1;
+    opacity: 0.3;
+}
+.stroll-center {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    cursor: pointer;
+}
+.stroll-center img {
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    display: block;
+    transition: max-width 0.3s, max-height 0.3s;
+}
+.stroll-center.focused img {
+    outline: 3px solid var(--accent, #4a9eff);
+    outline-offset: 3px;
+}
+.stroll-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 8px 12px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.7));
+    color: #fff;
+    border-radius: 0 0 8px 8px;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.stroll-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.stroll-rating {
+    color: #f5c518;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+.stroll-label-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.stroll-satellite {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    cursor: pointer;
+}
+.stroll-satellite img {
+    object-fit: cover;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    display: block;
+    transition: width 0.2s, height 0.2s;
+}
+.stroll-satellite.focused {
+    z-index: 3;
+}
+.stroll-satellite.focused img {
+    outline: 3px solid var(--accent, #4a9eff);
+    outline-offset: 2px;
+}
+.stroll-sat-score {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    border-radius: 3px;
+    pointer-events: none;
+}
+.stroll-sat-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 3px 5px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.7));
+    color: #fff;
+    font-size: 0.6rem;
+    border-radius: 0 0 6px 6px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+.stroll-satellite.focused .stroll-sat-overlay {
+    font-size: 0.7rem;
+    padding: 4px 6px;
+}
+.stroll-sat-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+.stroll-empty {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+}
+.stroll-empty code {
+    background: var(--bg-card, #f5f5f5);
+    padding: 2px 6px;
+    border-radius: 4px;
+}

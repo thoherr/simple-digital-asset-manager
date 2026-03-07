@@ -2,7 +2,7 @@
 
 {% block title %}Browse - DAM{% endblock %}
 
-{% block nav_extra %}{% if ai_enabled %}<a href="/people">People</a>{% endif %}{% endblock %}
+{% block nav_extra %}{% if ai_enabled %}<a href="/stroll">Stroll</a><a href="/people">People</a>{% endif %}{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="/static/leaflet.css">
@@ -2123,6 +2123,15 @@
             detailLink.click();
             return;
         }
+        if (e.key === 's' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            var cards = getCards();
+            if (cards[currentIndex]) {
+                window.location.href = '/stroll?id=' + cards[currentIndex].getAttribute('data-asset-id');
+            }
+            return;
+        }
 
         // Zoom shortcuts
         if (!e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -2383,6 +2392,16 @@
                 e.preventDefault();
                 sessionStorage.setItem('dam-browse-focus', focId);
                 window.location.href = '/asset/' + focId;
+            }
+            return;
+        }
+
+        // s: stroll from focused card
+        if (e.key === 's' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            var focId = getFocusedId();
+            if (focId) {
+                e.preventDefault();
+                window.location.href = '/stroll?id=' + focId;
             }
             return;
         }
@@ -3132,6 +3151,7 @@ if (window.damHelp) {
             { keys: 'Shift+\u2190 / \u2192', desc: 'Previous / next page' },
             { keys: 'Enter / l', desc: 'Open lightbox' },
             { keys: 'd', desc: 'Open detail page' },
+            { keys: 's', desc: 'Stroll from focused image' },
             { keys: 'Escape', desc: 'Clear selection / focus' }
         ]},
         { title: 'Selection', shortcuts: [
@@ -3153,6 +3173,7 @@ if (window.damHelp) {
             { keys: 'Click image', desc: 'Open detail page' },
             { keys: 'i', desc: 'Toggle info panel' },
             { keys: 'd', desc: 'Open detail page' },
+            { keys: 's', desc: 'Stroll from this image' },
             { keys: 'Escape', desc: 'Close lightbox' }
         ]},
         { title: 'Zoom (smart preview)', shortcuts: [
