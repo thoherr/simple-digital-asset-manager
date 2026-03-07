@@ -642,6 +642,25 @@ dam search "-person:Alice"                 # exclude assets with Alice
 
 ---
 
+## similar (AI feature)
+
+**Syntax:** `similar:<asset-id>` or `similar:<asset-id>:<limit>`
+
+**Description:** Finds visually similar assets using stored SigLIP embeddings. Returns the top N most similar assets (default 20). Requires the `ai` feature (`--features ai`) and embeddings to have been generated via `dam embed` or `dam import --embed`. The reference asset ID supports prefix matching (e.g. `similar:abc1` resolves like all other asset ID references).
+
+**Examples:**
+
+```
+dam search "similar:72a0bb4b"                          # top 20 similar to this asset
+dam search "similar:72a0bb4b:50"                       # top 50 similar
+dam search "similar:72a0bb4b rating:3+ tag:landscape"  # similar AND 3+ stars AND landscape tag
+dam search -q "similar:72a0bb4b"                       # just IDs, for scripting
+```
+
+**Behavior:** Looks up the stored embedding for the reference asset, loads all embeddings into an in-memory index, and performs a dot-product similarity search. If no embedding exists for the reference asset, exits with an error suggesting `dam embed --asset <id>`. The result set can be further filtered by all other search filters (AND logic).
+
+---
+
 ## Combining Filters
 
 All filters are combined with AND logic. Every specified filter must match for an asset to appear in results. Free-text terms are also AND-combined with all prefix filters.
@@ -687,6 +706,9 @@ dam search "stacked:false rating:5 type:image"
 
 # Find stacked assets with a hierarchical tag
 dam search "stacked:true tag:animals/birds"
+
+# Visually similar assets, filtered to 4+ stars (requires ai feature + embeddings)
+dam search "similar:72a0bb4b rating:4+"
 
 # Geotagged photos within 5km of a location
 dam search "geo:52.52,13.405,5 rating:4+"
@@ -751,6 +773,7 @@ dam search "camera:fuji"
 | `geo:` | yes | yes (query input) | yes |
 | `faces:` | yes | yes (query input) | yes |
 | `person:` | yes | yes (dropdown) | yes |
+| `similar:` | yes (ai feature) | yes (detail page) | no |
 
 ---
 

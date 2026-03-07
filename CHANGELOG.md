@@ -2,6 +2,18 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v2.2.3
+
+### New Features
+- **`similar:` search filter** (feature-gated: `--features ai`) — find visually similar assets from the CLI using stored embeddings. Syntax: `similar:<asset-id>` (top 20 results) or `similar:<asset-id>:<limit>` (custom limit). Composable with all other search filters, e.g. `dam search "similar:abc12345 rating:3+ tag:landscape"`. Uses the in-memory `EmbeddingIndex` for fast dot-product search. Requires embeddings to have been generated via `dam embed` or `dam import --embed`.
+
+### Performance
+- **Schema version fast-check** — CLI commands no longer run ~30 migration statements on every invocation. A `schema_version` table tracks the current schema version; commands check it with a single fast query and exit with an error if outdated (`Error: catalog schema is outdated ... Run 'dam migrate' to update.`). Saves ~2 seconds per CLI invocation on migrated catalogs. Only `dam init` and `dam migrate` modify the schema.
+
+### Enhancements
+- **`dam migrate` output** — now prints the schema version number: `Schema migrations applied successfully (schema version N).` JSON output includes `schema_version` field.
+- **`dam serve` version output** — prints `dam 2.2.3 web UI: ...` (no longer includes "v" prefix, consistent with `dam -V`).
+
 ## v2.2.2
 
 ### New Features
