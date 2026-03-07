@@ -476,7 +476,7 @@ pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config:
     let app = build_router(state);
 
     let addr: SocketAddr = format!("{bind}:{port}").parse()?;
-    eprintln!("dam v{} web UI: http://{addr}", env!("CARGO_PKG_VERSION"));
+    eprintln!("dam {} web UI: http://{addr}", env!("CARGO_PKG_VERSION"));
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app)
@@ -503,7 +503,7 @@ pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config:
     let app = build_router(state);
 
     let addr: SocketAddr = format!("{bind}:{port}").parse()?;
-    eprintln!("dam v{} web UI: http://{addr}", env!("CARGO_PKG_VERSION"));
+    eprintln!("dam {} web UI: http://{addr}", env!("CARGO_PKG_VERSION"));
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app)

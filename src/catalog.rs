@@ -404,6 +404,7 @@ pub struct SearchOptions<'a> {
     pub face_count_exact: Option<u32>,
     pub person_asset_ids: Option<&'a [String]>,
     pub person_exclude_ids: Option<&'a [String]>,
+    pub similar_asset_ids: Option<&'a [String]>,
     pub sort: SearchSort,
     pub page: u32,
     pub per_page: u32,
@@ -462,6 +463,7 @@ impl<'a> Default for SearchOptions<'a> {
             face_count_exact: None,
             person_asset_ids: None,
             person_exclude_ids: None,
+            similar_asset_ids: None,
             sort: SearchSort::DateDesc,
             page: 1,
             per_page: 60,
@@ -519,6 +521,9 @@ fn next_date_bound(s: &str) -> String {
     format!("{s}\x7f")
 }
 
+/// Current schema version. Bump this whenever `run_migrations()` changes.
+pub const SCHEMA_VERSION: u32 = 1;
+
 /// SQLite-backed local catalog for fast queries. This is a derived cache,
 /// not the source of truth (sidecar files are).
 pub struct Catalog {
@@ -544,6 +549,23 @@ impl Catalog {
         let catalog = Self::open(catalog_root)?;
         catalog.run_migrations();
         Ok(catalog)
+    }
+
+    /// Read the stored schema version (0 if table doesn't exist yet).
+    pub fn schema_version(&self) -> u32 {
+        self.conn
+            .query_row(
+                "SELECT version FROM schema_version LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0)
+    }
+
+    /// Check if migrations are needed (fast — single query).
+    /// Returns `true` if the schema is up to date.
+    pub fn is_schema_current(&self) -> bool {
+        self.schema_version() >= SCHEMA_VERSION
     }
 
     /// Alias for `open` — kept for clarity but identical.
@@ -661,6 +683,16 @@ impl Catalog {
             let _ = crate::embedding_store::EmbeddingStore::initialize(&self.conn);
             let _ = crate::face_store::FaceStore::initialize(&self.conn);
         }
+
+        // Record schema version
+        let _ = self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
+             DELETE FROM schema_version;",
+        );
+        let _ = self.conn.execute(
+            "INSERT INTO schema_version (version) VALUES (?1)",
+            rusqlite::params![SCHEMA_VERSION],
+        );
     }
 
     /// Initialize the database schema.
@@ -825,6 +857,16 @@ impl Catalog {
         let _ = self.conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_assets_face_count ON assets(face_count) WHERE face_count > 0",
         );
+
+        // Stamp schema version
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
+             DELETE FROM schema_version;",
+        )?;
+        self.conn.execute(
+            "INSERT INTO schema_version (version) VALUES (?1)",
+            rusqlite::params![SCHEMA_VERSION],
+        )?;
 
         Ok(())
     }
@@ -2595,6 +2637,19 @@ impl Catalog {
             }
         }
 
+        // Similar assets filter (pre-computed from embedding similarity search)
+        if let Some(ids) = opts.similar_asset_ids {
+            if ids.is_empty() {
+                clauses.push("0".to_string());
+            } else {
+                let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+                clauses.push(format!("a.id IN ({})", placeholders.join(",")));
+                for id in ids {
+                    params.push(Box::new(id.clone()));
+                }
+            }
+        }
+
         let where_clause = if clauses.is_empty() {
             " WHERE 1=1".to_string()
         } else {
@@ -4105,7 +4160,7 @@ mod tests {
 
         assert_eq!(
             tables,
-            vec!["assets", "collection_assets", "collections", "file_locations", "recipes", "stacks", "variants", "volumes"]
+            vec!["assets", "collection_assets", "collections", "file_locations", "recipes", "schema_version", "stacks", "variants", "volumes"]
         );
     }
 
@@ -6642,5 +6697,43 @@ mod tests {
         let (rows, total) = catalog.search_paginated_with_count(&opts).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(total, 1);
+    }
+
+    #[test]
+    fn search_similar_asset_ids_filter() {
+        let catalog = setup_search_catalog();
+
+        // Get all assets to find their IDs
+        let all = catalog.search_paginated(&SearchOptions {
+            per_page: u32::MAX,
+            ..Default::default()
+        }).unwrap();
+        assert_eq!(all.len(), 2);
+
+        // Filter to just the first asset using similar_asset_ids
+        let ids = vec![all[0].asset_id.clone()];
+        let opts = SearchOptions {
+            similar_asset_ids: Some(&ids),
+            per_page: u32::MAX,
+            ..Default::default()
+        };
+        let results = catalog.search_paginated(&opts).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].asset_id, all[0].asset_id);
+    }
+
+    #[test]
+    fn search_similar_asset_ids_empty() {
+        let catalog = setup_search_catalog();
+
+        // Empty similar IDs should return nothing
+        let ids: Vec<String> = vec![];
+        let opts = SearchOptions {
+            similar_asset_ids: Some(&ids),
+            per_page: u32::MAX,
+            ..Default::default()
+        };
+        let results = catalog.search_paginated(&opts).unwrap();
+        assert_eq!(results.len(), 0);
     }
 }

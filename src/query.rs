@@ -105,6 +105,10 @@ pub struct ParsedSearch {
     pub face_count_exact: Option<u32>,
     pub persons: Vec<String>,
     pub persons_exclude: Vec<String>,
+    #[cfg(feature = "ai")]
+    pub similar: Option<String>,
+    #[cfg(feature = "ai")]
+    pub similar_limit: Option<usize>,
 }
 
 impl ParsedSearch {
@@ -380,6 +384,22 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
                 parsed.persons_exclude.push(value.to_string());
             } else {
                 parsed.persons.push(value.to_string());
+            }
+        } else if let Some(_value) = token_body.strip_prefix("similar:") {
+            #[cfg(feature = "ai")]
+            {
+                // similar:<asset-id> or similar:<asset-id>:<limit>
+                if let Some((id, limit_str)) = _value.rsplit_once(':') {
+                    if let Ok(limit) = limit_str.parse::<usize>() {
+                        parsed.similar = Some(id.to_string());
+                        parsed.similar_limit = Some(limit);
+                    } else {
+                        // Not a valid limit, treat entire value as asset ID
+                        parsed.similar = Some(_value.to_string());
+                    }
+                } else {
+                    parsed.similar = Some(_value.to_string());
+                }
             }
         } else if negated {
             // Negated free text: -word
@@ -780,6 +800,30 @@ impl QueryEngine {
                 person_exclude_ids = Vec::new();
                 opts.person_exclude_ids = Some(&person_exclude_ids);
             }
+        }
+
+        // Pre-compute similar asset IDs from embedding similarity search
+        #[cfg(feature = "ai")]
+        let similar_ids;
+        #[cfg(feature = "ai")]
+        if let Some(ref similar_ref) = parsed.similar {
+            let full_id = catalog
+                .resolve_asset_id(similar_ref)?
+                .ok_or_else(|| anyhow::anyhow!("No asset found matching '{similar_ref}'"))?;
+            let config = crate::config::CatalogConfig::load(&self.catalog_root).unwrap_or_default();
+            let model_id = &config.ai.model;
+            let emb_store = crate::embedding_store::EmbeddingStore::new(catalog.conn());
+            let query_emb = emb_store
+                .get(&full_id, model_id)?
+                .ok_or_else(|| anyhow::anyhow!(
+                    "No embedding found for asset '{similar_ref}'. Run `dam embed --asset {full_id}` first."
+                ))?;
+            let limit = parsed.similar_limit.unwrap_or(20);
+            let dim = query_emb.len();
+            let index = crate::embedding_store::EmbeddingIndex::load(catalog.conn(), model_id, dim)?;
+            let results = index.search(&query_emb, limit, Some(&full_id));
+            similar_ids = results.into_iter().map(|(id, _score)| id).collect::<Vec<_>>();
+            opts.similar_asset_ids = Some(&similar_ids);
         }
 
         // Pre-compute online volume IDs for volume:none
@@ -2576,6 +2620,48 @@ mod tests {
         let p = parse_search_query("sunset -boring -blurry");
         assert_eq!(p.text.as_deref(), Some("sunset"));
         assert_eq!(p.text_exclude, vec!["boring", "blurry"]);
+    }
+
+    #[test]
+    #[cfg(feature = "ai")]
+    #[test]
+    fn parse_similar_basic() {
+        let p = parse_search_query("similar:abc12345");
+        assert_eq!(p.similar.as_deref(), Some("abc12345"));
+        assert!(p.similar_limit.is_none());
+    }
+
+    #[cfg(feature = "ai")]
+    #[test]
+    fn parse_similar_with_limit() {
+        let p = parse_search_query("similar:abc12345:50");
+        assert_eq!(p.similar.as_deref(), Some("abc12345"));
+        assert_eq!(p.similar_limit, Some(50));
+    }
+
+    #[cfg(feature = "ai")]
+    #[test]
+    fn parse_similar_with_other_filters() {
+        let p = parse_search_query("similar:abc12345 rating:3+ tag:landscape");
+        assert_eq!(p.similar.as_deref(), Some("abc12345"));
+        assert_eq!(p.rating_min, Some(3));
+        assert_eq!(p.tags, vec!["landscape"]);
+    }
+
+    #[cfg(feature = "ai")]
+    #[test]
+    fn parse_similar_uuid_like() {
+        let p = parse_search_query("similar:550e8400-e29b-41d4-a716-446655440000");
+        assert_eq!(p.similar.as_deref(), Some("550e8400-e29b-41d4-a716-446655440000"));
+        assert!(p.similar_limit.is_none());
+    }
+
+    #[cfg(feature = "ai")]
+    #[test]
+    fn parse_similar_uuid_with_limit() {
+        let p = parse_search_query("similar:550e8400-e29b-41d4-a716-446655440000:10");
+        assert_eq!(p.similar.as_deref(), Some("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(p.similar_limit, Some(10));
     }
 
     #[test]

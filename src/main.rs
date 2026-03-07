@@ -997,17 +997,19 @@ fn main() {
     let cli = Cli::parse();
     let start = std::time::Instant::now();
 
-    // Run schema migrations once at startup (if inside a catalog).
-    // This is a no-op if the schema is already up to date.
-    if !matches!(cli.command, Commands::Init) {
+    // Check schema version at startup (if inside a catalog).
+    // Only `dam init` and `dam migrate` skip this check.
+    if !matches!(cli.command, Commands::Init | Commands::Migrate) {
         if let Ok(root) = dam::config::find_catalog_root() {
-            if let Ok(catalog) = Catalog::open_and_migrate(&root) {
-                #[cfg(feature = "ai")]
-                {
-                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                    let _ = dam::embedding_store::EmbeddingStore::initialize(catalog.conn());
+            if let Ok(catalog) = Catalog::open(&root) {
+                if !catalog.is_schema_current() {
+                    eprintln!(
+                        "Error: catalog schema is outdated (v{}, expected v{}). Run `dam migrate` to update.",
+                        catalog.schema_version(),
+                        dam::catalog::SCHEMA_VERSION,
+                    );
+                    std::process::exit(1);
                 }
-                drop(catalog);
             }
         }
     }
@@ -5157,10 +5159,11 @@ fn main() {
                 let _ = dam::face_store::FaceStore::initialize(catalog.conn());
                 let _ = dam::embedding_store::EmbeddingStore::initialize(catalog.conn());
             }
+            let version = catalog.schema_version();
             if cli.json {
-                println!("{}", serde_json::json!({"status": "ok"}));
+                println!("{}", serde_json::json!({"status": "ok", "schema_version": version}));
             } else {
-                println!("Schema migrations applied successfully.");
+                println!("Schema migrations applied successfully (schema version {version}).");
             }
             Ok(())
         }
