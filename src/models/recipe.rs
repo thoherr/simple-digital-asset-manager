@@ -20,4 +20,13 @@ pub struct Recipe {
     pub recipe_type: RecipeType,
     pub content_hash: String,
     pub location: FileLocation,
+    /// True when metadata was edited in the DAM but the XMP file could not be
+    /// updated (e.g. because the volume was offline). Cleared after successful
+    /// write-back.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pending_writeback: bool,
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }

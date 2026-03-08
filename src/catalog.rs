@@ -524,7 +524,7 @@ fn next_date_bound(s: &str) -> String {
 }
 
 /// Current schema version. Bump this whenever `run_migrations()` changes.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// SQLite-backed local catalog for fast queries. This is a derived cache,
 /// not the source of truth (sidecar files are).
@@ -706,6 +706,11 @@ impl Catalog {
              END WHERE rating > 5",
         );
 
+        // Pending writeback column for XMP recipes
+        let _ = self.conn.execute_batch(
+            "ALTER TABLE recipes ADD COLUMN pending_writeback INTEGER NOT NULL DEFAULT 0",
+        );
+
         // Record schema version
         let _ = self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -776,6 +781,8 @@ impl Catalog {
         let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN rating INTEGER");
         // Migration: add color_label column to existing catalogs (ignored if already present)
         let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN color_label TEXT");
+        // Migration: pending writeback tracking for XMP recipes
+        let _ = self.conn.execute_batch("ALTER TABLE recipes ADD COLUMN pending_writeback INTEGER NOT NULL DEFAULT 0");
 
         // Migration: add indexed metadata columns to variants
         let _ = self.conn.execute_batch("ALTER TABLE variants ADD COLUMN camera_model TEXT");
@@ -1852,6 +1859,65 @@ impl Catalog {
             anyhow::bail!("No recipe found with id '{recipe_id}'");
         }
         Ok(())
+    }
+
+    /// Mark a recipe as needing XMP write-back (e.g. volume was offline during edit).
+    pub fn mark_pending_writeback(&self, recipe_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE recipes SET pending_writeback = 1 WHERE id = ?1",
+            rusqlite::params![recipe_id],
+        )?;
+        Ok(())
+    }
+
+    /// Clear the pending write-back flag (after successful XMP write).
+    pub fn clear_pending_writeback(&self, recipe_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE recipes SET pending_writeback = 0 WHERE id = ?1",
+            rusqlite::params![recipe_id],
+        )?;
+        Ok(())
+    }
+
+    /// List recipes with pending write-back, optionally filtered by volume.
+    /// Returns `(recipe_id, asset_id, volume_id, relative_path)`.
+    pub fn list_pending_writeback_recipes(
+        &self,
+        volume_id: Option<&str>,
+    ) -> Result<Vec<(String, String, String, String)>> {
+        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(vid) = volume_id {
+            (
+                "SELECT r.id, v.asset_id, r.volume_id, r.relative_path \
+                 FROM recipes r \
+                 JOIN variants v ON r.variant_hash = v.content_hash \
+                 WHERE r.pending_writeback = 1 AND r.volume_id = ?1"
+                    .to_string(),
+                vec![Box::new(vid.to_string())],
+            )
+        } else {
+            (
+                "SELECT r.id, v.asset_id, r.volume_id, r.relative_path \
+                 FROM recipes r \
+                 JOIN variants v ON r.variant_hash = v.content_hash \
+                 WHERE r.pending_writeback = 1"
+                    .to_string(),
+                vec![],
+            )
+        };
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
     }
 
     /// Find a recipe by volume and path (ignoring variant_hash).
@@ -5258,6 +5324,7 @@ mod tests {
                 relative_path: std::path::PathBuf::from("photos/photo.xmp"),
                 verified_at: None,
             },
+            pending_writeback: false,
         };
         catalog.insert_recipe(&recipe).unwrap();
 
@@ -5409,6 +5476,7 @@ mod tests {
                 relative_path: std::path::PathBuf::from("photos/photo.xmp"),
                 verified_at: None,
             },
+            pending_writeback: false,
         };
         catalog.insert_recipe(&recipe).unwrap();
 
@@ -5429,6 +5497,45 @@ mod tests {
         let (id, hash) = result.unwrap();
         assert_eq!(id, recipe_id);
         assert_eq!(hash, "sha256:recipe_old");
+    }
+
+    #[test]
+    fn pending_writeback_mark_and_clear() {
+        let (catalog, _volume, _asset, recipe_id) = setup_recipe_catalog();
+
+        // Initially no pending writebacks
+        let pending = catalog.list_pending_writeback_recipes(None).unwrap();
+        assert!(pending.is_empty());
+
+        // Mark as pending
+        catalog.mark_pending_writeback(&recipe_id).unwrap();
+        let pending = catalog.list_pending_writeback_recipes(None).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].0, recipe_id);
+
+        // Clear
+        catalog.clear_pending_writeback(&recipe_id).unwrap();
+        let pending = catalog.list_pending_writeback_recipes(None).unwrap();
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn pending_writeback_volume_filter() {
+        let (catalog, volume, _asset, recipe_id) = setup_recipe_catalog();
+
+        catalog.mark_pending_writeback(&recipe_id).unwrap();
+
+        // Filter by correct volume
+        let pending = catalog
+            .list_pending_writeback_recipes(Some(&volume.id.to_string()))
+            .unwrap();
+        assert_eq!(pending.len(), 1);
+
+        // Filter by wrong volume
+        let pending = catalog
+            .list_pending_writeback_recipes(Some(&uuid::Uuid::nil().to_string()))
+            .unwrap();
+        assert!(pending.is_empty());
     }
 
     #[test]

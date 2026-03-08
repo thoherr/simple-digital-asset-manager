@@ -518,6 +518,26 @@ enum Commands {
         media: bool,
     },
 
+    /// Write back pending metadata changes to XMP recipe files
+    #[command(display_order = 42)]
+    Writeback {
+        /// Limit to a specific volume
+        #[arg(long, display_order = 10)]
+        volume: Option<String>,
+
+        /// Limit to a specific asset
+        #[arg(long, display_order = 11)]
+        asset: Option<String>,
+
+        /// Write back all XMP recipes (not just pending ones)
+        #[arg(long, display_order = 12)]
+        all: bool,
+
+        /// Preview what would be written without modifying files
+        #[arg(long, display_order = 20)]
+        dry_run: bool,
+    },
+
     /// Remove stale file location records (files no longer on disk)
     #[command(display_order = 43)]
     Cleanup {
@@ -3389,6 +3409,46 @@ fn main() {
                 } else {
                     println!("Refresh complete: {}", parts.join(", "));
                 }
+            }
+
+            Ok(())
+        }
+        Commands::Writeback { volume, asset, all, dry_run } => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let engine = dam::query::QueryEngine::new(&catalog_root);
+            let start = std::time::Instant::now();
+
+            let result = engine.writeback(
+                volume.as_deref(),
+                asset.as_deref(),
+                all,
+                dry_run,
+                cli.log,
+                None,
+            )?;
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                if dry_run {
+                    eprint!("Dry run: ");
+                }
+                let mut parts = Vec::new();
+                parts.push(format!("{} written", result.written));
+                if result.skipped > 0 {
+                    parts.push(format!("{} skipped", result.skipped));
+                }
+                if result.failed > 0 {
+                    parts.push(format!("{} failed", result.failed));
+                }
+                println!("Writeback: {}", parts.join(", "));
+                for e in &result.errors {
+                    eprintln!("  Error: {e}");
+                }
+            }
+
+            if cli.timing {
+                eprintln!("Time: {:.2}s", start.elapsed().as_secs_f64());
             }
 
             Ok(())

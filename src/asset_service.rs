@@ -1020,6 +1020,7 @@ impl AssetService {
                                     recipe_type: RecipeType::Sidecar,
                                     content_hash: content_hash.clone(),
                                     location,
+                                    pending_writeback: false,
                                 };
                                 asset.recipes.push(recipe.clone());
                                 if ext.eq_ignore_ascii_case("xmp") {
@@ -1164,6 +1165,7 @@ impl AssetService {
                         recipe_type: RecipeType::Sidecar,
                         content_hash,
                         location,
+                        pending_writeback: false,
                     };
 
                     asset.recipes.push(recipe.clone());
@@ -4421,6 +4423,7 @@ impl AssetService {
                     recipe_type: RecipeType::Sidecar,
                     content_hash: content_hash.clone(),
                     location: location.clone(),
+                    pending_writeback: false,
                 };
 
                 // Apply XMP metadata if this is an XMP file

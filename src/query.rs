@@ -9,6 +9,7 @@ use crate::content_store::ContentStore;
 use crate::device_registry::DeviceRegistry;
 use crate::metadata_store::MetadataStore;
 use crate::models::volume::Volume;
+use crate::models::recipe::Recipe;
 use crate::models::Asset;
 use crate::xmp_reader;
 
@@ -560,6 +561,21 @@ pub struct TagResult {
     pub changed: Vec<String>,
     /// The full set of tags after the operation.
     pub current_tags: Vec<String>,
+}
+
+/// Result of a `dam writeback` operation.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct WritebackResult {
+    /// Number of XMP files written (or that would be written in dry-run).
+    pub written: u32,
+    /// Number of recipes skipped (volume offline or file missing).
+    pub skipped: u32,
+    /// Number of recipes that failed.
+    pub failed: u32,
+    /// Error messages.
+    pub errors: Vec<String>,
+    /// Whether this was a dry run.
+    pub dry_run: bool,
 }
 
 /// Resolve and normalize a `path:` filter value for search.
@@ -1390,11 +1406,17 @@ impl QueryEngine {
 
             let mount_point = match online.get(&recipe.location.volume_id) {
                 Some(mp) => mp.as_path(),
-                None => continue,
+                None => {
+                    Self::mark_recipe_pending(recipe, catalog);
+                    sidecar_dirty = true;
+                    continue;
+                }
             };
 
             let full_path = mount_point.join(&recipe.location.relative_path);
             if !full_path.exists() {
+                Self::mark_recipe_pending(recipe, catalog);
+                sidecar_dirty = true;
                 continue;
             }
 
@@ -1411,6 +1433,9 @@ impl QueryEngine {
                                 );
                             }
                             recipe.content_hash = new_hash;
+                            if recipe.pending_writeback {
+                                Self::clear_recipe_pending(recipe, catalog);
+                            }
                             sidecar_dirty = true;
                         }
                         Err(e) => {
@@ -1418,7 +1443,12 @@ impl QueryEngine {
                         }
                     }
                 }
-                Ok(false) => {}
+                Ok(false) => {
+                    if recipe.pending_writeback {
+                        Self::clear_recipe_pending(recipe, catalog);
+                        sidecar_dirty = true;
+                    }
+                }
                 Err(e) => {
                     eprintln!(
                         "Warning: could not write rating to {}: {e}",
@@ -1466,11 +1496,17 @@ impl QueryEngine {
 
             let mount_point = match online.get(&recipe.location.volume_id) {
                 Some(mp) => mp.as_path(),
-                None => continue,
+                None => {
+                    Self::mark_recipe_pending(recipe, catalog);
+                    sidecar_dirty = true;
+                    continue;
+                }
             };
 
             let full_path = mount_point.join(&recipe.location.relative_path);
             if !full_path.exists() {
+                Self::mark_recipe_pending(recipe, catalog);
+                sidecar_dirty = true;
                 continue;
             }
 
@@ -1512,12 +1548,18 @@ impl QueryEngine {
                             );
                         }
                         recipe.content_hash = new_hash;
+                        if recipe.pending_writeback {
+                            Self::clear_recipe_pending(recipe, catalog);
+                        }
                         sidecar_dirty = true;
                     }
                     Err(e) => {
                         eprintln!("Warning: could not re-hash XMP file: {e}");
                     }
                 }
+            } else if recipe.pending_writeback {
+                Self::clear_recipe_pending(recipe, catalog);
+                sidecar_dirty = true;
             }
         }
 
@@ -1650,11 +1692,17 @@ impl QueryEngine {
 
             let mount_point = match online.get(&recipe.location.volume_id) {
                 Some(mp) => *mp,
-                None => continue,
+                None => {
+                    Self::mark_recipe_pending(recipe, catalog);
+                    sidecar_dirty = true;
+                    continue;
+                }
             };
 
             let full_path = mount_point.join(&recipe.location.relative_path);
             if !full_path.exists() {
+                Self::mark_recipe_pending(recipe, catalog);
+                sidecar_dirty = true;
                 continue;
             }
 
@@ -1671,6 +1719,9 @@ impl QueryEngine {
                                 );
                             }
                             recipe.content_hash = new_hash;
+                            if recipe.pending_writeback {
+                                Self::clear_recipe_pending(recipe, catalog);
+                            }
                             sidecar_dirty = true;
                         }
                         Err(e) => {
@@ -1678,7 +1729,12 @@ impl QueryEngine {
                         }
                     }
                 }
-                Ok(false) => {}
+                Ok(false) => {
+                    if recipe.pending_writeback {
+                        Self::clear_recipe_pending(recipe, catalog);
+                        sidecar_dirty = true;
+                    }
+                }
                 Err(e) => {
                     eprintln!(
                         "Warning: could not write description to {}: {e}",
@@ -1749,11 +1805,17 @@ impl QueryEngine {
 
             let mount_point = match online.get(&recipe.location.volume_id) {
                 Some(mp) => mp.as_path(),
-                None => continue,
+                None => {
+                    Self::mark_recipe_pending(recipe, catalog);
+                    sidecar_dirty = true;
+                    continue;
+                }
             };
 
             let full_path = mount_point.join(&recipe.location.relative_path);
             if !full_path.exists() {
+                Self::mark_recipe_pending(recipe, catalog);
+                sidecar_dirty = true;
                 continue;
             }
 
@@ -1770,6 +1832,9 @@ impl QueryEngine {
                                 );
                             }
                             recipe.content_hash = new_hash;
+                            if recipe.pending_writeback {
+                                Self::clear_recipe_pending(recipe, catalog);
+                            }
                             sidecar_dirty = true;
                         }
                         Err(e) => {
@@ -1777,7 +1842,12 @@ impl QueryEngine {
                         }
                     }
                 }
-                Ok(false) => {}
+                Ok(false) => {
+                    if recipe.pending_writeback {
+                        Self::clear_recipe_pending(recipe, catalog);
+                        sidecar_dirty = true;
+                    }
+                }
                 Err(e) => {
                     eprintln!(
                         "Warning: could not write label to {}: {e}",
@@ -1792,6 +1862,235 @@ impl QueryEngine {
                 eprintln!("Warning: could not save sidecar after XMP label write-back: {e}");
             }
         }
+    }
+
+    /// Write back pending metadata changes to XMP recipe files.
+    ///
+    /// For each recipe with `pending_writeback=1`, reads the current asset metadata
+    /// (rating, label, tags, description) and writes all four fields to the XMP file.
+    /// Clears the pending flag on success.
+    ///
+    /// `all=true` writes back all XMP recipes regardless of pending flag.
+    pub fn writeback(
+        &self,
+        volume_filter: Option<&str>,
+        asset_filter: Option<&str>,
+        all: bool,
+        dry_run: bool,
+        log: bool,
+        callback: Option<&dyn Fn(&str, &str)>,
+    ) -> Result<WritebackResult> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let store = MetadataStore::new(&self.catalog_root);
+        let registry = DeviceRegistry::new(&self.catalog_root);
+        let volumes = registry.list()?;
+        let online: HashMap<uuid::Uuid, PathBuf> = volumes
+            .iter()
+            .filter(|v| v.is_online)
+            .map(|v| (v.id, v.mount_point.clone()))
+            .collect();
+        let content_store = ContentStore::new(&self.catalog_root);
+
+        // Resolve volume filter to volume ID
+        let volume_id_filter: Option<String> = if let Some(label) = volume_filter {
+            let vol = volumes.iter().find(|v| v.label == label)
+                .ok_or_else(|| anyhow::anyhow!("Unknown volume: {label}"))?;
+            Some(vol.id.to_string())
+        } else {
+            None
+        };
+
+        // Collect recipes to process
+        let pending_recipes: Vec<(String, String, String, String)> = if all {
+            // All XMP recipes (optionally filtered by volume)
+            let sql = if volume_id_filter.is_some() {
+                "SELECT r.id, v.asset_id, r.volume_id, r.relative_path \
+                 FROM recipes r \
+                 JOIN variants v ON r.variant_hash = v.content_hash \
+                 WHERE r.volume_id = ?1 AND LOWER(r.relative_path) LIKE '%.xmp'"
+            } else {
+                "SELECT r.id, v.asset_id, r.volume_id, r.relative_path \
+                 FROM recipes r \
+                 JOIN variants v ON r.variant_hash = v.content_hash \
+                 WHERE LOWER(r.relative_path) LIKE '%.xmp'"
+            };
+            let mut stmt = catalog.conn().prepare(sql)?;
+            let params: Vec<Box<dyn rusqlite::types::ToSql>> = if let Some(ref vid) = volume_id_filter {
+                vec![Box::new(vid.clone())]
+            } else {
+                vec![]
+            };
+            let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })?;
+            let mut result = Vec::new();
+            for row in rows { result.push(row?); }
+            result
+        } else {
+            catalog.list_pending_writeback_recipes(volume_id_filter.as_deref())?
+        };
+
+        self.writeback_process(pending_recipes, &catalog, &store, &online, &content_store, asset_filter, dry_run, log, callback)
+    }
+
+    fn writeback_process(
+        &self,
+        recipes: Vec<(String, String, String, String)>,
+        catalog: &Catalog,
+        store: &MetadataStore,
+        online: &HashMap<uuid::Uuid, PathBuf>,
+        content_store: &ContentStore,
+        asset_filter: Option<&str>,
+        dry_run: bool,
+        log: bool,
+        callback: Option<&dyn Fn(&str, &str)>,
+    ) -> Result<WritebackResult> {
+        let mut result = WritebackResult::default();
+        result.dry_run = dry_run;
+
+        // Group by asset_id
+        let mut by_asset: HashMap<String, Vec<(String, String, String)>> = HashMap::new();
+        for (recipe_id, asset_id, volume_id, rel_path) in recipes {
+            if let Some(prefix) = asset_filter {
+                if !asset_id.starts_with(prefix) {
+                    continue;
+                }
+            }
+            by_asset.entry(asset_id).or_default().push((recipe_id, volume_id, rel_path));
+        }
+
+        for (asset_id, recipe_entries) in &by_asset {
+            let asset_uuid: uuid::Uuid = match asset_id.parse() {
+                Ok(u) => u,
+                Err(_) => {
+                    result.errors.push(format!("Invalid asset ID: {asset_id}"));
+                    result.failed += recipe_entries.len() as u32;
+                    continue;
+                }
+            };
+            let mut asset = match store.load(asset_uuid) {
+                Ok(a) => a,
+                Err(e) => {
+                    result.errors.push(format!("Could not load asset {asset_id}: {e}"));
+                    result.failed += recipe_entries.len() as u32;
+                    continue;
+                }
+            };
+
+            for (recipe_id, volume_id, rel_path) in recipe_entries {
+                let vol_uuid: uuid::Uuid = match volume_id.parse() {
+                    Ok(u) => u,
+                    Err(_) => {
+                        result.errors.push(format!("Invalid volume ID: {volume_id}"));
+                        result.failed += 1;
+                        continue;
+                    }
+                };
+
+                let mount_point = match online.get(&vol_uuid) {
+                    Some(mp) => mp.as_path(),
+                    None => {
+                        result.skipped += 1;
+                        if log {
+                            eprintln!("{rel_path} — skipped (volume offline)");
+                        }
+                        continue;
+                    }
+                };
+
+                let full_path = mount_point.join(rel_path);
+                if !full_path.exists() {
+                    result.skipped += 1;
+                    if log {
+                        eprintln!("{rel_path} — skipped (file missing)");
+                    }
+                    continue;
+                }
+
+                if dry_run {
+                    result.written += 1;
+                    if log {
+                        eprintln!("{rel_path} — would write back");
+                    }
+                    if let Some(cb) = callback {
+                        cb(rel_path, "would write back");
+                    }
+                    continue;
+                }
+
+                // Write all four metadata fields
+                let mut file_changed = false;
+
+                if let Ok(true) = xmp_reader::update_rating(&full_path, asset.rating) {
+                    file_changed = true;
+                }
+                if let Ok(true) = xmp_reader::update_label(
+                    &full_path,
+                    asset.color_label.as_deref(),
+                ) {
+                    file_changed = true;
+                }
+                if let Ok(true) = xmp_reader::update_description(
+                    &full_path,
+                    asset.description.as_deref(),
+                ) {
+                    file_changed = true;
+                }
+                // Tags: write the full current tag set as additions (no removals)
+                let dc_tags: Vec<String> = asset.tags.iter().map(|t: &String| t.replace('|', "/")).collect();
+                if !dc_tags.is_empty() {
+                    if let Ok(true) = xmp_reader::update_tags(&full_path, &dc_tags, &[]) {
+                        file_changed = true;
+                    }
+                    let _ = xmp_reader::update_hierarchical_subjects(&full_path, &asset.tags, &[]);
+                }
+
+                if file_changed {
+                    match content_store.hash_file(&full_path) {
+                        Ok(new_hash) => {
+                            let _ = catalog.update_recipe_content_hash(recipe_id, &new_hash);
+                            // Update the in-memory recipe too
+                            if let Some(r) = asset.recipes.iter_mut().find(|r| r.id.to_string() == *recipe_id) {
+                                r.content_hash = new_hash;
+                                r.pending_writeback = false;
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: could not re-hash {}: {e}", full_path.display());
+                        }
+                    }
+                }
+
+                let _ = catalog.clear_pending_writeback(recipe_id);
+                result.written += 1;
+                if log {
+                    eprintln!("{rel_path} — written");
+                }
+                if let Some(cb) = callback {
+                    cb(rel_path, "written");
+                }
+            }
+
+            // Save sidecar with cleared pending flags
+            if !dry_run {
+                // Clear pending_writeback on all processed recipes
+                for r in &mut asset.recipes {
+                    if recipe_entries.iter().any(|(rid, _, _)| r.id.to_string() == *rid) {
+                        r.pending_writeback = false;
+                    }
+                }
+                if let Err(e) = store.save(&asset) {
+                    eprintln!("Warning: could not save sidecar for {asset_id}: {e}");
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     /// Convert tags matching a pattern into stacks.
@@ -1922,6 +2221,24 @@ impl QueryEngine {
                 .map(|v| (v.id, v.mount_point.clone()))
                 .collect(),
             Err(_) => HashMap::new(),
+        }
+    }
+
+    /// Mark a recipe as pending write-back in SQLite and set the flag on the struct.
+    /// The caller must save the sidecar YAML.
+    fn mark_recipe_pending(recipe: &mut Recipe, catalog: &Catalog) {
+        if !recipe.pending_writeback {
+            recipe.pending_writeback = true;
+            let _ = catalog.mark_pending_writeback(&recipe.id.to_string());
+        }
+    }
+
+    /// Clear pending write-back flag after successful XMP write.
+    /// The caller must save the sidecar YAML.
+    fn clear_recipe_pending(recipe: &mut Recipe, catalog: &Catalog) {
+        if recipe.pending_writeback {
+            recipe.pending_writeback = false;
+            let _ = catalog.clear_pending_writeback(&recipe.id.to_string());
         }
     }
 
@@ -2742,6 +3059,7 @@ mod tests {
                 relative_path: "DSC_001.xmp".into(),
                 verified_at: None,
             },
+            pending_writeback: false,
         });
         store.save(&asset2).unwrap();
 
