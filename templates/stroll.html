@@ -12,7 +12,7 @@
     <div class="stroll-container" id="stroll-container">
         <svg class="stroll-lines" id="stroll-lines"></svg>
 
-        <div class="stroll-center" id="stroll-center" data-id="{{ center.asset_id }}">
+        <div class="stroll-center" id="stroll-center" data-id="{{ center.asset_id }}" data-rating="{{ center.rating.unwrap_or(0) }}" data-label="{{ center.color_label.as_deref().unwrap_or_default() }}">
             <img src="{{ center.preview_url }}" alt="{{ center.name }}"{% if center.smart_preview_url.is_some() %} data-smart="{{ center.smart_preview_url.as_ref().unwrap() }}"{% endif %}>
             <div class="stroll-overlay">
                 <span class="stroll-name">{{ center.name }}</span>
@@ -26,7 +26,7 @@
         </div>
 
         {% for n in neighbors %}
-        <div class="stroll-satellite" id="sat-{{ loop.index0 }}" data-id="{{ n.asset_id }}" data-index="{{ loop.index0 }}">
+        <div class="stroll-satellite" id="sat-{{ loop.index0 }}" data-id="{{ n.asset_id }}" data-index="{{ loop.index0 }}" data-rating="{{ n.rating.unwrap_or(0) }}" data-label="{{ n.color_label.as_deref().unwrap_or_default() }}">
             <img src="{{ n.preview_url }}" alt="{{ n.name }}" loading="lazy">
             <span class="stroll-sat-score">{{ n.similarity_pct }}%</span>
             <div class="stroll-sat-overlay">
@@ -77,7 +77,11 @@
     </div>
     {% endif %}
 </div>
+{% include "lightbox.html" %}
 
+<script>
+{% include "lightbox_js.html" %}
+</script>
 <script>
 // Define onFilterChange before including filter_bar_js
 function onFilterChange() {
@@ -523,6 +527,52 @@ function onFilterChange() {
         window.location.href = '/asset/' + assetId;
     }
 
+    // --- Lightbox integration ---
+    function syncStrollLightboxItems() {
+        var lbItems = [];
+        // Center
+        var cImg = centerEl.querySelector('img');
+        if (cImg) {
+            lbItems.push({
+                id: centerId,
+                preview: cImg.getAttribute('src'),
+                name: cImg.getAttribute('alt') || '',
+                type: '', format: '', date: '',
+                rating: parseInt(centerEl.dataset.rating || '0'),
+                label: centerEl.dataset.label || '',
+                variants: ''
+            });
+        }
+        // Satellites
+        satellites.forEach(function(s) {
+            var sImg = s.querySelector('img');
+            lbItems.push({
+                id: s.dataset.id,
+                preview: sImg ? sImg.getAttribute('src') : '',
+                name: sImg ? sImg.getAttribute('alt') : '',
+                type: '', format: '', date: '',
+                rating: parseInt(s.dataset.rating || '0'),
+                label: s.dataset.label || '',
+                variants: ''
+            });
+        });
+        damLightbox.setItems(lbItems);
+    }
+    syncStrollLightboxItems();
+
+    damLightbox.onDKey = function(id) { goDetail(id); };
+    damLightbox.onImageClick = function(id) { goDetail(id); };
+    // After navigate, re-sync lightbox items
+    window._strollLightboxSync = syncStrollLightboxItems;
+
+    function openStrollLightbox() {
+        syncStrollLightboxItems();
+        // Open focused satellite, or center
+        var targetId = focusIndex >= 0 && satellites[focusIndex]
+            ? satellites[focusIndex].dataset.id : centerId;
+        damLightbox.openById(targetId);
+    }
+
     centerEl.addEventListener('mouseenter', function() {
         if (!isHoverSuppressed()) setFocus(-1);
     });
@@ -538,6 +588,7 @@ function onFilterChange() {
         if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
         if (el.tagName === 'INPUT' && el.type !== 'checkbox') return;
         if (isNavigating) return;
+        if (window.damLightbox && window.damLightbox.isOpen()) return;
 
         // Suppress hover focus briefly after arrow key navigation
         if (e.key.startsWith('Arrow')) keyNavUntil = Date.now() + 400;
@@ -611,6 +662,10 @@ function onFilterChange() {
                 }
                 goDetail(targetId);
                 break;
+            case 'l':
+                e.preventDefault();
+                openStrollLightbox();
+                break;
             case 'Escape':
                 e.preventDefault();
                 window.history.back();
@@ -683,6 +738,8 @@ function onFilterChange() {
                     delete centerImg.dataset.smart;
                 }
                 centerEl.dataset.id = centerId;
+                centerEl.dataset.rating = data.center.rating || 0;
+                centerEl.dataset.label = data.center.color_label || '';
 
                 // Update center overlay
                 var overlay = centerEl.querySelector('.stroll-overlay');
@@ -711,6 +768,8 @@ function onFilterChange() {
                     div.id = 'sat-' + i;
                     div.dataset.id = n.asset_id;
                     div.dataset.index = i;
+                    div.dataset.rating = n.rating || 0;
+                    div.dataset.label = n.color_label || '';
                     div.innerHTML = buildSatelliteHtml(n);
 
                     div.addEventListener('mouseenter', (function(idx) {
@@ -729,6 +788,7 @@ function onFilterChange() {
                 layoutSatellites();
                 container.classList.remove('stroll-loading');
                 isNavigating = false;
+                if (window._strollLightboxSync) window._strollLightboxSync();
             })
             .catch(function(err) {
                 console.error('Stroll navigation failed:', err);
@@ -796,6 +856,7 @@ function onFilterChange() {
                 { keys: '&#8595;', desc: 'Focus first satellite (or drop into L2 neighbors)' },
                 { keys: 'Enter', desc: 'Navigate to focused (or open detail for center)' },
                 { keys: 'd', desc: 'Open detail page for focused asset' },
+                { keys: 'l', desc: 'Open lightbox for focused asset' },
                 { keys: 'Shift+F', desc: 'Toggle filter bar' },
                 { keys: 'Escape', desc: 'Go back' },
                 { keys: 'Shift+B', desc: 'Back to browse' },

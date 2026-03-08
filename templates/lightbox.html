@@ -1,0 +1,68 @@
+<div class="lightbox" id="lightbox">
+    <div class="lightbox-top-bar">
+        <span class="lightbox-counter" id="lb-counter"></span>
+        <span class="lightbox-title" id="lb-title"></span>
+        <span class="lb-topbar-rating" id="lb-topbar-rating">
+            <span class="star empty" data-value="1">&#9734;</span>
+            <span class="star empty" data-value="2">&#9734;</span>
+            <span class="star empty" data-value="3">&#9734;</span>
+            <span class="star empty" data-value="4">&#9734;</span>
+            <span class="star empty" data-value="5">&#9734;</span>
+            <span class="star-clear" title="Clear rating">&times;</span>
+        </span>
+        <span class="lb-topbar-labels" id="lb-topbar-labels">
+            <span class="lb-dot" data-label="Red" style="background:#e74c3c;" title="Red"></span>
+            <span class="lb-dot" data-label="Orange" style="background:#e67e22;" title="Orange"></span>
+            <span class="lb-dot" data-label="Yellow" style="background:#f1c40f;" title="Yellow"></span>
+            <span class="lb-dot" data-label="Green" style="background:#27ae60;" title="Green"></span>
+            <span class="lb-dot" data-label="Blue" style="background:#3498db;" title="Blue"></span>
+            <span class="lb-dot" data-label="Pink" style="background:#e91e8e;" title="Pink"></span>
+            <span class="lb-dot" data-label="Purple" style="background:#9b59b6;" title="Purple"></span>
+            <span class="lb-clear" title="Clear label">&times;</span>
+        </span>
+        <button class="lightbox-btn" id="lb-info-toggle" title="Toggle info (i)">&#8505;</button>
+        <a class="lightbox-btn" id="lb-detail-link" title="Open detail page">&#8599; Detail</a>
+        <button class="lightbox-btn" id="lb-close" title="Close (Esc)">&times;</button>
+    </div>
+    <div class="lightbox-main">
+        <button class="lightbox-nav" id="lb-prev" title="Previous (&#8592;)">&lsaquo;</button>
+        <div class="lightbox-img-wrap" id="lb-img-wrap">
+            <img class="lightbox-img" id="lb-img" src="" alt="">
+            <span class="smart-loading" id="lb-smart-loading">HD</span>
+        </div>
+        <button class="lightbox-nav" id="lb-next" title="Next (&#8594;)">&rsaquo;</button>
+    </div>
+    <div class="lightbox-info" id="lb-info">
+        <button class="lightbox-info-close" id="lb-info-close" title="Close panel">&times;</button>
+        <h3>Details</h3>
+        <table class="lightbox-meta-table">
+            <tr><th>Type</th><td id="lb-meta-type"></td></tr>
+            <tr><th>Format</th><td id="lb-meta-format"></td></tr>
+            <tr><th>Date</th><td id="lb-meta-date"></td></tr>
+            <tr><th>Variants</th><td id="lb-meta-variants"></td></tr>
+        </table>
+        <h3>Rating</h3>
+        <div class="lightbox-stars" id="lb-stars">
+            <span class="star empty" data-value="1">&#9734;</span>
+            <span class="star empty" data-value="2">&#9734;</span>
+            <span class="star empty" data-value="3">&#9734;</span>
+            <span class="star empty" data-value="4">&#9734;</span>
+            <span class="star empty" data-value="5">&#9734;</span>
+            <span class="star-clear" title="Clear rating">&times;</span>
+        </div>
+        <h3>Label</h3>
+        <div class="lightbox-labels" id="lb-labels">
+            <span class="lb-dot" data-label="Red" style="background:#e74c3c;" title="Red"></span>
+            <span class="lb-dot" data-label="Orange" style="background:#e67e22;" title="Orange"></span>
+            <span class="lb-dot" data-label="Yellow" style="background:#f1c40f;" title="Yellow"></span>
+            <span class="lb-dot" data-label="Green" style="background:#27ae60;" title="Green"></span>
+            <span class="lb-dot" data-label="Blue" style="background:#3498db;" title="Blue"></span>
+            <span class="lb-dot" data-label="Pink" style="background:#e91e8e;" title="Pink"></span>
+            <span class="lb-dot" data-label="Purple" style="background:#9b59b6;" title="Purple"></span>
+            <span class="lb-name" id="lb-label-name"></span>
+            <span class="lb-clear" title="Clear label">&times;</span>
+        </div>
+    </div>
+    <img class="lightbox-preload" id="lb-preload-prev">
+    <img class="lightbox-preload" id="lb-preload-next">
+</div>

@@ -357,7 +357,54 @@
         {% endif %}
     </div>
 </div>
+{% include "lightbox.html" %}
 <script>
+{% include "lightbox_js.html" %}
+
+// --- Lightbox detail bridge ---
+(function() {
+    var detailAsset = {
+        id: '{{ asset_id }}',
+        preview: '{{ primary_preview_url.as_deref().unwrap_or_default() }}',
+        name: '{{ display_name }}',
+        type: '{{ asset_type }}',
+        format: '{{ primary_format }}',
+        date: '{{ created_at }}',
+        rating: {{ rating.unwrap_or(0) }},
+        label: '{{ color_label.as_deref().unwrap_or_default() }}',
+        variants: '{{ variant_count }}'
+    };
+    damLightbox.setItems([detailAsset]);
+
+    // d key: already on detail, just close lightbox
+    damLightbox.onDKey = function() { damLightbox.close(); };
+    // Image click: close lightbox (already on detail)
+    damLightbox.onImageClick = function() { damLightbox.close(); };
+    // Rating/label changes: update detail page inline UI by re-doing the PUT (idempotent)
+    damLightbox.onRatingChange = function(id, rating) {
+        htmx.ajax('PUT', '/api/asset/' + id + '/rating', {target:'#rating', swap:'innerHTML', values:{rating: rating}});
+    };
+    damLightbox.onLabelChange = function(id, label) {
+        htmx.ajax('PUT', '/api/asset/' + id + '/label', {target:'#label', swap:'innerHTML', values:{label: label}});
+    };
+    // Navigate beyond: go to prev/next detail page with lightbox open
+    damLightbox.onNavigateBeyond = function(delta) {
+        var nav = delta < 0 ? document.getElementById('nav-prev') : document.getElementById('nav-next');
+        if (nav && !nav.classList.contains('invisible')) {
+            sessionStorage.setItem('dam-lightbox-open', '1');
+            nav.click();
+        } else {
+            damLightbox.hideLoading();
+        }
+    };
+
+    // Auto-open lightbox if navigating from another detail page's lightbox
+    if (sessionStorage.getItem('dam-lightbox-open')) {
+        sessionStorage.removeItem('dam-lightbox-open');
+        damLightbox.open(0);
+    }
+})();
+
 (function() {
     var assetId = '{{ asset_id }}';
     var labelNumMap = {'1':'Red','2':'Orange','3':'Yellow','4':'Green','5':'Blue','6':'Pink','7':'Purple'};
@@ -379,9 +426,6 @@
         var storedUrl = sessionStorage.getItem('dam-browse-url');
         if (storedUrl) browseUrl = storedUrl;
     } catch(e) {}
-
-    // Detect if we came from a browse page (for lightbox return behavior)
-    var fromBrowse = browseUrl === '/' || (browseUrl.indexOf('/') === 0 && browseUrl.indexOf('/asset/') !== 0 && browseUrl.indexOf('/stroll') !== 0);
 
     var idx = browseIds.indexOf(assetId);
     var prevNav = document.getElementById('nav-prev');
@@ -650,14 +694,10 @@
             if (dragState) { previewDiv.classList.remove('dragging'); dragState = null; }
         });
 
-        // Click on image: go back (opens lightbox if returning to browse)
+        // Click on image: open lightbox
         img.addEventListener('click', function(e) {
             if (wasDrag) { wasDrag = false; return; }
-            if (fromBrowse) {
-                sessionStorage.setItem('dam-lightbox-asset', assetId);
-            }
-            sessionStorage.setItem('dam-browse-focus', assetId);
-            history.back();
+            if (window.damLightbox) damLightbox.open(0);
         });
     }
     initZoom();
@@ -738,11 +778,7 @@
                 return;
             }
             if (lower === 'l') {
-                if (fromBrowse) {
-                    sessionStorage.setItem('dam-lightbox-asset', assetId);
-                }
-                sessionStorage.setItem('dam-browse-focus', assetId);
-                history.back();
+                if (window.damLightbox) damLightbox.open(0);
                 return;
             }
         }
@@ -910,8 +946,8 @@
         damHelp.registerShortcuts([
             { title: 'Navigation', shortcuts: [
                 { keys: '\u2190 \u2192', desc: 'Previous / next asset' },
-                { keys: 'Click image', desc: fromBrowse ? 'Open in lightbox' : 'Go back' },
-                { keys: 'l', desc: fromBrowse ? 'Open in lightbox' : 'Go back' },
+                { keys: 'Click image', desc: 'Open lightbox' },
+                { keys: 'l', desc: 'Open lightbox' },
                 { keys: 'Escape', desc: 'Go back' },
                 { keys: 'Shift+B', desc: 'Back to browse' }
             ]},

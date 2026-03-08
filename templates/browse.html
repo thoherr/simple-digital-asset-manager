@@ -49,74 +49,7 @@
 </div><!-- .browse-main -->
 </div><!-- .browse-layout -->
 
-<div class="lightbox" id="lightbox">
-    <div class="lightbox-top-bar">
-        <span class="lightbox-counter" id="lb-counter"></span>
-        <span class="lightbox-title" id="lb-title"></span>
-        <span class="lb-topbar-rating" id="lb-topbar-rating">
-            <span class="star empty" data-value="1">&#9734;</span>
-            <span class="star empty" data-value="2">&#9734;</span>
-            <span class="star empty" data-value="3">&#9734;</span>
-            <span class="star empty" data-value="4">&#9734;</span>
-            <span class="star empty" data-value="5">&#9734;</span>
-            <span class="star-clear" title="Clear rating">&times;</span>
-        </span>
-        <span class="lb-topbar-labels" id="lb-topbar-labels">
-            <span class="lb-dot" data-label="Red" style="background:#e74c3c;" title="Red"></span>
-            <span class="lb-dot" data-label="Orange" style="background:#e67e22;" title="Orange"></span>
-            <span class="lb-dot" data-label="Yellow" style="background:#f1c40f;" title="Yellow"></span>
-            <span class="lb-dot" data-label="Green" style="background:#27ae60;" title="Green"></span>
-            <span class="lb-dot" data-label="Blue" style="background:#3498db;" title="Blue"></span>
-            <span class="lb-dot" data-label="Pink" style="background:#e91e8e;" title="Pink"></span>
-            <span class="lb-dot" data-label="Purple" style="background:#9b59b6;" title="Purple"></span>
-            <span class="lb-clear" title="Clear label">&times;</span>
-        </span>
-        <button class="lightbox-btn" id="lb-info-toggle" title="Toggle info (i)">&#8505;</button>
-        <a class="lightbox-btn" id="lb-detail-link" title="Open detail page">&#8599; Detail</a>
-        <button class="lightbox-btn" id="lb-close" title="Close (Esc)">&times;</button>
-    </div>
-    <div class="lightbox-main">
-        <button class="lightbox-nav" id="lb-prev" title="Previous (&#8592;)">&lsaquo;</button>
-        <div class="lightbox-img-wrap" id="lb-img-wrap">
-            <img class="lightbox-img" id="lb-img" src="" alt="">
-            <span class="smart-loading" id="lb-smart-loading">HD</span>
-        </div>
-        <button class="lightbox-nav" id="lb-next" title="Next (&#8594;)">&rsaquo;</button>
-    </div>
-    <div class="lightbox-info" id="lb-info">
-        <button class="lightbox-info-close" id="lb-info-close" title="Close panel">&times;</button>
-        <h3>Details</h3>
-        <table class="lightbox-meta-table">
-            <tr><th>Type</th><td id="lb-meta-type"></td></tr>
-            <tr><th>Format</th><td id="lb-meta-format"></td></tr>
-            <tr><th>Date</th><td id="lb-meta-date"></td></tr>
-            <tr><th>Variants</th><td id="lb-meta-variants"></td></tr>
-        </table>
-        <h3>Rating</h3>
-        <div class="lightbox-stars" id="lb-stars">
-            <span class="star empty" data-value="1">&#9734;</span>
-            <span class="star empty" data-value="2">&#9734;</span>
-            <span class="star empty" data-value="3">&#9734;</span>
-            <span class="star empty" data-value="4">&#9734;</span>
-            <span class="star empty" data-value="5">&#9734;</span>
-            <span class="star-clear" title="Clear rating">&times;</span>
-        </div>
-        <h3>Label</h3>
-        <div class="lightbox-labels" id="lb-labels">
-            <span class="lb-dot" data-label="Red" style="background:#e74c3c;" title="Red"></span>
-            <span class="lb-dot" data-label="Orange" style="background:#e67e22;" title="Orange"></span>
-            <span class="lb-dot" data-label="Yellow" style="background:#f1c40f;" title="Yellow"></span>
-            <span class="lb-dot" data-label="Green" style="background:#27ae60;" title="Green"></span>
-            <span class="lb-dot" data-label="Blue" style="background:#3498db;" title="Blue"></span>
-            <span class="lb-dot" data-label="Pink" style="background:#e91e8e;" title="Pink"></span>
-            <span class="lb-dot" data-label="Purple" style="background:#9b59b6;" title="Purple"></span>
-            <span class="lb-name" id="lb-label-name"></span>
-            <span class="lb-clear" title="Clear label">&times;</span>
-        </div>
-    </div>
-    <img class="lightbox-preload" id="lb-preload-prev">
-    <img class="lightbox-preload" id="lb-preload-next">
-</div>
+{% include "lightbox.html" %}
 
 <div class="batch-toolbar" id="batch-toolbar">
     <div class="batch-toolbar-inner">
@@ -266,15 +199,25 @@ window.triggerSearch = onFilterChange;
             // Clear saved selection — JS Set is already intact via bfcache
             sessionStorage.removeItem('dam-browse-selection');
             var lbAsset = sessionStorage.getItem('dam-lightbox-asset');
-            if (lbAsset) {
+            if (lbAsset && window.damLightbox) {
                 sessionStorage.removeItem('dam-lightbox-asset');
-                var cards = document.querySelectorAll('.asset-card');
-                for (var i = 0; i < cards.length; i++) {
-                    if (cards[i].getAttribute('data-asset-id') === lbAsset) {
-                        if (window.damLightbox) window.damLightbox.open(i);
-                        break;
-                    }
-                }
+                // Sync items from current grid and open by ID
+                var pgCards = document.querySelectorAll('.asset-card');
+                var pgItems = Array.from(pgCards).map(function(c) {
+                    return {
+                        id: c.getAttribute('data-asset-id'),
+                        preview: c.getAttribute('data-preview'),
+                        name: c.getAttribute('data-name'),
+                        type: c.getAttribute('data-type'),
+                        format: c.getAttribute('data-format'),
+                        date: c.getAttribute('data-date'),
+                        rating: parseInt(c.getAttribute('data-rating') || '0'),
+                        label: c.getAttribute('data-label') || '',
+                        variants: c.getAttribute('data-variants') || ''
+                    };
+                });
+                damLightbox.setItems(pgItems);
+                damLightbox.openById(lbAsset);
                 return;
             }
             var focId = sessionStorage.getItem('dam-browse-focus');
@@ -1067,661 +1010,97 @@ window.triggerSearch = onFilterChange;
     });
 })();
 
-// --- Lightbox ---
+// --- Lightbox (shared) ---
+{% include "lightbox_js.html" %}
+
+// --- Lightbox browse bridge ---
 (function() {
-    var currentIndex = -1;
-    var isOpen = false;
-    var infoVisible = false;
-    var standaloneData = null; // set by openWithData() for map popup lightbox
+    function getCards() { return Array.from(document.querySelectorAll('.asset-card')); }
 
-    var overlay = document.getElementById('lightbox');
-    var img = document.getElementById('lb-img');
-    var counter = document.getElementById('lb-counter');
-    var title = document.getElementById('lb-title');
-    var detailLink = document.getElementById('lb-detail-link');
-    var infoPanel = document.getElementById('lb-info');
-    var preloadPrev = document.getElementById('lb-preload-prev');
-    var preloadNext = document.getElementById('lb-preload-next');
-
-    var labelColors = {Red:'#e74c3c', Orange:'#e67e22', Yellow:'#f1c40f', Green:'#27ae60', Blue:'#3498db', Pink:'#e91e8e', Purple:'#9b59b6'};
-    var labelNumMap = {'1':'Red','2':'Orange','3':'Yellow','4':'Green','5':'Blue','6':'Pink','7':'Purple'};
-    var labelLetterMap = {r:'Red',o:'Orange',y:'Yellow',g:'Green',b:'Blue',p:'Pink',u:'Purple'};
-
-    // --- Zoom state ---
-    var zoomMode = 'fit';
-    var zoomLevel = 1.0;
-    var hasSmartPreview = false;
-    var zoomIndicatorTimer = null;
-    var imgWrap = document.getElementById('lb-img-wrap');
-
-    // Create zoom indicator element
-    var zoomIndicator = document.createElement('div');
-    zoomIndicator.className = 'zoom-indicator';
-    imgWrap.style.position = 'relative';
-    imgWrap.appendChild(zoomIndicator);
-
-    function showZoomIndicator(text) {
-        zoomIndicator.textContent = text;
-        zoomIndicator.classList.add('visible');
-        clearTimeout(zoomIndicatorTimer);
-        zoomIndicatorTimer = setTimeout(function() {
-            zoomIndicator.classList.remove('visible');
-        }, 1500);
-    }
-
-    function zoomTo(level) {
-        if (!hasSmartPreview) return;
-        zoomLevel = Math.max(0.1, Math.min(level, 5.0));
-        zoomMode = 'zoom';
-        var w = img.naturalWidth * zoomLevel;
-        var h = img.naturalHeight * zoomLevel;
-        img.style.width = w + 'px';
-        img.style.height = h + 'px';
-        imgWrap.classList.add('zoomed');
-        // Center scroll
-        var sl = (imgWrap.scrollWidth - imgWrap.clientWidth) / 2;
-        var st = (imgWrap.scrollHeight - imgWrap.clientHeight) / 2;
-        imgWrap.scrollLeft = Math.max(0, sl);
-        imgWrap.scrollTop = Math.max(0, st);
-        var pct = Math.round(zoomLevel * 100);
-        showZoomIndicator(pct + '%');
-    }
-
-    function zoomFit() {
-        zoomMode = 'fit';
-        zoomLevel = 1.0;
-        img.style.width = '';
-        img.style.height = '';
-        imgWrap.classList.remove('zoomed');
-        imgWrap.scrollLeft = 0;
-        imgWrap.scrollTop = 0;
-        showZoomIndicator('Fit');
-    }
-
-    function zoomIn() {
-        if (!hasSmartPreview) return;
-        if (zoomMode === 'fit') {
-            // Start from actual displayed ratio
-            var ratio = img.clientWidth / img.naturalWidth;
-            zoomTo(ratio * 1.5);
-        } else {
-            zoomTo(zoomLevel * 1.5);
-        }
-    }
-
-    function zoomOut() {
-        if (!hasSmartPreview) return;
-        if (zoomMode === 'fit') return;
-        var newLevel = zoomLevel / 1.5;
-        // If zooming out would go below or near the fit level, snap to fit
-        var fitRatio = Math.min(imgWrap.clientWidth / img.naturalWidth, imgWrap.clientHeight / img.naturalHeight);
-        if (newLevel <= fitRatio * 1.05) {
-            zoomFit();
-        } else {
-            zoomTo(newLevel);
-        }
-    }
-
-    function resetZoom() {
-        zoomMode = 'fit';
-        zoomLevel = 1.0;
-        hasSmartPreview = false;
-        img.style.width = '';
-        img.style.height = '';
-        imgWrap.classList.remove('zoomed');
-        imgWrap.scrollLeft = 0;
-        imgWrap.scrollTop = 0;
-    }
-
-    // Detect smart preview on load
-    img.addEventListener('load', function() {
-        hasSmartPreview = this.src.indexOf('/smart-preview/') !== -1;
-    });
-
-    // Wheel zoom on image wrap
-    imgWrap.addEventListener('wheel', function(e) {
-        if (!hasSmartPreview || !isOpen) return;
-        e.preventDefault();
-        var rect = imgWrap.getBoundingClientRect();
-        var mouseX = e.clientX - rect.left;
-        var mouseY = e.clientY - rect.top;
-
-        var oldLevel = zoomMode === 'fit' ? (img.clientWidth / img.naturalWidth) : zoomLevel;
-        var factor = e.deltaY < 0 ? 1.25 : 0.8;
-        var newLevel = oldLevel * factor;
-        var fitRatio = Math.min(imgWrap.clientWidth / img.naturalWidth, (imgWrap.clientHeight || window.innerHeight) / img.naturalHeight);
-
-        if (newLevel <= fitRatio * 1.05) {
-            zoomFit();
-            return;
-        }
-
-        newLevel = Math.max(0.1, Math.min(newLevel, 5.0));
-        zoomLevel = newLevel;
-        zoomMode = 'zoom';
-
-        // Calculate scroll position to keep point under cursor
-        var scrollXBefore = imgWrap.scrollLeft + mouseX;
-        var scrollYBefore = imgWrap.scrollTop + mouseY;
-        var scaleChange = newLevel / oldLevel;
-
-        var w = img.naturalWidth * newLevel;
-        var h = img.naturalHeight * newLevel;
-        img.style.width = w + 'px';
-        img.style.height = h + 'px';
-        imgWrap.classList.add('zoomed');
-
-        imgWrap.scrollLeft = scrollXBefore * scaleChange - mouseX;
-        imgWrap.scrollTop = scrollYBefore * scaleChange - mouseY;
-
-        var pct = Math.round(newLevel * 100);
-        showZoomIndicator(pct + '%');
-    }, {passive: false});
-
-    // Drag-to-pan
-    var dragState = null;
-    var wasDrag = false;
-    imgWrap.addEventListener('mousedown', function(e) {
-        if (e.button !== 0) return;
-        wasDrag = false;
-        if (!imgWrap.classList.contains('zoomed')) return;
-        e.preventDefault();
-        dragState = {startX: e.clientX, startY: e.clientY, scrollLeft: imgWrap.scrollLeft, scrollTop: imgWrap.scrollTop};
-        imgWrap.classList.add('dragging');
-    });
-    document.addEventListener('mousemove', function(e) {
-        if (!dragState) return;
-        var dx = Math.abs(e.clientX - dragState.startX);
-        var dy = Math.abs(e.clientY - dragState.startY);
-        if (dx > 3 || dy > 3) wasDrag = true;
-        imgWrap.scrollLeft = dragState.scrollLeft - (e.clientX - dragState.startX);
-        imgWrap.scrollTop = dragState.scrollTop - (e.clientY - dragState.startY);
-    });
-    document.addEventListener('mouseup', function() {
-        if (dragState) {
-            imgWrap.classList.remove('dragging');
-            dragState = null;
-        }
-    });
-
-    // Click on image: navigate to detail page
-    img.addEventListener('click', function(e) {
-        if (wasDrag) { wasDrag = false; return; }
-        e.stopPropagation();
+    function syncLightboxItems() {
         var cards = getCards();
-        if (cards[currentIndex]) {
-            sessionStorage.setItem('dam-browse-focus', cards[currentIndex].getAttribute('data-asset-id'));
-        }
-        detailLink.click();
-    });
-
-    function getCards() {
-        return Array.from(document.querySelectorAll('.asset-card'));
-    }
-
-    function open(index) {
-        var cards = getCards();
-        if (cards.length === 0) return;
-        currentIndex = Math.max(0, Math.min(index, cards.length - 1));
-        isOpen = true;
-        overlay.classList.add('open');
-        document.body.style.overflow = 'hidden';
-        render();
-        if (cards[currentIndex]) {
-            sessionStorage.setItem('dam-browse-focus', cards[currentIndex].getAttribute('data-asset-id'));
-        }
-    }
-
-    function close() {
-        resetZoom();
-        isOpen = false;
-        standaloneData = null;
-        overlay.classList.remove('open');
-        document.body.style.overflow = '';
-        document.getElementById('lb-prev').style.display = '';
-        document.getElementById('lb-next').style.display = '';
-        if (window.damKeyNav) window.damKeyNav.setFocusById(
-            sessionStorage.getItem('dam-browse-focus')
-        );
-    }
-
-    function openWithData(data) {
-        standaloneData = data;
-        isOpen = true;
-        overlay.classList.add('open');
-        document.body.style.overflow = 'hidden';
-        render();
-    }
-
-    function render() {
-        resetZoom();
-        var src, assetName, assetId, type, format, date, rating, label, variants;
-        var prevNav, nextNav;
-        var totalCount;
-
-        if (standaloneData) {
-            // Standalone mode (map popup) — use provided data
-            src = standaloneData.preview;
-            assetName = standaloneData.name;
-            assetId = standaloneData.id;
-            type = '';
-            format = '';
-            date = '';
-            rating = standaloneData.rating || 0;
-            label = standaloneData.label || '';
-            variants = '';
-            prevNav = null;
-            nextNav = null;
-            totalCount = 1;
-            document.getElementById('lb-prev').style.display = 'none';
-            document.getElementById('lb-next').style.display = 'none';
-        } else {
-            // Normal mode — read from grid cards
-            var cards = getCards();
-            if (currentIndex < 0 || currentIndex >= cards.length) return;
-            var card = cards[currentIndex];
-            src = card.getAttribute('data-preview');
-            assetName = card.getAttribute('data-name');
-            assetId = card.getAttribute('data-asset-id');
-            type = card.getAttribute('data-type');
-            format = card.getAttribute('data-format');
-            date = card.getAttribute('data-date');
-            rating = parseInt(card.getAttribute('data-rating') || '0');
-            label = card.getAttribute('data-label') || '';
-            variants = card.getAttribute('data-variants');
-            prevNav = card.getAttribute('data-prev');
-            nextNav = card.getAttribute('data-next');
-            totalCount = cards.length;
-            document.getElementById('lb-prev').style.display = '';
-            document.getElementById('lb-next').style.display = '';
-        }
-
-        var hdBadge = document.getElementById('lb-smart-loading');
-        hdBadge.style.display = 'none';
-        hdBadge.className = 'smart-loading';
-        img.src = src;
-        img.alt = assetName;
-        var smartSrc = src.replace('/preview/', '/smart-preview/');
-        if (smartSrc !== src) {
-            hdBadge.style.display = 'block';
-            hdBadge.className = 'smart-loading loading';
-            var bg = new Image();
-            bg.onload = function() {
-                img.src = smartSrc;
-                hdBadge.className = 'smart-loading done';
-                setTimeout(function() { hdBadge.style.display = 'none'; }, 1500);
+        var newItems = cards.map(function(c) {
+            return {
+                id: c.getAttribute('data-asset-id'),
+                preview: c.getAttribute('data-preview'),
+                name: c.getAttribute('data-name'),
+                type: c.getAttribute('data-type'),
+                format: c.getAttribute('data-format'),
+                date: c.getAttribute('data-date'),
+                rating: parseInt(c.getAttribute('data-rating') || '0'),
+                label: c.getAttribute('data-label') || '',
+                variants: c.getAttribute('data-variants') || ''
             };
-            bg.onerror = function() { hdBadge.style.display = 'none'; };
-            bg.src = smartSrc;
-        }
-        counter.textContent = standaloneData ? '' : (currentIndex + 1) + ' / ' + totalCount;
-        title.textContent = assetName;
-        var qs = [];
-        if (prevNav) qs.push('prev=' + prevNav);
-        if (nextNav) qs.push('next=' + nextNav);
-        detailLink.href = '/asset/' + assetId + (qs.length ? '?' + qs.join('&') : '');
-
-        // Metadata
-        document.getElementById('lb-meta-type').textContent = type;
-        document.getElementById('lb-meta-format').textContent = format;
-        document.getElementById('lb-meta-date').textContent = date;
-        document.getElementById('lb-meta-variants').textContent = variants;
-
-        // Rating stars
-        renderStars(rating);
-
-        // Label dots
-        renderLabels(label);
-
-        // Preload adjacent (only in normal mode)
-        if (!standaloneData) {
-            var cards = getCards();
-            if (currentIndex > 0) {
-                var prevSrc = cards[currentIndex - 1].getAttribute('data-preview');
-                preloadPrev.src = prevSrc;
-                var prevSmart = prevSrc.replace('/preview/', '/smart-preview/');
-                if (prevSmart !== prevSrc) { var p = new Image(); p.src = prevSmart; }
-            }
-            if (currentIndex < cards.length - 1) {
-                var nextSrc = cards[currentIndex + 1].getAttribute('data-preview');
-                preloadNext.src = nextSrc;
-                var nextSmart = nextSrc.replace('/preview/', '/smart-preview/');
-                if (nextSmart !== nextSrc) { var n = new Image(); n.src = nextSmart; }
-            }
-        }
-    }
-
-    function renderStars(rating) {
-        var stars = document.querySelectorAll('#lb-stars .star, #lb-topbar-rating .star');
-        stars.forEach(function(s) {
-            var v = parseInt(s.getAttribute('data-value'));
-            if (v <= rating) {
-                s.className = 'star filled';
-                s.innerHTML = '&#9733;';
-            } else {
-                s.className = 'star empty';
-                s.innerHTML = '&#9734;';
-            }
         });
+        damLightbox.setItems(newItems);
     }
 
-    function renderLabels(label) {
-        var dots = document.querySelectorAll('#lb-labels .lb-dot, #lb-topbar-labels .lb-dot');
-        dots.forEach(function(d) {
-            d.classList.toggle('active', d.getAttribute('data-label') === label);
-        });
-        document.getElementById('lb-label-name').textContent = label || '';
-    }
+    // Sync items on page load
+    syncLightboxItems();
 
-    var _crossPagePending = false;
+    // Callbacks
 
-    function showLightboxLoading() {
-        var existing = imgWrap.querySelector('.lightbox-loading-overlay');
-        if (existing) return;
-        var ov = document.createElement('div');
-        ov.className = 'lightbox-loading-overlay';
-        imgWrap.appendChild(ov);
-        var img = document.getElementById('lb-img');
-        if (img) img.style.opacity = '0.4';
-    }
-
-    function hideLightboxLoading() {
-        var ov = imgWrap.querySelector('.lightbox-loading-overlay');
-        if (ov) ov.remove();
-        var img = document.getElementById('lb-img');
-        if (img) img.style.opacity = '';
-    }
-
-    function navigate(delta) {
-        if (_crossPagePending) return; // prevent queued presses
+    damLightbox.onClose = function() {
+        if (window.damKeyNav) {
+            damKeyNav.setFocusById(sessionStorage.getItem('dam-browse-focus'));
+        }
+    };
+    damLightbox.onRatingChange = function(id, rating) {
+        // Update card data attribute for consistency
         var cards = getCards();
-        var next = currentIndex + delta;
-        if (next >= 0 && next < cards.length) {
-            currentIndex = next;
-            render();
-            if (cards[currentIndex]) {
-                sessionStorage.setItem('dam-browse-focus', cards[currentIndex].getAttribute('data-asset-id'));
-            }
-            return;
-        }
-        // Cross-page boundary: click pagination link
+        cards.forEach(function(c) {
+            if (c.getAttribute('data-asset-id') === id) c.setAttribute('data-rating', String(rating));
+        });
+        syncLightboxItems();
+        if (window.damBatch) window.damBatch.refreshResults();
+    };
+    damLightbox.onLabelChange = function(id, label) {
+        var cards = getCards();
+        cards.forEach(function(c) {
+            if (c.getAttribute('data-asset-id') === id) c.setAttribute('data-label', label);
+        });
+        syncLightboxItems();
+        if (window.damBatch) window.damBatch.refreshResults();
+    };
+    damLightbox.onImageClick = function(id) {
+        sessionStorage.setItem('dam-browse-focus', id);
+        document.getElementById('lb-detail-link').click();
+    };
+    damLightbox.onNavigateBeyond = function(delta) {
         var meta = document.getElementById('results-meta');
         if (!meta) return;
         var curPage = parseInt(meta.dataset.page);
         var totalPages = parseInt(meta.dataset.totalPages);
         var targetPage = (delta > 0) ? curPage + 1 : curPage - 1;
-        if (targetPage < 1 || targetPage > totalPages) return;
-        _crossPagePending = true;
-        showLightboxLoading();
+        if (targetPage < 1 || targetPage > totalPages) { damLightbox.hideLoading(); return; }
         window._lightboxResumeIndex = (delta > 0) ? 0 : -1;
         var link = (delta > 0)
             ? document.querySelector('.top-pagination a[href]:nth-last-child(2)')
             : document.querySelector('.top-pagination a[href]:nth-child(2)');
         if (link) link.click();
-    }
-
-    function applyRating(rating) {
-        var cards = getCards();
-        if (currentIndex < 0 || currentIndex >= cards.length) return;
-        var card = cards[currentIndex];
-        var assetId = card.getAttribute('data-asset-id');
-        fetch('/api/asset/' + assetId + '/rating', {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: 'rating=' + rating
-        }).then(function() {
-            card.setAttribute('data-rating', String(rating));
-            renderStars(rating);
-            if (window.damBatch) window.damBatch.refreshResults();
-        });
-    }
-
-    function applyLabel(label) {
-        var cards = getCards();
-        if (currentIndex < 0 || currentIndex >= cards.length) return;
-        var card = cards[currentIndex];
-        var assetId = card.getAttribute('data-asset-id');
-        fetch('/api/asset/' + assetId + '/label', {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({label: label})
-        }).then(function() {
-            card.setAttribute('data-label', label);
-            renderLabels(label);
-            if (window.damBatch) window.damBatch.refreshResults();
-        });
-    }
-
-    // Click on thumbnail opens lightbox; click on card-body navigates to detail page
+    };
+    // Thumbnail click opens lightbox
     document.getElementById('results').addEventListener('click', function(e) {
-        // Don't intercept checkbox clicks
         if (e.target.closest('.select-checkbox')) return;
-        // Card-body is a link to detail page — let it navigate naturally
         if (e.target.closest('.card-body')) return;
-        // Thumbnail click opens lightbox
         var card = e.target.closest('.asset-card');
         if (!card) return;
         if (!e.target.closest('.thumb') && !e.target.closest('.thumb-placeholder')) return;
         e.preventDefault();
+        syncLightboxItems();
         var cards = getCards();
         var idx = cards.indexOf(card);
-        if (idx >= 0) open(idx);
+        if (idx >= 0) {
+            sessionStorage.setItem('dam-browse-focus', card.getAttribute('data-asset-id'));
+            damLightbox.open(idx);
+        }
     });
-
-    // Close on button or clicking empty area around image
-    document.getElementById('lb-close').addEventListener('click', close);
-    document.getElementById('lb-img-wrap').addEventListener('click', function(e) {
-        if (e.target === this && !imgWrap.classList.contains('zoomed')) close();
-    });
-
-    // Nav arrows
-    document.getElementById('lb-prev').addEventListener('click', function() { navigate(-1); });
-    document.getElementById('lb-next').addEventListener('click', function() { navigate(1); });
-
-    // Info toggle + close
-    function toggleInfo() {
-        infoVisible = !infoVisible;
-        overlay.classList.toggle('info-open', infoVisible);
-    }
-    function closeInfo() {
-        infoVisible = false;
-        overlay.classList.remove('info-open');
-    }
-    document.getElementById('lb-info-toggle').addEventListener('click', toggleInfo);
-    document.getElementById('lb-info-close').addEventListener('click', closeInfo);
-
-    // Rating stars in info panel
-    document.querySelectorAll('#lb-stars .star').forEach(function(s) {
-        s.addEventListener('click', function() {
-            applyRating(parseInt(this.getAttribute('data-value')));
-        });
-    });
-    document.querySelector('#lb-stars .star-clear').addEventListener('click', function() {
-        applyRating(0);
-    });
-
-    // Label dots in info panel
-    document.querySelectorAll('#lb-labels .lb-dot').forEach(function(d) {
-        d.addEventListener('click', function() {
-            var lbl = this.getAttribute('data-label');
-            var cards = getCards();
-            var current = cards[currentIndex] ? cards[currentIndex].getAttribute('data-label') : '';
-            applyLabel(current === lbl ? '' : lbl);
-        });
-    });
-    document.querySelector('#lb-labels .lb-clear').addEventListener('click', function() {
-        applyLabel('');
-    });
-
-    // Top bar rating stars
-    document.querySelectorAll('#lb-topbar-rating .star').forEach(function(s) {
-        s.addEventListener('click', function() {
-            applyRating(parseInt(this.getAttribute('data-value')));
-        });
-    });
-    document.querySelector('#lb-topbar-rating .star-clear').addEventListener('click', function() {
-        applyRating(0);
-    });
-
-    // Top bar label dots
-    document.querySelectorAll('#lb-topbar-labels .lb-dot').forEach(function(d) {
-        d.addEventListener('click', function() {
-            var lbl = this.getAttribute('data-label');
-            var cards = getCards();
-            var current = cards[currentIndex] ? cards[currentIndex].getAttribute('data-label') : '';
-            applyLabel(current === lbl ? '' : lbl);
-        });
-    });
-    document.querySelector('#lb-topbar-labels .lb-clear').addEventListener('click', function() {
-        applyLabel('');
-    });
-
-    // Keyboard: capture phase to intercept before keyboard nav
-    document.addEventListener('keydown', function(e) {
-        if (!isOpen) return;
-        if (window.damHelp && window.damHelp.isOpen()) return;
-
-        var el = e.target;
-        if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
-        if (el.tagName === 'INPUT' && el.type !== 'checkbox') return;
-
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-            return;
-        }
-        if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-            var link = e.key === 'ArrowLeft'
-                ? document.querySelector('.top-pagination a[href]:nth-child(2)')
-                : document.querySelector('.top-pagination a[href]:nth-last-child(2)');
-            if (link) {
-                window._lightboxResumeIndex = (e.key === 'ArrowRight') ? 0 : -1;
-                link.click();
-            }
-            return;
-        }
-        if (e.key === 'ArrowLeft') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            navigate(-1);
-            return;
-        }
-        if (e.key === 'ArrowRight') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            navigate(1);
-            return;
-        }
-        if (e.key === 'i' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            toggleInfo();
-            return;
-        }
-        if (e.key === 'd' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var cards = getCards();
-            if (cards[currentIndex]) {
-                sessionStorage.setItem('dam-browse-focus', cards[currentIndex].getAttribute('data-asset-id'));
-            }
-            detailLink.click();
-            return;
-        }
-        if (e.key === 's' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var cards = getCards();
-            if (cards[currentIndex]) {
-                window.location.href = '/stroll?id=' + cards[currentIndex].getAttribute('data-asset-id');
-            }
-            return;
-        }
-
-        // Zoom shortcuts
-        if (!e.metaKey && !e.ctrlKey && !e.altKey) {
-            if (e.key === ',') {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                zoomFit();
-                return;
-            }
-            if (e.key === '.') {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                zoomTo(1.0);
-                return;
-            }
-            if (e.key === '+' || e.key === '=') {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                zoomIn();
-                return;
-            }
-            if (e.key === '-') {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                zoomOut();
-                return;
-            }
-        }
-
-        // Alt/Option+0-7: label (use e.code for macOS compatibility)
-        if (e.altKey && e.code >= 'Digit0' && e.code <= 'Digit7') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            var num = e.code.charAt(5);
-            if (num === '0') applyLabel('');
-            else applyLabel(labelNumMap[num] || '');
-            return;
-        }
-
-        // 0-5: rating
-        if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key >= '0' && e.key <= '5') {
-            e.stopImmediatePropagation();
-            applyRating(parseInt(e.key));
-            return;
-        }
-
-        // Letter label shortcuts
-        if (!e.metaKey && !e.ctrlKey && !e.altKey) {
-            var lower = e.key.toLowerCase();
-            if (labelLetterMap[lower]) {
-                e.stopImmediatePropagation();
-                applyLabel(labelLetterMap[lower]);
-                return;
-            }
-            if (lower === 'x') {
-                e.stopImmediatePropagation();
-                applyLabel('');
-                return;
-            }
-        }
-    }, true);  // useCapture
-
-    window.damLightbox = {
-        isOpen: function() { return isOpen; },
-        open: open,
-        openWithData: openWithData,
-        close: close,
-        _clearCrossPage: function() { _crossPagePending = false; hideLightboxLoading(); }
-    };
-
     // Auto-open lightbox if returning from detail page via "l" key
     var lbAsset = sessionStorage.getItem('dam-lightbox-asset');
     if (lbAsset) {
         sessionStorage.removeItem('dam-lightbox-asset');
-        var initCards = getCards();
-        for (var ci = 0; ci < initCards.length; ci++) {
-            if (initCards[ci].getAttribute('data-asset-id') === lbAsset) {
-                open(ci);
-                break;
-            }
-        }
+        syncLightboxItems();
+        damLightbox.openById(lbAsset);
     }
 })();
 
@@ -2642,16 +2021,29 @@ window.damFacets = (function() {
         if (e.detail.target && e.detail.target.id === 'results') {
             storeBrowseContext();
             // Resume lightbox on cross-page navigation
-            if (typeof window._lightboxResumeIndex !== 'undefined') {
+            if (typeof window._lightboxResumeIndex !== 'undefined' && window.damLightbox) {
                 var idx = window._lightboxResumeIndex;
                 delete window._lightboxResumeIndex;
-                if (window.damLightbox) {
-                    window.damLightbox._clearCrossPage();
-                }
+                damLightbox.hideLoading();
+                // Re-sync items from new grid cards
                 var newCards = document.querySelectorAll('.asset-card');
-                if (newCards.length > 0 && window.damLightbox) {
-                    var openIdx = (idx === -1) ? newCards.length - 1 : idx;
-                    window.damLightbox.open(openIdx);
+                var newItems = Array.from(newCards).map(function(c) {
+                    return {
+                        id: c.getAttribute('data-asset-id'),
+                        preview: c.getAttribute('data-preview'),
+                        name: c.getAttribute('data-name'),
+                        type: c.getAttribute('data-type'),
+                        format: c.getAttribute('data-format'),
+                        date: c.getAttribute('data-date'),
+                        rating: parseInt(c.getAttribute('data-rating') || '0'),
+                        label: c.getAttribute('data-label') || '',
+                        variants: c.getAttribute('data-variants') || ''
+                    };
+                });
+                damLightbox.setItems(newItems);
+                if (newItems.length > 0) {
+                    var openIdx = (idx === -1) ? newItems.length - 1 : idx;
+                    damLightbox.open(openIdx);
                 }
             }
         }

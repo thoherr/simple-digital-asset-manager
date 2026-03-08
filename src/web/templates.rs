@@ -272,6 +272,8 @@ pub struct AssetPage {
     pub name: Option<String>,
     pub fallback_name: String,
     pub asset_type: String,
+    pub primary_format: String,
+    pub variant_count: usize,
     pub created_at: String,
     pub description: Option<String>,
     pub rating: Option<u8>,
@@ -352,6 +354,18 @@ impl AssetPage {
             .unwrap_or(&fallback_name)
             .to_string();
 
+        // Primary format: prefer original RAW, then original any, then first variant
+        let primary_format = details
+            .variants
+            .iter()
+            .find(|v| v.role == "original" && crate::asset_service::is_raw_extension(&v.format))
+            .or_else(|| details.variants.iter().find(|v| v.role == "original"))
+            .or_else(|| details.variants.first())
+            .map(|v| v.format.clone())
+            .unwrap_or_default();
+
+        let variant_count = details.variants.len();
+
         let variants = details
             .variants
             .iter()
@@ -406,6 +420,8 @@ impl AssetPage {
             name: details.name,
             fallback_name,
             asset_type: details.asset_type,
+            primary_format,
+            variant_count,
             created_at: format_date(&details.created_at),
             description: details.description,
             rating: details.rating,
