@@ -661,6 +661,26 @@ dam search -q "similar:72a0bb4b"                       # just IDs, for scripting
 
 ---
 
+## embed (AI feature)
+
+**Syntax:** `embed:any` | `embed:true` | `embed:none` | `embed:false`
+
+**Description:** Filters by whether an asset has a stored AI embedding (SigLIP image embedding). Requires the `ai` feature (`--features ai`) and embeddings to have been generated via `dam embed` or `dam import --embed`.
+
+**Examples:**
+
+```
+dam search "embed:any"                     # assets with AI embeddings
+dam search "embed:true"                    # same as embed:any
+dam search "embed:none"                    # assets without AI embeddings
+dam search "embed:false"                   # same as embed:none
+dam search "embed:none type:image"         # images that still need embeddings
+```
+
+**SQL behavior:** Uses an `EXISTS` / `NOT EXISTS` subquery on the `embeddings` table: `WHERE EXISTS (SELECT 1 FROM embeddings e WHERE e.asset_id = a.id)`. Pure subquery, no JOIN required.
+
+---
+
 ## Combining Filters
 
 All filters are combined with AND logic. Every specified filter must match for an asset to appear in results. Free-text terms are also AND-combined with all prefix filters.
@@ -774,6 +794,7 @@ dam search "camera:fuji"
 | `faces:` | yes | yes (query input) | yes |
 | `person:` | yes | yes (dropdown) | yes |
 | `similar:` | yes (ai feature) | yes (detail page) | no |
+| `embed:` | yes (ai feature) | no | yes |
 
 ---
 

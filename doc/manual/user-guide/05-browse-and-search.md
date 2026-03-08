@@ -99,6 +99,7 @@ All filters can be combined in a single query. Remaining tokens become free-text
 | Face count | `faces:any`, `faces:none`, `faces:N`, `faces:N+` | `faces:2+` |
 | Person | `person:<name>` | `person:Alice`, `person:"John Smith"` |
 | Visual similarity (ai) | `similar:<id>` or `similar:<id>:<limit>` | `similar:72a0bb4b`, `similar:72a0bb4b:50` |
+| Embedding status (ai) | `embed:any`, `embed:none` | `embed:none type:image` |
 
 **Hierarchical tag matching**: The `tag:` filter matches hierarchically. Searching for `tag:animals` finds assets tagged `animals`, `animals/birds`, `animals/birds/eagles`, and any other descendant of `animals`. To match only the exact tag, use the full path (e.g., `tag:animals/birds/eagles`).
 

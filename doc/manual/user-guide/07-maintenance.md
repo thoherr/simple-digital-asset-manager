@@ -2,16 +2,17 @@
 
 Over time, files move, drives get swapped, external tools edit recipes, and storage devices accumulate stale references. This chapter covers the commands that keep your catalog accurate and your files healthy.
 
-The four core maintenance commands form a cycle:
+The five core maintenance commands form a cycle:
 
 ```mermaid
 flowchart LR
     V["dam verify\n(detect corruption)"]
     S["dam sync\n(reconcile moved/\nmodified files)"]
+    W["dam writeback\n(push pending\nXMP edits)"]
     R["dam refresh\n(re-read changed\nrecipes)"]
     C["dam cleanup\n(remove stale\nrecords)"]
 
-    V --> S --> R --> C --> V
+    V --> S --> W --> R --> C --> V
 ```
 
 Each command is safe by default -- destructive operations require an explicit `--apply` flag, and most commands support `--dry-run` or report-only mode.
@@ -259,6 +260,72 @@ Dry run — Refresh complete: 2 refreshed, 1 unchanged, 0 missing, 0 skipped (of
 
 ```bash
 dam refresh --log --time --json
+```
+
+
+## Write Back
+
+`dam writeback` replays pending metadata writes to XMP recipe files. When you edit metadata (rating, label, tags, description) while a volume is offline, the XMP write-back is skipped and the recipe is marked with a `pending_writeback` flag. The edits are safe in the YAML sidecar and SQLite catalog, but the `.xmp` files on disk still have old values. This command pushes those pending changes to XMP when the volume comes back online.
+
+### Process pending write-backs
+
+```bash
+dam writeback
+```
+
+Without flags, only recipes with `pending_writeback=1` are processed. Each recipe's XMP file is updated with the current asset metadata (rating, label, tags, description), then re-hashed and the pending flag is cleared.
+
+### Write back all XMP recipes
+
+```bash
+dam writeback --all
+```
+
+The `--all` flag writes current metadata to every XMP recipe, not just pending ones. Useful for an initial sync or to force-push all DAM metadata to XMP files.
+
+### Scope to a volume or asset
+
+```bash
+# Only write back to recipes on a specific volume
+dam writeback --volume "Photos 2024"
+
+# Only write back for a specific asset
+dam writeback --asset a1b2c3d4
+```
+
+### Dry run
+
+```bash
+dam writeback --dry-run
+```
+
+Shows what would be written without modifying any files. Combine with `--log` for detailed output.
+
+### How pending tracking works
+
+When any metadata edit (CLI `dam edit`, `dam tag`, web UI stars/labels/tags/description) triggers XMP write-back, each recipe is checked:
+
+- **Volume online, file exists**: XMP is written, `pending_writeback` stays 0.
+- **Volume offline or file missing**: `pending_writeback` is set to 1. The flag persists until `dam writeback` clears it.
+
+The flag records the *intent* to write back, not *what* changed. When writeback runs, it reads the current asset metadata and writes all four fields (rating, label, tags, description) to the XMP file.
+
+### Recommended workflow: volume comes back online
+
+```bash
+# 1. Push DAM edits to XMP (DAM wins for fields edited while offline)
+dam writeback --volume "Archive 2025"
+
+# 2. Pull any CaptureOne/Lightroom edits from XMP
+dam refresh --volume "Archive 2025"
+```
+
+Order matters: writeback first ensures DAM edits land in the XMP files. Then refresh picks up anything the external tool changed independently.
+
+### Monitoring flags
+
+```bash
+dam writeback --log --time --json
 ```
 
 
@@ -593,16 +660,19 @@ A typical maintenance session after reconnecting an archive drive:
 # 1. Check file integrity
 dam verify --volume "Archive 2025" --time
 
-# 2. Pick up any recipe changes made while the drive was connected elsewhere
+# 2. Push any DAM edits made while the drive was offline
+dam writeback --volume "Archive 2025"
+
+# 3. Pick up any recipe changes made while the drive was connected elsewhere
 dam refresh --volume "Archive 2025"
 
-# 3. Reconcile any moved/renamed files
+# 4. Reconcile any moved/renamed files
 dam sync /Volumes/Archive2025/ --apply
 
-# 4. Clean up any stale records
+# 5. Clean up any stale records
 dam cleanup --volume "Archive 2025" --apply
 
-# 5. Confirm everything looks good
+# 6. Confirm everything looks good
 dam stats --volumes
 ```
 

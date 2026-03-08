@@ -1,6 +1,6 @@
 # Proposal: Pending XMP Write-Back for Offline Volumes
 
-> **Status**: Proposed
+> **Status**: Implemented (v2.3.3) — Phase 1 complete
 
 When metadata is edited in the DAM (rating, color label, tags, description) while a volume is offline, the XMP write-back to `.xmp` recipe files is silently skipped. Those edits exist only in the YAML sidecar and SQLite catalog. When the volume comes back online, there is no mechanism to push them to the XMP files — and running `dam refresh` would actually overwrite DAM edits with the stale XMP content.
 

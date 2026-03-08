@@ -263,7 +263,23 @@ dam auto-tag [--asset <id>] [--model clip] [--threshold 0.5] [--apply]
 
 ---
 
-### 16. IPTC / Structured Metadata
+### 16. Pending XMP Write-Back for Offline Volumes
+
+When metadata is edited in the DAM while a volume is offline, the XMP write-back to `.xmp` recipe files is silently skipped. A `pending_writeback` flag on recipe records tracks these pending writes, and a dedicated `dam writeback` command replays them when the volume comes back online.
+
+```
+dam writeback [--volume <label>] [--asset <id>] [--all] [--dry-run]
+```
+
+**Recommended workflow:** `dam writeback --volume X` then `dam refresh --volume X` (push DAM edits first, then pull external tool edits).
+
+**Why:** Without this, running `dam refresh` after reconnecting a volume overwrites DAM edits with stale XMP content — a data loss scenario for CaptureOne/Lightroom workflows.
+
+> **Status (v2.3.3):** Phase 1 implemented. Core dirty tracking (`pending_writeback` column on recipes table), `dam writeback` CLI command with `--volume`, `--asset`, `--all`, `--dry-run`, `--json`, `--log`, `--time`. See [`proposal-pending-writeback.md`](proposal-pending-writeback.md) for full design.
+
+---
+
+### 17. IPTC / Structured Metadata
 
 Beyond XMP keywords, support IPTC Core fields for professional photographers and stock agencies.
 
@@ -297,7 +313,8 @@ Ranked by impact-to-effort ratio, building on existing infrastructure:
 | 12 | Stack from tag conversion | Low | Medium | **Done** (v1.6.0) — `dam stack from-tag` converts matching tags to stacks |
 | 13 | Drag-and-drop stack reordering | Low | Low | Planned — reorder stack members on asset detail page |
 | 14 | Keyboard help & detail page nav | Low | Medium | **Done** (v1.6.1) — `?` help overlay, detail prev/next, d/l lightbox switching |
+| 15 | Pending XMP write-back | Low | High | **Done** (v2.3.3) — Phase 1: dirty tracking + `dam writeback` command |
 
-Items 1–7, 9–12, and 14 are complete (13 of 14 items). The remaining items are 8 (import profiles) and 13 (drag-and-drop).
+Items 1–7, 9–12, 14, and 15 are complete (14 of 15 items). The remaining items are 8 (import profiles) and 13 (drag-and-drop).
 
 Watch mode is specified in [`proposal-future-enhancements.md`](proposal-future-enhancements.md) and in the [roadmap](roadmap.md). Export was implemented in v1.8.9.

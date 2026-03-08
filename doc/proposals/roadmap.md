@@ -139,7 +139,21 @@ Export matching assets to a directory, optionally with sidecars.
 
 ---
 
-### 8. Undo / Edit History
+### 8. Pending XMP Write-Back
+
+> **Status (v2.3.3):** Phase 1 implemented. See [`proposal-pending-writeback.md`](proposal-pending-writeback.md).
+
+Track pending XMP write-backs when volumes are offline. A `pending_writeback` flag on recipe records captures the intent to write; `dam writeback` replays pending writes when the volume comes back online.
+
+**Command:** `dam writeback [--volume <label>] [--asset <id>] [--all] [--dry-run]`
+
+**Workflow:** `dam writeback --volume X` then `dam refresh --volume X` — push DAM edits first, then pull external tool edits. Prevents data loss from `dam refresh` overwriting DAM edits with stale XMP content.
+
+**Why:** Essential for CaptureOne/Lightroom round-trip workflows with external drives that are not always connected.
+
+---
+
+### 9. Undo / Edit History
 
 Track metadata changes with timestamps for auditability and mistake recovery.
 
@@ -167,7 +181,7 @@ history:
 
 ## Tier 3 — Polish & Advanced
 
-### 9. IPTC / Structured Metadata
+### 10. IPTC / Structured Metadata
 
 Support IPTC Core fields for professional photographers and stock agencies: headline, caption, copyright notice, creator, credit line, source, usage terms, city, country, sublocation.
 
@@ -179,7 +193,7 @@ Support IPTC Core fields for professional photographers and stock agencies: head
 
 ---
 
-### 10. Drag-and-Drop Enhancements
+### 11. Drag-and-Drop Enhancements
 
 **Stack reordering:** Drag to reorder stack members on the asset detail page. DOM reordering triggers backend position updates.
 
@@ -189,7 +203,7 @@ Support IPTC Core fields for professional photographers and stock agencies: head
 
 ---
 
-### 11. Statistics & Insights Dashboard
+### 12. Statistics & Insights Dashboard
 
 Expand the stats page with visual analytics for large archives:
 
@@ -204,7 +218,7 @@ Expand the stats page with visual analytics for large archives:
 
 ---
 
-### 12. Faceted Browse Sidebar
+### 13. Faceted Browse Sidebar
 
 Replace or supplement the top filter row with a persistent left sidebar showing faceted navigation:
 
@@ -234,10 +248,11 @@ Each facet updates counts in real time based on the current filter combination (
 | 5 | Import profiles | Low | Medium | Workflow convenience | |
 | 6 | Watch mode | Medium | Medium | Workflow automation | |
 | 7 | Export command | Medium | Medium | Delivery | **Done** (v1.8.9) |
-| 8 | Undo / edit history | Medium | Medium | Safety | |
-| 9 | IPTC metadata | Medium | Low–Medium | Professional workflow | |
-| 10 | Drag-and-drop | Low | Low | UX polish | |
-| 11 | Statistics dashboard | Medium | Medium | Overview / insights | |
-| 12 | Faceted browse sidebar | Medium | High | Overview / discovery | **Done** (v1.8.1) |
+| 8 | Pending XMP write-back | Low | High | Data integrity | **Done** (v2.3.3) — Phase 1 |
+| 9 | Undo / edit history | Medium | Medium | Safety | |
+| 10 | IPTC metadata | Medium | Low–Medium | Professional workflow | |
+| 11 | Drag-and-drop | Low | Low | UX polish | |
+| 12 | Statistics dashboard | Medium | Medium | Overview / insights | |
+| 13 | Faceted browse sidebar | Medium | High | Overview / discovery | **Done** (v1.8.1) |
 
-Items 1, 2, 3, 4, 7, and 12 are complete as of v2.3.2, delivering the core "find and evaluate the best images" workflow with compare view, smart previews, spatial browsing via the map view, faceted overview sidebar, file export for delivery, AI-assisted tagging with web UI integration, the stroll page for graph-based visual exploration (with elliptical layout, fan-out slider, direction-dependent L2 radius, stroll modes Nearest/Discover/Explore, and cross-session filtering as of v2.3.2), and the `similar:` search filter. The highest-priority remaining items are 5 (import profiles) and 6 (watch mode). Item 11 provides additional "overview of assets" dimension.
+Items 1, 2, 3, 4, 7, 8, and 13 are complete as of v2.3.3, delivering the core "find and evaluate the best images" workflow with compare view, smart previews, spatial browsing via the map view, faceted overview sidebar, file export for delivery, AI-assisted tagging with web UI integration, the stroll page for graph-based visual exploration (with elliptical layout, fan-out slider, direction-dependent L2 radius, stroll modes Nearest/Discover/Explore, and cross-session filtering as of v2.3.2), the `similar:` search filter, and pending XMP write-back for offline volume safety (v2.3.3). The highest-priority remaining items are 5 (import profiles) and 6 (watch mode). Item 12 provides additional "overview of assets" dimension.
