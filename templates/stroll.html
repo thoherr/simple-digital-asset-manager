@@ -332,25 +332,15 @@ function onFilterChange() {
             line.setAttribute('class', 'stroll-line-l2');
             svgEl.appendChild(line);
 
-            // L2 thumbnail element
+            // L2 thumbnail — same markup as L1 via buildSatelliteHtml
             var div = document.createElement('div');
             div.className = 'stroll-satellite stroll-l2';
             div.dataset.id = n.asset_id;
             div.style.left = x + 'px';
             div.style.top = y + 'px';
-            var img = document.createElement('img');
-            img.src = n.preview_url;
-            img.alt = n.name;
-            img.loading = 'lazy';
-            img.style.width = l2Size + 'px';
-            img.style.height = l2Size + 'px';
-            div.appendChild(img);
-
-            // Score badge
-            var score = document.createElement('span');
-            score.className = 'stroll-sat-score';
-            score.textContent = Math.round(n.similarity * 100) + '%';
-            div.appendChild(score);
+            div.innerHTML = buildSatelliteHtml(n);
+            var l2Img = div.querySelector('img');
+            if (l2Img) { l2Img.style.width = l2Size + 'px'; l2Img.style.height = l2Size + 'px'; }
 
             // Hover and click
             (function(id, idx) {
