@@ -637,6 +637,18 @@ Navigate to `/stroll` or click "Stroll" in the navigation bar. You can also pres
 
 The center image is displayed prominently in the middle of the page. Surrounding it, satellite thumbnails show the most similar assets based on SigLIP embedding similarity (dot-product distance), arranged in an elliptical layout that adapts to the viewport aspect ratio for optimal use of screen space. Each neighbor shows a preview thumbnail, and clicking it navigates to that asset as the new center.
 
+### Stroll modes
+
+Three mode buttons in the control panel determine how neighbors are selected:
+
+- **Nearest** (default): shows the top N most similar assets by embedding distance. Results are deterministic -- the same center always produces the same neighbors.
+- **Discover**: picks N random assets from a wider candidate pool (configurable via `[serve] stroll_discover_pool` in `dam.toml`, default 80). Each visit produces a different set of neighbors, encouraging serendipitous exploration. Useful for breaking out of tight visual clusters.
+- **Explore**: skips past the K nearest neighbors to find more distant visual connections. A skip slider (0--200) appears in Explore mode, letting you control how far to reach. Higher skip values surface increasingly surprising matches.
+
+### "Other shoots" filter
+
+A checkbox toggle labeled "Other shoots" excludes assets from the same directory or session as the center image. When enabled, only similar images from different shoots are shown as neighbors. This is useful for finding visual connections across your collection rather than seeing near-duplicates from the same session.
+
 ### Neighbor count
 
 A slider control (5--25, default 12, configurable via `[serve] stroll_neighbors` and `stroll_neighbors_max` in `dam.toml`) lets you adjust how many neighbor thumbnails are shown around the center image. Fewer neighbors give a cleaner view; more neighbors let you see a wider range of similar assets.

@@ -2,6 +2,16 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v2.3.2 — 2026-03-08
+
+### Bug Fixes
+- **Fix FK constraint error in group/auto-group** — `insert_asset()` used `INSERT OR REPLACE` which SQLite implements as DELETE+INSERT, triggering foreign key violations from variants/faces/collections referencing the asset. Changed to `INSERT ... ON CONFLICT DO UPDATE` (true upsert). Also added proper FK cleanup in `group()` before deleting donor assets.
+
+### New Features
+- **Stroll modes** — three modes for neighbor selection: **Nearest** (default, top N by similarity), **Discover** (random N from configurable pool), **Explore** (skip first K nearest, then take N). Mode selector buttons in the stroll control panel.
+- **Cross-session filtering** — "Other shoots" toggle excludes assets from the same directory/session when finding similar neighbors. Uses parent directory as session root.
+- **`stroll_discover_pool` config** — `dam.toml` `[serve]` section supports `stroll_discover_pool` (default 80) to control the candidate pool size for Discover mode.
+
 ## v2.3.1 — 2026-03-08
 
 ### Enhancements

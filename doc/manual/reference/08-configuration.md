@@ -151,6 +151,13 @@ Initial number of neighbor thumbnails shown around the center image on the strol
 
 Maximum value for the neighbor count slider on the stroll page.
 
+### stroll_discover_pool
+
+- **Type:** unsigned 32-bit integer
+- **Default:** `80`
+
+Candidate pool size for Discover mode on the stroll page. In Discover mode, the server fetches this many nearest neighbors and then randomly samples from the pool to produce the displayed satellites. Larger values increase variety; smaller values keep results closer to the center image.
+
 ### stroll_fanout
 
 - **Type:** unsigned 32-bit integer
@@ -182,6 +189,7 @@ stroll_neighbors = 12
 stroll_neighbors_max = 25
 stroll_fanout = 5
 stroll_fanout_max = 10
+stroll_discover_pool = 80
 ```
 
 ---
@@ -394,6 +402,8 @@ stroll_neighbors_max = 25
 # Stroll page: initial fan-out count and slider maximum.
 stroll_fanout = 5
 stroll_fanout_max = 10
+# Stroll page: candidate pool size for Discover mode.
+stroll_discover_pool = 80
 
 [import]
 # Glob patterns to exclude during import (matched against filenames).
@@ -478,6 +488,7 @@ When a field is absent from `dam.toml`, these defaults apply:
 | `serve.stroll_neighbors_max` | `25` |
 | `serve.stroll_fanout` | `5` |
 | `serve.stroll_fanout_max` | `10` |
+| `serve.stroll_discover_pool` | `80` |
 | `import.exclude` | `[]` |
 | `import.auto_tags` | `[]` |
 | `import.smart_previews` | `false` |

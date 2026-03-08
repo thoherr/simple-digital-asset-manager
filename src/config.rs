@@ -91,6 +91,8 @@ pub struct ServeConfig {
     pub stroll_fanout: u32,
     #[serde(default = "default_stroll_fanout_max")]
     pub stroll_fanout_max: u32,
+    #[serde(default = "default_stroll_discover_pool")]
+    pub stroll_discover_pool: u32,
 }
 
 fn default_port() -> u16 {
@@ -121,6 +123,10 @@ fn default_stroll_fanout_max() -> u32 {
     10
 }
 
+fn default_stroll_discover_pool() -> u32 {
+    80
+}
+
 impl Default for ServeConfig {
     fn default() -> Self {
         Self {
@@ -131,6 +137,7 @@ impl Default for ServeConfig {
             stroll_neighbors_max: 25,
             stroll_fanout: 5,
             stroll_fanout_max: 10,
+            stroll_discover_pool: 80,
         }
     }
 }

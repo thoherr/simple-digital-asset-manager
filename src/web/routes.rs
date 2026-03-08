@@ -4364,7 +4364,7 @@ fn stroll_page_inner(
     let query_emb = emb_store.get(&center_id, model_id).map_err(|e| format!("{e:#}"))?;
     // Compute fetch limit based on mode
     let base_limit = match mode {
-        "discover" => 80.max(neighbor_count as usize * 6), // large pool for random sampling
+        "discover" => (state.stroll_discover_pool as usize).max(neighbor_count as usize * 4), // configurable pool for random sampling
         "explore" => (skip as usize) + (neighbor_count as usize), // skip + take
         _ => neighbor_count as usize, // nearest: exact count
     };

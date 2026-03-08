@@ -155,6 +155,7 @@ pub struct AppState {
     pub stroll_neighbors_max: u32,
     pub stroll_fanout: u32,
     pub stroll_fanout_max: u32,
+    pub stroll_discover_pool: u32,
     pub ai_enabled: bool,
     #[cfg(feature = "ai")]
     pub ai_model: tokio::sync::Mutex<Option<crate::ai::SigLipModel>>,
@@ -170,7 +171,7 @@ pub struct AppState {
 
 impl AppState {
     #[cfg(feature = "ai")]
-    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig, log_requests: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, ai_config: AiConfig) -> Self {
+    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig, log_requests: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, stroll_discover_pool: u32, ai_config: AiConfig) -> Self {
         let preview_ext = preview_config.format.extension().to_string();
         let smart_on_demand = preview_config.generate_on_demand;
         Self {
@@ -186,6 +187,7 @@ impl AppState {
             stroll_neighbors_max,
             stroll_fanout,
             stroll_fanout_max,
+            stroll_discover_pool,
             ai_enabled: true,
             ai_model: tokio::sync::Mutex::new(None),
             ai_label_cache: tokio::sync::RwLock::new(None),
@@ -196,7 +198,7 @@ impl AppState {
     }
 
     #[cfg(not(feature = "ai"))]
-    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig, log_requests: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32) -> Self {
+    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig, log_requests: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, stroll_discover_pool: u32) -> Self {
         let preview_ext = preview_config.format.extension().to_string();
         let smart_on_demand = preview_config.generate_on_demand;
         Self {
@@ -212,6 +214,7 @@ impl AppState {
             stroll_neighbors_max,
             stroll_fanout,
             stroll_fanout_max,
+            stroll_discover_pool,
             ai_enabled: false,
         }
     }
@@ -473,8 +476,8 @@ async fn log_request(
 
 /// Start the web server.
 #[cfg(feature = "ai")]
-pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, ai_config: AiConfig) -> Result<()> {
-    let state = Arc::new(AppState::new(catalog_root, preview_config, log, dedup_prefer, per_page, stroll_neighbors, stroll_neighbors_max, stroll_fanout, stroll_fanout_max, ai_config));
+pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, stroll_discover_pool: u32, ai_config: AiConfig) -> Result<()> {
+    let state = Arc::new(AppState::new(catalog_root, preview_config, log, dedup_prefer, per_page, stroll_neighbors, stroll_neighbors_max, stroll_fanout, stroll_fanout_max, stroll_discover_pool, ai_config));
 
     // Verify catalog is accessible and warm dropdown caches
     {
@@ -502,8 +505,8 @@ pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config:
 
 /// Start the web server.
 #[cfg(not(feature = "ai"))]
-pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32) -> Result<()> {
-    let state = Arc::new(AppState::new(catalog_root, preview_config, log, dedup_prefer, per_page, stroll_neighbors, stroll_neighbors_max, stroll_fanout, stroll_fanout_max));
+pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, stroll_discover_pool: u32) -> Result<()> {
+    let state = Arc::new(AppState::new(catalog_root, preview_config, log, dedup_prefer, per_page, stroll_neighbors, stroll_neighbors_max, stroll_fanout, stroll_fanout_max, stroll_discover_pool));
 
     // Verify catalog is accessible and warm dropdown caches
     {

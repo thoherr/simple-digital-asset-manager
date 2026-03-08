@@ -1,6 +1,6 @@
 # Proposal: Stroll Page — Graph-Based Visual Exploration
 
-> **Status**: Implemented (v2.3.0 / v2.3.1) — Phase 1 (visual similarity), Phase 2 (filter integration), and level-2 transitive neighbors are complete. v2.3.1 renamed "depth" to "fan-out", added elliptical satellite layout, and direction-dependent L2 arc radius.
+> **Status**: Implemented (v2.3.0 / v2.3.1 / v2.3.2) — Phase 1 (visual similarity), Phase 2 (filter integration), and level-2 transitive neighbors are complete. v2.3.1 renamed "depth" to "fan-out", added elliptical satellite layout, and direction-dependent L2 arc radius. v2.3.2 added stroll modes (Nearest/Discover/Explore) and cross-session filtering.
 
 A new `/stroll` page for navigating the catalog by traversing connections between assets — primarily visual similarity, but extensible to shared tags, nearby dates, nearby GPS locations, and more.
 
@@ -384,11 +384,11 @@ The random asset could be: (a) truly random (any embedded asset), (b) anti-simil
 
 These approaches are complementary, not mutually exclusive. A phased implementation:
 
-1. **Quick win — Discover mode + Explore mode**: Random-from-top-M and skip-first-K are trivial to implement (just parameters on the existing query). Add as mode buttons or a single dropdown. Immediately breaks the repetitive loop for most users.
+1. **Quick win — Discover mode + Explore mode**: Random-from-top-M and skip-first-K are trivial to implement (just parameters on the existing query). Add as mode buttons or a single dropdown. Immediately breaks the repetitive loop for most users. **Implemented in v2.3.2.**
 
 2. **Principled solution — MMR diversity slider**: Adds a `diversity` parameter to the neighbor API. More elegant than random sampling and gives the user fine-grained control. Subsumes Discover mode.
 
-3. **Domain-specific — Cross-session toggle**: Adds an "Other shoots only" toggle that excludes same-path/same-date assets. Extremely effective for the photographer workflow. Requires a bit of SQL work but no changes to the embedding logic.
+3. **Domain-specific — Cross-session toggle**: Adds an "Other shoots only" toggle that excludes same-path/same-date assets. Extremely effective for the photographer workflow. Requires a bit of SQL work but no changes to the embedding logic. **Implemented in v2.3.2.**
 
 4. **Polish — Visited tracking + Jump**: Down-rank visited assets and add a "Jump" shortcut. Small quality-of-life improvements that compound over time.
 
