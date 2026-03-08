@@ -149,9 +149,9 @@ function onFilterChange() {
     }
 
     // Stored layout geometry for L2 positioning
-    var layoutGeo = { cx: 0, cy: 0, radius: 0, angles: [] };
+    var layoutGeo = { cx: 0, cy: 0, rx: 0, ry: 0, angles: [] };
 
-    // Position satellites radially
+    // Position satellites on an ellipse matching viewport aspect ratio
     function layoutSatellites() {
         var rect = container.getBoundingClientRect();
         var cx = rect.width / 2;
@@ -161,18 +161,20 @@ function onFilterChange() {
 
         var sizes = getSizes();
 
-        // Radius: leave enough room so satellites don't overlap center or edges
         // Reserve space for L2 thumbnails beyond the satellites
         var l2Size = Math.round(sizes.satSize * 0.6);
         var l2Reserve = currentDepth > 0 ? (sizes.focSize * 0.5 + l2Size + 30) : (sizes.focSize / 2 + 10);
-        var minRadius = sizes.centerMax / 2 + sizes.focSize / 2 + 20;
-        var maxRadius = Math.min(cx, cy) - l2Reserve;
-        var radius = Math.max(minRadius, maxRadius);
+
+        // Ellipse radii: use available space in each axis independently
+        var minR = sizes.centerMax / 2 + sizes.focSize / 2 + 20;
+        var rx = Math.max(minR, cx - l2Reserve);
+        var ry = Math.max(minR, cy - l2Reserve);
 
         // Store geometry for L2 positioning
         layoutGeo.cx = cx;
         layoutGeo.cy = cy;
-        layoutGeo.radius = radius;
+        layoutGeo.rx = rx;
+        layoutGeo.ry = ry;
         layoutGeo.angles = [];
         for (var a = 0; a < n; a++) {
             layoutGeo.angles.push((2 * Math.PI * a / n) - Math.PI / 2);
@@ -193,8 +195,8 @@ function onFilterChange() {
 
         for (var i = 0; i < n; i++) {
             var angle = (2 * Math.PI * i / n) - Math.PI / 2; // start from top
-            var x = cx + radius * Math.cos(angle);
-            var y = cy + radius * Math.sin(angle);
+            var x = cx + rx * Math.cos(angle);
+            var y = cy + ry * Math.sin(angle);
 
             var sat = satellites[i];
             sat.style.left = x + 'px';
@@ -304,8 +306,8 @@ function onFilterChange() {
 
         // Use stored layout geometry — no DOM measurement needed
         var baseAngle = layoutGeo.angles[satIdx];
-        var satX = layoutGeo.cx + layoutGeo.radius * Math.cos(baseAngle);
-        var satY = layoutGeo.cy + layoutGeo.radius * Math.sin(baseAngle);
+        var satX = layoutGeo.cx + layoutGeo.rx * Math.cos(baseAngle);
+        var satY = layoutGeo.cy + layoutGeo.ry * Math.sin(baseAngle);
 
         // L2 size: ~60% of satellite size
         var l2Size = Math.round(sizes.satSize * 0.6);
