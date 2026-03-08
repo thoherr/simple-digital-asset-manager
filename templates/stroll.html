@@ -48,8 +48,8 @@
             <input type="range" id="stroll-n" min="5" max="25" value="{{ neighbor_count }}">
             <span id="stroll-n-val">{{ neighbor_count }}</span>
         </label>
-        <label class="stroll-n-label" title="Depth: show neighbors-of-neighbors (0 = off)">
-            <span>Depth:</span>
+        <label class="stroll-n-label" title="Show this many neighbors-of-neighbors per satellite (0 = off)">
+            <span>Reach:</span>
             <input type="range" id="stroll-depth" min="0" max="8" value="0">
             <span id="stroll-depth-val">0</span>
         </label>
@@ -139,6 +139,9 @@ function onFilterChange() {
         }
     }
 
+    // Stored layout geometry for L2 positioning
+    var layoutGeo = { cx: 0, cy: 0, radius: 0, angles: [] };
+
     // Position satellites radially
     function layoutSatellites() {
         var rect = container.getBoundingClientRect();
@@ -154,6 +157,15 @@ function onFilterChange() {
         var minRadius = sizes.centerMax / 2 + sizes.focSize / 2 + 20;
         var maxRadius = Math.min(cx, cy) - sizes.focSize / 2 - 10;
         var radius = Math.max(minRadius, maxRadius);
+
+        // Store geometry for L2 positioning
+        layoutGeo.cx = cx;
+        layoutGeo.cy = cy;
+        layoutGeo.radius = radius;
+        layoutGeo.angles = [];
+        for (var a = 0; a < n; a++) {
+            layoutGeo.angles.push((2 * Math.PI * a / n) - Math.PI / 2);
+        }
 
         // Apply satellite sizes
         satellites.forEach(function(sat) {
@@ -269,24 +281,17 @@ function onFilterChange() {
         clearL2();
         if (neighbors.length === 0) return;
 
-        var sat = satellites[satIdx];
-        var rect = container.getBoundingClientRect();
         var sizes = getSizes();
-        var satRect = sat.getBoundingClientRect();
-        var satX = satRect.left - rect.left + satRect.width / 2;
-        var satY = satRect.top - rect.top + satRect.height / 2;
-        var cx = rect.width / 2;
-        var cy = rect.height / 2;
 
-        // Direction from center to this satellite
-        var dx = satX - cx;
-        var dy = satY - cy;
-        var baseAngle = Math.atan2(dy, dx);
+        // Use stored layout geometry — no DOM measurement needed
+        var baseAngle = layoutGeo.angles[satIdx];
+        var satX = layoutGeo.cx + layoutGeo.radius * Math.cos(baseAngle);
+        var satY = layoutGeo.cy + layoutGeo.radius * Math.sin(baseAngle);
 
         // L2 size: ~60% of satellite size
         var l2Size = Math.round(sizes.satSize * 0.6);
         // L2 radius: distance from focused satellite edge outward
-        var l2Radius = sizes.focSize * 0.5 + l2Size * 0.5 + 15;
+        var l2Radius = sizes.focSize * 0.5 + l2Size * 0.5 + 20;
 
         // Fan angle: spread L2 neighbors in an arc centered on the outward direction
         var fanSpread = Math.PI * 0.5; // 90 degrees total spread
