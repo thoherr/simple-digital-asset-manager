@@ -2195,6 +2195,49 @@ impl Catalog {
         Ok(result)
     }
 
+    /// Find all asset IDs that share the same directory (session) as the given asset.
+    /// Goes up one directory level from each of the asset's file locations to find
+    /// "session roots", then returns all asset IDs with files under those roots.
+    pub fn find_same_session_asset_ids(&self, asset_id: &str) -> Result<std::collections::HashSet<String>> {
+        let locations = self.list_file_locations_for_asset(asset_id)?;
+        let mut session_ids = std::collections::HashSet::new();
+
+        for (_hash, rel_path, volume_id) in &locations {
+            // Get the parent directory of this file
+            let parent = std::path::Path::new(rel_path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if parent.is_empty() {
+                continue;
+            }
+            // Go up one more level to get the "session root" (e.g., Capture/2026-02-22/)
+            let session_root = std::path::Path::new(&parent)
+                .parent()
+                .map(|p| {
+                    let s = p.to_string_lossy().to_string();
+                    if s.is_empty() { parent.clone() } else { s }
+                })
+                .unwrap_or_else(|| parent.clone());
+            let prefix = format!("{}%", session_root);
+
+            let mut stmt = self.conn.prepare(
+                "SELECT DISTINCT v.asset_id FROM variants v \
+                 JOIN file_locations fl ON fl.content_hash = v.content_hash \
+                 WHERE fl.volume_id = ?1 AND fl.relative_path LIKE ?2",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![volume_id, prefix], |row| {
+                row.get::<_, String>(0)
+            })?;
+            for row in rows {
+                if let Ok(id) = row {
+                    session_ids.insert(id);
+                }
+            }
+        }
+        Ok(session_ids)
+    }
+
     /// Update the relative_path for a file location (variant moved on disk).
     pub fn update_file_location_path(
         &self,

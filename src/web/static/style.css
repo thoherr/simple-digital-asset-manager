@@ -3365,6 +3365,19 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     color: #fff;
     border-color: var(--accent, #4a9eff);
 }
+.stroll-toggle-label {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    cursor: pointer;
+    margin-bottom: 0.1rem;
+}
+.stroll-toggle-label input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
 .stroll-empty {
     text-align: center;
     padding: 2rem;

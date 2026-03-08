@@ -4241,6 +4241,7 @@ pub struct StrollParams {
     pub n: Option<u32>,
     pub mode: Option<String>,
     pub skip: Option<u32>,
+    pub cross_session: Option<bool>,
 }
 
 /// GET /stroll — visual exploration page
@@ -4257,7 +4258,8 @@ pub async fn stroll_page(
             let n = params.n.unwrap_or(default_n).clamp(5, max_n);
             let mode = params.mode.as_deref().unwrap_or("nearest");
             let skip = params.skip.unwrap_or(0);
-            stroll_page_inner(&state, params.id.as_deref(), params.q.as_deref(), n, mode, skip)
+            let cross_session = params.cross_session.unwrap_or(false);
+            stroll_page_inner(&state, params.id.as_deref(), params.q.as_deref(), n, mode, skip, cross_session)
         }).await;
 
     match result {
@@ -4277,6 +4279,7 @@ fn stroll_page_inner(
     neighbor_count: u32,
     mode: &str,
     skip: u32,
+    cross_session: bool,
 ) -> Result<StrollPage, String> {
     let catalog = state.catalog().map_err(|e| format!("{e:#}"))?;
     let preview_gen = state.preview_generator();
@@ -4320,6 +4323,15 @@ fn stroll_page_inner(
         None
     };
 
+    // Cross-session exclusion: find all assets from the same session (directory)
+    let exclude_session: Option<std::collections::HashSet<String>> = if cross_session {
+        catalog.find_same_session_asset_ids(&center_id)
+            .ok()
+            .filter(|ids| ids.len() > 1) // only exclude if there's actually a session
+    } else {
+        None
+    };
+
     // Load center asset details
     let details = catalog
         .load_asset_details(&center_id)
@@ -4356,7 +4368,8 @@ fn stroll_page_inner(
         "explore" => (skip as usize) + (neighbor_count as usize), // skip + take
         _ => neighbor_count as usize, // nearest: exact count
     };
-    let fetch_limit = if filter_ids.is_some() { base_limit * 4 } else { base_limit };
+    let has_filters = filter_ids.is_some() || exclude_session.is_some();
+    let fetch_limit = if has_filters { base_limit * 4 } else { base_limit };
     let neighbors = if let Some(emb) = query_emb {
         let spec = crate::ai::get_model_spec(model_id)
             .ok_or_else(|| format!("Unknown model: {model_id}"))?;
@@ -4383,17 +4396,22 @@ fn stroll_page_inner(
             idx.search(&emb, fetch_limit, Some(&center_id))
         };
 
+        // Apply common filters: query match (include) and cross-session (exclude)
+        let filtered_results: Vec<(String, f32)> = results.into_iter().filter(|(id, _)| {
+            if let Some(ref fids) = filter_ids {
+                if !fids.contains(id) { return false; }
+            }
+            if let Some(ref exc) = exclude_session {
+                if exc.contains(id) { return false; }
+            }
+            true
+        }).collect();
+
         // Apply mode-specific selection before loading full details
         let selected: Vec<(String, f32)> = match mode {
             "discover" => {
-                // Filter first, then random-sample from the pool
-                let filtered: Vec<(String, f32)> = if let Some(ref fids) = filter_ids {
-                    results.into_iter().filter(|(id, _)| fids.contains(id)).collect()
-                } else {
-                    results
-                };
-                // Deterministic-ish shuffle using current time as seed
-                let mut pool = filtered;
+                // Random-sample N from the filtered pool
+                let mut pool = filtered_results;
                 let seed = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -4409,22 +4427,13 @@ fn stroll_page_inner(
                 pool
             }
             "explore" => {
-                // Filter first, then skip the nearest, take N
-                let filtered: Vec<(String, f32)> = if let Some(ref fids) = filter_ids {
-                    results.into_iter().filter(|(id, _)| fids.contains(id)).collect()
-                } else {
-                    results
-                };
-                let skip_n = (skip as usize).min(filtered.len());
-                filtered.into_iter().skip(skip_n).take(neighbor_count as usize).collect()
+                // Skip the nearest, take N
+                let skip_n = (skip as usize).min(filtered_results.len());
+                filtered_results.into_iter().skip(skip_n).take(neighbor_count as usize).collect()
             }
             _ => {
-                // Nearest: filter and take N
-                if let Some(ref fids) = filter_ids {
-                    results.into_iter().filter(|(id, _)| fids.contains(id)).take(neighbor_count as usize).collect()
-                } else {
-                    results.into_iter().take(neighbor_count as usize).collect()
-                }
+                // Nearest: take N
+                filtered_results.into_iter().take(neighbor_count as usize).collect()
             }
         };
 
@@ -4546,13 +4555,14 @@ pub async fn stroll_neighbors_api(
     let q = params.q;
     let mode = params.mode.unwrap_or_default();
     let skip = params.skip.unwrap_or(0);
+    let cross_session = params.cross_session.unwrap_or(false);
     let default_n = state.stroll_neighbors;
     let max_n = state.stroll_neighbors_max;
     let n = params.n.unwrap_or(default_n).clamp(5, max_n);
     let result: Result<Result<serde_json::Value, String>, _> =
         tokio::task::spawn_blocking(move || {
             let m = if mode.is_empty() { "nearest" } else { &mode };
-            let page = stroll_page_inner(&state, Some(&asset_id), q.as_deref(), n, m, skip)?;
+            let page = stroll_page_inner(&state, Some(&asset_id), q.as_deref(), n, m, skip, cross_session)?;
             Ok(serde_json::json!({
                 "center": {
                     "asset_id": page.center.asset_id,

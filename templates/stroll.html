@@ -48,6 +48,10 @@
             <button class="stroll-mode-btn" data-mode="discover" title="Random selection from a wider pool — different each time">Discover</button>
             <button class="stroll-mode-btn" data-mode="explore" title="Skip past the most similar to find more distant connections">Explore</button>
         </div>
+        <label class="stroll-toggle-label" title="Exclude assets from the same session/directory — show only other shoots">
+            <input type="checkbox" id="stroll-cross-session">
+            <span>Other shoots</span>
+        </label>
         <label class="stroll-n-label" title="Number of neighbors">
             <span>Neighbors:</span>
             <input type="range" id="stroll-n" min="5" max="{{ stroll_neighbors_max }}" value="{{ neighbor_count }}">
@@ -134,6 +138,15 @@ function onFilterChange() {
     skipSlider.addEventListener('input', function() { skipVal.textContent = skipSlider.value; });
     skipSlider.addEventListener('change', function() {
         currentSkip = parseInt(skipSlider.value, 10);
+        navigate(centerId);
+    });
+
+    // Cross-session toggle
+    var crossSessionCheckbox = document.getElementById('stroll-cross-session');
+    var crossSession = new URLSearchParams(window.location.search).get('cross_session') === 'true';
+    crossSessionCheckbox.checked = crossSession;
+    crossSessionCheckbox.addEventListener('change', function() {
+        crossSession = crossSessionCheckbox.checked;
         navigate(centerId);
     });
 
@@ -630,11 +643,12 @@ function onFilterChange() {
         var apiUrl = '/api/stroll/neighbors?id=' + encodeURIComponent(newId) + '&n=' + currentN;
         if (currentMode !== 'nearest') apiUrl += '&mode=' + currentMode;
         if (currentMode === 'explore' && currentSkip > 0) apiUrl += '&skip=' + currentSkip;
+        if (crossSession) apiUrl += '&cross_session=true';
         if (currentQuery) apiUrl += '&q=' + encodeURIComponent(currentQuery);
         fetch(apiUrl)
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                history.pushState({ id: newId, n: currentN, mode: currentMode, skip: currentSkip }, '', strollUrl(newId));
+                history.pushState({ id: newId, n: currentN, mode: currentMode, skip: currentSkip, crossSession: crossSession }, '', strollUrl(newId));
 
                 centerId = data.center.asset_id;
                 var centerImg = centerEl.querySelector('img');
@@ -714,6 +728,7 @@ function onFilterChange() {
                 skipControl.style.display = currentMode === 'explore' ? '' : 'none';
             }
             if (e.state.skip !== undefined) { currentSkip = e.state.skip; skipSlider.value = currentSkip; skipVal.textContent = currentSkip; }
+            if (e.state.crossSession !== undefined) { crossSession = e.state.crossSession; crossSessionCheckbox.checked = crossSession; }
             navigate(e.state.id);
         }
     });
@@ -725,10 +740,11 @@ function onFilterChange() {
         if (currentN !== {{ neighbor_count }}) u += '&n=' + currentN;
         if (currentMode !== 'nearest') u += '&mode=' + currentMode;
         if (currentMode === 'explore' && currentSkip > 0) u += '&skip=' + currentSkip;
+        if (crossSession) u += '&cross_session=true';
         if (q) u += '&q=' + encodeURIComponent(q);
         return u;
     }
-    history.replaceState({ id: centerId, n: currentN, mode: currentMode, skip: currentSkip }, '', strollUrl(centerId));
+    history.replaceState({ id: centerId, n: currentN, mode: currentMode, skip: currentSkip, crossSession: crossSession }, '', strollUrl(centerId));
 
     // Load smart preview for center
     function loadSmartPreview(img) {
