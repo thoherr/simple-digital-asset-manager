@@ -3276,9 +3276,14 @@ body.has-batch-toolbar { padding-bottom: 60px; }
 }
 .stroll-l2 img {
     border: 1px solid rgba(255,255,255,0.2);
+    transition: width 0.15s, height 0.15s;
 }
 .stroll-l2.focused {
     z-index: 4;
+}
+.stroll-l2.focused img {
+    outline: 2px solid var(--accent, #4a9eff);
+    outline-offset: 2px;
 }
 .stroll-l2 .stroll-sat-score {
     font-size: 0.55rem;
