@@ -671,13 +671,17 @@ function onFilterChange() {
                 // Let the browser handle Escape when in fullscreen
                 if (document.fullscreenElement || document.webkitFullscreenElement) break;
                 e.preventDefault();
-                if (strollHistoryDepth > 0) {
-                    strollHistoryDepth--;
-                    window.history.back();
-                } else {
-                    // No stroll history left — go back to where we came from
-                    window.history.back();
-                }
+                e.stopImmediatePropagation();
+                // Defer navigation so the Escape key event fully completes
+                // on this page before bfcache restores the previous page
+                setTimeout(function() {
+                    if (strollHistoryDepth > 0) {
+                        strollHistoryDepth--;
+                        window.history.back();
+                    } else {
+                        window.history.back();
+                    }
+                }, 0);
                 break;
             case 'B':
                 if (e.shiftKey) {
