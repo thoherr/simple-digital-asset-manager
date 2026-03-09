@@ -300,6 +300,30 @@ max_age_days = 30
 
 ---
 
+## [contact_sheet] Section
+
+Default settings for `dam contact-sheet`. All fields are optional; CLI flags override these values.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `layout` | string | `"standard"` | Layout preset: `dense`, `standard`, `large` |
+| `paper` | string | `"a4"` | Paper size: `a4`, `letter`, `a3` |
+| `fields` | string | `"filename,date,rating"` | Comma-separated metadata fields |
+| `margin` | float | `15.0` | Page margin in mm |
+| `quality` | integer | `92` | JPEG quality for page images (1--100) |
+| `label_style` | string | `"border"` | Color label display: `border`, `dot`, `none` |
+| `copyright` | string | `""` | Copyright text for page footer |
+
+```toml
+[contact_sheet]
+layout = "dense"
+paper = "a3"
+label_style = "dot"
+copyright = "© 2026 Thomas Herrmann"
+```
+
+---
+
 ## [ai] Section
 
 > **Feature-gated**: these settings only take effect when dam is built with `--features ai`.
@@ -429,6 +453,22 @@ prefer = "Selects"
 # Skip files verified within this many days (incremental verify).
 max_age_days = 30
 
+[contact_sheet]
+# Layout preset: "dense", "standard", "large".
+layout = "standard"
+# Paper size: "a4", "letter", "a3".
+paper = "a4"
+# Comma-separated metadata fields below each thumbnail.
+fields = "filename,date,rating"
+# Page margin in mm.
+margin = 15.0
+# JPEG quality for page images (1-100).
+quality = 92
+# Color label display: "border", "dot", "none".
+label_style = "border"
+# Copyright text for page footer.
+copyright = ""
+
 # AI auto-tagging settings (only with --features ai).
 [ai]
 model = "siglip-vit-b16-256"
@@ -495,6 +535,13 @@ When a field is absent from `dam.toml`, these defaults apply:
 | `import.embeddings` | `false` |
 | `dedup.prefer` | none |
 | `verify.max_age_days` | none |
+| `contact_sheet.layout` | `"standard"` |
+| `contact_sheet.paper` | `"a4"` |
+| `contact_sheet.fields` | `"filename,date,rating"` |
+| `contact_sheet.margin` | `15.0` |
+| `contact_sheet.quality` | `92` |
+| `contact_sheet.label_style` | `"border"` |
+| `contact_sheet.copyright` | `""` |
 | `ai.model` | `"siglip-vit-b16-256"` |
 | `ai.threshold` | `0.1` |
 | `ai.labels` | none |

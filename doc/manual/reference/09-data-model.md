@@ -42,7 +42,7 @@ erDiagram
     Variant {
         string content_hash PK "SHA-256 of file contents"
         UUID asset_id FK "parent asset"
-        string role "original, processed, export, sidecar"
+        string role "original, alternate, processed, export, sidecar"
         string format "file extension (nef, jpg, tif, ...)"
         u64 file_size "bytes"
         string original_filename "filename at import"
@@ -171,7 +171,7 @@ A concrete file belonging to an Asset. A RAW file, its JPEG conversion, and a hi
 |-------|------|-------------|
 | `content_hash` | String | Primary key. SHA-256 hash of the file contents. The same file always produces the same hash regardless of where it is stored. |
 | `asset_id` | UUID | Foreign key to the parent Asset. |
-| `role` | VariantRole | Purpose within the asset group: `original`, `processed`, `export`, or `sidecar`. See [Variant Roles](#variant-roles). |
+| `role` | VariantRole | Purpose within the asset group: `original`, `alternate`, `processed`, `export`, or `sidecar`. See [Variant Roles](#variant-roles). |
 | `format` | String | Lowercase file extension without dot (e.g. `nef`, `jpg`, `tif`, `mp4`). |
 | `file_size` | u64 | File size in bytes. |
 | `original_filename` | String | Filename at import time (e.g. `DSC_4521.NEF`). |
@@ -343,11 +343,12 @@ Each Variant carries a `role` that describes its purpose within the asset group.
 | Role | Meaning | Examples |
 |------|---------|----------|
 | **Original** | Camera source file. Each asset should have exactly one. | NEF, ARW, CR3, in-camera JPEG |
+| **Alternate** | Secondary variant from grouping (e.g., JPEG paired with RAW original). | In-camera JPEG grouped with RAW |
 | **Processed** | An edited or intermediate version, not straight from camera. | PSD, layered TIFF, edited DNG |
 | **Export** | A derivative output produced by an editing tool. | Resized JPEG, web TIFF, final deliverable |
 | **Sidecar** | A non-media sidecar file imported as a variant. | Embedded metadata files |
 
-When assets are merged via `dam group` or `dam auto-group`, donor variants with the `original` role are automatically re-roled to `export` to avoid having multiple originals in one asset.
+When assets are merged via `dam group` or `dam auto-group`, donor variants with the `original` role are automatically re-roled to `alternate` to avoid having multiple originals in one asset.
 
 ---
 
@@ -355,7 +356,7 @@ When assets are merged via `dam group` or `dam auto-group`, donor variants with 
 
 The preview selection algorithm determines which variant is shown in the browse grid and asset detail page. The scoring follows this priority:
 
-1. **Role** (highest weight): Export (300) > Processed (200) > Original (100) > Sidecar (0)
+1. **Role** (highest weight): Export (300) > Processed (200) > Original (100) > Alternate (50) > Sidecar (0)
 2. **Format bonus** (+50): Standard image formats (`jpg`, `jpeg`, `png`, `tiff`, `tif`, `webp`) are preferred over RAW
 3. **File size tiebreak**: Larger files score slightly higher (up to +49 points)
 

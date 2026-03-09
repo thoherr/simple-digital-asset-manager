@@ -332,8 +332,122 @@ dam --json export "rating:5" /tmp/out/ | jq '.files_exported'
 ### SEE ALSO
 
 [search](#dam-search) -- find assets to export.
+[contact-sheet](#dam-contact-sheet) -- generate a PDF contact sheet from search results.
 [relocate](05-maintain-commands.md#dam-relocate) -- move/copy asset files between volumes with catalog updates.
 [CLI Conventions](00-cli-conventions.md) -- global flags, scripting patterns.
+
+---
+
+## dam contact-sheet
+
+### NAME
+
+dam-contact-sheet -- generate a PDF contact sheet from search results
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] contact-sheet <QUERY> <OUTPUT> [OPTIONS]
+```
+
+### DESCRIPTION
+
+Generates a printable PDF contact sheet with thumbnail grids from assets matching a search query. Pages are composed as images at 300 DPI and wrapped in PDF. Smart previews (2560px) are preferred with automatic fallback to regular previews (800px).
+
+Layout presets control the grid density:
+
+- **dense** (6x8): Maximum thumbnails per page.
+- **standard** (4x5): Balanced view (default).
+- **large** (3x3): Detailed thumbnails.
+
+Color labels can be rendered as colored borders around cells, small dots next to filenames, or hidden entirely.
+
+### ARGUMENTS
+
+**QUERY** (required)
+: Search query (same syntax as `dam search`).
+
+**OUTPUT** (required)
+: Output PDF file path.
+
+### OPTIONS
+
+**--layout \<PRESET\>**
+: Layout preset: `dense`, `standard`, `large` (default: `standard`).
+
+**--columns \<N\>**
+: Number of columns (overrides layout preset).
+
+**--rows \<N\>**
+: Number of rows per page (overrides layout preset).
+
+**--paper \<SIZE\>**
+: Paper size: `a4`, `letter`, `a3` (default: `a4`).
+
+**--landscape**
+: Use landscape orientation.
+
+**--title \<TEXT\>**
+: Title printed in page headers.
+
+**--fields \<FIELDS\>**
+: Comma-separated metadata fields: `filename`, `date`, `rating`, `label`, `format`, `size`, `dimensions`.
+
+**--sort \<ORDER\>**
+: Sort order: `date`, `name`, `rating`, `filename`.
+
+**--no-smart**
+: Use regular previews instead of smart previews.
+
+**--group-by \<FIELD\>**
+: Group by field with section headers: `date`, `volume`, `collection`, `label`.
+
+**--margin \<MM\>**
+: Page margin in millimeters.
+
+**--label-style \<STYLE\>**
+: Color label display: `border`, `dot`, `none` (default: `border`).
+
+**--quality \<N\>**
+: JPEG quality for page images, 1-100.
+
+**--copyright \<TEXT\>**
+: Copyright text in center of page footer.
+
+**--dry-run**
+: Report page/asset count without generating.
+
+### EXAMPLES
+
+Basic contact sheet of all 5-star images:
+
+```bash
+dam contact-sheet "rating:5" stars.pdf
+```
+
+Dense layout on A3 landscape with title:
+
+```bash
+dam contact-sheet "tag:landscape" landscapes.pdf --layout dense --paper a3 --landscape --title "Landscapes 2026"
+```
+
+Group by date with copyright:
+
+```bash
+dam contact-sheet "" all.pdf --group-by date --copyright "© 2026 Thomas Herrmann"
+```
+
+Dry run to check page count:
+
+```bash
+dam contact-sheet "format:nef" raw.pdf --dry-run
+```
+
+### SEE ALSO
+
+[search](#dam-search) -- find assets matching a query.
+[export](#dam-export) -- copy files to a directory.
+[generate-previews](05-maintain-commands.md#dam-generate-previews) -- generate or upgrade previews.
 
 ---
 

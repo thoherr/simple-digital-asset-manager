@@ -177,7 +177,7 @@ those variants and merges them.
 ### Merge rules
 
 - The **oldest asset** (by `created_at`) is chosen as the target.
-- Donor variants that had the **Original** role are re-roled to **Export**
+- Donor variants that had the **Original** role are re-roled to **Alternate**
   (in both the YAML sidecar and the SQLite catalog) to avoid multiple
   originals on one asset.
 - **Tags** from donor assets are merged into the target (union, deduplicated).
@@ -248,7 +248,7 @@ flowchart TD
     G --> H
     H --> I[Filter to groups with 2+ assets]
     I --> J[Select target per group:\n1. Prefer asset with RAW variant\n2. Oldest by created_at]
-    J --> K[Merge donor variants into target\nre-role Original to Export]
+    J --> K[Merge donor variants into target\nre-role Original to Alternate]
 ```
 
 **Matching examples:**
@@ -266,7 +266,7 @@ the shortest root. For example, `Z91_8561`, `Z91_8561-1`, and
 
 **Target selection:** Within each group, the target asset is the one with a RAW
 variant (if any), breaking ties by oldest `created_at` timestamp. Donor
-variants with the Original role are re-roled to Export, just like manual
+variants with the Original role are re-roled to Alternate, just like manual
 grouping.
 
 ### Output options
@@ -281,6 +281,29 @@ dam auto-group --log --apply     # per-group progress on stderr
 In the web UI, select multiple assets on the browse page, then click the
 **"Group by name"** button in the batch toolbar. A confirmation dialog shows
 how many groups would be formed before applying.
+
+---
+
+## Splitting Assets
+
+The inverse of grouping: extract one or more variants from an asset into new standalone assets.
+
+```
+# View variants of an asset
+dam show abc12345
+
+# Extract the JPEG variant into its own asset
+dam split abc12345 sha256:def456...
+```
+
+Each extracted variant becomes a new asset with:
+- Role set to `original`
+- Tags, rating, color label, and description copied from the source
+- Associated recipes moved with the variant
+
+In the web UI, the asset detail page shows checkboxes next to each variant. Select the variants to extract and click "Extract as new asset(s)".
+
+**Constraints:** At least one variant must remain in the source asset.
 
 ---
 

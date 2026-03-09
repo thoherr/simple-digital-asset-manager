@@ -739,6 +739,94 @@ curl -X POST http://localhost:8080/api/batch/detect-faces \
   -d '{"asset_ids": ["uuid-1", "uuid-2", "uuid-3"]}'
 ```
 
+### `POST /api/asset/{id}/split` -- Split Variants Out of Asset
+
+Splits one or more variants out of a multi-variant asset into new standalone assets. Each specified variant becomes a new asset with its own sidecar YAML. Recipes attached to split variants move with them.
+
+**Content-Type**: `application/json`
+
+**Request body**:
+```json
+{
+  "variant_hashes": ["sha256:abcdef1234...", "sha256:567890abcd..."]
+}
+```
+
+| Field            | Type     | Description                              |
+|------------------|----------|------------------------------------------|
+| `variant_hashes` | string[] | Content hashes of variants to split out  |
+
+**Response**:
+```json
+{
+  "source_id": "550e8400-e29b-41d4-a716-446655440000",
+  "new_assets": [
+    {
+      "asset_id": "660f9511-f30c-52e5-b827-557766551111",
+      "variant_hash": "sha256:abcdef1234...",
+      "original_filename": "DSC_001_edit.tif"
+    }
+  ]
+}
+```
+
+| Field                          | Type     | Description                          |
+|--------------------------------|----------|--------------------------------------|
+| `source_id`                    | string   | UUID of the original (source) asset  |
+| `new_assets[].asset_id`       | string   | UUID of the newly created asset      |
+| `new_assets[].variant_hash`   | string   | Content hash of the split variant    |
+| `new_assets[].original_filename` | string | Original filename of the variant   |
+
+**Errors**: Returns 404 if the asset does not exist. Returns 400 if a variant hash is not found on the asset, or if splitting would leave the source asset with zero variants.
+
+```bash
+curl -X POST http://localhost:8080/api/asset/{id}/split \
+  -H "Content-Type: application/json" \
+  -d '{"variant_hashes": ["sha256:abcdef1234..."]}'
+```
+
+### `POST /api/batch/group` -- Merge Assets
+
+Merges selected assets into a single asset. Donor variants are moved to the target asset, donor assets are removed. Tags and recipes are merged.
+
+**Content-Type**: `application/json`
+
+**Request body**:
+```json
+{
+  "asset_ids": ["uuid-1", "uuid-2", "uuid-3"],
+  "target_id": "uuid-1"
+}
+```
+
+| Field       | Type           | Description                                          |
+|-------------|----------------|------------------------------------------------------|
+| `asset_ids` | string[]       | Array of asset UUIDs to merge                        |
+| `target_id` | string or null | Optional target asset UUID (default: auto-selected)  |
+
+**Response**:
+```json
+{
+  "target_id": "uuid-1",
+  "variants_moved": 2,
+  "donors_removed": 2
+}
+```
+
+| Field            | Type   | Description                          |
+|------------------|--------|--------------------------------------|
+| `target_id`      | string | UUID of the target (surviving) asset |
+| `variants_moved` | u32    | Number of variants moved to target   |
+| `donors_removed` | u32    | Number of donor assets removed       |
+
+**Errors**: Returns 400 if fewer than 2 asset IDs are provided.
+
+```bash
+curl -X POST http://localhost:8080/api/batch/group \
+  -H "Content-Type: application/json" \
+  -d '{"asset_ids": ["uuid-1", "uuid-2", "uuid-3"], "target_id": "uuid-1"}'
+```
+
 ### `POST /api/batch/auto-group` -- Auto-Group by Stem
 
 Groups selected assets by filename stem using fuzzy prefix matching. Merges donor variants into target assets (shortest stem, preferring RAW originals).

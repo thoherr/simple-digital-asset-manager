@@ -30,7 +30,7 @@ A concrete file belonging to an asset. Multiple variants form a group (e.g. RAW 
 |---|---|---|
 | content_hash | SHA-256 | Primary identity, derived from file content |
 | asset_id | UUID | Parent asset |
-| role | Enum | Original, Processed, Export, Sidecar |
+| role | Enum | Original, Alternate, Processed, Export, Sidecar |
 | format | String | File extension / MIME type |
 | file_size | u64 | Size in bytes |
 | original_filename | String | Filename at import time |
@@ -206,7 +206,7 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - `find_duplicates() -> Vec<DuplicateGroup>` — find variants with same hash on multiple locations.
 - `verify(paths, volume, asset, config) -> VerifyResult` — re-hash files on disk and compare against stored content hashes. Reports `Ok`, `Mismatch`, `Modified` (recipe with changed hash), `Missing`, `Skipped`, `SkippedRecent`, or `Untracked`. Modified recipes are not treated as failures — their stored hash is updated. Supports path mode (verify specific files/dirs), catalog mode (verify all locations), `--volume`, `--asset`, `--include`/`--skip` filters, `--max-age` (skip files verified within N days), and `--force` (override `--max-age`). Persists `verified_at` timestamps to sidecar YAML for both variant and recipe locations.
 - `refresh(paths, volume, asset_id, dry_run, media) -> RefreshResult` — re-read metadata from changed recipe/sidecar files. Iterates recipe file locations, compares on-disk hash to stored hash, and for changed files re-extracts XMP metadata and updates catalog + sidecar. Reports `Unchanged`, `Refreshed`, `Missing`, or `Offline`. When `media` is true, also scans JPEG/TIFF variant files and re-extracts embedded XMP metadata. Lighter than `sync` — only touches metadata, never file locations.
-- `fix_roles(paths, volume, asset, apply) -> FixRolesResult` — scan multi-variant assets with a RAW variant and re-role non-RAW variants from `Original` to `Export`. Assets with only non-RAW variants are untouched. Dry-run by default; `--apply` writes changes to both sidecar YAML and SQLite catalog.
+- `fix_roles(paths, volume, asset, apply) -> FixRolesResult` — scan multi-variant assets with a RAW variant and re-role non-RAW variants from `Original` to `Alternate`. Assets with only non-RAW variants are untouched. Dry-run by default; `--apply` writes changes to both sidecar YAML and SQLite catalog.
 - `cleanup(volume, apply) -> CleanupResult` — remove stale location/recipe records, orphaned assets, and all orphaned derived files (previews, smart previews, SigLIP embeddings, face crops, ArcFace embeddings).
 - `delete_assets(asset_ids, apply, remove_files) -> DeleteResult` — remove assets from the catalog. Report-only by default; `apply` executes deletion (asset rows, variants, file locations, recipes, previews, smart previews, face crops, face/embedding DB records, embedding binaries, sidecar YAML, collection memberships, stack membership). `remove_files` (requires `apply`) also deletes physical files from disk. Supports ID prefix matching and stdin piping.
 - `sync_metadata(volume, asset, dry_run, media) -> SyncMetadataResult` — bidirectional XMP metadata sync. Inbound: re-reads externally modified XMP recipes. Outbound: writes pending DAM edits. Detects conflicts when both sides changed.
@@ -479,7 +479,9 @@ dam show <asset-id>                               # show asset details
 dam tag <asset-id> [--remove] <tags...>           # add/remove tags
 dam edit <id> [--name N] [--description T] [--rating R] [--label C] [--clear-*]  # edit metadata
 dam delete <ids...> [--apply] [--remove-files]    # remove assets from catalog
+dam contact-sheet <query> <output> [--columns N] [--thumb-size N] [--title T] [--metadata]  # generate thumbnail grid image
 dam group <variant-hashes...>                     # group variants into one asset
+dam split <asset-id> <variant-hashes...>          # split variants into new assets
 dam relocate <id> <vol> [--remove-source] [--dry-run]  # copy/move asset
 dam verify [PATHS...] [--volume V] [--asset ID] [--include G] [--skip G] [--max-age N] [--force]  # check file integrity
 dam sync <PATHS...> [--volume V] [--apply] [--remove-stale]  # reconcile catalog with disk

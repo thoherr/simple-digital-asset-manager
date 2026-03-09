@@ -452,7 +452,7 @@ Merges multiple variants (identified by their content hashes) into a single asse
 
 The target asset is the oldest by creation date among the variants' current assets. All other ("donor") assets have their variants, tags, and recipes merged into the target.
 
-Donor variants that have the role `original` are re-roled to `export` to avoid multiple originals on the same asset. This role change is applied in both the YAML sidecar and the SQLite catalog.
+Donor variants that have the role `original` are re-roled to `alternate` to avoid multiple originals on the same asset. This role change is applied in both the YAML sidecar and the SQLite catalog.
 
 After merging, donor assets are deleted (their sidecar YAML files and catalog rows are removed). The target asset's denormalized columns (best variant hash, primary format, variant count) are updated.
 
@@ -489,9 +489,81 @@ dam group abc123... def456... 789abc...
 
 ### SEE ALSO
 
+[split](#dam-split) -- the inverse operation: extract variants into standalone assets.
 [auto-group](#dam-auto-group) -- automatically group assets by filename stem.
 [show](04-retrieve-commands.md#dam-show) -- display variant hashes for an asset.
 [fix-roles](05-maintain-commands.md#dam-fix-roles) -- fix variant roles after grouping.
+
+---
+
+## dam split
+
+### NAME
+
+dam-split -- extract variants from an asset into new standalone assets
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] split <ASSET_ID> <VARIANT_HASHES...>
+```
+
+### DESCRIPTION
+
+Splits one or more variants out of an existing asset, creating a new standalone asset for each extracted variant. This is the inverse of `dam group`.
+
+Each extracted variant:
+
+- Becomes the sole variant of a new asset with role `original`.
+- Inherits tags, rating, color label, and description from the source asset.
+- Takes associated recipes with it.
+- Gets a deterministic UUID derived from its content hash.
+
+The source asset retains all non-extracted variants. At least one variant must remain in the source asset.
+
+### ARGUMENTS
+
+**ASSET_ID** (required)
+: Asset ID (or unique prefix) to split.
+
+**VARIANT_HASHES** (required)
+: Content hashes of variants to extract.
+
+### OPTIONS
+
+Standard global flags (`--json`, `--log`, `--time`).
+
+### EXAMPLES
+
+Show variants of an asset:
+
+```bash
+dam show abc12345
+```
+
+Extract a specific variant into its own asset:
+
+```bash
+dam split abc12345 sha256:def456...
+```
+
+Extract multiple variants (each becomes a separate asset):
+
+```bash
+dam split abc12345 sha256:aaa... sha256:bbb...
+```
+
+JSON output for scripting:
+
+```bash
+dam --json split abc12345 sha256:def456...
+```
+
+### SEE ALSO
+
+[group](#dam-group) -- the inverse operation: merge variants into a single asset.
+[auto-group](#dam-auto-group) -- automatically group assets by filename stem.
+[show](04-retrieve-commands.md#dam-show) -- display variant hashes for an asset.
 
 ---
 
@@ -520,7 +592,7 @@ Groups assets by filename stem using fuzzy prefix matching. This handles the com
 
 **Target selection** within each group: (1) prefer the asset that has a RAW variant, then (2) the oldest asset by creation date.
 
-Without `--apply`, runs in report-only mode (dry run) and shows what would be grouped. With `--apply`, performs the merging: donor variants are moved to the target asset with their role changed from `original` to `export`, tags and recipes are merged, and donor assets are deleted.
+Without `--apply`, runs in report-only mode (dry run) and shows what would be grouped. With `--apply`, performs the merging: donor variants are moved to the target asset with their role changed from `original` to `alternate`, tags and recipes are merged, and donor assets are deleted.
 
 An optional search query scopes which assets are considered. Only assets matching the query participate in grouping.
 

@@ -91,7 +91,7 @@ dam creates **one Asset** with:
 | File | Role | Record Type |
 |---|---|---|
 | `DSC_0042.nef` | Original (primary) | Variant |
-| `DSC_0042.jpg` | Extra variant | Variant |
+| `DSC_0042.jpg` | Alternate variant | Variant |
 | `DSC_0042.xmp` | Processing sidecar | Recipe |
 
 RAW files always take priority as the primary variant because they represent the original capture. The primary variant defines the asset's identity and provides the authoritative EXIF data.
@@ -116,7 +116,7 @@ dam show <asset-id>
 ```
 Asset: Z91_8561
   Variant 1 (Original): Z91_8561.ARW [abc123...]
-  Variant 2 (Export):    Z91_8561.jpg [def456...]
+  Variant 2 (Alternate): Z91_8561.jpg [def456...]
   Recipe 1: Z91_8561.ARW.xmp
   Recipe 2: Z91_8561.ARW.cos
 ```

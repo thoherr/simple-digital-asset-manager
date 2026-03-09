@@ -2,7 +2,7 @@
 
 Living document tracking planned enhancements. Previous proposals (all implemented or deferred) are in `archive/`.
 
-Current version: **v2.3.5** (2026-03-09)
+Current version: **v2.4.0** (2026-03-09)
 
 ---
 
@@ -32,18 +32,6 @@ SigLIP embedding generation on CPU is slow for large catalogs. CoreML (macOS) or
 - Batch processing with progress reporting
 
 **Complexity:** Medium. ONNX Runtime supports execution providers; main work is build/packaging.
-
-### Contact Sheet / PDF Export
-
-Generate printable overview sheets for reviewing shoots offline or sharing selects.
-
-**Scope:**
-- `dam export --contact-sheet <QUERY> <OUTPUT.pdf>` — grid of thumbnails with metadata
-- Configurable: columns, rows per page, metadata fields shown (name, date, rating, labels)
-- Uses existing preview images (no regeneration needed)
-- Optional: group by date, volume, or collection
-
-**Complexity:** Medium. Needs a PDF generation crate (e.g., `printpdf` or `genpdf`).
 
 ### IPTC/EXIF Write-Back
 
@@ -177,3 +165,4 @@ All previous proposals are in `doc/proposals/archive/`. Key milestones:
 - **v2.0–v2.1**: AI — auto-tag, embeddings, similarity search, suggest tags
 - **v2.2**: Performance — SQLite pragmas, single connection, denormalized columns
 - **v2.3**: Stroll, sync-metadata, comprehensive cleanup, faces/people
+- **v2.4**: Contact sheet export, split command, alternate variant role, grouped CLI help
