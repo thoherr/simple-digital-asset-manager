@@ -669,7 +669,14 @@ function onFilterChange() {
                 break;
             case 'Escape':
                 e.preventDefault();
-                window.history.back();
+                if (strollHistoryDepth > 0) {
+                    strollHistoryDepth--;
+                    window.history.back();
+                } else {
+                    // No stroll history left — go to browse
+                    var home = sessionStorage.getItem('dam-browse-home') || '/';
+                    window.location.href = home;
+                }
                 break;
             case 'B':
                 if (e.shiftKey) {
@@ -711,7 +718,7 @@ function onFilterChange() {
     }
 
     // Navigate to a new center
-    function navigate(newId) {
+    function navigate(newId, skipPush) {
         if (isNavigating) return;
         isNavigating = true;
 
@@ -726,7 +733,10 @@ function onFilterChange() {
         fetch(apiUrl)
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                history.pushState({ id: newId, n: currentN, mode: currentMode, skip: currentSkip, crossSession: crossSession }, '', strollUrl(newId));
+                if (!skipPush) {
+                    history.pushState({ id: newId, n: currentN, mode: currentMode, skip: currentSkip, crossSession: crossSession }, '', strollUrl(newId));
+                    strollHistoryDepth++;
+                }
 
                 centerId = data.center.asset_id;
                 var centerImg = centerEl.querySelector('img');
@@ -801,7 +811,7 @@ function onFilterChange() {
     // Expose navigate for onFilterChange
     window._strollNavigate = navigate;
 
-    // Handle browser back/forward
+    // Handle browser back/forward — restore without pushing new history
     window.addEventListener('popstate', function(e) {
         if (e.state && e.state.id) {
             if (e.state.n !== undefined) { currentN = e.state.n; nSlider.value = currentN; nVal.textContent = currentN; }
@@ -812,7 +822,7 @@ function onFilterChange() {
             }
             if (e.state.skip !== undefined) { currentSkip = e.state.skip; skipSlider.value = currentSkip; skipVal.textContent = currentSkip; }
             if (e.state.crossSession !== undefined) { crossSession = e.state.crossSession; crossSessionCheckbox.checked = crossSession; }
-            navigate(e.state.id);
+            navigate(e.state.id, true);
         }
     });
 
@@ -827,6 +837,7 @@ function onFilterChange() {
         if (q) u += '&q=' + encodeURIComponent(q);
         return u;
     }
+    var strollHistoryDepth = 0;
     history.replaceState({ id: centerId, n: currentN, mode: currentMode, skip: currentSkip, crossSession: crossSession }, '', strollUrl(centerId));
 
     // Load smart preview for center
