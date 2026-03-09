@@ -287,9 +287,16 @@
         {% if !variants.is_empty() %}
         <details open>
             <summary>Variants ({{ variants.len() }})</summary>
+            {% if variants.len() > 1 %}
+            <div id="split-toolbar" style="display:none; margin-bottom: 0.5em;">
+                <button id="split-extract-btn" class="btn btn-sm">Extract as new asset(s)</button>
+                <span id="split-count" style="margin-left: 0.5em; color: var(--text-muted);"></span>
+            </div>
+            {% endif %}
             <table class="variants-table">
                 <thead>
                     <tr>
+                        {% if variants.len() > 1 %}<th style="width:2em"></th>{% endif %}
                         <th>Role</th>
                         <th>Filename</th>
                         <th>Format</th>
@@ -300,6 +307,7 @@
                 <tbody>
                     {% for v in variants %}
                     <tr>
+                        {% if variants.len() > 1 %}<td><input type="checkbox" class="split-cb" value="{{ v.content_hash }}" {% if variants.len() <= 1 %}disabled{% endif %}></td>{% endif %}
                         <td><span class="badge">{{ v.role }}</span></td>
                         <td>{{ v.original_filename }}</td>
                         <td>{{ v.format }}</td>
@@ -317,6 +325,55 @@
                 </tbody>
             </table>
         </details>
+        {% if variants.len() > 1 %}
+        <script>
+        (function() {
+            var toolbar = document.getElementById('split-toolbar');
+            var countEl = document.getElementById('split-count');
+            var extractBtn = document.getElementById('split-extract-btn');
+            var total = {{ variants.len() }};
+
+            function getChecked() {
+                return Array.from(document.querySelectorAll('.split-cb:checked')).map(function(cb) { return cb.value; });
+            }
+
+            function updateToolbar() {
+                var checked = getChecked();
+                if (checked.length > 0 && checked.length < total) {
+                    toolbar.style.display = '';
+                    countEl.textContent = checked.length + ' of ' + total + ' selected';
+                } else {
+                    toolbar.style.display = 'none';
+                }
+            }
+
+            document.querySelectorAll('.split-cb').forEach(function(cb) {
+                cb.addEventListener('change', updateToolbar);
+            });
+
+            extractBtn.addEventListener('click', function() {
+                var hashes = getChecked();
+                if (hashes.length === 0 || hashes.length >= total) return;
+                if (!confirm('Extract ' + hashes.length + ' variant(s) into new asset(s)? Tags, rating, and label will be copied.')) return;
+                extractBtn.disabled = true;
+                fetch('/api/asset/{{ asset_id }}/split', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({variant_hashes: hashes})
+                })
+                .then(function(r) {
+                    if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+                    return r.json();
+                })
+                .then(function(data) {
+                    window.location.reload();
+                })
+                .catch(function(err) { alert('Split failed: ' + err.message); })
+                .finally(function() { extractBtn.disabled = false; });
+            });
+        })();
+        </script>
+        {% endif %}
         {% endif %}
 
         {% if !recipes.is_empty() %}

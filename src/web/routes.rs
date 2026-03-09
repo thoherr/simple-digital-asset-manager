@@ -1989,6 +1989,39 @@ pub async fn batch_group(
     }
 }
 
+// --- Split operation ---
+
+#[derive(serde::Deserialize)]
+pub struct SplitRequest {
+    pub variant_hashes: Vec<String>,
+}
+
+/// POST /api/asset/{id}/split — extract variants into new assets.
+pub async fn split_asset(
+    State(state): State<Arc<AppState>>,
+    Path(asset_id): Path<String>,
+    Json(req): Json<SplitRequest>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let engine = state.query_engine();
+        let result = engine.split(&asset_id, &req.variant_hashes)?;
+        Ok::<_, anyhow::Error>(serde_json::json!({
+            "source_id": result.source_id,
+            "new_assets": result.new_assets,
+        }))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
 // --- Stack batch operations ---
 
 #[derive(serde::Deserialize)]

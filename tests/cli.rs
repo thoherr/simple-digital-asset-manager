@@ -4462,6 +4462,251 @@ fn group_json_output() {
 }
 
 #[test]
+fn split_extracts_variant_into_new_asset() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Create two files with the same stem so they auto-group
+    std::fs::write(root.join("IMG_001.ARW"), b"raw-split-test").unwrap();
+    std::fs::write(root.join("IMG_001.JPG"), b"jpg-split-test").unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["import", root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Should be 1 asset with 2 variants
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", ""])
+        .output()
+        .unwrap();
+    let ids: Vec<&str> = std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.is_empty())
+        .collect();
+    assert_eq!(ids.len(), 1);
+
+    // Get variant hashes
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "show", ids[0]])
+        .output()
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let variants = parsed["variants"].as_array().unwrap();
+    assert_eq!(variants.len(), 2);
+
+    // Find the non-original (alternate) variant and split it out
+    let alt_hash = variants
+        .iter()
+        .find(|v| v["role"].as_str().unwrap() != "original")
+        .unwrap()["content_hash"]
+        .as_str()
+        .unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["split", ids[0], alt_hash])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Split 1 variant(s)"));
+
+    // Should now be 2 assets
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", ""])
+        .output()
+        .unwrap();
+    let new_ids: Vec<&str> = std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.is_empty())
+        .collect();
+    assert_eq!(new_ids.len(), 2);
+}
+
+#[test]
+fn split_json_output() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    std::fs::write(root.join("IMG_002.ARW"), b"raw-split-json").unwrap();
+    std::fs::write(root.join("IMG_002.JPG"), b"jpg-split-json").unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["import", root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", ""])
+        .output()
+        .unwrap();
+    let ids: Vec<&str> = std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.is_empty())
+        .collect();
+    assert_eq!(ids.len(), 1);
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "show", ids[0]])
+        .output()
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let variants = parsed["variants"].as_array().unwrap();
+    let alt_hash = variants
+        .iter()
+        .find(|v| v["role"].as_str().unwrap() != "original")
+        .unwrap()["content_hash"]
+        .as_str()
+        .unwrap();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "split", ids[0], alt_hash])
+        .output()
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(parsed["source_id"].is_string());
+    assert_eq!(parsed["new_assets"].as_array().unwrap().len(), 1);
+    assert!(parsed["new_assets"][0]["asset_id"].is_string());
+    assert!(parsed["new_assets"][0]["variant_hash"].is_string());
+    assert!(parsed["new_assets"][0]["original_filename"].is_string());
+}
+
+#[test]
+fn split_refuses_all_variants() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    std::fs::write(root.join("single.jpg"), b"single-file").unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["import", root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", ""])
+        .output()
+        .unwrap();
+    let id = std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .lines()
+        .next()
+        .unwrap()
+        .trim();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "show", id])
+        .output()
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let hash = parsed["variants"][0]["content_hash"].as_str().unwrap();
+
+    // Splitting the only variant should fail
+    dam()
+        .current_dir(&root)
+        .args(["split", id, hash])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Cannot extract all variants"));
+}
+
+#[test]
+fn split_inherits_metadata() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    std::fs::write(root.join("META_001.ARW"), b"raw-meta-split").unwrap();
+    std::fs::write(root.join("META_001.JPG"), b"jpg-meta-split").unwrap();
+
+    dam()
+        .current_dir(&root)
+        .args(["import", root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", ""])
+        .output()
+        .unwrap();
+    let id = std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .lines()
+        .next()
+        .unwrap()
+        .trim();
+
+    // Add tags and rating
+    dam()
+        .current_dir(&root)
+        .args(["tag", id, "landscape", "nature"])
+        .assert()
+        .success();
+    dam()
+        .current_dir(&root)
+        .args(["edit", id, "--rating", "4"])
+        .assert()
+        .success();
+
+    // Get alternate variant hash
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "show", id])
+        .output()
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let alt_hash = parsed["variants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["role"].as_str().unwrap() != "original")
+        .unwrap()["content_hash"]
+        .as_str()
+        .unwrap();
+
+    // Split
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "split", id, alt_hash])
+        .output()
+        .unwrap();
+    let split_result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let new_id = split_result["new_assets"][0]["asset_id"].as_str().unwrap();
+
+    // Check new asset has inherited metadata
+    let output = dam()
+        .current_dir(&root)
+        .args(["--json", "show", new_id])
+        .output()
+        .unwrap();
+    let new_asset: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(new_asset["rating"].as_u64().unwrap(), 4);
+    let tags: Vec<&str> = new_asset["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t.as_str().unwrap())
+        .collect();
+    assert!(tags.contains(&"landscape"));
+    assert!(tags.contains(&"nature"));
+    // New variant should be role "original"
+    assert_eq!(new_asset["variants"][0]["role"].as_str().unwrap(), "original");
+}
+
+#[test]
 fn fix_roles_dry_run_reports() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());

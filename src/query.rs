@@ -497,6 +497,23 @@ pub struct GroupResult {
     pub donors_removed: usize,
 }
 
+/// Result of a split operation.
+#[derive(Debug, serde::Serialize)]
+pub struct SplitResult {
+    /// The source asset ID (that lost variants).
+    pub source_id: String,
+    /// New assets created from the extracted variants.
+    pub new_assets: Vec<NewSplitAsset>,
+}
+
+/// Info about one newly created asset from a split.
+#[derive(Debug, serde::Serialize)]
+pub struct NewSplitAsset {
+    pub asset_id: String,
+    pub variant_hash: String,
+    pub original_filename: String,
+}
+
 /// One stem group found by `auto_group`.
 #[derive(Debug, serde::Serialize)]
 pub struct StemGroupEntry {
@@ -1126,6 +1143,117 @@ impl QueryEngine {
             target_id: target_uuid.to_string(),
             variants_moved,
             donors_removed: donors.len(),
+        })
+    }
+
+    /// Split variants out of an asset into new standalone assets.
+    ///
+    /// Each extracted variant becomes a separate asset with role `Original`.
+    /// Tags, rating, color_label, and description are inherited from the source.
+    /// Recipes attached to extracted variants move with them.
+    pub fn split(&self, asset_id: &str, variant_hashes: &[String]) -> Result<SplitResult> {
+        if variant_hashes.is_empty() {
+            anyhow::bail!("No variant hashes provided");
+        }
+
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let store = MetadataStore::new(&self.catalog_root);
+
+        // Resolve asset ID (supports prefix matching)
+        let full_id = catalog
+            .resolve_asset_id(asset_id)?
+            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+        let source_uuid: uuid::Uuid = full_id.parse()?;
+        let mut source = store.load(source_uuid)?;
+
+        // Validate: all hashes belong to this asset
+        let source_hashes: HashSet<&str> =
+            source.variants.iter().map(|v| v.content_hash.as_str()).collect();
+        for hash in variant_hashes {
+            if !source_hashes.contains(hash.as_str()) {
+                anyhow::bail!(
+                    "Variant '{}' does not belong to asset '{}'",
+                    hash,
+                    &full_id[..8]
+                );
+            }
+        }
+
+        // Refuse to extract all variants — at least one must remain
+        let extract_set: HashSet<&str> = variant_hashes.iter().map(|h| h.as_str()).collect();
+        if extract_set.len() >= source.variants.len() {
+            anyhow::bail!("Cannot extract all variants — at least one must remain");
+        }
+
+        let mut new_assets_info = Vec::new();
+
+        // For each variant to extract, create a new asset
+        for hash in variant_hashes {
+            // Find and remove the variant from source
+            let idx = source
+                .variants
+                .iter()
+                .position(|v| v.content_hash == *hash)
+                .ok_or_else(|| anyhow::anyhow!("Variant '{}' not found", hash))?;
+            let mut variant = source.variants.remove(idx);
+
+            // Create new asset ID deterministically from variant hash
+            let new_uuid = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, hash.as_bytes());
+            variant.asset_id = new_uuid;
+            variant.role = crate::models::VariantRole::Original;
+
+            // Move recipes that belong to this variant
+            let mut moved_recipes = Vec::new();
+            source.recipes.retain(|r| {
+                if r.variant_hash == *hash {
+                    moved_recipes.push(r.clone());
+                    false
+                } else {
+                    true
+                }
+            });
+
+            // Determine asset type from the variant's format
+            let asset_type = crate::asset_service::determine_asset_type(&variant.format);
+
+            let original_filename = variant.original_filename.clone();
+
+            let new_asset = crate::models::Asset {
+                id: new_uuid,
+                name: None,
+                created_at: source.created_at,
+                asset_type,
+                tags: source.tags.clone(),
+                description: source.description.clone(),
+                rating: source.rating,
+                color_label: source.color_label.clone(),
+                preview_rotation: None,
+                variants: vec![variant.clone()],
+                recipes: moved_recipes,
+            };
+
+            // Save new asset sidecar and insert into catalog
+            store.save(&new_asset)?;
+            catalog.insert_asset(&new_asset)?;
+
+            // Update variant's asset_id and role in catalog
+            catalog.update_variant_asset_id(&variant.content_hash, &new_uuid.to_string())?;
+            catalog.update_variant_role(&variant.content_hash, "original")?;
+
+            new_assets_info.push(NewSplitAsset {
+                asset_id: new_uuid.to_string(),
+                variant_hash: variant.content_hash.clone(),
+                original_filename,
+            });
+        }
+
+        // Save updated source asset (with extracted variants removed)
+        store.save(&source)?;
+        catalog.insert_asset(&source)?;
+
+        Ok(SplitResult {
+            source_id: full_id,
+            new_assets: new_assets_info,
         })
     }
 

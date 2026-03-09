@@ -169,6 +169,7 @@ pub struct PersonOption {
 
 /// Pre-computed variant for template rendering.
 pub struct VariantRow {
+    pub content_hash: String,
     pub role: String,
     pub original_filename: String,
     pub format: String,
@@ -379,6 +380,7 @@ impl AssetPage {
                 meta.sort_by(|a, b| a.0.cmp(&b.0));
 
                 VariantRow {
+                    content_hash: v.content_hash.clone(),
                     role: v.role.clone(),
                     original_filename: v.original_filename.clone(),
                     format: v.format.clone(),

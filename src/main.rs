@@ -163,8 +163,17 @@ enum Commands {
         variant_hashes: Vec<String>,
     },
 
-    /// Auto-group assets by filename stem
+    /// Split variants out of an asset into new standalone assets
     #[command(display_order = 14)]
+    Split {
+        /// Asset ID to split
+        asset_id: String,
+        /// Content hashes of variants to extract
+        variant_hashes: Vec<String>,
+    },
+
+    /// Auto-group assets by filename stem
+    #[command(display_order = 15)]
     AutoGroup {
         /// Search query to scope assets (same syntax as dam search)
         query: Option<String>,
@@ -2020,6 +2029,29 @@ fn main() {
                     println!("  Merged {} donor asset(s)", result.donors_removed);
                 } else {
                     println!("  Already grouped (no changes)");
+                }
+            }
+            Ok(())
+        }
+        Commands::Split { asset_id, variant_hashes } => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let engine = QueryEngine::new(&catalog_root);
+            let result = engine.split(&asset_id, &variant_hashes)?;
+
+            if cli.json {
+                println!("{}", serde_json::to_string(&result)?);
+            } else {
+                let short_src = &result.source_id[..8];
+                println!(
+                    "Split {} variant(s) from asset {short_src}",
+                    result.new_assets.len()
+                );
+                for new_asset in &result.new_assets {
+                    let short_id = &new_asset.asset_id[..8];
+                    println!(
+                        "  → {short_id} ({}, {})",
+                        new_asset.original_filename, new_asset.variant_hash
+                    );
                 }
             }
             Ok(())

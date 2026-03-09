@@ -299,12 +299,15 @@ window.triggerSearch = onFilterChange;
     var selected = new Set();
     var batchBusy = false;
 
-    // Restore selection from sessionStorage (survives fresh page load on back-nav)
+    // Restore selection from sessionStorage — but clear on forced reload
     try {
         var savedSel = sessionStorage.getItem('dam-browse-selection');
         if (savedSel) {
             sessionStorage.removeItem('dam-browse-selection');
-            JSON.parse(savedSel).forEach(function(id) { selected.add(id); });
+            var navType = (performance.getEntriesByType('navigation')[0] || {}).type;
+            if (navType !== 'reload') {
+                JSON.parse(savedSel).forEach(function(id) { selected.add(id); });
+            }
         }
     } catch(e) {}
 
@@ -830,27 +833,74 @@ window.triggerSearch = onFilterChange;
     document.getElementById('batch-group').addEventListener('click', function() {
         if (selected.size < 2 || batchBusy) return;
         var focusedId = (window.damKeyNav && window.damKeyNav.getFocusedId) ? window.damKeyNav.getFocusedId() : null;
-        var targetDesc = focusedId && selected.has(focusedId) ? 'focused asset' : 'oldest asset';
         var targetId = focusedId && selected.has(focusedId) ? focusedId : null;
-        if (!confirm('Merge ' + selected.size + ' selected assets into one (' + targetDesc + ' becomes the target)? Donor variants become alternates. This cannot be undone.')) return;
-        setButtonsBusy(true);
-        var payload = {asset_ids: Array.from(selected)};
-        if (targetId) payload.target_id = targetId;
-        fetch('/api/batch/group', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        })
-        .then(function(r) {
-            if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
-            return r.json();
-        })
-        .then(function(data) {
-            clearSelection();
-            refreshResults();
-        })
-        .catch(function(err) { alert('Group failed: ' + err.message); })
-        .finally(function() { setButtonsBusy(false); });
+
+        // Build confirm modal with thumbnails
+        var overlay = document.createElement('div');
+        overlay.className = 'group-confirm-overlay';
+        overlay.innerHTML = '<div class="group-confirm-modal">' +
+            '<h3>Merge ' + selected.size + ' assets into one?</h3>' +
+            '<p class="group-confirm-hint">Donor variants become alternates. This cannot be undone.</p>' +
+            '<div class="group-confirm-grid"></div>' +
+            '<div class="group-confirm-buttons">' +
+            '<button class="group-confirm-cancel">Cancel</button>' +
+            '<button class="group-confirm-ok">Merge</button>' +
+            '</div></div>';
+
+        var grid = overlay.querySelector('.group-confirm-grid');
+        selected.forEach(function(id) {
+            var card = document.querySelector('.asset-card[data-id="' + id + '"]');
+            var thumb = document.createElement('div');
+            thumb.className = 'group-confirm-thumb';
+            if (targetId && id === targetId) {
+                thumb.classList.add('group-target');
+            }
+            var img = card ? card.querySelector('img') : null;
+            var src = img ? img.src : '';
+            var nameEl = card ? (card.querySelector('.card-name') || card.querySelector('.card-filename')) : null;
+            var name = nameEl ? nameEl.textContent.trim() : id.substring(0, 8) + '…';
+            var imgHtml = src ? '<img src="' + src + '" alt="">' : '<div class="group-confirm-placeholder">' + id.substring(0, 8) + '</div>';
+            thumb.innerHTML = imgHtml +
+                '<span class="group-confirm-name">' + name + '</span>' +
+                (targetId && id === targetId ? '<span class="group-confirm-badge">Target</span>' : '');
+            grid.appendChild(thumb);
+        });
+
+        if (!targetId) {
+            var hint = overlay.querySelector('.group-confirm-hint');
+            hint.textContent = 'Oldest asset becomes the target. Donor variants become alternates. This cannot be undone.';
+        }
+
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('.group-confirm-cancel').addEventListener('click', function() {
+            overlay.remove();
+        });
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) overlay.remove();
+        });
+
+        overlay.querySelector('.group-confirm-ok').addEventListener('click', function() {
+            overlay.remove();
+            setButtonsBusy(true);
+            var payload = {asset_ids: Array.from(selected)};
+            if (targetId) payload.target_id = targetId;
+            fetch('/api/batch/group', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            })
+            .then(function(r) {
+                if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+                return r.json();
+            })
+            .then(function(data) {
+                clearSelection();
+                refreshResults();
+            })
+            .catch(function(err) { alert('Group failed: ' + err.message); })
+            .finally(function() { setButtonsBusy(false); });
+        });
     });
 
     // Batch auto-group by filename stem
