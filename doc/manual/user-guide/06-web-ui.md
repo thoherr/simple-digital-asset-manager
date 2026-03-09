@@ -206,51 +206,84 @@ Because the URL updates with every search (via `hx-push-url`), the browser back 
 
 ## Navigation Between Views
 
-The browse grid, lightbox, and asset detail page form a seamless navigation loop. You can switch between all three views with keyboard shortcuts, clicks, and the browser back button. The current asset is tracked across views so focus and scroll position are restored when you return.
+The browse grid, lightbox, detail page, stroll, and compare form a connected navigation graph. You can switch between views with keyboard shortcuts, clicks, and the browser back button. Focus, scroll position, and selection are preserved when you return to browse.
 
 ```mermaid
 flowchart LR
-    B["<b>Browse Grid</b><br><i>scroll + focus preserved</i>"]
-    L["<b>Lightbox</b><br><i>← → prev / next</i>"]
-    D["<b>Detail Page</b><br><i>← → prev / next</i>"]
+    B["<b>Browse Grid</b><br/><small>← → ↑ ↓ navigate cards</small>"]
+    L["<b>Lightbox</b><br/><small>← → prev / next</small>"]
+    D["<b>Detail Page</b><br/><small>← → prev / next</small>"]
+    S["<b>Stroll</b><br/><small>← → cycle satellites</small>"]
+    C["<b>Compare</b><br/><small>← → cycle columns</small>"]
 
-    B -- "thumb click / Enter / l" --> L
+    B -- "thumb / Enter / l" --> L
     L -- "Esc" --> B
-    B -- "card-body click / d" --> D
-    D -- "click image / l" --> L
-    L -- "click image / d" --> D
+    B -- "d" --> D
+    L -- "image / d" --> D
+    D -- "l / image" --> L
     D -- "Esc / Back" --> B
+    D -- "similar card" --> D
+    B -- "s" --> S
+    S -- "l" --> L
+    S -- "d / Enter" --> D
+    S -- "Esc / Back" --> B
+    B -- "c (2-4 sel)" --> C
+    C -- "d" --> D
+    C -- "Esc / Back" --> B
 
     style B fill:#e8f0fe,stroke:#4285f4,stroke-width:2px
     style L fill:#fce8e6,stroke:#ea4335,stroke-width:2px
     style D fill:#e6f4ea,stroke:#34a853,stroke-width:2px
+    style S fill:#fef7e0,stroke:#f9ab00,stroke-width:2px
+    style C fill:#f3e8fd,stroke:#a142f4,stroke-width:2px
 ```
 
 | From | Action | To |
 |------|--------|----|
 | Browse | Thumbnail click / Enter / `l` | Lightbox |
-| Browse | Card body click / `d` | Detail page |
+| Browse | `d` | Detail page |
+| Browse | `s` | Stroll (from focused card) |
+| Browse | `c` (2–4 selected) | Compare |
 | Lightbox | Click image / `d` | Detail page |
-| Lightbox | Escape | Browse (focus syncs to last-viewed card) |
-| Detail | Click image / `l` | Lightbox (via browse) |
-| Detail | Escape / Back | Browse (scroll + focus restored) |
-| Detail | Left / Right arrows | Detail (next/prev asset) |
-| Lightbox | Left / Right arrows | Lightbox (next/prev asset) |
+| Lightbox | `s` | Stroll (from current asset) |
+| Lightbox | Escape | Close overlay (return to host page) |
+| Lightbox | Left / Right arrows | Prev / next asset |
+| Detail | Click image / `l` | Lightbox |
+| Detail | Left / Right arrows | Prev / next detail page |
+| Detail | Similar card click | Detail (chained navigation) |
+| Detail | `s` | Stroll (from current asset) |
+| Detail | Escape / Back | Previous page (`history.back()`) |
+| Stroll | `l` | Lightbox (center or focused satellite) |
+| Stroll | `d` / Enter | Detail page |
+| Stroll | Escape / Back | Previous page (`history.back()`) |
+| Compare | `d` | Detail page (focused column) |
+| Compare | Escape / Back | Previous page (`history.back()`) |
+| Any page | Shift+B | Jump directly to browse grid |
+
+### Back navigation
+
+There are two distinct "go back" actions:
+
+- **Escape** (or browser Back button) — step back one level. On a page, this returns to wherever you came from via `history.back()`. In the lightbox overlay, it closes the overlay. On the browse grid, it clears the current selection or focus.
+- **Shift+B** — jump directly to the browse grid, regardless of how deep you are. Useful when you've followed a chain of similar images or navigated through stroll and want to return to your search results.
+
+The lightbox is available on browse, detail, and stroll pages. It uses the same shared component with page-specific callbacks for rating/label changes and navigation. Rating and color label editing (stars, color dots, 0–5 / Alt+1–7 keys) works everywhere the lightbox is open.
 
 Focus and scroll position are preserved when navigating back to the browse page, even when the browser restores the page from its back/forward cache. Arrow key navigation in the lightbox and detail page updates which card will be focused when you return to browse.
 
 
 ## Lightbox
 
-Clicking a thumbnail in the browse grid opens a full-screen lightbox overlay for previewing assets without leaving the page.
+Clicking a thumbnail opens a full-screen lightbox overlay. The lightbox is available on the browse grid, detail page, and stroll page.
 
 ### Navigation
 
 - **Arrow buttons**: click the left (‹) or right (›) side panels to move to the previous or next asset
 - **Keyboard**: Left and Right arrow keys navigate between assets
 - **Counter**: the top bar shows your position (e.g., "3 / 156")
-- **Close**: click the × button or press Escape to return to the browse grid
+- **Close**: click the × button or press Escape to close the overlay
 - **Detail page**: click the image, press `d`, or click "↗ Detail" to open the full detail page for the current asset
+- **Stroll**: press `s` to start strolling from the current asset
 
 ### Info panel
 
@@ -260,7 +293,7 @@ Click the ℹ button in the top bar (or press `i`) to toggle a side panel showin
 - **Rating**: interactive stars — click to set a rating (1-5), click × to clear
 - **Color label**: interactive color dots — click to set a label, click × to clear
 
-Rating and label changes made in the lightbox are saved immediately via the API and reflected in the browse grid behind the lightbox.
+Rating and label changes made in the lightbox are saved immediately via the API and reflected on the host page. The top bar also shows interactive rating stars and color label dots for quick editing without opening the info panel.
 
 The info panel has its own × close button.
 
