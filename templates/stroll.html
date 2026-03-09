@@ -668,14 +668,15 @@ function onFilterChange() {
                 openStrollLightbox();
                 break;
             case 'Escape':
+                // Let the browser handle Escape when in fullscreen
+                if (document.fullscreenElement || document.webkitFullscreenElement) break;
                 e.preventDefault();
                 if (strollHistoryDepth > 0) {
                     strollHistoryDepth--;
                     window.history.back();
                 } else {
-                    // No stroll history left — go to browse
-                    var home = sessionStorage.getItem('dam-browse-home') || '/';
-                    window.location.href = home;
+                    // No stroll history left — go back to where we came from
+                    window.history.back();
                 }
                 break;
             case 'B':
