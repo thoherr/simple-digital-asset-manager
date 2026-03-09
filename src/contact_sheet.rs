@@ -278,6 +278,7 @@ pub struct ContactSheetConfig {
     pub margin_mm: f32,
     pub label_style: LabelStyle,
     pub quality: u8,
+    pub copyright: Option<String>,
 }
 
 impl Default for ContactSheetConfig {
@@ -296,6 +297,7 @@ impl Default for ContactSheetConfig {
             margin_mm: 10.0,
             label_style: LabelStyle::Border,
             quality: 90,
+            copyright: None,
         }
     }
 }
@@ -531,6 +533,7 @@ pub fn generate_contact_sheet(
             footer_h,
             page_idx + 1,
             total_pages,
+            config.copyright.as_deref(),
         );
 
         // Draw cells
@@ -811,26 +814,17 @@ fn draw_header(
 
     let text_y = y + (header_h as i32 - scale as i32) / 2;
 
-    if page_idx == 0 {
-        // First page: title left, query right
-        if !title.is_empty() {
-            draw_text_mut(img, TEXT_COLOR, margin as i32 + 10, text_y, scale, font, title);
-        }
-        if !query.is_empty() {
-            let small_scale = scale * 0.7;
-            let (qw, _) = text_size(small_scale, font, query);
-            let qx = (page_w - margin) as i32 - qw as i32 - 10;
-            draw_text_mut(img, DIM_COLOR, qx, text_y, small_scale, font, query);
-        }
-    } else {
-        // Subsequent pages: title left, page number right
-        if !title.is_empty() {
-            draw_text_mut(img, TEXT_COLOR, margin as i32 + 10, text_y, scale, font, title);
-        }
-        let page_text = format!("Page {}", page_idx + 1);
-        let (pw, _) = text_size(scale * 0.8, font, &page_text);
-        let px = (page_w - margin) as i32 - pw as i32 - 10;
-        draw_text_mut(img, DIM_COLOR, px, text_y, scale * 0.8, font, &page_text);
+    // Title left
+    if !title.is_empty() {
+        draw_text_mut(img, TEXT_COLOR, margin as i32 + 10, text_y, scale, font, title);
+    }
+
+    // Query right (all pages)
+    if !query.is_empty() {
+        let small_scale = scale * 0.7;
+        let (qw, _) = text_size(small_scale, font, query);
+        let qx = (page_w - margin) as i32 - qw as i32 - 10;
+        draw_text_mut(img, DIM_COLOR, qx, text_y, small_scale, font, query);
     }
 }
 
@@ -844,14 +838,25 @@ fn draw_footer(
     footer_h: u32,
     page_num: usize,
     total_pages: usize,
+    copyright: Option<&str>,
 ) {
     let y = (page_h - margin - footer_h) as i32;
     let text_y = y + (footer_h as i32 - scale as i32) / 2;
 
-    // Left: branding + date
+    // Left: branding + version + date
+    let version = env!("CARGO_PKG_VERSION");
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let left_text = format!("dam • {}", date);
+    let left_text = format!("dam v{} \u{2022} {}", version, date);
     draw_text_mut(img, DIM_COLOR, margin as i32 + 10, text_y, scale, font, &left_text);
+
+    // Center: copyright text (if provided)
+    if let Some(cr) = copyright {
+        if !cr.is_empty() {
+            let (cw, _) = text_size(scale, font, cr);
+            let cx = (page_w as i32 - cw as i32) / 2;
+            draw_text_mut(img, DIM_COLOR, cx, text_y, scale, font, cr);
+        }
+    }
 
     // Right: page N of M
     let right_text = format!("Page {} of {}", page_num, total_pages);

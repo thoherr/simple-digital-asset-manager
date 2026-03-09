@@ -265,6 +265,8 @@ pub struct ContactSheetDefaults {
     pub quality: u8,
     #[serde(default = "default_cs_label_style")]
     pub label_style: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copyright: Option<String>,
 }
 
 fn default_cs_layout() -> String { "standard".to_string() }
@@ -283,6 +285,7 @@ impl Default for ContactSheetDefaults {
             margin: 10.0,
             quality: 90,
             label_style: "border".to_string(),
+            copyright: None,
         }
     }
 }

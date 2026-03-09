@@ -403,6 +403,10 @@ enum Commands {
         #[arg(long)]
         quality: Option<u8>,
 
+        /// Copyright text displayed in the center of each page footer
+        #[arg(long)]
+        copyright: Option<String>,
+
         /// Report page count and asset count without generating
         #[arg(long)]
         dry_run: bool,
@@ -4641,6 +4645,7 @@ fn main() {
             margin,
             label_style,
             quality,
+            copyright,
             dry_run,
         } => {
             use dam::contact_sheet::{
@@ -4697,6 +4702,7 @@ fn main() {
                 margin_mm: cs_margin,
                 label_style: cs_label_style,
                 quality: cs_quality,
+                copyright: copyright.or_else(|| cs_defaults.copyright.clone()),
             };
 
             let output_path = PathBuf::from(&output);
