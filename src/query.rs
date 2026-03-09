@@ -1938,7 +1938,8 @@ impl QueryEngine {
         self.writeback_process(pending_recipes, &catalog, &store, &online, &content_store, asset_filter, dry_run, log, callback)
     }
 
-    fn writeback_process(
+    /// Process a list of recipes for writeback. Each tuple is (recipe_id, asset_id, volume_id, relative_path).
+    pub fn writeback_process(
         &self,
         recipes: Vec<(String, String, String, String)>,
         catalog: &Catalog,

@@ -8657,3 +8657,194 @@ mod auto_tag {
         assert!(parsed["assets_skipped"].as_u64().unwrap() > 0 || parsed["assets_processed"].as_u64().unwrap() == 0);
     }
 }
+
+// ── sync-metadata ──────────────────────────────────────────────────
+
+#[test]
+fn sync_metadata_unchanged() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    create_test_file(&root, "photos/SM_001.ARW", b"raw-sm-unchanged");
+    create_test_file(
+        &root,
+        "photos/SM_001.xmp",
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"3\"/></rdf:RDF></x:xmpmeta>",
+    );
+    dam()
+        .current_dir(&root)
+        .args(["import", root.join("photos").to_str().unwrap()])
+        .assert()
+        .success();
+
+    // No changes — should report unchanged
+    dam()
+        .current_dir(&root)
+        .args(["sync-metadata"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 unchanged"));
+}
+
+#[test]
+fn sync_metadata_inbound_reads_external_changes() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let xmp_path = root.join("photos/SM_002.xmp");
+    create_test_file(&root, "photos/SM_002.ARW", b"raw-sm-inbound");
+    create_test_file(
+        &root,
+        "photos/SM_002.xmp",
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"2\"/></rdf:RDF></x:xmpmeta>",
+    );
+    dam()
+        .current_dir(&root)
+        .args(["import", root.join("photos").to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Modify XMP externally (simulates CaptureOne edit)
+    std::fs::write(
+        &xmp_path,
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"5\"/></rdf:RDF></x:xmpmeta>",
+    )
+    .unwrap();
+
+    // sync-metadata should read external change
+    dam()
+        .current_dir(&root)
+        .args(["sync-metadata"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 read from disk"));
+
+    // Verify rating was updated
+    dam()
+        .current_dir(&root)
+        .args(["search", "--json", "rating:5"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("SM_002"));
+}
+
+#[test]
+fn sync_metadata_outbound_writes_pending() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let xmp_path = root.join("photos/SM_003.xmp");
+    create_test_file(&root, "photos/SM_003.ARW", b"raw-sm-outbound");
+    create_test_file(
+        &root,
+        "photos/SM_003.xmp",
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"1\"/></rdf:RDF></x:xmpmeta>",
+    );
+    dam()
+        .current_dir(&root)
+        .args(["import", root.join("photos").to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Get the asset ID
+    let output = dam()
+        .current_dir(&root)
+        .args(["search", "-q", "*"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+    let asset_id = stdout.trim();
+
+    // Edit rating in DAM — this writes back immediately
+    dam()
+        .current_dir(&root)
+        .args(["edit", asset_id, "--rating", "4"])
+        .assert()
+        .success();
+
+    // sync-metadata should report unchanged (writeback already happened inline)
+    dam()
+        .current_dir(&root)
+        .args(["sync-metadata"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 unchanged"));
+
+    // Verify the XMP was updated by the edit command's write-back
+    let xmp_content = std::fs::read_to_string(&xmp_path).unwrap();
+    assert!(xmp_content.contains("Rating=\"4\"") || xmp_content.contains("Rating='4'"));
+}
+
+#[test]
+fn sync_metadata_dry_run() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let xmp_path = root.join("photos/SM_004.xmp");
+    create_test_file(&root, "photos/SM_004.ARW", b"raw-sm-dryrun");
+    create_test_file(
+        &root,
+        "photos/SM_004.xmp",
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"2\"/></rdf:RDF></x:xmpmeta>",
+    );
+    dam()
+        .current_dir(&root)
+        .args(["import", root.join("photos").to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Modify XMP externally
+    std::fs::write(
+        &xmp_path,
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"5\"/></rdf:RDF></x:xmpmeta>",
+    )
+    .unwrap();
+
+    // Dry run should report but not apply
+    dam()
+        .current_dir(&root)
+        .args(["sync-metadata", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 read from disk"));
+
+    // Rating should still be 2 (unchanged)
+    dam()
+        .current_dir(&root)
+        .args(["search", "--json", "rating:2"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("SM_004"));
+}
+
+#[test]
+fn sync_metadata_json_output() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    create_test_file(&root, "photos/SM_005.ARW", b"raw-sm-json");
+    create_test_file(
+        &root,
+        "photos/SM_005.xmp",
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"3\"/></rdf:RDF></x:xmpmeta>",
+    );
+    dam()
+        .current_dir(&root)
+        .args(["import", root.join("photos").to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = dam()
+        .current_dir(&root)
+        .args(["sync-metadata", "--json"])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(parsed["unchanged"], 1);
+    assert_eq!(parsed["inbound"], 0);
+    assert_eq!(parsed["outbound"], 0);
+    assert_eq!(parsed["conflicts"], 0);
+    assert_eq!(parsed["dry_run"], false);
+}

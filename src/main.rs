@@ -518,6 +518,26 @@ enum Commands {
         media: bool,
     },
 
+    /// Bidirectional metadata sync: read external XMP changes and write back pending DAM edits
+    #[command(name = "sync-metadata", display_order = 42)]
+    SyncMetadata {
+        /// Limit to a specific volume
+        #[arg(long, display_order = 10)]
+        volume: Option<String>,
+
+        /// Limit to a specific asset
+        #[arg(long, display_order = 11)]
+        asset: Option<String>,
+
+        /// Preview what would change without applying
+        #[arg(long, display_order = 20)]
+        dry_run: bool,
+
+        /// Also re-extract embedded XMP from JPEG/TIFF media files
+        #[arg(long, display_order = 21)]
+        media: bool,
+    },
+
     /// Write back pending metadata changes to XMP recipe files
     #[command(display_order = 42)]
     Writeback {
@@ -3308,6 +3328,112 @@ fn main() {
                 if result.new_files > 0 {
                     println!("  Tip: run 'dam import' to import new files.");
                 }
+            }
+
+            Ok(())
+        }
+        Commands::SyncMetadata { volume, asset, dry_run, media } => {
+            let catalog_root = dam::config::find_catalog_root()?;
+            let config = CatalogConfig::load(&catalog_root)?;
+            let registry = DeviceRegistry::new(&catalog_root);
+
+            // Resolve volume
+            let resolved_volume = if let Some(label) = &volume {
+                Some(registry.resolve_volume(label)?)
+            } else {
+                None
+            };
+
+            // Resolve asset ID prefix
+            let resolved_asset_id = if let Some(prefix) = &asset {
+                let catalog = Catalog::open(&catalog_root)?;
+                match catalog.resolve_asset_id(prefix)? {
+                    Some(id) => Some(id),
+                    None => anyhow::bail!("No asset found matching '{prefix}'"),
+                }
+            } else {
+                None
+            };
+
+            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let result = if cli.log {
+                use dam::asset_service::SyncMetadataStatus;
+                service.sync_metadata(
+                    resolved_volume.as_ref(),
+                    resolved_asset_id.as_deref(),
+                    dry_run,
+                    media,
+                    &config.import.exclude,
+                    |path, status, elapsed| {
+                        let label = match status {
+                            SyncMetadataStatus::Inbound => "inbound",
+                            SyncMetadataStatus::Outbound => "outbound",
+                            SyncMetadataStatus::Unchanged => "unchanged",
+                            SyncMetadataStatus::Missing => "missing",
+                            SyncMetadataStatus::Offline => "offline",
+                            SyncMetadataStatus::Conflict => "CONFLICT",
+                            SyncMetadataStatus::Error => "error",
+                        };
+                        let name = path.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or_else(|| path.to_str().unwrap_or("?"));
+                        eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
+                    },
+                )?
+            } else {
+                service.sync_metadata(
+                    resolved_volume.as_ref(),
+                    resolved_asset_id.as_deref(),
+                    dry_run,
+                    media,
+                    &config.import.exclude,
+                    |_, _, _| {},
+                )?
+            };
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                for err in &result.errors {
+                    eprintln!("  {err}");
+                }
+
+                if dry_run {
+                    eprint!("Dry run — ");
+                }
+
+                let mut parts: Vec<String> = Vec::new();
+                if result.inbound > 0 {
+                    parts.push(format!("{} read from disk", result.inbound));
+                }
+                if result.outbound > 0 {
+                    parts.push(format!("{} written to disk", result.outbound));
+                }
+                if result.conflicts > 0 {
+                    parts.push(format!("{} conflicts (skipped)", result.conflicts));
+                }
+                if result.media_refreshed > 0 {
+                    parts.push(format!("{} media refreshed", result.media_refreshed));
+                }
+                if result.unchanged > 0 {
+                    parts.push(format!("{} unchanged", result.unchanged));
+                }
+                if result.skipped > 0 {
+                    parts.push(format!("{} skipped", result.skipped));
+                }
+                if parts.is_empty() {
+                    println!("Sync metadata: nothing to do");
+                } else {
+                    println!("Sync metadata: {}", parts.join(", "));
+                }
+
+                if result.conflicts > 0 {
+                    eprintln!("  Tip: resolve conflicts by running 'dam refresh' (accept external) or 'dam writeback' (keep DAM edits).");
+                }
+            }
+
+            if cli.timing {
+                eprintln!("Time: {:.2}s", start.elapsed().as_secs_f64());
             }
 
             Ok(())

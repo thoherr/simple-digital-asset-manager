@@ -2203,6 +2203,32 @@ impl Catalog {
         Ok(result)
     }
 
+    /// Like `list_recipes_for_volume_under_prefix` but also returns `pending_writeback`.
+    /// Returns `(id, content_hash, variant_hash, relative_path, pending_writeback)`.
+    pub fn list_recipes_with_pending_for_volume(
+        &self,
+        volume_id: &str,
+    ) -> Result<Vec<(String, String, String, String, bool)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, content_hash, variant_hash, relative_path, pending_writeback \
+             FROM recipes WHERE volume_id = ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![volume_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, bool>(4)?,
+            ))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
     /// List recipes for a specific variant on a specific volume.
     /// Returns `(recipe_id, content_hash, relative_path)` tuples.
     pub fn list_recipes_for_variant_on_volume(
