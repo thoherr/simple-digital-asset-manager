@@ -206,6 +206,10 @@ pub struct AiConfig {
     pub face_cluster_threshold: f32,
     #[serde(default = "default_face_min_confidence")]
     pub face_min_confidence: f32,
+    /// Execution provider for ONNX inference: "auto", "cpu", "coreml".
+    /// "auto" selects the best available provider for the platform.
+    #[serde(default = "default_execution_provider")]
+    pub execution_provider: String,
 }
 
 fn default_ai_model() -> String {
@@ -214,6 +218,10 @@ fn default_ai_model() -> String {
 
 fn default_ai_threshold() -> f32 {
     0.1
+}
+
+fn default_execution_provider() -> String {
+    "auto".to_string()
 }
 
 fn default_ai_model_dir() -> String {
@@ -242,6 +250,7 @@ impl Default for AiConfig {
             prompt: "a photograph of {}".to_string(),
             face_cluster_threshold: 0.5,
             face_min_confidence: 0.5,
+            execution_provider: "auto".to_string(),
         }
     }
 }

@@ -11,6 +11,56 @@ use ort::value::Tensor;
 use serde::Serialize;
 use tokenizers::Tokenizer;
 
+/// Build an ONNX session with the best available execution provider.
+///
+/// When built with `--features ai-gpu`, registers CoreML on macOS (using
+/// Neural Engine on Apple Silicon, Metal on Intel Macs). Falls back to
+/// CPU silently if the provider is unavailable or unsupported by the model.
+///
+/// The `provider` parameter selects the strategy: "auto" picks the best
+/// available, "cpu" forces CPU-only, "coreml" requests CoreML explicitly.
+pub fn build_onnx_session(model_path: &Path, provider: &str, debug: bool) -> Result<Session> {
+    let builder = Session::builder()
+        .context("Failed to create ONNX session builder")?
+        .with_intra_threads(4)
+        .context("Failed to set intra threads")?;
+
+    let provider_lower = provider.to_lowercase();
+    let _use_gpu = provider_lower == "auto" || provider_lower == "coreml";
+
+    #[cfg(all(feature = "ai-gpu", target_os = "macos"))]
+    let builder = if _use_gpu {
+        use ort::ep;
+        let coreml = ep::CoreML::default().build();
+        if debug {
+            eprintln!("  [debug] registering CoreML execution provider");
+        }
+        builder
+            .with_execution_providers([coreml])
+            .context("Failed to register CoreML execution provider")?
+    } else {
+        builder
+    };
+
+    #[cfg(not(all(feature = "ai-gpu", target_os = "macos")))]
+    if _use_gpu && provider_lower != "auto" && debug {
+        eprintln!("  [debug] GPU provider '{provider}' requested but ai-gpu feature not enabled; using CPU");
+    }
+
+    let session = builder
+        .commit_from_file(model_path)
+        .with_context(|| format!("Failed to load ONNX model from {}", model_path.display()))?;
+
+    if debug {
+        #[cfg(all(feature = "ai-gpu", target_os = "macos"))]
+        if _use_gpu {
+            eprintln!("  [debug] session created (CoreML available)");
+        }
+    }
+
+    Ok(session)
+}
+
 /// Model specification — defines all parameters for a SigLIP model variant.
 #[derive(Debug, Clone)]
 pub struct ModelSpec {
@@ -120,8 +170,17 @@ impl SigLipModel {
         Self::load_with_debug(model_dir, model_id, false)
     }
 
-    /// Load ONNX sessions with debug logging enabled.
+    /// Load ONNX sessions with debug logging and execution provider selection.
+    pub fn load_with_provider(model_dir: &Path, model_id: &str, debug: bool, provider: &str) -> Result<Self> {
+        Self::load_internal(model_dir, model_id, debug, provider)
+    }
+
+    /// Load ONNX sessions with debug logging enabled (CPU provider).
     pub fn load_with_debug(model_dir: &Path, model_id: &str, debug: bool) -> Result<Self> {
+        Self::load_internal(model_dir, model_id, debug, "auto")
+    }
+
+    fn load_internal(model_dir: &Path, model_id: &str, debug: bool, provider: &str) -> Result<Self> {
         let spec = get_model_spec(model_id)
             .ok_or_else(|| anyhow::anyhow!("Unknown model: {model_id}"))?;
         let vision_path = model_dir.join("onnx").join("vision_model_quantized.onnx");
@@ -161,19 +220,8 @@ impl SigLipModel {
             anyhow::bail!("Tokenizer not found at {}", tokenizer_path.display());
         }
 
-        let vision = Session::builder()
-            .context("Failed to create ONNX session builder")?
-            .with_intra_threads(4)
-            .context("Failed to set intra threads")?
-            .commit_from_file(&vision_path)
-            .with_context(|| format!("Failed to load vision model from {}", vision_path.display()))?;
-
-        let text = Session::builder()
-            .context("Failed to create ONNX session builder")?
-            .with_intra_threads(4)
-            .context("Failed to set intra threads")?
-            .commit_from_file(&text_path)
-            .with_context(|| format!("Failed to load text model from {}", text_path.display()))?;
+        let vision = build_onnx_session(&vision_path, provider, debug)?;
+        let text = build_onnx_session(&text_path, provider, debug)?;
 
         // Cache output metadata (names + dimensionality from dtype)
         let vision_outputs: Vec<OutputInfo> = vision.outputs().iter().map(|o| {

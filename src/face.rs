@@ -8,8 +8,9 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use ndarray::{Array4, ArrayView2, Axis};
-use ort::session::Session;
 use ort::value::Tensor;
+
+use crate::ai::build_onnx_session;
 
 /// Face model specification.
 #[derive(Debug, Clone)]
@@ -60,14 +61,19 @@ pub struct DetectedFace {
 
 /// Face detection + recognition pipeline.
 pub struct FaceDetector {
-    detector: Session,
-    recognizer: Session,
+    detector: ort::session::Session,
+    recognizer: ort::session::Session,
     debug: bool,
 }
 
 impl FaceDetector {
     /// Load the face detection and recognition ONNX models.
     pub fn load(model_dir: &Path, debug: bool) -> Result<Self> {
+        Self::load_with_provider(model_dir, debug, "auto")
+    }
+
+    /// Load with a specific execution provider ("auto", "cpu", "coreml").
+    pub fn load_with_provider(model_dir: &Path, debug: bool, provider: &str) -> Result<Self> {
         let detect_path = model_dir.join(&DETECTION_MODEL.filename);
         let recog_path = model_dir.join(&RECOGNITION_MODEL.filename);
 
@@ -84,29 +90,8 @@ impl FaceDetector {
             );
         }
 
-        let detector = Session::builder()
-            .context("Failed to create ONNX session builder")?
-            .with_intra_threads(4)
-            .context("Failed to set intra threads")?
-            .commit_from_file(&detect_path)
-            .with_context(|| {
-                format!(
-                    "Failed to load detection model from {}",
-                    detect_path.display()
-                )
-            })?;
-
-        let recognizer = Session::builder()
-            .context("Failed to create ONNX session builder")?
-            .with_intra_threads(4)
-            .context("Failed to set intra threads")?
-            .commit_from_file(&recog_path)
-            .with_context(|| {
-                format!(
-                    "Failed to load recognition model from {}",
-                    recog_path.display()
-                )
-            })?;
+        let detector = build_onnx_session(&detect_path, provider, debug)?;
+        let recognizer = build_onnx_session(&recog_path, provider, debug)?;
 
         if debug {
             eprintln!("  [debug] detection model inputs:");

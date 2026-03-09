@@ -1659,7 +1659,7 @@ fn main() {
                             .map(|v| (v.id.to_string(), v))
                             .collect();
 
-                    let mut ai_model = dam::ai::SigLipModel::load_with_debug(&model_dir, model_id, cli.debug)?;
+                    let mut ai_model = dam::ai::SigLipModel::load_with_provider(&model_dir, model_id, cli.debug, &config.ai.execution_provider)?;
 
                     let mut embedded = 0u32;
                     let mut embed_skipped = 0u32;
@@ -2427,7 +2427,7 @@ fn main() {
                         // No stored embedding — encode it now
                         let config_preview = &config.preview;
                         let service = AssetService::new(&catalog_root, cli.debug, config_preview);
-                        let mut ai_model = dam::ai::SigLipModel::load_with_debug(&model_dir, model_id, cli.debug)?;
+                        let mut ai_model = dam::ai::SigLipModel::load_with_provider(&model_dir, model_id, cli.debug, &config.ai.execution_provider)?;
                         let registry = DeviceRegistry::new(&catalog_root);
                         let volumes = registry.list()?;
                         let online_volumes: std::collections::HashMap<String, &dam::models::Volume> =
@@ -2527,6 +2527,7 @@ fn main() {
                 apply,
                 &model_dir,
                 model_id,
+                &config.ai.execution_provider,
                 |id, status, elapsed| {
                     if show_log {
                         let short_id = &id[..8.min(id.len())];
@@ -2706,7 +2707,7 @@ fn main() {
                 &config.preview,
             );
 
-            let mut ai_model = dam::ai::SigLipModel::load_with_debug(&model_dir, model_id, cli.debug)?;
+            let mut ai_model = dam::ai::SigLipModel::load_with_provider(&model_dir, model_id, cli.debug, &config.ai.execution_provider)?;
 
             let mut embedded: u32 = 0;
             let mut skipped: u32 = 0;
@@ -2895,7 +2896,7 @@ fn main() {
                             .collect()
                     };
 
-                    let mut detector = dam::face::FaceDetector::load(&face_model_dir, cli.debug)?;
+                    let mut detector = dam::face::FaceDetector::load_with_provider(&face_model_dir, cli.debug, &config.ai.execution_provider)?;
 
                     let mut total_faces = 0u32;
                     let mut total_assets = 0u32;

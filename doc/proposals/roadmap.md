@@ -23,15 +23,23 @@ Auto-import and sync on filesystem changes. After a CaptureOne session, new file
 
 ### GPU-Accelerated Embeddings
 
-SigLIP embedding generation on CPU is slow for large catalogs. CoreML (macOS) or CUDA backends would make batch embedding practical at scale.
+SigLIP embedding generation on CPU is slow for large catalogs. GPU backends make batch embedding practical at scale.
 
-**Scope:**
-- ONNX Runtime execution providers: CoreML (macOS), CUDA (Linux/Windows), DirectML (Windows)
-- Compile-time feature flags (`--features ai-gpu`)
-- Automatic fallback to CPU when GPU unavailable
-- Batch processing with progress reporting
+**Status:** CoreML (macOS) implemented in v2.4.1 via `--features ai-gpu`. Linux/Windows pending.
 
-**Complexity:** Medium. ONNX Runtime supports execution providers; main work is build/packaging.
+**Done:**
+- `--features ai-gpu` enables CoreML execution provider on macOS (Neural Engine on Apple Silicon, Metal on Intel)
+- `[ai] execution_provider` config option ("auto", "cpu", "coreml")
+- Shared `build_onnx_session()` helper used by SigLIP and face detection/recognition
+- Automatic fallback to CPU when provider unavailable
+
+**Open:**
+- CUDA execution provider for Linux (requires `ort/cuda` feature, CUDA Toolkit + cuDNN)
+- DirectML execution provider for Windows (requires `ort/directml` feature)
+- Testing on Linux and Windows platforms
+- Batch processing with GPU-optimal batch sizes
+
+**Complexity:** Low for adding providers (code pattern exists), high for testing/packaging across platforms.
 
 ### IPTC/EXIF Write-Back
 

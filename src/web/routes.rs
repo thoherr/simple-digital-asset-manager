@@ -3407,7 +3407,7 @@ fn suggest_tags_inner(
     let model_guard = state.ai_model.blocking_lock();
     let mut model_opt = model_guard;
     if model_opt.is_none() {
-        let m = ai::SigLipModel::load(&model_dir, model_id)
+        let m = ai::SigLipModel::load_with_provider(&model_dir, model_id, false, &state.ai_config.execution_provider)
             .map_err(|e| format!("Failed to load AI model: {e:#}"))?;
         *model_opt = Some(m);
     }
@@ -3556,7 +3556,7 @@ fn batch_auto_tag_inner(
     let model_id = &state.ai_config.model;
     let mut model_guard = state.ai_model.blocking_lock();
     if model_guard.is_none() {
-        let m = ai::SigLipModel::load(&model_dir, model_id)
+        let m = ai::SigLipModel::load_with_provider(&model_dir, model_id, false, &state.ai_config.execution_provider)
             .map_err(|e| format!("Failed to load AI model: {e:#}"))?;
         *model_guard = Some(m);
     }
@@ -3952,7 +3952,7 @@ fn detect_faces_inner(state: &AppState, asset_ids: &[String]) -> Result<serde_js
         return Err("Face models not downloaded. Run 'dam faces download' first.".to_string());
     }
 
-    let mut detector = crate::face::FaceDetector::load(&face_model_dir, false)
+    let mut detector = crate::face::FaceDetector::load_with_provider(&face_model_dir, false, &state.ai_config.execution_provider)
         .map_err(|e| format!("Failed to load face detector: {e:#}"))?;
 
     let min_confidence = state.ai_config.face_min_confidence;

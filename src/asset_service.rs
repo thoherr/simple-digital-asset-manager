@@ -5345,6 +5345,7 @@ impl AssetService {
         apply: bool,
         model_dir: &std::path::Path,
         model_id: &str,
+        execution_provider: &str,
         on_asset: impl Fn(&str, &crate::ai::AutoTagStatus, Duration),
     ) -> Result<crate::ai::AutoTagResult> {
         use crate::ai::{self, AutoTagResult, AutoTagStatus, AssetSuggestions, SigLipModel};
@@ -5364,7 +5365,7 @@ impl AssetService {
             .collect();
 
         // Load model
-        let mut model = SigLipModel::load_with_debug(model_dir, model_id, self.debug)?;
+        let mut model = SigLipModel::load_with_provider(model_dir, model_id, self.debug, execution_provider)?;
 
         // Prepare label texts with prompt template
         let prompted_labels: Vec<String> = labels
