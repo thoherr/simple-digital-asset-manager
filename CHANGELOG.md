@@ -2,6 +2,18 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v2.4.1 (2026-03-09)
+
+### New Features
+- **CoreML GPU acceleration** — new `--features ai-gpu` enables CoreML execution provider on macOS for SigLIP and face detection/recognition. `[ai] execution_provider` config option (`"auto"`, `"cpu"`, `"coreml"`). Shared `build_onnx_session()` helper with automatic CPU fallback. Linux CUDA and Windows DirectML tracked as roadmap items.
+- **Clickable tags on detail page** — tag chips on the asset detail page link to `/?tag=...` for browsing by tag. Sets `dam-browse-focus` before navigating so the browse page scrolls to the originating asset.
+
+### Bug Fixes
+- **Fix stroll page Escape key navigation loop** — popstate handler was pushing new history entries, creating an infinite back loop. Added `skipPush` parameter and history depth tracking.
+- **Fix stroll Escape exiting browser fullscreen** — added fullscreen guard; uses `history.back()` instead of `location.href` assignment.
+- **Defer stroll Escape navigation (150ms)** — keyup event was firing on bfcache-restored page, causing immediate fullscreen exit. `setTimeout(150)` lets keyup complete first.
+- **Apply deferred Escape to detail and compare pages** — same fullscreen fix pattern as stroll for consistent behavior across all pages.
+
 ## v2.4.0 (2026-03-09)
 
 ### New Commands

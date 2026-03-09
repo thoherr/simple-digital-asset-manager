@@ -86,6 +86,8 @@ These are optional. When missing, RAW and video files get an info card preview i
 
 Build with `cargo build --features ai` to enable AI-powered commands. This uses SigLIP vision-language models (via ONNX Runtime) for zero-shot image classification against a configurable tag vocabulary. Two models are available: ViT-B/16-256 (~207 MB, default) and ViT-L/16-256 (~670 MB, higher accuracy). Select with `--model` or `[ai] model` in `dam.toml`. Model files are downloaded from HuggingFace on first use. Commands: `dam auto-tag` for tag suggestion/application, `dam embed` for batch embedding generation, and `dam search "similar:<id>"` for visual similarity search. The web UI includes a **Stroll page** (`/stroll`) for graph-based visual exploration — pick an asset, see its nearest visual neighbors arranged radially, click through to explore connections. The "Suggest tags" and "Auto-tag" buttons also store embeddings opportunistically. Similarity search uses an in-memory index for sub-millisecond results at any scale. See the [Configuration Reference](doc/manual/reference/08-configuration.md) for `[ai]` settings.
 
+**GPU acceleration** (macOS): Build with `cargo build --features ai-gpu` to enable CoreML execution provider for hardware-accelerated inference on Apple Silicon (Neural Engine) and Intel Macs (Metal). Falls back to CPU automatically when CoreML is unavailable. Configure via `[ai] execution_provider` in `dam.toml` (`"auto"`, `"cpu"`, `"coreml"`).
+
 ## Face Recognition (Optional Feature)
 
 Build with `cargo build --features ai` to enable face detection and people management. Uses two ONNX models: YuNet for face detection (bounding boxes + landmarks) and ArcFace for face recognition (512-dim embeddings). Models are downloaded via `dam faces download`.

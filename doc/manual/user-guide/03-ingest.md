@@ -415,7 +415,7 @@ This is useful for identifying redundant copies, verifying backups, or cleaning 
 
 ## AI Auto-Tagging
 
-> Requires building with `--features ai`. See [Building & Testing](../developer/03-building-and-testing.md).
+> Requires building with `--features ai`. For GPU-accelerated inference on macOS, use `--features ai-gpu` (CoreML). See [Building & Testing](../developer/03-building-and-testing.md).
 
 After importing, you can use AI to automatically suggest tags for your images:
 

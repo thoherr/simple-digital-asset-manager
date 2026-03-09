@@ -652,7 +652,7 @@ dam auto-group --apply --json | jq '{merged: .total_donors_merged, moved: .total
 
 ## dam auto-tag
 
-> **Feature-gated**: requires building with `--features ai`. Not available in default builds.
+> **Feature-gated**: requires building with `--features ai`. Not available in default builds. Build with `--features ai-gpu` for CoreML GPU acceleration on macOS (see `[ai] execution_provider` in [Configuration](08-configuration.md#ai-section)).
 
 ### NAME
 
@@ -820,7 +820,7 @@ dam auto-tag --query "tag:unreviewed" --json | jq '.suggestions[] | {asset: .ass
 
 ## dam embed
 
-> **Feature-gated**: requires building with `--features ai`. Not available in default builds.
+> **Feature-gated**: requires building with `--features ai`. Not available in default builds. Build with `--features ai-gpu` for CoreML GPU acceleration on macOS (see `[ai] execution_provider` in [Configuration](08-configuration.md#ai-section)).
 
 ### NAME
 

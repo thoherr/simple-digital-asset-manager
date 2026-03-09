@@ -366,6 +366,15 @@ Where to cache downloaded model files. The `~` prefix is expanded to the user's 
 
 Text encoder prompt template. The `{}` placeholder is replaced with each label name before encoding. Adjusting the prompt can improve classification accuracy for specific use cases (e.g., `"a photo of a {}"` or `"a professional photograph of {}"`).
 
+### execution_provider
+
+- **Type:** string (`"auto"`, `"cpu"`, `"coreml"`)
+- **Default:** `"auto"`
+
+> Requires building with `--features ai-gpu` for GPU providers. With `--features ai` only, all values fall back to CPU.
+
+Selects the ONNX Runtime execution provider for AI inference (SigLIP, YuNet, ArcFace). `"auto"` uses CoreML when available on macOS (Neural Engine on Apple Silicon, Metal on Intel), falling back to CPU. `"cpu"` forces CPU-only inference. `"coreml"` explicitly requests CoreML (errors if unavailable).
+
 ### face_cluster_threshold
 
 - **Type:** float (0.0--1.0)
@@ -386,6 +395,7 @@ threshold = 0.3
 labels = "my-labels.txt"
 model_dir = "~/.dam/models"
 prompt = "a photograph of {}"
+execution_provider = "auto"
 face_cluster_threshold = 0.5
 face_min_confidence = 0.5
 ```
@@ -476,6 +486,8 @@ threshold = 0.3
 # labels = "my-labels.txt"
 model_dir = "~/.dam/models"
 prompt = "a photograph of {}"
+# GPU acceleration (requires --features ai-gpu).
+# execution_provider = "auto"
 ```
 
 ---
@@ -547,6 +559,7 @@ When a field is absent from `dam.toml`, these defaults apply:
 | `ai.labels` | none |
 | `ai.model_dir` | `"~/.dam/models"` |
 | `ai.prompt` | `"a photograph of {}"` |
+| `ai.execution_provider` | `"auto"` |
 | `ai.face_cluster_threshold` | `0.5` |
 | `ai.face_min_confidence` | `0.5` |
 

@@ -2,7 +2,7 @@
 
 Living document tracking planned enhancements. Previous proposals (all implemented or deferred) are in `archive/`.
 
-Current version: **v2.4.0** (2026-03-09)
+Current version: **v2.4.1** (2026-03-09)
 
 ---
 
@@ -173,4 +173,4 @@ All previous proposals are in `doc/proposals/archive/`. Key milestones:
 - **v2.0–v2.1**: AI — auto-tag, embeddings, similarity search, suggest tags
 - **v2.2**: Performance — SQLite pragmas, single connection, denormalized columns
 - **v2.3**: Stroll, sync-metadata, comprehensive cleanup, faces/people
-- **v2.4**: Contact sheet export, split command, alternate variant role, grouped CLI help
+- **v2.4**: Contact sheet export, split command, alternate variant role, grouped CLI help, CoreML GPU acceleration
