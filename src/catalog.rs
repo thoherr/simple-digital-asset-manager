@@ -354,6 +354,7 @@ impl SearchSort {
 
 /// Options for paginated search.
 pub struct SearchOptions<'a> {
+    pub asset_id: Option<&'a str>,
     pub text: Option<&'a str>,
     pub text_exclude: &'a [String],
     pub asset_types: &'a [String],
@@ -414,6 +415,7 @@ pub struct SearchOptions<'a> {
 impl<'a> Default for SearchOptions<'a> {
     fn default() -> Self {
         Self {
+            asset_id: None,
             text: None,
             text_exclude: &[],
             asset_types: &[],
@@ -2445,6 +2447,14 @@ impl Catalog {
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         let mut needs_fl_join = opts.volume.is_some();
         let mut needs_v_join = false;
+
+        // --- Asset ID prefix match ---
+        if let Some(id_prefix) = opts.asset_id {
+            if !id_prefix.is_empty() {
+                clauses.push("a.id LIKE ?".to_string());
+                params.push(Box::new(format!("{id_prefix}%")));
+            }
+        }
 
         // --- Text search (positive) ---
         if let Some(text) = opts.text {

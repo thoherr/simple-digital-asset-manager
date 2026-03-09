@@ -2747,9 +2747,18 @@ impl AssetService {
         result.orphaned_assets = orphaned_ids.len();
 
         if apply {
+            let stack_store = crate::stack::StackStore::new(catalog.conn());
             for asset_id in &orphaned_ids {
                 let file_start = Instant::now();
                 let asset_id_path = PathBuf::from(asset_id);
+
+                // Remove from stacks, collections, and faces before deleting the asset
+                let _ = stack_store.remove(&[asset_id.clone()]);
+                let _ = catalog.delete_collection_memberships_for_asset(asset_id);
+                let _ = catalog.conn().execute(
+                    "DELETE FROM faces WHERE asset_id = ?1",
+                    rusqlite::params![asset_id],
+                );
 
                 if let Err(e) = catalog.delete_recipes_for_asset(asset_id) {
                     result.errors.push(format!(
@@ -2960,6 +2969,12 @@ impl AssetService {
                     collections_changed = true;
                 }
 
+                // 4c2. Delete faces
+                let _ = catalog.conn().execute(
+                    "DELETE FROM faces WHERE asset_id = ?1",
+                    rusqlite::params![&asset_id],
+                );
+
                 // 4d. Delete recipes
                 if let Err(e) = catalog.delete_recipes_for_asset(&asset_id) {
                     result.errors.push(format!("{asset_id}: failed to delete recipes: {e}"));
@@ -3147,9 +3162,18 @@ impl AssetService {
         result.orphaned_assets = orphaned_ids.len();
 
         if apply {
+            let stack_store = crate::stack::StackStore::new(catalog.conn());
             for asset_id in &orphaned_ids {
                 let file_start = Instant::now();
                 let asset_id_path = PathBuf::from(asset_id);
+
+                // Remove from stacks, collections, and faces before deleting the asset
+                let _ = stack_store.remove(&[asset_id.clone()]);
+                let _ = catalog.delete_collection_memberships_for_asset(asset_id);
+                let _ = catalog.conn().execute(
+                    "DELETE FROM faces WHERE asset_id = ?1",
+                    rusqlite::params![asset_id],
+                );
 
                 if let Err(e) = catalog.delete_recipes_for_asset(asset_id) {
                     result.errors.push(format!(

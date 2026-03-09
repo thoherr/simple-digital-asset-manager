@@ -106,6 +106,7 @@ pub struct ParsedSearch {
     pub face_count_exact: Option<u32>,
     pub persons: Vec<String>,
     pub persons_exclude: Vec<String>,
+    pub asset_id: Option<String>,
     pub has_embed: Option<bool>,
     #[cfg(feature = "ai")]
     pub similar: Option<String>,
@@ -117,6 +118,7 @@ impl ParsedSearch {
     /// Convert to `SearchOptions` for passing to catalog search methods.
     pub fn to_search_options(&self) -> SearchOptions<'_> {
         SearchOptions {
+            asset_id: self.asset_id.as_deref(),
             text: self.text.as_deref(),
             text_exclude: &self.text_exclude,
             asset_types: &self.asset_types,
@@ -240,7 +242,9 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
             (false, token.as_str())
         };
 
-        if let Some(value) = token_body.strip_prefix("type:") {
+        if let Some(value) = token_body.strip_prefix("id:") {
+            parsed.asset_id = Some(value.to_string());
+        } else if let Some(value) = token_body.strip_prefix("type:") {
             if negated {
                 parsed.asset_types_exclude.push(value.to_string());
             } else {
