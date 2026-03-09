@@ -2,6 +2,21 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v2.3.5 — 2026-03-09
+
+### New Features
+- **`dam sync-metadata` command** — bidirectional XMP metadata sync in a single command. Phase 1 (Inbound): detects externally modified XMP recipe files and re-reads metadata. Phase 2 (Outbound): writes pending DAM edits to XMP. Phase 3 (Media, with `--media`): re-extracts embedded XMP from JPEG/TIFF files. Detects conflicts when both sides changed. Supports `--volume`, `--asset`, `--dry-run`, `--json`, `--log`, `--time`.
+- **`id:` search filter** — query assets by UUID prefix in both CLI and web UI. `dam search "id:c654e"` matches assets whose ID starts with the given prefix.
+
+### Enhancements
+- **Comprehensive derived file cleanup** — `dam cleanup`, `dam delete`, and `dam volume remove` now handle all derived file types: regular previews, smart previews, SigLIP embedding binaries, face crop thumbnails, ArcFace embedding binaries, and embedding/face DB records. Previously only regular previews were cleaned up, leaving orphaned files to accumulate.
+- **Seven-pass cleanup** — `dam cleanup` now runs 7 passes (up from 3): stale locations, orphaned assets (with full derived file removal), orphaned previews, orphaned smart previews, orphaned SigLIP embeddings, orphaned face crops, and orphaned ArcFace embeddings. New counters reported in both human and JSON output.
+
+### Bug Fixes
+- **FK constraint error in cleanup/delete** — cleanup and volume-remove failed with "FOREIGN KEY constraint failed" when deleting orphaned assets that had faces, stacks, or collection memberships. Now clears all dependent records before asset deletion.
+- **Face preview thumbnails** — people page now auto-backfills `representative_face_id` for people who had no thumbnail (e.g., after clustering).
+- **Nav menu items on non-browse pages** — Stroll and People menu items no longer disappear when navigating away from the browse page.
+
 ## v2.3.4 — 2026-03-09
 
 ### Enhancements

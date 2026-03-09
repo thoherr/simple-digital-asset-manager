@@ -305,8 +305,81 @@ dam refresh /Volumes/Photos/Capture/2026-02-22 --log
 ### SEE ALSO
 
 [sync](#dam-sync) -- full reconciliation of catalog with disk.
+[sync-metadata](#dam-sync-metadata) -- bidirectional XMP metadata sync.
 [verify](#dam-verify) -- integrity checking without metadata re-extraction.
 [import](02-ingest-commands.md#dam-import) -- initial import with XMP extraction.
+
+---
+
+## dam sync-metadata
+
+### NAME
+
+dam-sync-metadata -- bidirectional XMP metadata sync between DAM and recipe files
+
+### SYNOPSIS
+
+```
+dam [GLOBAL FLAGS] sync-metadata [OPTIONS]
+```
+
+### DESCRIPTION
+
+Performs bidirectional metadata synchronization between the DAM catalog and XMP recipe files on disk. Runs in three phases:
+
+1. **Inbound (read external changes)**: Detects XMP recipe files that have been modified externally (e.g., by CaptureOne or Lightroom). Re-reads keywords, rating, description, and color label from the changed XMP file and updates the catalog and sidecar YAML.
+2. **Outbound (write pending edits)**: Finds recipes marked `pending_writeback` (edits made while the volume was offline) and writes the current DAM metadata back to the XMP file on disk.
+3. **Media (with `--media`)**: Re-extracts embedded XMP metadata from JPEG/TIFF variant files.
+
+When both the disk file and the DAM have changed (phase 1 detects a change AND `pending_writeback` is set), the recipe is reported as a **conflict**. Conflicts are skipped — resolve manually or re-run with `refresh` or `writeback` as appropriate.
+
+Without `--dry-run`, changes are applied immediately.
+
+### OPTIONS
+
+**--volume \<LABEL\>**
+: Limit to recipes on a specific volume.
+
+**--asset \<ID\>**
+: Limit to recipes belonging to a specific asset (prefix match).
+
+**--dry-run**
+: Report what would change without applying.
+
+**--media**
+: Also re-extract embedded XMP from JPEG/TIFF variant files (phase 3).
+
+`--json` outputs a `SyncMetadataResult` with per-status counts and conflict details.
+
+`--log` prints per-recipe status to stderr.
+
+`--time` shows elapsed wall-clock time.
+
+### EXAMPLES
+
+Preview what sync-metadata would do:
+
+```bash
+dam sync-metadata --dry-run
+```
+
+Sync a specific volume after reconnecting:
+
+```bash
+dam sync-metadata --volume "Photos 2024" --log
+```
+
+Full sync including embedded XMP:
+
+```bash
+dam sync-metadata --media --log --time
+```
+
+### SEE ALSO
+
+[refresh](#dam-refresh) -- one-way inbound metadata re-read.
+[writeback](04-retrieve-commands.md#dam-writeback) -- one-way outbound metadata write.
+[sync](#dam-sync) -- file-level reconciliation (moves, renames, missing files).
 
 ---
 
@@ -314,7 +387,7 @@ dam refresh /Volumes/Photos/Capture/2026-02-22 --log
 
 ### NAME
 
-dam-cleanup -- remove stale location records, orphaned assets, and orphaned previews
+dam-cleanup -- remove stale location records, orphaned assets, and orphaned derived files
 
 ### SYNOPSIS
 
@@ -324,13 +397,17 @@ dam [GLOBAL FLAGS] cleanup [OPTIONS]
 
 ### DESCRIPTION
 
-Scans all file locations and recipes across online volumes, checking for files that no longer exist on disk. Performs three passes:
+Scans all file locations and recipes across online volumes, checking for files that no longer exist on disk. Performs seven passes:
 
 1. **Stale locations and recipes**: Removes catalog and sidecar records for files that are missing from disk.
-2. **Orphaned assets**: Deletes assets where all variants have zero remaining file locations, along with their recipes, variants, catalog rows, and sidecar YAML files.
+2. **Orphaned assets**: Deletes assets where all variants have zero remaining file locations, along with their recipes, variants, faces, embeddings, previews, smart previews, face crops, embedding binaries, catalog rows, and sidecar YAML files.
 3. **Orphaned previews**: Removes preview files whose content hash no longer matches any variant in the catalog.
+4. **Orphaned smart previews**: Same as above for the `smart_previews/` directory.
+5. **Orphaned SigLIP embeddings**: Removes embedding binary files (`embeddings/<model>/`) whose asset ID no longer exists in the catalog.
+6. **Orphaned face crops**: Removes face crop thumbnails (`faces/`) whose face ID no longer exists in the catalog.
+7. **Orphaned ArcFace embeddings**: Removes face embedding binaries (`embeddings/arcface/`) whose face ID no longer exists in the catalog.
 
-Without `--apply`, runs in **report-only mode** (safe default) and predicts what would be removed, including orphaned assets and previews that would result from removing stale locations.
+Without `--apply`, runs in **report-only mode** (safe default) and predicts what would be removed, including orphaned assets and derived files that would result from removing stale locations.
 
 Offline volumes are skipped with a note.
 
@@ -347,9 +424,9 @@ None.
 : Print stale entries to stderr (shows only stale items, unlike `--log` which prints all entries including OK ones).
 
 **--apply**
-: Apply changes: remove stale records, delete orphaned assets, and remove orphaned preview files.
+: Apply changes: remove stale records, delete orphaned assets, and remove all orphaned derived files.
 
-`--json` outputs a `CleanupResult` with counts for stale locations, stale recipes, orphaned assets, and orphaned previews.
+`--json` outputs a `CleanupResult` with counts for stale locations, orphaned assets, orphaned previews, orphaned smart previews, orphaned embeddings, and orphaned face files.
 
 `--log` prints per-file status to stderr (both OK and stale entries).
 

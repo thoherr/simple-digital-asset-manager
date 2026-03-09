@@ -456,6 +456,23 @@ In the web UI, the volume filter is a dropdown control rather than a typed query
 
 ---
 
+## id
+
+**Syntax:** `id:<prefix>`
+
+**Description:** Matches assets whose UUID starts with the given prefix. Useful for quickly finding a specific asset by its ID (or the beginning of it) in both CLI and web UI.
+
+**Examples:**
+
+```
+dam search "id:c654e"
+dam search "id:c654efa4-4e55"
+```
+
+**SQL behavior:** `WHERE a.id LIKE 'prefix%'`. Pure SQL prefix match.
+
+---
+
 ## orphan
 
 **Syntax:** `orphan:true`
@@ -786,6 +803,7 @@ dam search "camera:fuji"
 | `date:` | yes | yes (query input) | yes |
 | `dateFrom:` | yes | yes (query input) | yes |
 | `dateUntil:` | yes | yes (query input) | yes |
+| `id:` | yes | yes (query input) | yes |
 | `orphan:true` | yes | no | yes |
 | `missing:true` | yes | no | yes |
 | `stale:` | yes | no | yes |

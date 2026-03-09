@@ -2,18 +2,20 @@
 
 Over time, files move, drives get swapped, external tools edit recipes, and storage devices accumulate stale references. This chapter covers the commands that keep your catalog accurate and your files healthy.
 
-The five core maintenance commands form a cycle:
+The six core maintenance commands form a cycle:
 
 ```mermaid
 flowchart LR
     V["dam verify\n(detect corruption)"]
     S["dam sync\n(reconcile moved/\nmodified files)"]
-    W["dam writeback\n(push pending\nXMP edits)"]
+    SM["dam sync-metadata\n(bidirectional\nXMP sync)"]
     R["dam refresh\n(re-read changed\nrecipes)"]
     C["dam cleanup\n(remove stale\nrecords)"]
 
-    V --> S --> W --> R --> C --> V
+    V --> S --> SM --> R --> C --> V
 ```
+
+`dam sync-metadata` replaces the separate `writeback` + `refresh` steps for most workflows — it handles both directions in a single command and detects conflicts.
 
 Each command is safe by default -- destructive operations require an explicit `--apply` flag, and most commands support `--dry-run` or report-only mode.
 
@@ -329,9 +331,54 @@ dam writeback --log --time --json
 ```
 
 
+## Sync Metadata
+
+`dam sync-metadata` performs bidirectional XMP metadata sync in a single command — combining the inbound (refresh) and outbound (writeback) steps with conflict detection.
+
+### Basic usage
+
+```bash
+dam sync-metadata
+```
+
+This runs three phases:
+
+1. **Inbound**: Detects externally modified XMP recipe files and re-reads their metadata (keywords, rating, description, color label).
+2. **Outbound**: Finds recipes marked `pending_writeback` and writes current DAM metadata back to the XMP file.
+3. **Conflict detection**: When both the XMP file changed on disk AND the recipe has pending DAM edits, the recipe is reported as a conflict and skipped.
+
+### Scope to a volume or asset
+
+```bash
+dam sync-metadata --volume "Photos 2024"
+dam sync-metadata --asset a1b2c3d4
+```
+
+### Include embedded XMP
+
+```bash
+dam sync-metadata --media
+```
+
+The `--media` flag adds a third phase that re-extracts embedded XMP from JPEG/TIFF variant files — useful after external tools modify embedded metadata.
+
+### Dry run
+
+```bash
+dam sync-metadata --dry-run --log
+```
+
+Shows what would change without modifying any files.
+
+### When to use sync-metadata vs. writeback + refresh
+
+- **`sync-metadata`**: The recommended single command for most workflows. Handles both directions and detects conflicts.
+- **`writeback` + `refresh`**: Use separately when you want explicit control over direction (e.g., force DAM edits to win with `writeback --all`, then pull external changes with `refresh`).
+
+
 ## Cleanup
 
-`dam cleanup` scans all file locations and recipes across online volumes, checking whether the referenced files still exist on disk. It removes stale records in three passes.
+`dam cleanup` scans all file locations and recipes across online volumes, checking whether the referenced files still exist on disk. It removes stale records and orphaned derived files in seven passes.
 
 ### Report mode (safe default)
 
@@ -342,8 +389,8 @@ dam cleanup
 Without `--apply`, cleanup reports what it finds:
 
 ```
-Cleanup complete: 1500 checked, 12 stale, 3 orphaned assets, 5 orphaned previews
-  Run with --apply to remove stale records, orphaned assets, and previews.
+Cleanup complete: 1500 checked, 12 stale, 3 orphaned assets, 5 orphaned previews, 2 orphaned embeddings
+  Run with --apply to remove stale records and orphaned files.
 ```
 
 ### Apply cleanup
@@ -352,11 +399,15 @@ Cleanup complete: 1500 checked, 12 stale, 3 orphaned assets, 5 orphaned previews
 dam cleanup --apply
 ```
 
-The three passes:
+The seven passes:
 
 1. **Stale location and recipe records**: Removes catalog entries for files that no longer exist on disk (variant file locations and recipe file locations). Updates sidecar YAML files accordingly.
-2. **Orphaned assets**: Deletes assets where all variants have zero file locations remaining. Their recipes, variants, catalog rows, and sidecar YAML files are removed.
+2. **Orphaned assets**: Deletes assets where all variants have zero file locations remaining. Their recipes, variants, faces, embeddings, previews, smart previews, face crops, embedding binaries, catalog rows, and sidecar YAML files are removed.
 3. **Orphaned previews**: Removes preview JPEG files whose content hash no longer matches any variant in the catalog.
+4. **Orphaned smart previews**: Same for the `smart_previews/` directory.
+5. **Orphaned embeddings**: Removes SigLIP embedding binaries whose asset ID no longer exists.
+6. **Orphaned face crops**: Removes face crop thumbnails whose face ID no longer exists.
+7. **Orphaned ArcFace embeddings**: Removes face embedding binaries whose face ID no longer exists.
 
 ### Limit to a specific volume
 
