@@ -936,17 +936,23 @@ dam [GLOBAL FLAGS] describe [OPTIONS]
 
 ### DESCRIPTION
 
-Sends preview images to a VLM server and generates natural language descriptions. The command uses the OpenAI-compatible chat completions API, which is implemented by Ollama, LM Studio, vLLM, and most local inference servers.
+Sends preview images to a VLM server and generates natural language descriptions and/or tags. The command uses the OpenAI-compatible chat completions API, which is implemented by Ollama, LM Studio, vLLM, and most local inference servers.
 
-By default, the command runs in **report-only mode**: descriptions are generated and displayed but not saved. Use `--apply` to write descriptions to assets. Use `--dry-run` to see what would be processed without calling the VLM at all.
+Three modes are available via `--mode`:
+
+- **describe** (default) — generates a natural language description for each asset.
+- **tags** — asks the VLM to suggest tags, returned as a JSON array. Tags are deduplicated (case-insensitive) and existing asset tags are preserved.
+- **both** — runs describe and tags as two separate VLM calls per asset, combining the results. This is equivalent to running `--mode describe` and `--mode tags` independently, so each call uses its optimal prompt.
+
+By default, the command runs in **report-only mode**: results are generated and displayed but not saved. Use `--apply` to write descriptions/tags to assets. Use `--dry-run` to see what would be processed without calling the VLM at all.
 
 The command requires at least one scope filter (`--query`, `--asset`, or `--volume`) to prevent accidental processing of the entire catalog.
 
 For each asset, the command:
-1. Checks if a description already exists (skips unless `--force` is set)
+1. Checks if a description already exists (skips unless `--force` is set; tags mode always runs)
 2. Finds the best available image (smart preview > regular preview > original on an online volume)
 3. Base64-encodes the image and sends it to the VLM endpoint
-4. Parses the response and optionally saves it as the asset's description
+4. Parses the response and optionally saves descriptions/tags to the asset
 
 ### OPTIONS
 
@@ -966,13 +972,19 @@ For each asset, the command:
 : VLM server base URL. Default from `[vlm] endpoint` in `dam.toml`, or `http://localhost:11434`.
 
 **--prompt \<TEXT\>**
-: Custom prompt sent to the VLM. Default from `[vlm] prompt` in `dam.toml`, or a built-in photography-focused prompt.
+: Custom prompt sent to the VLM. Default from `[vlm] prompt` in `dam.toml`, or a built-in photography-focused prompt. In `--mode both`, custom prompts are ignored because each call uses its specialized built-in prompt.
 
 **--max-tokens \<N\>**
 : Maximum tokens in the VLM response. Default from `[vlm] max_tokens` in `dam.toml`, or `200`.
 
+**--timeout \<SECONDS\>**
+: Timeout for each VLM request. Default from `[vlm] timeout` in `dam.toml`, or `120`. Increase for larger models or first-time model loading.
+
+**--mode \<MODE\>**
+: Output mode: `describe` (default), `tags`, or `both`. In `both` mode, two VLM calls are made per asset — one for description, one for tags.
+
 **--apply**
-: Write descriptions to assets. Without this flag, descriptions are generated and displayed but not saved.
+: Write descriptions and/or tags to assets. Without this flag, results are generated and displayed but not saved.
 
 **--force**
 : Overwrite existing descriptions. By default, assets that already have a description are skipped.
@@ -1021,10 +1033,28 @@ Use a remote server or larger model:
 dam describe --endpoint http://gpu-server:11434 --model qwen2.5vl:7b --apply
 ```
 
+Generate tags only:
+
+```bash
+dam describe --mode tags --query "tag:untagged" --apply
+```
+
+Generate both descriptions and tags in one pass (two VLM calls per asset):
+
+```bash
+dam describe --mode both --asset a1b2c3d4 --apply
+```
+
 Custom prompt for architectural photography:
 
 ```bash
 dam describe --prompt "Describe the architectural style, materials, and features." --query "tag:architecture" --apply
+```
+
+Increase timeout for a large model's first load:
+
+```bash
+dam describe --model qwen2.5vl:7b --timeout 300 --asset a1b2c3d4
 ```
 
 Overwrite existing descriptions with a better model:

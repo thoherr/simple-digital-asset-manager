@@ -33,7 +33,7 @@ Core layers: CLI → Core Library (Asset Service, Content Store, Metadata Store,
 
 Core CLI is functional. See `doc/specification.md` for full requirements.
 
-**Implemented commands**: `init`, `volume add/list/combine/remove`, `import`, `delete`, `export`, `search`, `show`, `tag`, `edit`, `group`, `split`, `auto-group`, `auto-tag`, `embed`, `faces`, `stack`, `duplicates`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `migrate`, `relocate`, `update-location`, `verify`, `sync`, `sync-metadata`, `refresh`, `cleanup`, `dedup`, `backup-status`, `stats`, `serve`, `saved-search`, `collection`, `writeback`, `contact-sheet`
+**Implemented commands**: `init`, `volume add/list/combine/remove`, `import`, `delete`, `export`, `search`, `show`, `tag`, `edit`, `group`, `split`, `auto-group`, `auto-tag`, `embed`, `faces`, `stack`, `duplicates`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `migrate`, `relocate`, `update-location`, `verify`, `sync`, `sync-metadata`, `refresh`, `cleanup`, `dedup`, `backup-status`, `stats`, `serve`, `saved-search`, `collection`, `writeback`, `contact-sheet`, `describe`
 
 **Import behavior**:
 - **Stem-based auto-grouping**: Files sharing the same filename stem in the same directory are grouped into one Asset during import. RAW files take priority as the primary variant (defining asset identity and EXIF data). Additional media files become extra variants on the same asset.

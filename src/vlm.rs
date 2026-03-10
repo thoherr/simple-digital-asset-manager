@@ -42,16 +42,13 @@ pub const DEFAULT_DESCRIBE_PROMPT: &str =
 pub const DEFAULT_TAGS_PROMPT: &str =
     "Suggest descriptive tags for this photograph. Return a JSON object with a single key \"tags\" containing an array of short, specific tag strings. Focus on subject, scene type, lighting, mood, colors, and photographic style. Example: {\"tags\": [\"golden hour\", \"silhouette\", \"beach\"]}";
 
-/// Default prompt for both mode.
-pub const DEFAULT_BOTH_PROMPT: &str =
-    "Analyze this photograph. Return a JSON object with two keys: \"description\" (1-3 concise sentences about the subject, setting, lighting, and mood) and \"tags\" (an array of short, specific tag strings covering subject, scene, lighting, mood, colors, and style). Example: {\"description\": \"A lone tree on a hilltop at sunset.\", \"tags\": [\"golden hour\", \"silhouette\", \"landscape\"]}";
-
 /// Return the default prompt for a given mode.
+///
+/// In `Both` mode, returns the describe prompt (tags uses its own prompt internally).
 pub fn default_prompt_for_mode(mode: DescribeMode) -> &'static str {
     match mode {
-        DescribeMode::Describe => DEFAULT_DESCRIBE_PROMPT,
+        DescribeMode::Describe | DescribeMode::Both => DEFAULT_DESCRIBE_PROMPT,
         DescribeMode::Tags => DEFAULT_TAGS_PROMPT,
-        DescribeMode::Both => DEFAULT_BOTH_PROMPT,
     }
 }
 
@@ -95,6 +92,9 @@ pub struct BatchDescribeResult {
 }
 
 /// Call a VLM endpoint with an image and parse output according to mode.
+///
+/// In `Both` mode, makes two separate VLM calls (describe + tags) and merges
+/// the results, so each call uses the optimal prompt for its task.
 pub fn call_vlm_with_mode(
     endpoint: &str,
     model: &str,
@@ -105,14 +105,29 @@ pub fn call_vlm_with_mode(
     mode: DescribeMode,
     debug: bool,
 ) -> Result<VlmOutput> {
-    let raw = call_vlm(endpoint, model, image_base64, prompt, max_tokens, timeout, debug)?;
-    parse_vlm_output(&raw, mode)
+    match mode {
+        DescribeMode::Both => {
+            // Two separate calls: describe first, then tags
+            let desc_raw = call_vlm(endpoint, model, image_base64, DEFAULT_DESCRIBE_PROMPT, max_tokens, timeout, debug)?;
+            let tags_raw = call_vlm(endpoint, model, image_base64, DEFAULT_TAGS_PROMPT, max_tokens, timeout, debug)?;
+            let description = Some(desc_raw.trim().to_string());
+            let tags = extract_tags_from_json(&tags_raw).unwrap_or_default();
+            Ok(VlmOutput { description, tags })
+        }
+        _ => {
+            let raw = call_vlm(endpoint, model, image_base64, prompt, max_tokens, timeout, debug)?;
+            parse_vlm_output(&raw, mode)
+        }
+    }
 }
 
 /// Parse raw VLM text into structured output based on mode.
+///
+/// Note: `Both` mode is handled by `call_vlm_with_mode` (two separate calls),
+/// so this function only needs to handle `Describe` and `Tags`.
 pub fn parse_vlm_output(raw: &str, mode: DescribeMode) -> Result<VlmOutput> {
     match mode {
-        DescribeMode::Describe => Ok(VlmOutput {
+        DescribeMode::Describe | DescribeMode::Both => Ok(VlmOutput {
             description: Some(raw.to_string()),
             tags: Vec::new(),
         }),
@@ -121,21 +136,6 @@ pub fn parse_vlm_output(raw: &str, mode: DescribeMode) -> Result<VlmOutput> {
             Ok(VlmOutput {
                 description: None,
                 tags,
-            })
-        }
-        DescribeMode::Both => {
-            // Try to parse as JSON with both fields
-            if let Some(parsed) = try_parse_both(raw) {
-                return Ok(parsed);
-            }
-            // Fallback: only treat as description if it doesn't look like JSON
-            let trimmed = raw.trim();
-            if trimmed.starts_with('{') || trimmed.starts_with('[') {
-                anyhow::bail!("Could not parse JSON response from VLM in 'both' mode. Try increasing --max-tokens or using --mode describe instead.");
-            }
-            Ok(VlmOutput {
-                description: Some(raw.to_string()),
-                tags: Vec::new(),
             })
         }
     }
@@ -176,65 +176,6 @@ fn dedup_tags(tags: Vec<String>) -> Vec<String> {
     tags.into_iter()
         .filter(|t| seen.insert(t.to_lowercase()))
         .collect()
-}
-
-/// Try to parse a "both" mode response: {"description": "...", "tags": [...]}
-/// Handles truncated JSON from hitting max_tokens.
-fn try_parse_both(raw: &str) -> Option<VlmOutput> {
-    let cleaned = strip_markdown_json(&raw);
-
-    // Try clean JSON parse first
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&cleaned) {
-        let description = v.get("description").and_then(|d| d.as_str()).map(|s| s.trim().to_string());
-        let tags = extract_string_array(&v, "tags").unwrap_or_default();
-        if description.is_some() || !tags.is_empty() {
-            return Some(VlmOutput { description, tags });
-        }
-    }
-
-    // Truncated JSON — extract what we can via string matching
-    let description = extract_json_string_field(&cleaned, "description");
-    let tags = extract_json_string_array_partial(&cleaned, "tags");
-
-    if description.is_some() || !tags.is_empty() {
-        Some(VlmOutput { description, tags })
-    } else {
-        None
-    }
-}
-
-/// Extract a string field value from possibly-truncated JSON.
-/// Looks for `"key": "value"` or `"key":"value"`.
-fn extract_json_string_field(json: &str, key: &str) -> Option<String> {
-    let pattern = format!("\"{}\"", key);
-    let key_pos = json.find(&pattern)?;
-    let after_key = &json[key_pos + pattern.len()..];
-    // Skip whitespace and colon
-    let after_colon = after_key.trim_start().strip_prefix(':')?;
-    let after_ws = after_colon.trim_start();
-    // Expect opening quote
-    let after_quote = after_ws.strip_prefix('"')?;
-    // Find closing quote (handle escaped quotes)
-    let mut chars = after_quote.chars();
-    let mut value = String::new();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            if let Some(escaped) = chars.next() {
-                match escaped {
-                    '"' => value.push('"'),
-                    '\\' => value.push('\\'),
-                    'n' => value.push('\n'),
-                    _ => { value.push('\\'); value.push(escaped); }
-                }
-            }
-        } else if c == '"' {
-            return Some(value);
-        } else {
-            value.push(c);
-        }
-    }
-    // Truncated — return what we have if non-empty
-    if !value.is_empty() { Some(value) } else { None }
 }
 
 /// Extract string array elements from possibly-truncated JSON.
@@ -693,16 +634,10 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_both_mode() {
-        let raw = r#"{"description": "A sunset at the beach.", "tags": ["sunset", "beach"]}"#;
-        let output = parse_vlm_output(raw, DescribeMode::Both).unwrap();
-        assert_eq!(output.description.unwrap(), "A sunset at the beach.");
-        assert_eq!(output.tags, vec!["sunset", "beach"]);
-    }
-
-    #[test]
-    fn test_parse_both_fallback_to_description() {
-        let raw = "Just a plain text response without JSON.";
+    fn test_parse_both_is_plain_text() {
+        // Both mode now delegates to two calls in call_vlm_with_mode,
+        // so parse_vlm_output with Both just treats raw as description
+        let raw = "A butterfly on a pink flower.";
         let output = parse_vlm_output(raw, DescribeMode::Both).unwrap();
         assert_eq!(output.description.unwrap(), raw);
         assert!(output.tags.is_empty());
@@ -722,45 +657,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_both_truncated_json() {
-        let raw = r#"{"description": "A butterfly on a flower.", "tags": ["butterfly", "flower", "nature", "wildfl"#;
-        let output = parse_vlm_output(raw, DescribeMode::Both).unwrap();
-        assert_eq!(output.description.unwrap(), "A butterfly on a flower.");
-        // "wildfl" is truncated inside quotes, so only complete strings are extracted
-        assert_eq!(output.tags, vec!["butterfly", "flower", "nature"]);
-    }
-
-    #[test]
-    fn test_parse_both_truncated_description_only() {
-        let raw = r#"{"description": "A sunset over the oce"#;
-        let output = parse_vlm_output(raw, DescribeMode::Both).unwrap();
-        assert_eq!(output.description.unwrap(), "A sunset over the oce");
-        assert!(output.tags.is_empty());
-    }
-
-    #[test]
-    fn test_parse_both_unparseable_json_errors() {
-        let raw = r#"{"weird_field": 123"#;
-        assert!(parse_vlm_output(raw, DescribeMode::Both).is_err());
-    }
-
-    #[test]
-    fn test_extract_json_string_field() {
-        assert_eq!(
-            extract_json_string_field(r#"{"description": "hello world", "tags": []}"#, "description"),
-            Some("hello world".to_string())
-        );
-        assert_eq!(
-            extract_json_string_field(r#"{"description": "trunca"#, "description"),
-            Some("trunca".to_string())
-        );
-        assert_eq!(
-            extract_json_string_field(r#"{"tags": ["a"]}"#, "description"),
-            None
-        );
-    }
-
-    #[test]
     fn test_extract_json_string_array_partial() {
         let tags = extract_json_string_array_partial(
             r#"{"tags": ["a", "b", "c"]}"#, "tags"
@@ -776,14 +672,6 @@ mod tests {
             r#"{"description": "hi"}"#, "tags"
         );
         assert!(tags.is_empty());
-    }
-
-    #[test]
-    fn test_both_mode_dedup_tags() {
-        // Tags with duplicates — dedup happens at the application layer, not parsing
-        let raw = r#"{"description": "A flower.", "tags": ["pink", "flower", "pink", "flower"]}"#;
-        let output = parse_vlm_output(raw, DescribeMode::Both).unwrap();
-        assert_eq!(output.tags, vec!["pink", "flower", "pink", "flower"]);
     }
 
     #[test]

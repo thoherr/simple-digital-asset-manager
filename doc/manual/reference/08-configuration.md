@@ -455,9 +455,7 @@ Maximum number of tokens in the VLM response. 200 tokens is typically 2--3 sente
 - **Type:** string (optional)
 - **Default:** none (uses built-in photography-focused prompt)
 
-Custom system prompt sent to the VLM. When not set, uses:
-
-> *Describe this photograph in 1--3 concise sentences. Focus on the subject, setting, lighting, and mood. Be specific about what you see, not what you interpret.*
+Custom system prompt sent to the VLM. When not set, uses a built-in prompt appropriate for the mode (describe or tags). In `--mode both`, custom prompts are ignored because each of the two calls uses its specialized built-in prompt.
 
 Override for specialized workflows:
 
@@ -465,6 +463,13 @@ Override for specialized workflows:
 [vlm]
 prompt = "Describe the architectural style, materials, and notable design features."
 ```
+
+### mode
+
+- **Type:** string
+- **Default:** `"describe"`
+
+Default output mode for `dam describe`. One of: `describe` (natural language description), `tags` (JSON tag suggestions), `both` (two separate VLM calls: one for description, one for tags).
 
 ### timeout
 
@@ -482,7 +487,7 @@ Reserved for future use. Currently, assets are processed sequentially.
 
 ### CLI Override
 
-The `--endpoint`, `--model`, `--prompt`, and `--max-tokens` flags on `dam describe` override the values from `dam.toml`.
+The `--endpoint`, `--model`, `--prompt`, `--max-tokens`, `--timeout`, and `--mode` flags on `dam describe` override the values from `dam.toml`.
 
 ```toml
 [vlm]
@@ -490,6 +495,7 @@ endpoint = "http://localhost:11434"
 model = "qwen2.5vl:3b"
 max_tokens = 200
 timeout = 120
+mode = "describe"
 # prompt = "Custom prompt here."
 ```
 
@@ -588,6 +594,7 @@ endpoint = "http://localhost:11434"
 model = "qwen2.5vl:3b"
 max_tokens = 200
 timeout = 120
+mode = "describe"
 # prompt = "Describe this photograph concisely."
 ```
 
@@ -667,6 +674,7 @@ When a field is absent from `dam.toml`, these defaults apply:
 | `vlm.model` | `"qwen2.5vl:3b"` |
 | `vlm.max_tokens` | `200` |
 | `vlm.prompt` | none (built-in) |
+| `vlm.mode` | `"describe"` |
 | `vlm.timeout` | `120` |
 | `vlm.concurrency` | `1` |
 

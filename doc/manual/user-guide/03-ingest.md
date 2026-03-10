@@ -600,11 +600,19 @@ dam describe --query "rating:5" --model qwen2.5vl:7b --force --apply
 # Use a custom prompt for specific content
 dam describe --prompt "List the key subjects and artistic techniques." --query "tag:art" --apply
 
+# Generate tags instead of descriptions
+dam describe --mode tags --query "tag:untagged" --apply
+
+# Generate both descriptions and tags (two VLM calls per asset)
+dam describe --mode both --asset a1b2c3d4 --apply
+
 # Dry run to see what would be processed
 dam describe --query "date:2024-06" --dry-run
 ```
 
-The report-only default (no `--apply`) lets you review generated descriptions before committing them. This is especially useful when tuning prompts or trying different models.
+Three modes are available: `--mode describe` (default) generates descriptions, `--mode tags` generates tag suggestions, and `--mode both` runs both — making two separate VLM calls per asset so each uses its optimal prompt. Tags are deduplicated and merged with existing asset tags.
+
+The report-only default (no `--apply`) lets you review generated descriptions and tags before committing them. This is especially useful when tuning prompts or trying different models.
 
 ### Configuration
 
@@ -624,9 +632,9 @@ CLI flags (`--endpoint`, `--model`, `--prompt`, `--max-tokens`) override `dam.to
 
 | | SigLIP Auto-Tag | VLM Describe |
 |--|----------------|--------------|
-| **Output** | Tags from fixed vocabulary | Free-form text |
+| **Output** | Tags from fixed vocabulary | Free-form text, tags, or both |
 | **Speed** | ~50--150 ms/image | ~3--36s/image |
-| **Best for** | Categorical filtering, similarity | Documentation, search enrichment |
+| **Best for** | Categorical filtering, similarity | Documentation, open-ended tagging |
 | **Requires** | `--features ai`, ONNX models | `curl`, running VLM server |
 | **GPU** | CoreML via `--features ai-gpu` | Automatic via Ollama |
 
