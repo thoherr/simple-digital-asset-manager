@@ -128,7 +128,11 @@ pub fn parse_vlm_output(raw: &str, mode: DescribeMode) -> Result<VlmOutput> {
             if let Some(parsed) = try_parse_both(raw) {
                 return Ok(parsed);
             }
-            // Fallback: treat the whole response as description
+            // Fallback: only treat as description if it doesn't look like JSON
+            let trimmed = raw.trim();
+            if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                anyhow::bail!("Could not parse JSON response from VLM in 'both' mode. Try increasing --max-tokens or using --mode describe instead.");
+            }
             Ok(VlmOutput {
                 description: Some(raw.to_string()),
                 tags: Vec::new(),
@@ -160,19 +164,111 @@ fn extract_tags_from_json(raw: &str) -> Result<Vec<String>> {
 }
 
 /// Try to parse a "both" mode response: {"description": "...", "tags": [...]}
+/// Handles truncated JSON from hitting max_tokens.
 fn try_parse_both(raw: &str) -> Option<VlmOutput> {
-    let cleaned = strip_markdown_json(raw);
-    let v: serde_json::Value = serde_json::from_str(&cleaned).ok()?;
+    let cleaned = strip_markdown_json(&raw);
 
-    let description = v.get("description").and_then(|d| d.as_str()).map(|s| s.trim().to_string());
-    let tags = extract_string_array(&v, "tags").unwrap_or_default();
+    // Try clean JSON parse first
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&cleaned) {
+        let description = v.get("description").and_then(|d| d.as_str()).map(|s| s.trim().to_string());
+        let tags = extract_string_array(&v, "tags").unwrap_or_default();
+        if description.is_some() || !tags.is_empty() {
+            return Some(VlmOutput { description, tags });
+        }
+    }
 
-    // Need at least one of the two fields
+    // Truncated JSON — extract what we can via string matching
+    let description = extract_json_string_field(&cleaned, "description");
+    let tags = extract_json_string_array_partial(&cleaned, "tags");
+
     if description.is_some() || !tags.is_empty() {
         Some(VlmOutput { description, tags })
     } else {
         None
     }
+}
+
+/// Extract a string field value from possibly-truncated JSON.
+/// Looks for `"key": "value"` or `"key":"value"`.
+fn extract_json_string_field(json: &str, key: &str) -> Option<String> {
+    let pattern = format!("\"{}\"", key);
+    let key_pos = json.find(&pattern)?;
+    let after_key = &json[key_pos + pattern.len()..];
+    // Skip whitespace and colon
+    let after_colon = after_key.trim_start().strip_prefix(':')?;
+    let after_ws = after_colon.trim_start();
+    // Expect opening quote
+    let after_quote = after_ws.strip_prefix('"')?;
+    // Find closing quote (handle escaped quotes)
+    let mut chars = after_quote.chars();
+    let mut value = String::new();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(escaped) = chars.next() {
+                match escaped {
+                    '"' => value.push('"'),
+                    '\\' => value.push('\\'),
+                    'n' => value.push('\n'),
+                    _ => { value.push('\\'); value.push(escaped); }
+                }
+            }
+        } else if c == '"' {
+            return Some(value);
+        } else {
+            value.push(c);
+        }
+    }
+    // Truncated — return what we have if non-empty
+    if !value.is_empty() { Some(value) } else { None }
+}
+
+/// Extract string array elements from possibly-truncated JSON.
+/// Looks for `"key": ["a", "b", ...]` and collects complete strings.
+fn extract_json_string_array_partial(json: &str, key: &str) -> Vec<String> {
+    let pattern = format!("\"{}\"", key);
+    let key_pos = match json.find(&pattern) {
+        Some(p) => p,
+        None => return Vec::new(),
+    };
+    let after_key = &json[key_pos + pattern.len()..];
+    let after_colon = match after_key.trim_start().strip_prefix(':') {
+        Some(s) => s,
+        None => return Vec::new(),
+    };
+    let after_ws = after_colon.trim_start();
+    let after_bracket = match after_ws.strip_prefix('[') {
+        Some(s) => s,
+        None => return Vec::new(),
+    };
+
+    // Extract complete quoted strings
+    let mut tags = Vec::new();
+    let mut rest = after_bracket;
+    loop {
+        rest = rest.trim_start();
+        if rest.starts_with(']') {
+            break;
+        }
+        if rest.starts_with(',') {
+            rest = &rest[1..];
+            continue;
+        }
+        if rest.starts_with('"') {
+            rest = &rest[1..];
+            if let Some(end) = rest.find('"') {
+                let tag = rest[..end].trim().to_string();
+                if !tag.is_empty() {
+                    tags.push(tag);
+                }
+                rest = &rest[end + 1..];
+            } else {
+                break; // Truncated inside a string
+            }
+        } else {
+            break; // Unexpected content
+        }
+    }
+    tags
 }
 
 /// Extract a string array from a JSON value by key.
@@ -608,5 +704,70 @@ mod tests {
     fn test_parse_tags_invalid_json() {
         let raw = "Here are some tags: sunset, beach, ocean";
         assert!(parse_vlm_output(raw, DescribeMode::Tags).is_err());
+    }
+
+    #[test]
+    fn test_parse_both_truncated_json() {
+        let raw = r#"{"description": "A butterfly on a flower.", "tags": ["butterfly", "flower", "nature", "wildfl"#;
+        let output = parse_vlm_output(raw, DescribeMode::Both).unwrap();
+        assert_eq!(output.description.unwrap(), "A butterfly on a flower.");
+        // "wildfl" is truncated inside quotes, so only complete strings are extracted
+        assert_eq!(output.tags, vec!["butterfly", "flower", "nature"]);
+    }
+
+    #[test]
+    fn test_parse_both_truncated_description_only() {
+        let raw = r#"{"description": "A sunset over the oce"#;
+        let output = parse_vlm_output(raw, DescribeMode::Both).unwrap();
+        assert_eq!(output.description.unwrap(), "A sunset over the oce");
+        assert!(output.tags.is_empty());
+    }
+
+    #[test]
+    fn test_parse_both_unparseable_json_errors() {
+        let raw = r#"{"weird_field": 123"#;
+        assert!(parse_vlm_output(raw, DescribeMode::Both).is_err());
+    }
+
+    #[test]
+    fn test_extract_json_string_field() {
+        assert_eq!(
+            extract_json_string_field(r#"{"description": "hello world", "tags": []}"#, "description"),
+            Some("hello world".to_string())
+        );
+        assert_eq!(
+            extract_json_string_field(r#"{"description": "trunca"#, "description"),
+            Some("trunca".to_string())
+        );
+        assert_eq!(
+            extract_json_string_field(r#"{"tags": ["a"]}"#, "description"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_extract_json_string_array_partial() {
+        let tags = extract_json_string_array_partial(
+            r#"{"tags": ["a", "b", "c"]}"#, "tags"
+        );
+        assert_eq!(tags, vec!["a", "b", "c"]);
+
+        let tags = extract_json_string_array_partial(
+            r#"{"tags": ["a", "b", "trunc"#, "tags"
+        );
+        assert_eq!(tags, vec!["a", "b"]);
+
+        let tags = extract_json_string_array_partial(
+            r#"{"description": "hi"}"#, "tags"
+        );
+        assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn test_both_mode_dedup_tags() {
+        // Tags with duplicates — dedup happens at the application layer, not parsing
+        let raw = r#"{"description": "A flower.", "tags": ["pink", "flower", "pink", "flower"]}"#;
+        let output = parse_vlm_output(raw, DescribeMode::Both).unwrap();
+        assert_eq!(output.tags, vec!["pink", "flower", "pink", "flower"]);
     }
 }
