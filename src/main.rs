@@ -305,6 +305,10 @@ enum Commands {
         #[arg(long, display_order = 7)]
         max_tokens: Option<u32>,
 
+        /// Request timeout in seconds (default from dam.toml or 120)
+        #[arg(long, display_order = 8)]
+        timeout: Option<u32>,
+
         /// Apply descriptions to assets (default: report-only)
         #[arg(long, display_order = 20)]
         apply: bool,
@@ -2322,6 +2326,7 @@ fn main() {
             endpoint,
             prompt,
             max_tokens,
+            timeout,
             apply,
             force,
             dry_run,
@@ -2333,7 +2338,7 @@ fn main() {
             let endpoint = endpoint.as_deref().unwrap_or(&config.vlm.endpoint);
             let model = model.as_deref().unwrap_or(&config.vlm.model);
             let max_tokens = max_tokens.unwrap_or(config.vlm.max_tokens);
-            let timeout = config.vlm.timeout;
+            let timeout = timeout.unwrap_or(config.vlm.timeout);
             let prompt = prompt
                 .as_deref()
                 .or(config.vlm.prompt.as_deref())
