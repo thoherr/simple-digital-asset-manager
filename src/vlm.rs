@@ -142,25 +142,40 @@ pub fn parse_vlm_output(raw: &str, mode: DescribeMode) -> Result<VlmOutput> {
 }
 
 /// Extract tags array from a JSON response.
-/// Handles: `{"tags": [...]}`, `["tag1", ...]`, or markdown-wrapped JSON.
+/// Handles: `{"tags": [...]}`, `["tag1", ...]`, markdown-wrapped JSON,
+/// and truncated JSON (extracts complete strings only).
 fn extract_tags_from_json(raw: &str) -> Result<Vec<String>> {
     let cleaned = strip_markdown_json(raw);
 
-    // Try {"tags": [...]}
+    // Try clean JSON parse first
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&cleaned) {
         if let Some(tags) = extract_string_array(&v, "tags") {
-            return Ok(tags);
+            return Ok(dedup_tags(tags));
         }
         // Try bare array
         if let Some(arr) = v.as_array() {
             let tags: Vec<String> = arr.iter().filter_map(|t| t.as_str().map(String::from)).collect();
             if !tags.is_empty() {
-                return Ok(tags);
+                return Ok(dedup_tags(tags));
             }
         }
     }
 
+    // Truncated JSON — extract complete tag strings
+    let tags = extract_json_string_array_partial(&cleaned, "tags");
+    if !tags.is_empty() {
+        return Ok(dedup_tags(tags));
+    }
+
     anyhow::bail!("Could not parse tags from VLM response: {}", &raw[..raw.len().min(200)])
+}
+
+/// Deduplicate tags preserving first occurrence order.
+fn dedup_tags(tags: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    tags.into_iter()
+        .filter(|t| seen.insert(t.to_lowercase()))
+        .collect()
 }
 
 /// Try to parse a "both" mode response: {"description": "...", "tags": [...]}
@@ -769,5 +784,31 @@ mod tests {
         let raw = r#"{"description": "A flower.", "tags": ["pink", "flower", "pink", "flower"]}"#;
         let output = parse_vlm_output(raw, DescribeMode::Both).unwrap();
         assert_eq!(output.tags, vec!["pink", "flower", "pink", "flower"]);
+    }
+
+    #[test]
+    fn test_parse_tags_truncated_json() {
+        // Truncated JSON from hitting max_tokens — should extract complete tags
+        let raw = r#"{"tags": ["golden hour", "silhouette", "beach", "flowers", "butterfly", "wildfl"#;
+        let output = parse_vlm_output(raw, DescribeMode::Tags).unwrap();
+        assert_eq!(output.tags, vec!["golden hour", "silhouette", "beach", "flowers", "butterfly"]);
+        assert!(output.description.is_none());
+    }
+
+    #[test]
+    fn test_parse_tags_dedup() {
+        // VLMs sometimes repeat tags — dedup in tags mode
+        let raw = r#"{"tags": ["wildflowers", "pink", "wildflowers", "Pink", "butterfly"]}"#;
+        let output = parse_vlm_output(raw, DescribeMode::Tags).unwrap();
+        assert_eq!(output.tags, vec!["wildflowers", "pink", "butterfly"]);
+    }
+
+    #[test]
+    fn test_dedup_tags() {
+        assert_eq!(dedup_tags(vec![]), Vec::<String>::new());
+        assert_eq!(
+            dedup_tags(vec!["a".into(), "B".into(), "A".into(), "b".into(), "c".into()]),
+            vec!["a", "B", "c"]
+        );
     }
 }
