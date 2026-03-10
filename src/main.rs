@@ -2422,8 +2422,26 @@ fn main() {
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&result)?);
             } else {
-                for err in &result.errors {
-                    eprintln!("  {err}");
+                // Print each result
+                for r in &result.results {
+                    let short_id = &r.asset_id[..8.min(r.asset_id.len())];
+                    match &r.status {
+                        dam::vlm::DescribeStatus::Described => {
+                            if let Some(ref desc) = r.description {
+                                println!("{short_id}: {desc}");
+                            }
+                        }
+                        dam::vlm::DescribeStatus::Skipped(msg) => {
+                            if !cli.log {
+                                eprintln!("{short_id}: skipped — {msg}");
+                            }
+                        }
+                        dam::vlm::DescribeStatus::Error(msg) => {
+                            if !cli.log {
+                                eprintln!("{short_id}: error — {msg}");
+                            }
+                        }
+                    }
                 }
 
                 let mode = if dry_run {
@@ -2440,9 +2458,9 @@ fn main() {
                 if result.failed > 0 {
                     parts.push(format!("{} failed", result.failed));
                 }
-                println!("{mode}: {}", parts.join(", "));
+                eprintln!("{mode}: {}", parts.join(", "));
                 if !apply && !dry_run && result.described > 0 {
-                    println!("  Run with --apply to save descriptions to assets.");
+                    eprintln!("  Run with --apply to save descriptions to assets.");
                 }
             }
             Ok(())
