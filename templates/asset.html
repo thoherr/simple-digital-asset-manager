@@ -30,6 +30,9 @@
 
         <div class="description-wrapper">
             <strong>Description</strong>
+            {% if vlm_enabled %}
+            <button id="vlm-describe-btn" class="btn btn-sm" onclick="vlmDescribe()">Describe</button>
+            {% endif %}
             <div id="description">
                 {% include "description_fragment.html" %}
             </div>
@@ -941,6 +944,45 @@
             document.getElementById('tag-suggestions').style.display = 'none';
         })
         .catch(function(err) { console.error('Accept all tags error:', err); });
+    };
+
+    // --- VLM describe ---
+    window.vlmDescribe = function() {
+        var btn = document.getElementById('vlm-describe-btn');
+        if (!btn) return;
+        btn.textContent = 'Generating...';
+        btn.disabled = true;
+
+        fetch('/api/asset/' + assetId + '/vlm-describe', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({mode: 'describe'})
+        })
+        .then(function(r) {
+            if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+            return r.json();
+        })
+        .then(function(result) {
+            btn.textContent = 'Describe';
+            btn.disabled = false;
+            if (result.description) {
+                // Update description text in-place
+                var textEl = document.querySelector('#description .description-text');
+                if (textEl) {
+                    textEl.textContent = result.description;
+                    textEl.style.color = '';
+                    textEl.style.fontStyle = '';
+                }
+                // Update the textarea too (for edit mode)
+                var textarea = document.querySelector('#description textarea[name="description"]');
+                if (textarea) textarea.value = result.description;
+            }
+        })
+        .catch(function(err) {
+            btn.textContent = 'Describe';
+            btn.disabled = false;
+            alert('VLM describe failed: ' + err.message);
+        });
     };
 
     // --- Find similar images ---

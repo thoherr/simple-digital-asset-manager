@@ -253,6 +253,7 @@ pub async fn browse_page(
             saved_searches,
             collapse_stacks,
             ai_enabled: state.ai_enabled,
+            vlm_enabled: state.vlm_enabled,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
@@ -933,6 +934,7 @@ pub async fn tags_page(State(state): State<Arc<AppState>>) -> Response {
             tags: tree,
             total_tags,
             ai_enabled: state.ai_enabled,
+            vlm_enabled: state.vlm_enabled,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
@@ -966,6 +968,7 @@ pub async fn stats_page(State(state): State<Arc<AppState>>) -> Response {
             stats,
             total_size_fmt,
             ai_enabled: state.ai_enabled,
+            vlm_enabled: state.vlm_enabled,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
@@ -1006,6 +1009,7 @@ pub async fn backup_page(State(state): State<Arc<AppState>>) -> Response {
             result: backup,
             total_assets_fmt,
             ai_enabled: state.ai_enabled,
+            vlm_enabled: state.vlm_enabled,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
@@ -1779,7 +1783,7 @@ pub async fn collections_page(State(state): State<Arc<AppState>>) -> Response {
         let catalog = state.catalog()?;
         let col_store = crate::collection::CollectionStore::new(catalog.conn());
         let collections = col_store.list()?;
-        let tmpl = super::templates::CollectionsPage { collections, ai_enabled: state.ai_enabled };
+        let tmpl = super::templates::CollectionsPage { collections, ai_enabled: state.ai_enabled, vlm_enabled: state.vlm_enabled };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
     .await;
@@ -2156,7 +2160,7 @@ pub async fn saved_searches_page(State(state): State<Arc<AppState>>) -> Response
                 }
             })
             .collect();
-        let tmpl = SavedSearchesPage { searches, ai_enabled: state.ai_enabled };
+        let tmpl = SavedSearchesPage { searches, ai_enabled: state.ai_enabled, vlm_enabled: state.vlm_enabled };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
     .await;
@@ -2818,6 +2822,7 @@ pub async fn duplicates_page(
             all_formats,
             dedup_prefer,
             ai_enabled: state.ai_enabled,
+            vlm_enabled: state.vlm_enabled,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
@@ -3042,7 +3047,7 @@ pub async fn compare_page(
             assets.push(CompareAsset::from_details(&details, purl));
         }
 
-        let tmpl = ComparePage { assets, ai_enabled: state.ai_enabled };
+        let tmpl = ComparePage { assets, ai_enabled: state.ai_enabled, vlm_enabled: state.vlm_enabled };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
     .await;
@@ -4563,6 +4568,7 @@ fn stroll_page_inner(
         stroll_fanout: state.stroll_fanout,
         stroll_fanout_max: state.stroll_fanout_max,
         ai_enabled: state.ai_enabled,
+        vlm_enabled: state.vlm_enabled,
         tag: String::new(),
         rating: String::new(),
         label: String::new(),
@@ -4659,4 +4665,337 @@ pub async fn stroll_neighbors_api(
         Ok(Err(msg)) => (StatusCode::NOT_FOUND, msg).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
     }
+}
+
+// --- VLM Describe ---
+
+/// Request body for single-asset VLM describe.
+#[derive(serde::Deserialize)]
+pub struct VlmDescribeRequest {
+    #[serde(default)]
+    pub mode: Option<String>,
+}
+
+/// Response for single-asset VLM describe.
+#[derive(serde::Serialize)]
+pub struct VlmDescribeResponse {
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+}
+
+/// POST /api/asset/{id}/vlm-describe — describe a single asset via VLM.
+pub async fn vlm_describe_asset(
+    State(state): State<Arc<super::AppState>>,
+    Path(asset_id): Path<String>,
+    Json(body): Json<VlmDescribeRequest>,
+) -> Response {
+    let state = state.clone();
+    let result: Result<Result<VlmDescribeResponse, String>, _> =
+        tokio::task::spawn_blocking(move || {
+            vlm_describe_asset_inner(&state, &asset_id, body.mode.as_deref())
+        })
+        .await;
+
+    match result {
+        Ok(Ok(resp)) => Json(resp).into_response(),
+        Ok(Err(msg)) => (StatusCode::INTERNAL_SERVER_ERROR, msg).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
+}
+
+fn vlm_describe_asset_inner(
+    state: &super::AppState,
+    asset_id: &str,
+    mode_str: Option<&str>,
+) -> Result<VlmDescribeResponse, String> {
+    use crate::vlm::{self, DescribeMode};
+
+    let vlm = &state.vlm_config;
+    let mode = mode_str
+        .map(|s| DescribeMode::from_str(s).map_err(|e| e.to_string()))
+        .transpose()?
+        .unwrap_or(DescribeMode::Describe);
+    let prompt = vlm.prompt.as_deref()
+        .unwrap_or_else(|| vlm::default_prompt_for_mode(mode));
+
+    let engine = state.query_engine();
+    let service = state.asset_service();
+    let preview_gen = state.preview_generator();
+
+    // Look up asset
+    let catalog = state.catalog().map_err(|e| e.to_string())?;
+    let full_id = catalog
+        .resolve_asset_id(asset_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Asset not found: {asset_id}"))?;
+
+    let details = engine.show(&full_id).map_err(|e| e.to_string())?;
+
+    // Find image
+    let registry = DeviceRegistry::new(&state.catalog_root);
+    let volumes = registry.list().map_err(|e| e.to_string())?;
+    let online_volumes: std::collections::HashMap<String, &crate::models::Volume> = volumes
+        .iter()
+        .filter(|v| v.is_online)
+        .map(|v| (v.id.to_string(), v))
+        .collect();
+
+    let image_path = service.find_image_for_vlm(&details, &preview_gen, &online_volumes)
+        .ok_or_else(|| "No preview image available. Run `dam generate-previews` first.".to_string())?;
+
+    // Encode and call VLM
+    let image_base64 = vlm::encode_image_base64(&image_path).map_err(|e| e.to_string())?;
+    let output = vlm::call_vlm_with_mode(
+        &vlm.endpoint,
+        &vlm.model,
+        &image_base64,
+        prompt,
+        vlm.max_tokens,
+        vlm.timeout,
+        vlm.temperature,
+        mode,
+        false,
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Apply description if present
+    if let Some(ref desc) = output.description {
+        if !desc.is_empty() {
+            let edit_fields = crate::query::EditFields {
+                name: None,
+                description: Some(Some(desc.clone())),
+                rating: None,
+                color_label: None,
+                created_at: None,
+            };
+            engine.edit(&full_id, edit_fields).map_err(|e| e.to_string())?;
+        }
+    }
+
+    // Apply tags if present
+    if !output.tags.is_empty() {
+        let existing_tags: std::collections::HashSet<String> = details
+            .tags
+            .iter()
+            .map(|t| t.to_lowercase())
+            .collect();
+        let new_tags: Vec<String> = output
+            .tags
+            .iter()
+            .filter(|t| !existing_tags.contains(&t.to_lowercase()))
+            .cloned()
+            .collect();
+        if !new_tags.is_empty() {
+            engine.tag(&full_id, &new_tags, false).map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(VlmDescribeResponse {
+        description: output.description,
+        tags: output.tags,
+    })
+}
+
+/// Request body for batch VLM describe.
+#[derive(serde::Deserialize)]
+pub struct BatchVlmDescribeRequest {
+    pub asset_ids: Vec<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
+}
+
+/// Response for batch VLM describe.
+#[derive(serde::Serialize)]
+pub struct BatchVlmDescribeResponse {
+    pub succeeded: u32,
+    pub failed: u32,
+    pub descriptions_set: u32,
+    pub tags_applied: u32,
+    pub errors: Vec<String>,
+}
+
+/// POST /api/batch/describe — batch describe assets via VLM.
+pub async fn batch_vlm_describe(
+    State(state): State<Arc<super::AppState>>,
+    Json(body): Json<BatchVlmDescribeRequest>,
+) -> Response {
+    let state2 = state.clone();
+    let result: Result<Result<BatchVlmDescribeResponse, String>, _> =
+        tokio::task::spawn_blocking(move || {
+            batch_vlm_describe_inner(&state2, &body.asset_ids, body.mode.as_deref())
+        })
+        .await;
+
+    // Invalidate tag cache after batch operations
+    if let Ok(Ok(ref resp)) = result {
+        if resp.tags_applied > 0 {
+            state.dropdown_cache.invalidate_tags();
+        }
+    }
+
+    match result {
+        Ok(Ok(resp)) => Json(resp).into_response(),
+        Ok(Err(msg)) => (StatusCode::INTERNAL_SERVER_ERROR, msg).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+    }
+}
+
+fn batch_vlm_describe_inner(
+    state: &super::AppState,
+    asset_ids: &[String],
+    mode_str: Option<&str>,
+) -> Result<BatchVlmDescribeResponse, String> {
+    use crate::vlm::{self, DescribeMode};
+
+    let vlm = &state.vlm_config;
+    let mode = mode_str
+        .map(|s| DescribeMode::from_str(s).map_err(|e| e.to_string()))
+        .transpose()?
+        .unwrap_or(DescribeMode::Describe);
+    let prompt = vlm.prompt.as_deref()
+        .unwrap_or_else(|| vlm::default_prompt_for_mode(mode));
+
+    let engine = state.query_engine();
+    let service = state.asset_service();
+    let preview_gen = state.preview_generator();
+    let registry = DeviceRegistry::new(&state.catalog_root);
+    let volumes = registry.list().map_err(|e| e.to_string())?;
+    let online_volumes: std::collections::HashMap<String, &crate::models::Volume> = volumes
+        .iter()
+        .filter(|v| v.is_online)
+        .map(|v| (v.id.to_string(), v))
+        .collect();
+
+    let wants_description = mode == DescribeMode::Describe || mode == DescribeMode::Both;
+
+    let mut result = BatchVlmDescribeResponse {
+        succeeded: 0,
+        failed: 0,
+        descriptions_set: 0,
+        tags_applied: 0,
+        errors: Vec::new(),
+    };
+
+    for aid in asset_ids {
+        let catalog = match state.catalog() {
+            Ok(c) => c,
+            Err(e) => {
+                result.errors.push(format!("Catalog error: {e}"));
+                result.failed += 1;
+                continue;
+            }
+        };
+        let full_id = match catalog.resolve_asset_id(aid) {
+            Ok(Some(id)) => id,
+            _ => {
+                result.errors.push(format!("Asset not found: {aid}"));
+                result.failed += 1;
+                continue;
+            }
+        };
+
+        let details = match engine.show(&full_id) {
+            Ok(d) => d,
+            Err(e) => {
+                result.errors.push(format!("{aid}: {e}"));
+                result.failed += 1;
+                continue;
+            }
+        };
+
+        // Skip if description exists in describe/both mode
+        if wants_description {
+            if let Some(ref desc) = details.description {
+                if !desc.is_empty() {
+                    result.succeeded += 1;
+                    continue;
+                }
+            }
+        }
+
+        // Find image
+        let image_path = match service.find_image_for_vlm(&details, &preview_gen, &online_volumes) {
+            Some(p) => p,
+            None => {
+                result.succeeded += 1; // skip silently
+                continue;
+            }
+        };
+
+        // Encode and call VLM
+        let image_base64 = match vlm::encode_image_base64(&image_path) {
+            Ok(b) => b,
+            Err(e) => {
+                result.errors.push(format!("{aid}: {e}"));
+                result.failed += 1;
+                continue;
+            }
+        };
+
+        let output = match vlm::call_vlm_with_mode(
+            &vlm.endpoint,
+            &vlm.model,
+            &image_base64,
+            prompt,
+            vlm.max_tokens,
+            vlm.timeout,
+            vlm.temperature,
+            mode,
+            false,
+        ) {
+            Ok(o) => o,
+            Err(e) => {
+                result.errors.push(format!("{aid}: {e}"));
+                result.failed += 1;
+                continue;
+            }
+        };
+
+        // Apply description
+        if let Some(ref desc) = output.description {
+            if !desc.is_empty() {
+                let edit_fields = crate::query::EditFields {
+                    name: None,
+                    description: Some(Some(desc.clone())),
+                    rating: None,
+                    color_label: None,
+                    created_at: None,
+                };
+                if let Err(e) = engine.edit(&full_id, edit_fields) {
+                    result.errors.push(format!("{aid}: {e}"));
+                    result.failed += 1;
+                    continue;
+                }
+                result.descriptions_set += 1;
+            }
+        }
+
+        // Apply tags
+        if !output.tags.is_empty() {
+            let existing_tags: std::collections::HashSet<String> = details
+                .tags
+                .iter()
+                .map(|t| t.to_lowercase())
+                .collect();
+            let new_tags: Vec<String> = output
+                .tags
+                .iter()
+                .filter(|t| !existing_tags.contains(&t.to_lowercase()))
+                .cloned()
+                .collect();
+            if !new_tags.is_empty() {
+                let count = new_tags.len();
+                if let Err(e) = engine.tag(&full_id, &new_tags, false) {
+                    result.errors.push(format!("{aid}: {e}"));
+                    result.failed += 1;
+                    continue;
+                }
+                result.tags_applied += count as u32;
+            }
+        }
+
+        result.succeeded += 1;
+    }
+
+    Ok(result)
 }

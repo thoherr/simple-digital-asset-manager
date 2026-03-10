@@ -214,6 +214,7 @@ pub struct SavedSearchEntry {
 pub struct SavedSearchesPage {
     pub searches: Vec<SavedSearchEntry>,
     pub ai_enabled: bool,
+    pub vlm_enabled: bool,
 }
 
 #[derive(Template)]
@@ -243,6 +244,7 @@ pub struct BrowsePage {
     pub saved_searches: Vec<SavedSearchChip>,
     pub collapse_stacks: bool,
     pub ai_enabled: bool,
+    pub vlm_enabled: bool,
 }
 
 #[derive(Template)]
@@ -292,6 +294,7 @@ pub struct AssetPage {
     pub prev_id: Option<String>,
     pub next_id: Option<String>,
     pub ai_enabled: bool,
+    pub vlm_enabled: bool,
     pub faces: Vec<FaceRow>,
     pub all_people: Vec<PersonOption>,
 }
@@ -323,6 +326,7 @@ pub struct PersonCard {
 pub struct PeoplePage {
     pub people: Vec<PersonCard>,
     pub ai_enabled: bool,
+    pub vlm_enabled: bool,
 }
 
 /// A member of a stack, shown on asset detail page.
@@ -444,6 +448,7 @@ impl AssetPage {
             prev_id: None,
             next_id: None,
             ai_enabled: false,
+            vlm_enabled: false,
             faces: Vec::new(),
             all_people: Vec::new(),
         }
@@ -471,6 +476,7 @@ pub struct TagsPage {
     pub tags: Vec<TagTreeEntry>,
     pub total_tags: u64,
     pub ai_enabled: bool,
+    pub vlm_enabled: bool,
 }
 
 #[derive(Template)]
@@ -479,6 +485,7 @@ pub struct StatsPage {
     pub stats: CatalogStats,
     pub total_size_fmt: String,
     pub ai_enabled: bool,
+    pub vlm_enabled: bool,
 }
 
 #[derive(Template)]
@@ -487,6 +494,7 @@ pub struct BackupPage {
     pub result: BackupStatusResult,
     pub total_assets_fmt: String,
     pub ai_enabled: bool,
+    pub vlm_enabled: bool,
 }
 
 #[derive(Template)]
@@ -546,6 +554,7 @@ pub struct DateFragment {
 pub struct CollectionsPage {
     pub collections: Vec<crate::collection::CollectionSummary>,
     pub ai_enabled: bool,
+    pub vlm_enabled: bool,
 }
 
 #[derive(Template)]
@@ -563,6 +572,7 @@ pub struct DuplicatesPage {
     pub all_formats: Vec<FormatOption>,
     pub dedup_prefer: String,
     pub ai_enabled: bool,
+    pub vlm_enabled: bool,
 }
 
 /// Pre-computed asset data for the compare page.
@@ -635,6 +645,7 @@ impl CompareAsset {
 pub struct ComparePage {
     pub assets: Vec<CompareAsset>,
     pub ai_enabled: bool,
+    pub vlm_enabled: bool,
 }
 
 /// A neighbor asset on the stroll page.
@@ -671,6 +682,7 @@ pub struct StrollPage {
     pub stroll_fanout: u32,
     pub stroll_fanout_max: u32,
     pub ai_enabled: bool,
+    pub vlm_enabled: bool,
     // Filter bar data (shared with browse page)
     pub tag: String,
     pub rating: String,
