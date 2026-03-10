@@ -1,5 +1,7 @@
 # Proposal: VLM Integration for Image Descriptions
 
+**Status: Phases 1–3 implemented in v2.4.2.** Phase 4 (advanced features) remains open.
+
 Natural language image descriptions via local vision-language models. Complements the existing SigLIP zero-shot classification (fixed tag vocabulary, fast, low memory) with open-ended understanding (scene descriptions, context, relationships, mood).
 
 Referenced from [roadmap.md](roadmap.md) item "Ollama VLM Integration".
@@ -176,7 +178,7 @@ Tags are merged with existing tags (deduplicated, XMP write-back triggered).
 
 ### `both`
 
-Runs both modes in a single VLM call with a combined prompt. Returns description and tags together. More efficient than two separate calls but slightly less focused.
+Runs both modes as two separate VLM calls per asset — one for description, one for tags. Each call uses its optimal prompt for best results. Equivalent to running `--mode describe` and `--mode tags` independently.
 
 ---
 
@@ -392,7 +394,7 @@ This is a key advantage over the SigLIP integration which requires the `ai` feat
 
 ## Phases
 
-### Phase 1: CLI `describe` Command
+### Phase 1: CLI `describe` Command — *Implemented v2.4.2*
 
 - `src/vlm.rs`: HTTP client, prompt templates, response parsing
 - `VlmConfig` in `src/config.rs`
@@ -402,25 +404,21 @@ This is a key advantage over the SigLIP integration which requires the `ai` feat
 - Fallback from OpenAI API to native Ollama API
 - Connectivity check (`dam describe --check`)
 
-**Effort:** ~300–400 lines of Rust. 2–3 days.
-
-### Phase 2: Tag Suggestions Mode
+### Phase 2: Tag Suggestions Mode — *Implemented v2.4.2*
 
 - `--mode tags` with JSON schema constraint
-- `--mode both` combined output
-- Merge VLM-suggested tags with existing tags
+- `--mode both` as two separate VLM calls (one describe, one tags)
+- Merge VLM-suggested tags with existing tags (deduplicated, case-insensitive)
 - XMP write-back for new tags
+- Truncated JSON recovery for tag responses cut off by max_tokens
+- Configurable temperature (`--temperature` flag, `[vlm] temperature` config)
 
-**Effort:** ~100–150 lines. 1 day.
-
-### Phase 3: Web UI
+### Phase 3: Web UI — *Implemented v2.4.2*
 
 - "Describe" button on asset detail page
-- Batch "Describe" in toolbar
+- Batch "Describe" in browse toolbar
 - Loading states, error handling
-- `vlm_enabled` template flag with startup health check
-
-**Effort:** ~200–300 lines (Rust routes + HTML/JS). 2 days.
+- `vlm_enabled` template flag with startup health check (5s timeout)
 
 ### Phase 4: Advanced Features (Future)
 

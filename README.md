@@ -45,9 +45,9 @@ dam serve
 
 ## Commands
 
-36 commands covering setup, import, search, editing, maintenance, and more:
+37 commands covering setup, import, search, editing, maintenance, and more:
 
-`init` · `volume add/list/combine/remove` · `import` · `delete` · `export` · `contact-sheet` · `search` · `show` · `edit` · `tag` · `group` · `split` · `auto-group` · `auto-tag` · `embed` · `faces` · `stack` · `duplicates` · `dedup` · `generate-previews` · `relocate` · `verify` · `sync` · `sync-metadata` · `refresh` · `cleanup` · `writeback` · `stats` · `backup-status` · `fix-roles` · `fix-dates` · `rebuild-catalog` · `migrate` · `saved-search` · `collection` · `serve`
+`init` · `volume add/list/combine/remove` · `import` · `delete` · `export` · `contact-sheet` · `describe` · `search` · `show` · `edit` · `tag` · `group` · `split` · `auto-group` · `auto-tag` · `embed` · `faces` · `stack` · `duplicates` · `dedup` · `generate-previews` · `relocate` · `verify` · `sync` · `sync-metadata` · `refresh` · `cleanup` · `writeback` · `stats` · `backup-status` · `fix-roles` · `fix-dates` · `rebuild-catalog` · `migrate` · `saved-search` · `collection` · `serve`
 
 **Global flags**: `--json`, `--log`, `--debug`, `--time`. Run `dam --help` or `dam <command> --help` for usage.
 
@@ -78,7 +78,7 @@ Configuration is documented in the [Configuration Reference](doc/manual/referenc
 
 - **dcraw** or **LibRaw** (dcraw_emu) — RAW file preview extraction
 - **ffmpeg** — video thumbnail extraction
-- **curl** — model file download for AI auto-tagging (only needed with `--features ai`)
+- **curl** — model file download for AI auto-tagging (only needed with `--features ai`) and VLM image descriptions (`dam describe`)
 
 These are optional. When missing, RAW and video files get an info card preview instead.
 
@@ -107,6 +107,21 @@ dam faces name <person-id> "Alice"                    # name a person
 **Data persistence**: Face records, people, and embeddings are stored in both SQLite (for queries) and files (YAML + binary) for rebuild resilience. `dam faces export` migrates existing SQLite data to files; `dam embed --export` does the same for image similarity embeddings.
 
 **Search filters**: `faces:any` / `faces:none` / `faces:N` / `faces:N+` (face count), `person:<name>` (assigned person). **Config**: `[ai] face_cluster_threshold` (default 0.5), `[ai] face_min_confidence` (default 0.5).
+
+## VLM Image Descriptions
+
+Generate natural language descriptions and AI-suggested tags using a local vision-language model. Works with any OpenAI-compatible API server (Ollama, LM Studio, vLLM) — no special build features required.
+
+```
+ollama pull qwen2.5vl:3b                              # download a VLM
+dam describe --query "description:none" --apply        # describe undescribed assets
+dam describe --mode tags --query "date:2024-06" --apply  # suggest tags via VLM
+dam describe --mode both --volume "Photos" --apply     # both in one pass
+```
+
+**Web UI**: "Describe" button on asset detail page, batch "Describe" in browse toolbar. VLM availability is detected at server startup.
+
+**Config**: `[vlm]` section in `dam.toml` — endpoint, model, max_tokens, temperature, timeout, mode, prompt. CLI flags override config. See the [Configuration Reference](doc/manual/reference/08-configuration.md) for `[vlm]` settings.
 
 ## Technology
 

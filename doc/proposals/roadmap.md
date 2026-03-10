@@ -2,7 +2,7 @@
 
 Living document tracking planned enhancements. Previous proposals (all implemented or deferred) are in `archive/`.
 
-Current version: **v2.4.1** (2026-03-09)
+Current version: **v2.4.2** (2026-03-10)
 
 ---
 
@@ -138,14 +138,21 @@ Reorder stacks, add to collections, and manage groups via drag-and-drop in the b
 
 Natural language image descriptions via local vision-language models.
 
-**Scope:**
-- `dam describe [--query <Q>] [--model <ollama-model>] [--apply]`
-- Sends preview image + prompt to local Ollama server
-- Stores generated description as asset description (or separate field)
-- Batch processing with rate limiting
-- Could also power semantic search (embed descriptions for text-to-image retrieval)
+**Status:** Implemented in v2.4.2. Phases 1–3 complete (CLI `dam describe`, tag mode, web UI). See [proposal](proposal-vlm-integration.md).
 
-**Complexity:** Medium. HTTP client to Ollama API; main question is practical quality vs. tag-based search.
+**Done:**
+- `dam describe` command with `--mode describe|tags|both`, `--apply`, `--force`, `--dry-run`
+- OpenAI-compatible API with Ollama native fallback
+- Configurable temperature, timeout, model, endpoint, prompt via `[vlm]` in `dam.toml`
+- "Describe" button on detail page, batch "Describe" in toolbar
+- VLM startup health check, `vlm_enabled` template flag
+- Truncated JSON recovery, tag deduplication
+
+**Open (Phase 4):**
+- Concurrent requests (`concurrency > 1`)
+- Custom prompt library (`[vlm.prompts]`)
+- Auto-describe during import (`dam import --describe`)
+- Description-based semantic search
 
 ### Statistics Dashboard
 
@@ -173,4 +180,4 @@ All previous proposals are in `doc/proposals/archive/`. Key milestones:
 - **v2.0–v2.1**: AI — auto-tag, embeddings, similarity search, suggest tags
 - **v2.2**: Performance — SQLite pragmas, single connection, denormalized columns
 - **v2.3**: Stroll, sync-metadata, comprehensive cleanup, faces/people
-- **v2.4**: Contact sheet export, split command, alternate variant role, grouped CLI help, CoreML GPU acceleration
+- **v2.4**: Contact sheet export, split command, alternate variant role, grouped CLI help, CoreML GPU acceleration, VLM image descriptions

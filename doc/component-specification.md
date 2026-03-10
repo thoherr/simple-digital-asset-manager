@@ -499,6 +499,7 @@ dam fix-roles [PATHS...] [--volume V] [--asset ID] [--apply]  # fix variant role
 dam saved-search save|list|run|delete             # manage saved searches (alias: ss, save supports --favorite)
 dam collection create|list|show|add|remove|delete # manage collections (alias: col)
 dam rebuild-catalog                               # rebuild SQLite from sidecars
+dam describe [--query Q] [--asset ID] [--volume V] [--mode M] [--apply]  # VLM image descriptions/tags
 dam serve [--port P] [--bind ADDR] [--log]         # start web UI server (--log for request logging)
 ```
 
