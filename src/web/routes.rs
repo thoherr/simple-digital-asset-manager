@@ -4137,6 +4137,7 @@ pub async fn people_page(
         let tmpl = PeoplePage {
             people,
             ai_enabled: true,
+            vlm_enabled: state.vlm_enabled,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     }).await;
