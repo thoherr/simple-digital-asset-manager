@@ -704,6 +704,7 @@ pub async fn asset_page(
         tmpl.prev_id = nav_params.prev;
         tmpl.next_id = nav_params.next;
         tmpl.ai_enabled = state.ai_enabled;
+        tmpl.vlm_enabled = state.vlm_enabled;
         tmpl.faces = faces;
         tmpl.all_people = all_people_detail;
         Ok::<_, anyhow::Error>(tmpl.render()?)
