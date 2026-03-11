@@ -725,7 +725,6 @@ pub async fn asset_page(
                 let is_pick = member_ids.first().map_or(false, |id| id == &full_id);
                 let mut cards = Vec::new();
                 for (i, mid) in member_ids.iter().enumerate() {
-                    if mid == &full_id { continue; }
                     let name = catalog.get_asset_name(mid).unwrap_or(None)
                         .unwrap_or_else(|| mid[..8.min(mid.len())].to_string());
                     let hash = catalog.get_asset_best_variant_hash(mid).unwrap_or(None);

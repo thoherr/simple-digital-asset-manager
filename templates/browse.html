@@ -1101,6 +1101,143 @@ window.triggerSearch = onFilterChange;
     });
 })();
 
+// --- Drag and drop ---
+(function() {
+    var resultsEl = document.getElementById('results');
+
+    // Make asset cards draggable (suppress native image drag)
+    function initDraggable() {
+        resultsEl.querySelectorAll('.asset-card').forEach(function(card) {
+            card.setAttribute('draggable', 'true');
+        });
+        resultsEl.querySelectorAll('.asset-card img').forEach(function(img) {
+            img.setAttribute('draggable', 'false');
+        });
+    }
+    initDraggable();
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+        if (e.detail.target && e.detail.target.id === 'results') initDraggable();
+    });
+
+    // Drag start: carry asset IDs (dragged card + selection if card is selected)
+    resultsEl.addEventListener('dragstart', function(e) {
+        var card = e.target.closest('.asset-card');
+        if (!card) return;
+        var dragId = card.getAttribute('data-asset-id');
+        var ids;
+        if (window.damBatch && window.damBatch.selected.has(dragId) && window.damBatch.selected.size > 1) {
+            ids = Array.from(window.damBatch.selected);
+        } else {
+            ids = [dragId];
+        }
+        e.dataTransfer.setData('application/dam-asset-ids', JSON.stringify(ids));
+        e.dataTransfer.effectAllowed = 'copy';
+        card.classList.add('dragging');
+
+        // Ghost image: show count badge for multi-drag
+        if (ids.length > 1) {
+            var ghost = card.cloneNode(true);
+            ghost.style.position = 'absolute';
+            ghost.style.top = '-9999px';
+            ghost.style.width = card.offsetWidth + 'px';
+            var badge = document.createElement('div');
+            badge.className = 'drag-count-badge';
+            badge.textContent = ids.length;
+            ghost.appendChild(badge);
+            document.body.appendChild(ghost);
+            e.dataTransfer.setDragImage(ghost, 40, 40);
+            setTimeout(function() { document.body.removeChild(ghost); }, 0);
+        }
+    });
+
+    resultsEl.addEventListener('dragend', function(e) {
+        var card = e.target.closest('.asset-card');
+        if (card) card.classList.remove('dragging');
+    });
+
+    // Drop targets: collection dropdowns (batch toolbar + filter bar)
+    var dropTargets = [];
+
+    function setupDropTarget(el, getCollectionName) {
+        if (!el) return;
+        var wrapper = document.createElement('div');
+        wrapper.className = 'drop-target-wrapper';
+        el.parentNode.insertBefore(wrapper, el);
+        wrapper.appendChild(el);
+        dropTargets.push(wrapper);
+
+        wrapper.addEventListener('dragover', function(e) {
+            if (!e.dataTransfer.types.includes('application/dam-asset-ids')) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            wrapper.classList.add('drop-hover');
+        });
+
+        wrapper.addEventListener('dragleave', function(e) {
+            if (!wrapper.contains(e.relatedTarget)) {
+                wrapper.classList.remove('drop-hover');
+            }
+        });
+
+        wrapper.addEventListener('drop', function(e) {
+            e.preventDefault();
+            wrapper.classList.remove('drop-hover');
+            var raw = e.dataTransfer.getData('application/dam-asset-ids');
+            if (!raw) return;
+            var ids = JSON.parse(raw);
+            var colName = getCollectionName();
+            if (!colName || colName === '__new__') {
+                colName = prompt('Drop into collection:');
+                if (!colName || !colName.trim()) return;
+                colName = colName.trim();
+            }
+            fetch('/api/batch/collection', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({asset_ids: ids, collection: colName})
+            })
+            .then(function(r) {
+                if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+                return r.json();
+            })
+            .then(function(data) {
+                var n = data.added || ids.length;
+                showDropToast(n + ' asset' + (n !== 1 ? 's' : '') + ' added to "' + colName + '"');
+                if (window.damBatch) {
+                    window.damBatch.clearSelection();
+                    window.damBatch.refreshResults();
+                }
+            })
+            .catch(function(err) { console.error('Drop collection error:', err); });
+        });
+    }
+
+    // Batch toolbar collection select
+    setupDropTarget(
+        document.getElementById('batch-collection-select'),
+        function() { return document.getElementById('batch-collection-select').value; }
+    );
+
+    // Filter bar collection select
+    var filterColSel = document.querySelector('.search-bar [name=collection]');
+    if (filterColSel) {
+        setupDropTarget(filterColSel, function() { return filterColSel.value; });
+    }
+
+    // Toast notification for drop feedback
+    function showDropToast(msg) {
+        var toast = document.createElement('div');
+        toast.className = 'drop-toast';
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        requestAnimationFrame(function() { toast.classList.add('show'); });
+        setTimeout(function() {
+            toast.classList.remove('show');
+            setTimeout(function() { toast.remove(); }, 300);
+        }, 2000);
+    }
+})();
+
 // --- Results loading indicator ---
 (function() {
     var results = document.getElementById('results');

@@ -283,6 +283,78 @@
                     .catch(function(err) { alert('Failed to dissolve stack: ' + err.message); });
                 });
             }
+
+            // Drag-to-reorder stack members (drag to first position = set pick)
+            var members = document.querySelectorAll('.stack-member');
+            if (members.length < 2) return;
+
+            var dragSrc = null;
+            members.forEach(function(m) {
+                m.setAttribute('draggable', 'true');
+
+                m.addEventListener('dragstart', function(e) {
+                    dragSrc = this;
+                    this.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', '');
+                });
+
+                m.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (this !== dragSrc) this.classList.add('drop-hover');
+                });
+
+                m.addEventListener('dragleave', function() {
+                    this.classList.remove('drop-hover');
+                });
+
+                m.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.classList.remove('drop-hover');
+                    if (!dragSrc || this === dragSrc) return;
+
+                    // Visual reorder in DOM
+                    var container = this.parentNode;
+                    var allMembers = Array.from(container.children);
+                    var fromIdx = allMembers.indexOf(dragSrc);
+                    var toIdx = allMembers.indexOf(this);
+                    if (fromIdx < toIdx) {
+                        container.insertBefore(dragSrc, this.nextSibling);
+                    } else {
+                        container.insertBefore(dragSrc, this);
+                    }
+
+                    // If dragged to first position, set as pick
+                    var newFirst = container.children[0];
+                    var newFirstId = newFirst.getAttribute('href').split('/').pop();
+                    if (newFirst !== allMembers[0]) {
+                        fetch('/api/asset/' + newFirstId + '/stack-pick', {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({})
+                        })
+                        .then(function(r) {
+                            if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+                            return r.json();
+                        })
+                        .then(function() { window.location.reload(); })
+                        .catch(function(err) { alert('Failed to set pick: ' + err.message); });
+                    }
+                });
+
+                m.addEventListener('dragend', function() {
+                    this.classList.remove('dragging');
+                    dragSrc = null;
+                    members.forEach(function(el) { el.classList.remove('drop-hover'); });
+                });
+
+                // Prevent link navigation on drag
+                m.addEventListener('click', function(e) {
+                    if (this.classList.contains('dragging')) e.preventDefault();
+                });
+            });
         })();
         </script>
         {% endif %}
