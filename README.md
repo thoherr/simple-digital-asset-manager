@@ -15,7 +15,7 @@ A command-line digital asset manager built in Rust, designed for large collectio
 - **Stacks** — group burst shots and similar-scene images into collapsible stacks, showing only the "pick" in the browse grid
 - **Hierarchical tags** — tree-structured keywords with Lightroom `lr:hierarchicalSubject` interop
 - **Saved searches & collections** — smart albums (dynamic queries) and static albums (curated lists)
-- **AI auto-tagging** — zero-shot image classification using SigLIP vision-language models (ViT-B/16-256 or ViT-L/16-256) for automated tag suggestions, plus visual similarity search via stored embeddings (optional, requires `--features ai`)
+- **AI auto-tagging** — zero-shot image classification using SigLIP vision-language models (ViT-B/16-256 or ViT-L/16-256) for automated tag suggestions, visual similarity search via stored embeddings, and natural language image search via `text:` filter (optional, requires `--features ai`)
 - **Face recognition** — detect faces with YuNet, generate ArcFace embeddings, auto-cluster into people groups, and manage named people across your catalog (optional, requires `--features ai`)
 - **Web UI** — browser-based interface with search, inline editing, batch operations, keyboard navigation, lightbox viewer, dark mode, grid density controls, calendar heatmap, faceted sidebar, visual similarity stroll page, and OS integration (reveal in Finder, open terminal)
 - **Flexible output** — JSON on all commands, custom format templates, quiet mode for scripting
@@ -84,7 +84,7 @@ These are optional. When missing, RAW and video files get an info card preview i
 
 ## AI Auto-Tagging (Optional Feature)
 
-Build with `cargo build --features ai` to enable AI-powered commands. This uses SigLIP vision-language models (via ONNX Runtime) for zero-shot image classification against a configurable tag vocabulary. Two models are available: ViT-B/16-256 (~207 MB, default) and ViT-L/16-256 (~670 MB, higher accuracy). Select with `--model` or `[ai] model` in `dam.toml`. Model files are downloaded from HuggingFace on first use. Commands: `dam auto-tag` for tag suggestion/application, `dam embed` for batch embedding generation, and `dam search "similar:<id>"` for visual similarity search. The web UI includes a **Stroll page** (`/stroll`) for graph-based visual exploration — pick an asset, see its nearest visual neighbors arranged radially, click through to explore connections. The "Suggest tags" and "Auto-tag" buttons also store embeddings opportunistically. Similarity search uses an in-memory index for sub-millisecond results at any scale. See the [Configuration Reference](doc/manual/reference/08-configuration.md) for `[ai]` settings.
+Build with `cargo build --features ai` to enable AI-powered commands. This uses SigLIP vision-language models (via ONNX Runtime) for zero-shot image classification against a configurable tag vocabulary. Two models are available: ViT-B/16-256 (~207 MB, default) and ViT-L/16-256 (~670 MB, higher accuracy). Select with `--model` or `[ai] model` in `dam.toml`. Model files are downloaded from HuggingFace on first use. Commands: `dam auto-tag` for tag suggestion/application, `dam embed` for batch embedding generation, `dam search "similar:<id>"` for visual similarity search, and `dam search "text:\"sunset on the beach\""` for natural language image search. The web UI includes a **Stroll page** (`/stroll`) for graph-based visual exploration — pick an asset, see its nearest visual neighbors arranged radially, click through to explore connections. The "Suggest tags" and "Auto-tag" buttons also store embeddings opportunistically. Similarity search uses an in-memory index for sub-millisecond results at any scale. See the [Configuration Reference](doc/manual/reference/08-configuration.md) for `[ai]` settings.
 
 **GPU acceleration** (macOS): Build with `cargo build --features ai-gpu` to enable CoreML execution provider for hardware-accelerated inference on Apple Silicon (Neural Engine) and Intel Macs (Metal). Falls back to CPU automatically when CoreML is unavailable. Configure via `[ai] execution_provider` in `dam.toml` (`"auto"`, `"cpu"`, `"coreml"`).
 
@@ -117,9 +117,12 @@ ollama pull qwen2.5vl:3b                              # download a VLM
 dam describe --query "description:none" --apply        # describe undescribed assets
 dam describe --mode tags --query "date:2024-06" --apply  # suggest tags via VLM
 dam describe --mode both --volume "Photos" --apply     # both in one pass
+dam import --describe /Volumes/Photos/NewShoot/        # auto-describe during import
 ```
 
 **Web UI**: "Describe" button on asset detail page, batch "Describe" in browse toolbar. VLM availability is detected at server startup.
+
+**Auto-describe on import**: `dam import --describe` generates descriptions for newly imported assets. Enable permanently with `[import] descriptions = true` in `dam.toml`. Silently skips if VLM endpoint is not available.
 
 **Config**: `[vlm]` section in `dam.toml` — endpoint, model, max_tokens, temperature, timeout, mode, prompt. CLI flags override config. See the [Configuration Reference](doc/manual/reference/08-configuration.md) for `[vlm]` settings.
 

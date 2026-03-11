@@ -2,7 +2,7 @@
 
 Living document tracking planned enhancements. Previous proposals (all implemented or deferred) are in `archive/`.
 
-Current version: **v2.4.2** (2026-03-10)
+Current version: **v2.5.0** (2026-03-11)
 
 ---
 
@@ -138,7 +138,7 @@ Reorder stacks, add to collections, and manage groups via drag-and-drop in the b
 
 Natural language image descriptions via local vision-language models.
 
-**Status:** Implemented in v2.4.2. Phases 1–3 complete (CLI `dam describe`, tag mode, web UI). See [proposal](proposal-vlm-integration.md).
+**Status:** Implemented. Phases 1–4 complete (v2.4.2: CLI + web UI; v2.5.0: auto-describe + text search). See [proposal](proposal-vlm-integration.md).
 
 **Done:**
 - `dam describe` command with `--mode describe|tags|both`, `--apply`, `--force`, `--dry-run`
@@ -150,9 +150,8 @@ Natural language image descriptions via local vision-language models.
 - `text:` semantic search filter — natural language image search via SigLIP text encoder
 - `dam import --describe` — auto-describe during import via VLM post-import phase
 
-**Open (Phase 4):**
-- Concurrent requests (`concurrency > 1`)
-- Custom prompt library (`[vlm.prompts]`)
+**Open:**
+- Concurrent VLM requests (`concurrency > 1`)
 
 ### Statistics Dashboard
 
@@ -181,3 +180,4 @@ All previous proposals are in `doc/proposals/archive/`. Key milestones:
 - **v2.2**: Performance — SQLite pragmas, single connection, denormalized columns
 - **v2.3**: Stroll, sync-metadata, comprehensive cleanup, faces/people
 - **v2.4**: Contact sheet export, split command, alternate variant role, grouped CLI help, CoreML GPU acceleration, VLM image descriptions
+- **v2.5**: Text-to-image semantic search, auto-describe during import

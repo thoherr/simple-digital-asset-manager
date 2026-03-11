@@ -1,6 +1,6 @@
 # Proposal: VLM Integration for Image Descriptions
 
-**Status: Phases 1–3 implemented in v2.4.2.** Phase 4 (advanced features) remains open.
+**Status: Phases 1–4 largely implemented.** v2.4.2: CLI + web UI (Phases 1–3). v2.5.0: auto-describe during import, text-to-image semantic search (Phase 4).
 
 Natural language image descriptions via local vision-language models. Complements the existing SigLIP zero-shot classification (fixed tag vocabulary, fast, low memory) with open-ended understanding (scene descriptions, context, relationships, mood).
 
@@ -420,13 +420,12 @@ This is a key advantage over the SigLIP integration which requires the `ai` feat
 - Loading states, error handling
 - `vlm_enabled` template flag with startup health check (5s timeout)
 
-### Phase 4: Advanced Features (Future)
+### Phase 4: Advanced Features
 
-- Concurrent requests (`concurrency > 1`) for servers with batching
-- Custom prompt library (`[vlm.prompts]` with named presets)
-- Description-based semantic search (embed descriptions with SigLIP text encoder)
-- Auto-describe during import (`dam import --describe`)
-- Comparison mode: show multiple model outputs side-by-side for prompt tuning
+- ~~Description-based semantic search~~ → Implemented in v2.5.0 as `text:` search filter (SigLIP text encoder)
+- ~~Auto-describe during import~~ → Implemented in v2.5.0 as `dam import --describe` and `[import] descriptions = true`
+- Concurrent requests (`concurrency > 1`) for servers with batching (open)
+- Comparison mode: show multiple model outputs side-by-side for prompt tuning (open)
 
 ---
 
