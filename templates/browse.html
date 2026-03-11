@@ -204,6 +204,15 @@ window.triggerSearch = onFilterChange;
             bustChangedPreviews();
             // Clear saved selection — JS Set is already intact via bfcache
             sessionStorage.removeItem('dam-browse-selection');
+
+            // If detail page made changes, refresh the results grid
+            if (sessionStorage.getItem('dam-browse-dirty')) {
+                sessionStorage.removeItem('dam-browse-dirty');
+                htmx.ajax('GET', window.location.href, {target: '#results', swap: 'innerHTML'});
+                // Focus will be restored by htmx:afterSwap handler (by asset ID)
+                return;
+            }
+
             var lbAsset = sessionStorage.getItem('dam-lightbox-asset');
             if (lbAsset && window.damLightbox) {
                 sessionStorage.removeItem('dam-lightbox-asset');

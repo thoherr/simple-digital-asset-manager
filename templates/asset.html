@@ -143,7 +143,7 @@
                                 body: JSON.stringify({person_id: data.id})
                             });
                         })
-                        .then(function() { window.location.reload(); })
+                        .then(function() { markBrowseDirty(); window.location.reload(); })
                         .catch(function(err) { alert('Failed: ' + err.message); window.location.reload(); });
                         return;
                     }
@@ -153,7 +153,7 @@
                         body: JSON.stringify({person_id: personId})
                     })
                     .then(function(r) { return r.json(); })
-                    .then(function() { window.location.reload(); })
+                    .then(function() { markBrowseDirty(); window.location.reload(); })
                     .catch(function(err) { alert('Assign failed: ' + err.message); });
                 });
             });
@@ -164,7 +164,7 @@
                     var faceId = this.dataset.faceId;
                     fetch('/api/faces/' + faceId + '/unassign', {method: 'DELETE'})
                         .then(function(r) { return r.json(); })
-                        .then(function() { window.location.reload(); })
+                        .then(function() { markBrowseDirty(); window.location.reload(); })
                         .catch(function(err) { alert('Unassign failed: ' + err.message); });
                 });
             });
@@ -176,7 +176,7 @@
                     var faceId = this.dataset.faceId;
                     fetch('/api/faces/' + faceId, {method: 'DELETE'})
                         .then(function(r) { return r.json(); })
-                        .then(function() { window.location.reload(); })
+                        .then(function() { markBrowseDirty(); window.location.reload(); })
                         .catch(function(err) { alert('Delete failed: ' + err.message); });
                 });
             });
@@ -264,7 +264,7 @@
                         if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
                         return r.json();
                     })
-                    .then(function() { window.location.reload(); })
+                    .then(function() { markBrowseDirty(); window.location.reload(); })
                     .catch(function(err) { alert('Failed to set pick: ' + err.message); });
                 });
             }
@@ -279,7 +279,7 @@
                         if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
                         return r.json();
                     })
-                    .then(function() { window.location.reload(); })
+                    .then(function() { markBrowseDirty(); window.location.reload(); })
                     .catch(function(err) { alert('Failed to dissolve stack: ' + err.message); });
                 });
             }
@@ -339,7 +339,7 @@
                             if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
                             return r.json();
                         })
-                        .then(function() { window.location.reload(); })
+                        .then(function() { markBrowseDirty(); window.location.reload(); })
                         .catch(function(err) { alert('Failed to set pick: ' + err.message); });
                     }
                 });
@@ -493,6 +493,13 @@
 {% include "lightbox.html" %}
 <script>
 {% include "lightbox_js.html" %}
+
+// Mark browse page as needing refresh on any mutation
+function markBrowseDirty() { try { sessionStorage.setItem('dam-browse-dirty', '1'); } catch(e) {} }
+// Catch all htmx mutations (rating, label, tags, name, description, date)
+document.body.addEventListener('htmx:afterRequest', function(e) {
+    if (e.detail.successful) markBrowseDirty();
+});
 
 // --- Lightbox detail bridge ---
 (function() {
@@ -986,6 +993,7 @@
             return r.text();
         })
         .then(function(html) {
+            markBrowseDirty();
             document.getElementById('tags').innerHTML = html;
             chip.remove();
             // Hide container if no suggestions remain
