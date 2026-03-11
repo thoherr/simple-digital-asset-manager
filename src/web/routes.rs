@@ -304,7 +304,15 @@ pub async fn browse_page(
     .await;
 
     match result {
-        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Ok(html)) => {
+            // Prevent stale browse page on back-navigation after detail page edits
+            let mut resp = Html(html).into_response();
+            resp.headers_mut().insert(
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-store"),
+            );
+            resp
+        }
         Ok(Err(e)) => {
             (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
         }

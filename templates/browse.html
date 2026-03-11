@@ -197,9 +197,12 @@ window.triggerSearch = onFilterChange;
     }
 
     // Handle bfcache restoration (back from detail/compare).
-    // Don't htmx-refresh — bfcache preserves scroll, selection, and focus.
     // Only handle lightbox auto-open and focus sync.
     window.addEventListener('pageshow', function(event) {
+        // Always clear dirty flag (fresh loads already have correct data)
+        if (!event.persisted) {
+            sessionStorage.removeItem('dam-browse-dirty');
+        }
         if (event.persisted) {
             bustChangedPreviews();
             // Clear saved selection — JS Set is already intact via bfcache
