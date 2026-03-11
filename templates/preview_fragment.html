@@ -15,6 +15,10 @@
 {% endmatch %}
 {% endmatch %}
 <span class="smart-loading" id="detail-smart-loading" style="display:none;">HD</span>
+{% if let Some(err) = error %}
+<div class="preview-error">{{ err }}</div>
+{% endif %}
+{% if has_online_source %}
 <button class="preview-generate-btn"
         hx-post="/api/asset/{{ asset_id }}/preview"
         hx-target="#preview"
@@ -32,3 +36,6 @@
     &#x21BB; Rotate
 </button>
 <span id="preview-spinner" class="htmx-indicator">Generating...</span>
+{% else %}
+<span class="preview-offline-hint">Source files offline — cannot regenerate previews</span>
+{% endif %}

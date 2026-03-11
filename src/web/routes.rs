@@ -1548,12 +1548,37 @@ pub async fn generate_preview(
                 } else {
                     None
                 }
-            })
-            .ok_or_else(|| {
-                anyhow::anyhow!("No online file location found for variant")
-            })?;
+            });
 
         let preview_gen = state.preview_generator();
+        let existing_preview_url = if preview_gen.has_preview(content_hash) {
+            Some(super::templates::preview_url(content_hash, &preview_ext))
+        } else {
+            None
+        };
+        let existing_smart_url = if preview_gen.has_smart_preview(content_hash) {
+            Some(super::templates::smart_preview_url(content_hash, &preview_ext))
+        } else {
+            None
+        };
+
+        let has_existing_smart = existing_smart_url.is_some();
+        let source_path = match source_path {
+            Some(p) => p,
+            None => {
+                // Return fragment with error instead of HTTP 500
+                let tmpl = PreviewFragment {
+                    asset_id,
+                    primary_preview_url: existing_preview_url,
+                    smart_preview_url: existing_smart_url,
+                    has_smart_preview: has_existing_smart,
+                    has_online_source: false,
+                    error: Some("Source files are offline — cannot regenerate previews.".to_string()),
+                };
+                return Ok::<_, anyhow::Error>(tmpl.render()?);
+            }
+        };
+
         preview_gen.regenerate(content_hash, &source_path, format)?;
         preview_gen.regenerate_smart(content_hash, &source_path, format)?;
 
@@ -1583,6 +1608,8 @@ pub async fn generate_preview(
             primary_preview_url: preview_url,
             smart_preview_url: smart_url,
             has_smart_preview: has_smart,
+            has_online_source: true,
+            error: None,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
@@ -1651,11 +1678,37 @@ pub async fn set_rotation(
                 }
                 let path = vol.mount_point.join(&loc.relative_path);
                 if path.exists() { Some(path) } else { None }
-            })
-            .ok_or_else(|| anyhow::anyhow!("No online file location found for variant"))?;
+            });
+
+        let preview_gen = state.preview_generator();
+        let existing_preview_url = if preview_gen.has_preview(content_hash) {
+            Some(super::templates::preview_url(content_hash, &preview_ext))
+        } else {
+            None
+        };
+        let existing_smart_url = if preview_gen.has_smart_preview(content_hash) {
+            Some(super::templates::smart_preview_url(content_hash, &preview_ext))
+        } else {
+            None
+        };
+
+        let has_existing_smart = existing_smart_url.is_some();
+        let source_path = match source_path {
+            Some(p) => p,
+            None => {
+                let tmpl = PreviewFragment {
+                    asset_id,
+                    primary_preview_url: existing_preview_url,
+                    smart_preview_url: existing_smart_url,
+                    has_smart_preview: has_existing_smart,
+                    has_online_source: false,
+                    error: Some("Source files are offline — cannot rotate.".to_string()),
+                };
+                return Ok::<_, anyhow::Error>(tmpl.render()?);
+            }
+        };
 
         // Regenerate previews with the new rotation
-        let preview_gen = state.preview_generator();
         preview_gen.regenerate_with_rotation(content_hash, &source_path, format, new_rotation)?;
         if preview_gen.has_smart_preview(content_hash) {
             preview_gen.regenerate_smart_with_rotation(content_hash, &source_path, format, new_rotation)?;
@@ -1687,6 +1740,8 @@ pub async fn set_rotation(
             primary_preview_url: preview_url,
             smart_preview_url: smart_url,
             has_smart_preview: has_smart,
+            has_online_source: true,
+            error: None,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })

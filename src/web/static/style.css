@@ -648,6 +648,22 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     font-size: 0.85rem;
 }
 .preview-generate-btn:hover { background: var(--primary-hover); }
+.preview-offline-hint {
+    display: inline-block;
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+.preview-error {
+    margin-top: 0.5rem;
+    padding: 0.4rem 0.8rem;
+    background: #fff3cd;
+    color: #856404;
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+}
+[data-theme="dark"] .preview-error { background: #3d3200; color: #ffc107; }
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator { display: inline; }
