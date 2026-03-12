@@ -24,7 +24,7 @@ quick-xml = "0.36"
 regex = "1"
 toml = "0.8"
 glob-match = "0.2"
-rustyline = "15"
+rustyline = { version = "15", features = ["derive"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 axum = "0.8"
