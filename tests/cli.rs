@@ -9363,3 +9363,36 @@ fn contact_sheet_dry_run_json() {
     assert_eq!(parsed["assets"], 1);
     assert!(!output.exists());
 }
+
+// ── Shell batch variable tests ────────────────────────────
+
+#[test]
+fn shell_batch_tag_via_variable() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file1 = create_test_file(&root, "shell_tag1.jpg", b"shell tag data 1");
+    let file2 = create_test_file(&root, "shell_tag2.jpg", b"shell tag data 2");
+
+    dam().current_dir(&root)
+        .args(["import", file1.to_str().unwrap()])
+        .assert().success();
+    dam().current_dir(&root)
+        .args(["import", file2.to_str().unwrap()])
+        .assert().success();
+
+    // Write a script that searches then tags all results via _
+    let script = root.join("batch-tag.dam");
+    std::fs::write(&script, "search type:image\ntag _ batch-test\n").unwrap();
+
+    dam().current_dir(&root)
+        .args(["shell", script.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Both assets should now have the "batch-test" tag
+    dam().current_dir(&root)
+        .args(["search", "tag:batch-test", "--format", "ids"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\n").count(2)); // two IDs, two lines
+}

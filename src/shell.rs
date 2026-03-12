@@ -596,8 +596,8 @@ fn handle_line(
         }
 
         // Otherwise execute the command (with token-level variable expansion)
-        let tokens = expand_variables_in_tokens(tokens, vars);
-        return match execute_tokens(tokens, defaults, executor) {
+        let expanded = expand_variables_in_tokens(tokens, vars);
+        return match execute_with_ids(expanded.command, expanded.asset_ids, defaults, executor) {
             LineResult::Ok(ids) => {
                 let count = ids.len();
                 if !ids.is_empty() {
@@ -725,12 +725,11 @@ fn handle_line(
         None => return LineResult::Err(anyhow::anyhow!("Unmatched quote in command")),
     };
 
-    // Expand variables: extract $name/_ tokens and append their IDs at the end.
-    // This ensures asset ID lists always land in trailing position (where clap
-    // expects positional asset IDs), regardless of where the user typed them.
-    let tokens = expand_variables_in_tokens(tokens, vars);
+    // Expand variables: extract $name/_ references and collect their IDs
+    // separately, so the shell can dispatch them correctly.
+    let expanded = expand_variables_in_tokens(tokens, vars);
 
-    execute_tokens(tokens, defaults, executor)
+    execute_with_ids(expanded.command, expanded.asset_ids, defaults, executor)
 }
 
 /// Parse a `$name = <command>` assignment. Returns (name, command_part).
@@ -751,29 +750,88 @@ fn parse_variable_assignment(line: &str) -> Option<(String, String)> {
     Some((name.to_string(), command.to_string()))
 }
 
-/// Execute a parsed token list as a dam command.
-fn execute_tokens(
-    tokens: Vec<String>,
+/// Commands that take a single `asset_id: String` positional.
+/// When a variable expands to multiple IDs, the shell loops the command
+/// over each ID individually instead of appending all IDs at once.
+const SINGLE_ASSET_COMMANDS: &[&str] = &[
+    "tag", "edit", "show", "split", "update-location",
+];
+
+/// Execute a command with expanded variable tokens.
+fn execute_with_ids(
+    command_tokens: Vec<String>,
+    asset_ids: Vec<String>,
     defaults: &SessionDefaults,
     executor: &impl Fn(Vec<String>) -> Result<Vec<String>>,
 ) -> LineResult {
-    if tokens.is_empty() {
+    if command_tokens.is_empty() && asset_ids.is_empty() {
         return LineResult::Ok(Vec::new());
     }
 
     // Block commands that don't make sense in the shell
-    let cmd = tokens[0].to_lowercase();
+    let cmd = command_tokens.first().map(|s| s.to_lowercase()).unwrap_or_default();
     if matches!(cmd.as_str(), "init" | "migrate" | "serve" | "shell") {
         return LineResult::Blocked(cmd);
     }
 
-    // Prepend "dam" as argv[0] for clap parsing
+    // If no variable IDs were expanded, run the command as-is
+    if asset_ids.is_empty() {
+        let mut args = vec!["dam".to_string()];
+        args.extend(command_tokens);
+        defaults.inject(&mut args);
+        return match executor(args) {
+            Ok(ids) => LineResult::Ok(ids),
+            Err(e) => LineResult::Err(e),
+        };
+    }
+
+    // Single-asset commands: loop over each ID individually.
+    // The asset ID is inserted right after the subcommand name (position 1
+    // in command_tokens), because these commands expect the first positional
+    // to be the asset ID (e.g. `tag <ASSET_ID> [TAGS]...`).
+    if SINGLE_ASSET_COMMANDS.contains(&cmd.as_str()) && asset_ids.len() > 1 {
+        let total = asset_ids.len();
+        let mut all_ids = Vec::new();
+        let mut errors = 0;
+        for (i, id) in asset_ids.iter().enumerate() {
+            let mut args = vec!["dam".to_string()];
+            // Insert: subcommand, then asset ID, then remaining args
+            args.push(command_tokens[0].clone()); // subcommand name
+            args.push(id.clone());                // asset ID
+            args.extend(command_tokens[1..].iter().cloned()); // remaining args (tags, flags, etc.)
+            defaults.inject(&mut args);
+            match executor(args) {
+                Ok(ids) => all_ids.extend(ids),
+                Err(e) => {
+                    eprintln!("  [{}/{}] {}: {e:#}", i + 1, total, &id[..8.min(id.len())]);
+                    errors += 1;
+                }
+            }
+        }
+        if errors > 0 {
+            eprintln!("  {errors} of {total} failed");
+        }
+        return LineResult::Ok(all_ids);
+    }
+
+    // Single ID for a single-asset command: insert ID after subcommand
+    if SINGLE_ASSET_COMMANDS.contains(&cmd.as_str()) && asset_ids.len() == 1 {
+        let mut args = vec!["dam".to_string()];
+        args.push(command_tokens[0].clone());
+        args.push(asset_ids[0].clone());
+        args.extend(command_tokens[1..].iter().cloned());
+        defaults.inject(&mut args);
+        return match executor(args) {
+            Ok(ids) => LineResult::Ok(ids),
+            Err(e) => LineResult::Err(e),
+        };
+    }
+
+    // Batch commands: append IDs at end
     let mut args = vec!["dam".to_string()];
-    args.extend(tokens);
-
-    // Inject session defaults
+    args.extend(command_tokens);
+    args.extend(asset_ids);
     defaults.inject(&mut args);
-
     match executor(args) {
         Ok(ids) => LineResult::Ok(ids),
         Err(e) => LineResult::Err(e),
@@ -805,25 +863,29 @@ fn print_vars(vars: &Variables, defaults: &SessionDefaults) {
 }
 
 /// Expand `_` tokens to the list of asset IDs from the last command.
-/// Expand variable references in a token list, appending IDs at the end.
+/// Result of expanding variables in a token list.
+struct ExpandedTokens {
+    /// Command tokens with variable references removed.
+    command: Vec<String>,
+    /// Asset IDs collected from all variable references.
+    asset_ids: Vec<String>,
+}
+
+/// Expand variable references in a token list.
 ///
-/// Variables (`$name` and standalone `_`) are **not** expanded in-place.
-/// Instead, the variable token is removed from the list and the referenced
-/// IDs are collected and appended at the end of the argument list.
-///
-/// This ensures asset ID lists always land in the trailing positional slot
-/// (where clap expects `[ASSET_IDS]...`), regardless of where the user
-/// placed them in the command.  As a result, `tag _ --add screensaver` and
-/// `tag --add screensaver _` both produce the same token sequence.
-fn expand_variables_in_tokens(tokens: Vec<String>, vars: &Variables) -> Vec<String> {
+/// Variables (`$name` and standalone `_`) are removed from the token list.
+/// Their asset IDs are collected separately so the shell can dispatch them
+/// correctly — either as trailing positional args (for batch commands) or
+/// by looping the command over each ID (for single-asset commands).
+fn expand_variables_in_tokens(tokens: Vec<String>, vars: &Variables) -> ExpandedTokens {
     let mut command_tokens = Vec::new();
-    let mut trailing_ids: Vec<String> = Vec::new();
+    let mut asset_ids: Vec<String> = Vec::new();
 
     for token in &tokens {
         // Standalone _ (not part of a word like _foo or foo_bar)
         if token == "_" {
             if !vars.last_ids.is_empty() {
-                trailing_ids.extend(vars.last_ids.iter().cloned());
+                asset_ids.extend(vars.last_ids.iter().cloned());
             } else {
                 // No last IDs — keep as-is
                 command_tokens.push(token.clone());
@@ -833,7 +895,7 @@ fn expand_variables_in_tokens(tokens: Vec<String>, vars: &Variables) -> Vec<Stri
         {
             let name = &token[1..];
             if let Some(ids) = vars.named.get(name) {
-                trailing_ids.extend(ids.iter().cloned());
+                asset_ids.extend(ids.iter().cloned());
             } else {
                 // Unknown variable — keep as-is
                 command_tokens.push(token.clone());
@@ -843,8 +905,7 @@ fn expand_variables_in_tokens(tokens: Vec<String>, vars: &Variables) -> Vec<Stri
         }
     }
 
-    command_tokens.extend(trailing_ids);
-    command_tokens
+    ExpandedTokens { command: command_tokens, asset_ids }
 }
 
 /// Split a command line into tokens, respecting quotes.
@@ -1034,45 +1095,48 @@ mod tests {
         let mut vars = Variables::new();
         vars.last_ids = vec!["abc123".to_string(), "def456".to_string()];
         let tokens = vec!["edit".into(), "--rating".into(), "5".into(), "_".into()];
-        assert_eq!(
-            expand_variables_in_tokens(tokens, &vars),
-            vec!["edit", "--rating", "5", "abc123", "def456"]
-        );
+        let expanded = expand_variables_in_tokens(tokens, &vars);
+        assert_eq!(expanded.command, vec!["edit", "--rating", "5"]);
+        assert_eq!(expanded.asset_ids, vec!["abc123", "def456"]);
     }
 
     #[test]
     fn test_expand_variables_underscore_at_start() {
         let mut vars = Variables::new();
         vars.last_ids = vec!["abc123".to_string(), "def456".to_string()];
-        let tokens = vec!["tag".into(), "_".into(), "--add".into(), "screensaver".into()];
-        // _ is removed from its position and IDs are appended at the end
-        assert_eq!(
-            expand_variables_in_tokens(tokens, &vars),
-            vec!["tag", "--add", "screensaver", "abc123", "def456"]
-        );
+        let tokens = vec!["tag".into(), "_".into(), "screensaver".into()];
+        let expanded = expand_variables_in_tokens(tokens, &vars);
+        // _ is removed; "screensaver" stays as a command token
+        assert_eq!(expanded.command, vec!["tag", "screensaver"]);
+        assert_eq!(expanded.asset_ids, vec!["abc123", "def456"]);
     }
 
     #[test]
-    fn test_expand_variables_underscore_in_middle() {
+    fn test_expand_variables_position_independent() {
         let mut vars = Variables::new();
-        vars.last_ids = vec!["id1".to_string()];
+        vars.last_ids = vec!["id1".to_string(), "id2".to_string()];
+
+        // _ at start
         let tokens = vec!["tag".into(), "_".into(), "screensaver".into()];
-        // IDs move to end: tag screensaver id1
-        assert_eq!(
-            expand_variables_in_tokens(tokens, &vars),
-            vec!["tag", "screensaver", "id1"]
-        );
+        let exp1 = expand_variables_in_tokens(tokens, &vars);
+
+        // _ at end
+        let tokens = vec!["tag".into(), "screensaver".into(), "_".into()];
+        let exp2 = expand_variables_in_tokens(tokens, &vars);
+
+        // Both produce the same command + asset_ids
+        assert_eq!(exp1.command, exp2.command);
+        assert_eq!(exp1.asset_ids, exp2.asset_ids);
     }
 
     #[test]
     fn test_expand_variables_no_last_ids() {
         let vars = Variables::new();
         let tokens = vec!["edit".into(), "--rating".into(), "5".into(), "_".into()];
-        // No last_ids — _ kept as-is
-        assert_eq!(
-            expand_variables_in_tokens(tokens, &vars),
-            vec!["edit", "--rating", "5", "_"]
-        );
+        let expanded = expand_variables_in_tokens(tokens, &vars);
+        // No last_ids — _ kept as-is in command tokens
+        assert_eq!(expanded.command, vec!["edit", "--rating", "5", "_"]);
+        assert!(expanded.asset_ids.is_empty());
     }
 
     #[test]
@@ -1111,15 +1175,14 @@ mod tests {
         vars.last_ids = vec!["abc123".to_string()];
         // _foo and foo_bar are not standalone _ — they should not be expanded
         let tokens = vec!["search".into(), "_foo".into()];
-        assert_eq!(
-            expand_variables_in_tokens(tokens, &vars),
-            vec!["search", "_foo"]
-        );
+        let expanded = expand_variables_in_tokens(tokens, &vars);
+        assert_eq!(expanded.command, vec!["search", "_foo"]);
+        assert!(expanded.asset_ids.is_empty());
+
         let tokens = vec!["search".into(), "foo_bar".into()];
-        assert_eq!(
-            expand_variables_in_tokens(tokens, &vars),
-            vec!["search", "foo_bar"]
-        );
+        let expanded = expand_variables_in_tokens(tokens, &vars);
+        assert_eq!(expanded.command, vec!["search", "foo_bar"]);
+        assert!(expanded.asset_ids.is_empty());
     }
 
     // --- Phase 2: Variable tests ---
@@ -1144,11 +1207,10 @@ mod tests {
         let mut vars = Variables::new();
         vars.named.insert("picks".to_string(), vec!["id1".to_string(), "id2".to_string()]);
 
-        let tokens = vec!["tag".into(), "--add".into(), "portfolio".into(), "$picks".into()];
-        assert_eq!(
-            expand_variables_in_tokens(tokens, &vars),
-            vec!["tag", "--add", "portfolio", "id1", "id2"]
-        );
+        let tokens = vec!["delete".into(), "$picks".into()];
+        let expanded = expand_variables_in_tokens(tokens, &vars);
+        assert_eq!(expanded.command, vec!["delete"]);
+        assert_eq!(expanded.asset_ids, vec!["id1", "id2"]);
     }
 
     #[test]
@@ -1156,22 +1218,20 @@ mod tests {
         let mut vars = Variables::new();
         vars.named.insert("picks".to_string(), vec!["id1".to_string(), "id2".to_string()]);
 
-        // $picks at start gets moved to end
-        let tokens = vec!["tag".into(), "$picks".into(), "--add".into(), "portfolio".into()];
-        assert_eq!(
-            expand_variables_in_tokens(tokens, &vars),
-            vec!["tag", "--add", "portfolio", "id1", "id2"]
-        );
+        // $picks at start — IDs are separated from command tokens
+        let tokens = vec!["tag".into(), "$picks".into(), "portfolio".into()];
+        let expanded = expand_variables_in_tokens(tokens, &vars);
+        assert_eq!(expanded.command, vec!["tag", "portfolio"]);
+        assert_eq!(expanded.asset_ids, vec!["id1", "id2"]);
     }
 
     #[test]
     fn test_expand_variables_unknown_kept() {
         let vars = Variables::new();
-        let tokens = vec!["tag".into(), "--add".into(), "$unknown".into()];
-        assert_eq!(
-            expand_variables_in_tokens(tokens, &vars),
-            vec!["tag", "--add", "$unknown"]
-        );
+        let tokens = vec!["tag".into(), "$unknown".into(), "portfolio".into()];
+        let expanded = expand_variables_in_tokens(tokens, &vars);
+        assert_eq!(expanded.command, vec!["tag", "$unknown", "portfolio"]);
+        assert!(expanded.asset_ids.is_empty());
     }
 
     #[test]
@@ -1179,10 +1239,9 @@ mod tests {
         let vars = Variables::new();
         // Bare $ is not a variable reference
         let tokens = vec!["echo".into(), "$".into(), "done".into()];
-        assert_eq!(
-            expand_variables_in_tokens(tokens, &vars),
-            vec!["echo", "$", "done"]
-        );
+        let expanded = expand_variables_in_tokens(tokens, &vars);
+        assert_eq!(expanded.command, vec!["echo", "$", "done"]);
+        assert!(expanded.asset_ids.is_empty());
     }
 
     #[test]
@@ -1358,7 +1417,7 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_tokens_with_defaults() {
+    fn test_execute_with_defaults() {
         let mut defaults = SessionDefaults::new();
         defaults.set("--json");
 
@@ -1369,13 +1428,74 @@ mod tests {
             Ok(vec![])
         };
 
-        let tokens = vec!["stats".to_string()];
-        execute_tokens(tokens, &defaults, &executor);
+        let command = vec!["stats".to_string()];
+        execute_with_ids(command, vec![], &defaults, &executor);
 
         let args = received.borrow();
         assert_eq!(args[0], "dam");
         assert_eq!(args[1], "stats");
         assert!(args.contains(&"--json".to_string()));
+    }
+
+    #[test]
+    fn test_execute_single_asset_command_loops() {
+        // Track all executor calls
+        let calls = std::cell::RefCell::new(Vec::new());
+        let executor = |args: Vec<String>| -> Result<Vec<String>> {
+            calls.borrow_mut().push(args);
+            Ok(vec![])
+        };
+        let defaults = SessionDefaults::new();
+
+        // `tag` is a single-asset command — with 3 IDs, it should loop 3 times
+        // Each call inserts the asset ID after the subcommand: dam tag <ID> screensaver
+        let command = vec!["tag".to_string(), "screensaver".to_string()];
+        let ids = vec!["id1".to_string(), "id2".to_string(), "id3".to_string()];
+        execute_with_ids(command, ids, &defaults, &executor);
+
+        let calls = calls.borrow();
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[0], vec!["dam", "tag", "id1", "screensaver"]);
+        assert_eq!(calls[1], vec!["dam", "tag", "id2", "screensaver"]);
+        assert_eq!(calls[2], vec!["dam", "tag", "id3", "screensaver"]);
+    }
+
+    #[test]
+    fn test_execute_batch_command_appends() {
+        let calls = std::cell::RefCell::new(Vec::new());
+        let executor = |args: Vec<String>| -> Result<Vec<String>> {
+            calls.borrow_mut().push(args);
+            Ok(vec![])
+        };
+        let defaults = SessionDefaults::new();
+
+        // `delete` is a batch command — IDs should be appended in one call
+        let command = vec!["delete".to_string(), "--apply".to_string()];
+        let ids = vec!["id1".to_string(), "id2".to_string()];
+        execute_with_ids(command, ids, &defaults, &executor);
+
+        let calls = calls.borrow();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0], vec!["dam", "delete", "--apply", "id1", "id2"]);
+    }
+
+    #[test]
+    fn test_execute_single_asset_with_one_id() {
+        let calls = std::cell::RefCell::new(Vec::new());
+        let executor = |args: Vec<String>| -> Result<Vec<String>> {
+            calls.borrow_mut().push(args);
+            Ok(vec![])
+        };
+        let defaults = SessionDefaults::new();
+
+        // Single ID for single-asset command: dam tag <ID> screensaver
+        let command = vec!["tag".to_string(), "screensaver".to_string()];
+        let ids = vec!["id1".to_string()];
+        execute_with_ids(command, ids, &defaults, &executor);
+
+        let calls = calls.borrow();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0], vec!["dam", "tag", "id1", "screensaver"]);
     }
 
     /// Helper for debug output in test assertions.
