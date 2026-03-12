@@ -13,6 +13,7 @@ pub mod models;
 pub mod preview;
 pub mod query;
 pub mod saved_search;
+pub mod shell;
 pub mod stack;
 pub mod tag_util;
 pub mod vlm;

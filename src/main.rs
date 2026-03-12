@@ -872,6 +872,13 @@ enum Commands {
     /// Run database schema migrations
     #[command(display_order = 52)]
     Migrate,
+
+    /// Start an interactive asset management shell
+    #[command(display_order = 60)]
+    Shell {
+        /// Script file to execute (instead of interactive mode)
+        script: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1229,6 +1236,9 @@ Maintain:
   rebuild-catalog    Rebuild SQLite catalog from sidecar files
   migrate            Run database schema migrations
 
+Shell:
+  shell              Interactive asset management shell
+
 Options:
       --json         Output machine-readable JSON
   -l, --log          Log individual file progress
@@ -1266,6 +1276,21 @@ fn atty_stdout() -> bool {
     std::io::stdout().is_terminal()
 }
 
+fn check_schema() {
+    if let Ok(root) = dam::config::find_catalog_root() {
+        if let Ok(catalog) = Catalog::open(&root) {
+            if !catalog.is_schema_current() {
+                eprintln!(
+                    "Error: catalog schema is outdated (v{}, expected v{}). Run `dam migrate` to update.",
+                    catalog.schema_version(),
+                    dam::catalog::SCHEMA_VERSION,
+                );
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
 fn main() {
     // Intercept top-level --help / -h before clap parses
     let args: Vec<String> = std::env::args().collect();
@@ -1277,22 +1302,46 @@ fn main() {
     let cli = Cli::parse();
     let start = std::time::Instant::now();
 
+    // Handle shell command specially — it has its own loop
+    if let Commands::Shell { script } = &cli.command {
+        check_schema();
+        let catalog_root = match dam::config::find_catalog_root() {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Error: {e:#}");
+                std::process::exit(1);
+            }
+        };
+        let script_path = script.as_ref().map(PathBuf::from);
+        dam::shell::run(&catalog_root, script_path, |args| {
+            let shell_cli = Cli::try_parse_from(&args).map_err(|e| anyhow::anyhow!("{e}"))?;
+            run_command(shell_cli)
+        });
+        return;
+    }
+
     // Check schema version at startup (if inside a catalog).
     // Only `dam init` and `dam migrate` skip this check.
     if !matches!(cli.command, Commands::Init | Commands::Migrate) {
-        if let Ok(root) = dam::config::find_catalog_root() {
-            if let Ok(catalog) = Catalog::open(&root) {
-                if !catalog.is_schema_current() {
-                    eprintln!(
-                        "Error: catalog schema is outdated (v{}, expected v{}). Run `dam migrate` to update.",
-                        catalog.schema_version(),
-                        dam::catalog::SCHEMA_VERSION,
-                    );
-                    std::process::exit(1);
-                }
-            }
-        }
+        check_schema();
     }
+
+    let timing = cli.timing;
+    let result = run_command(cli);
+
+    if timing {
+        eprintln!("Elapsed: {}", format_duration(start.elapsed()));
+    }
+
+    if let Err(e) = result {
+        eprintln!("Error: {e:#}");
+        std::process::exit(1);
+    }
+}
+
+/// Execute a parsed CLI command. Returns asset IDs produced by the command (for shell _ variable).
+fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
+    let mut _asset_ids: Vec<String> = Vec::new();
 
     let result: anyhow::Result<()> = (|| match cli.command {
         Commands::Init => {
@@ -1944,6 +1993,9 @@ fn main() {
             let engine = QueryEngine::new(&catalog_root);
             let results = engine.search(&query)?;
 
+            // Capture asset IDs for shell _ variable
+            _asset_ids = results.iter().map(|r| r.asset_id.clone()).collect();
+
             // Determine output format
             let output_format = if quiet {
                 OutputFormat::Ids
@@ -2465,7 +2517,7 @@ fn main() {
                         } else {
                             eprintln!("{e}");
                         }
-                        std::process::exit(1);
+                        anyhow::bail!("VLM endpoint check failed");
                     }
                 }
                 return Ok(());
@@ -3826,7 +3878,7 @@ fn main() {
             }
 
             if result.failed > 0 {
-                std::process::exit(1);
+                anyhow::bail!("Verification failed for {} file(s)", result.failed);
             }
 
             Ok(())
@@ -3930,6 +3982,7 @@ fn main() {
             Ok(())
         }
         Commands::SyncMetadata { volume, asset, dry_run, media } => {
+            let start = std::time::Instant::now();
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let registry = DeviceRegistry::new(&catalog_root);
@@ -6115,16 +6168,12 @@ fn main() {
             }
             Ok(())
         }
+        Commands::Shell { .. } => {
+            unreachable!("Shell command is handled before run_command")
+        }
     })();
 
-    if cli.timing {
-        eprintln!("Elapsed: {}", format_duration(start.elapsed()));
-    }
-
-    if let Err(e) = result {
-        eprintln!("Error: {e:#}");
-        std::process::exit(1);
-    }
+    result.map(|()| _asset_ids)
 }
 
 fn format_duration(d: std::time::Duration) -> String {
