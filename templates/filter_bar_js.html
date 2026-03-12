@@ -54,6 +54,8 @@
         onFilterChange();
     }
 
+    var acIndex = -1;
+
     function showSuggestions(query) {
         var ac = document.getElementById('tag-autocomplete');
         var selected = getSelectedTags();
@@ -66,13 +68,16 @@
 
         if (matches.length === 0) {
             ac.style.display = 'none';
+            acIndex = -1;
             return;
         }
 
         ac.innerHTML = '';
+        acIndex = -1;
         matches.forEach(function(t) {
             var div = document.createElement('div');
             div.className = 'tag-suggestion';
+            div.setAttribute('data-tag', t);
             var parts = t.split('|');
             if (parts.length > 1) {
                 var prefix = parts.slice(0, -1).join('/') + '/';
@@ -91,8 +96,18 @@
         ac.style.display = 'block';
     }
 
+    function highlightSuggestion(idx) {
+        var ac = document.getElementById('tag-autocomplete');
+        var items = ac.querySelectorAll('.tag-suggestion');
+        items.forEach(function(el, i) {
+            el.classList.toggle('active', i === idx);
+        });
+        if (idx >= 0 && items[idx]) items[idx].scrollIntoView({block: 'nearest'});
+    }
+
     function hideAutocomplete() {
         document.getElementById('tag-autocomplete').style.display = 'none';
+        acIndex = -1;
     }
 
     var tagInput = document.getElementById('tag-input');
@@ -101,10 +116,26 @@
         if (val.length > 0) { showSuggestions(val); } else { hideAutocomplete(); }
     });
     tagInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
+        var ac = document.getElementById('tag-autocomplete');
+        var items = ac.querySelectorAll('.tag-suggestion');
+        if (e.key === 'ArrowDown' && ac.style.display === 'block') {
             e.preventDefault();
-            var val = this.value.trim();
-            if (val) addTagAndSearch(val);
+            acIndex = Math.min(acIndex + 1, items.length - 1);
+            highlightSuggestion(acIndex);
+        } else if (e.key === 'ArrowUp' && ac.style.display === 'block') {
+            e.preventDefault();
+            acIndex = Math.max(acIndex - 1, 0);
+            highlightSuggestion(acIndex);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (acIndex >= 0 && items[acIndex]) {
+                addTagAndSearch(items[acIndex].getAttribute('data-tag'));
+            } else {
+                var val = this.value.trim();
+                if (val) addTagAndSearch(val);
+            }
+        } else if (e.key === 'Escape') {
+            hideAutocomplete();
         } else if (e.key === 'Backspace' && this.value === '') {
             var chips = document.querySelectorAll('#tag-chips .tag-chip');
             if (chips.length > 0) { chips[chips.length - 1].remove(); onFilterChange(); }
