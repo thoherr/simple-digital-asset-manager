@@ -567,7 +567,7 @@ enum Commands {
     },
 
     /// Start the web UI server
-    #[command(display_order = 36)]
+    #[command(display_order = 55)]
     Serve {
         /// Port to listen on (default: 8080, or from dam.toml [serve] port)
         #[arg(long, display_order = 10)]
@@ -874,7 +874,7 @@ enum Commands {
     Migrate,
 
     /// Start an interactive asset management shell
-    #[command(display_order = 60)]
+    #[command(display_order = 56)]
     Shell {
         /// Script file to execute (instead of interactive mode)
         script: Option<String>,
@@ -1225,7 +1225,6 @@ Retrieve:
   duplicates         Find duplicate files
   stats              Show catalog statistics
   backup-status      Check backup coverage and find under-backed-up assets
-  serve              Start the web UI server
 
 Maintain:
   verify             Check file integrity
@@ -1244,7 +1243,8 @@ Maintain:
   rebuild-catalog    Rebuild SQLite catalog from sidecar files
   migrate            Run database schema migrations
 
-Shell:
+Interactive:
+  serve              Start the web UI server
   shell              Interactive asset management shell (variables, tab completion, scripts)
 
 Options:
