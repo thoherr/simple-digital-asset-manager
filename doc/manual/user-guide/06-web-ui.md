@@ -400,6 +400,8 @@ The right side contains the asset's metadata, all editable inline:
 
 **Suggest tags** (requires `--features ai`) -- a "Suggest tags" button appears below the tag input when the server is compiled with AI support. Click it to analyze the asset image with the SigLIP vision model. The button shows "Analyzing..." while the model processes (the first request may take a few seconds while the model loads). Results appear as suggestion chips, each showing the tag name and a confidence percentage. Tags already on the asset appear dimmed with an "already applied" label. Click ✓ to accept a new tag (it is added immediately), click × to dismiss it, or click "Accept new" to apply all unapplied suggestions at once.
 
+**Re-import metadata** -- a "Re-import metadata" button appears below the tag section. Click it to clear the asset's tags, description, rating, and color label, then re-extract metadata from variant source files (XMP recipe sidecars and embedded XMP in JPEG/TIFF files). A confirmation dialog asks before proceeding since the operation is destructive. This is useful for cleaning up metadata after splitting mis-grouped assets, where tags from multiple unrelated images may have been merged together. The page reloads after completion to reflect all changes. Offline volumes are silently skipped during re-extraction.
+
 ### Asset information
 
 Below the editable fields:

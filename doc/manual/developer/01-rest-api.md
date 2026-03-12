@@ -345,6 +345,18 @@ Cycles the preview rotation 90° clockwise (0° → 90° → 180° → 270° →
 curl -X POST http://localhost:8080/api/asset/{id}/rotate
 ```
 
+### `POST /api/asset/{id}/reimport-metadata` -- Re-import Metadata
+
+Clears the asset's tags, description, rating, and color label, then re-extracts metadata from all variant source files (XMP recipe sidecars and embedded XMP in JPEG/TIFF media files). Offline volumes are silently skipped.
+
+**Content-Type**: None (no body required)
+
+**Response**: HTML partial -- updated tags fragment.
+
+```bash
+curl -X POST http://localhost:8080/api/asset/{id}/reimport-metadata
+```
+
 ### `PUT /api/asset/{id}/stack-pick` -- Set Stack Pick
 
 Sets this asset as the pick (position 0) of its stack. The previous pick swaps to this asset's former position. Persists to both SQLite and `stacks.yaml`.

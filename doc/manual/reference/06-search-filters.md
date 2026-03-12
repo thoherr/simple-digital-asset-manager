@@ -576,6 +576,55 @@ dam search "copies:2+ type:video"  # backed-up videos
 
 ---
 
+## variants
+
+**Syntax:** `variants:<N>` (exact) or `variants:<N>+` (minimum)
+
+**Values:** Non-negative integer
+
+**Description:** Filters by the number of variants belonging to an asset. This counts distinct content-addressed files (originals, alternates, exports, processed) grouped under one asset. Useful for auditing mis-grouped assets (too many variants) or finding single-file assets.
+
+Common patterns:
+- `variants:1` — assets with exactly one variant (single file)
+- `variants:3+` — assets with 3 or more variants (potentially mis-grouped)
+- `variants:5+` — suspiciously large groups worth manual review
+
+**Examples:**
+
+```
+dam search "variants:1"              # single-variant assets
+dam search "variants:3+"             # assets with 3+ variants
+dam search "variants:5+ type:image"  # images with many variants
+```
+
+**SQL behavior:** Direct filter on the denormalized `a.variant_count` column. No JOIN required.
+
+---
+
+## scattered
+
+**Syntax:** `scattered:<N>`
+
+**Values:** Positive integer (minimum number of distinct directories)
+
+**Description:** Finds assets whose variant files are stored in multiple distinct directories. Counts distinct volume + top-level directory combinations across all file locations of an asset's variants. Useful for detecting mis-grouped assets — variants that truly belong together typically share the same directory, while incorrectly merged assets often have files in different locations.
+
+Common patterns:
+- `scattered:2` — variants in 2+ distinct directories (likely mis-grouped)
+- `scattered:2 variants:3+` — combine with variant count for maximum precision
+
+**Examples:**
+
+```
+dam search "scattered:2"                    # variants in 2+ directories
+dam search "scattered:2 variants:3+"        # scattered + many variants
+dam search "scattered:3 type:image"         # images across 3+ directories
+```
+
+**SQL behavior:** Scalar subquery counting `DISTINCT volume_id || ':' || first_path_component` across `file_locations` joined through `variants`. Self-contained, no outer JOIN flags needed.
+
+---
+
 ## geo
 
 **Syntax:** `geo:any` | `geo:none` | `geo:<lat>,<lng>,<radius_km>` | `geo:<south>,<west>,<north>,<east>`
@@ -700,20 +749,26 @@ dam search "embed:none type:image"         # images that still need embeddings
 
 ## text (AI feature)
 
-**Syntax:** `text:<query>` or `text:"<multi-word query>"`
+**Syntax:** `text:<query>`, `text:"<multi-word query>"`, or `text:"<query>":<limit>`
 
-**Description:** Natural language image search using SigLIP's text encoder. Encodes the query text into the same embedding space as image embeddings, then finds the top 50 most similar images via dot-product similarity. Requires the `ai` feature (`--features ai`) and embeddings to have been generated via `dam embed` or `dam import --embed`.
+**Description:** Natural language image search using SigLIP's text encoder. Encodes the query text into the same embedding space as image embeddings, then finds the most similar images via dot-product similarity. Requires the `ai` feature (`--features ai`) and embeddings to have been generated via `dam embed` or `dam import --embed`.
+
+The result limit defaults to 50 and can be configured at three levels (highest priority wins):
+
+1. **Inline syntax**: `text:"sunset":100` — per-query override
+2. **`[ai] text_limit`** in `dam.toml` — catalog-wide default
+3. **Hardcoded fallback**: 50
 
 **Examples:**
 
 ```
-dam search "text:sunset"                                   # images matching "sunset"
+dam search "text:sunset"                                   # images matching "sunset" (default limit)
 dam search "text:\"colorful flowers in a garden\""         # multi-word query
 dam search "text:\"person on a beach\" rating:3+"          # combined with other filters
-dam search "text:\"mountain landscape\" type:image"        # text search + type filter
+dam search "text:\"mountain landscape\":100"               # return top 100 matches
 ```
 
-**Behavior:** Loads the SigLIP model (text encoder), encodes the query string into an embedding vector, loads the in-memory embedding index, and returns the top 50 assets by dot-product similarity. The result set can be further filtered by all other search filters (AND logic). Since SigLIP is a vision-language model trained on image-text pairs, queries describe visual content ("red car", "sunset over water", "portrait of a woman") rather than metadata. Results quality depends on how well the SigLIP model generalizes.
+**Behavior:** Loads the SigLIP model (text encoder), encodes the query string into an embedding vector, loads the in-memory embedding index, and returns the top N assets by dot-product similarity (default 50, configurable). The result set can be further filtered by all other search filters (AND logic). Since SigLIP is a vision-language model trained on image-text pairs, queries describe visual content ("red car", "sunset over water", "portrait of a woman") rather than metadata. Results quality depends on how well the SigLIP model generalizes.
 
 ---
 
@@ -819,6 +874,8 @@ dam search "camera:fuji"
 | `volume:` | dropdown only | yes (dropdown) | yes |
 | `volume:none` | yes | no | yes |
 | `copies:` | yes | no | yes |
+| `variants:` | yes | no | yes |
+| `scattered:` | yes | no | yes |
 | `date:` | yes | yes (query input) | yes |
 | `dateFrom:` | yes | yes (query input) | yes |
 | `dateUntil:` | yes | yes (query input) | yes |

@@ -403,6 +403,13 @@ Similarity threshold for face auto-clustering. Higher values require faces to be
 
 Minimum confidence score for a face detection to be stored. Faces below this threshold are discarded during detection.
 
+### text_limit
+
+- **Type:** unsigned integer
+- **Default:** `50`
+
+Maximum number of results returned by `text:` semantic search queries. This is the default limit used when no inline limit is specified in the query. Can be overridden per-query with the `text:"query":limit` syntax.
+
 ```toml
 [ai]
 threshold = 0.3
@@ -412,6 +419,7 @@ prompt = "a photograph of {}"
 execution_provider = "auto"
 face_cluster_threshold = 0.5
 face_min_confidence = 0.5
+text_limit = 50
 ```
 
 ---
@@ -696,6 +704,7 @@ When a field is absent from `dam.toml`, these defaults apply:
 | `ai.execution_provider` | `"auto"` |
 | `ai.face_cluster_threshold` | `0.5` |
 | `ai.face_min_confidence` | `0.5` |
+| `ai.text_limit` | `50` |
 | `vlm.endpoint` | `"http://localhost:11434"` |
 | `vlm.model` | `"qwen2.5vl:3b"` |
 | `vlm.max_tokens` | `200` |

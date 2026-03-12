@@ -2,6 +2,19 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v2.5.2 (2026-03-12)
+
+### New Features
+- **`variants:` search filter** — filter by variant count per asset. `variants:3` (exactly 3), `variants:5+` (5 or more). Uses denormalized `variant_count` column — no JOIN needed.
+- **`scattered:` search filter** — find assets whose variants span multiple directories. `scattered:2` finds assets with file locations in 2+ distinct volume:directory combinations. Useful for auditing mis-grouped assets after import.
+- **Configurable `text:` search limit** — the result count for AI text-to-image search is now configurable at three levels: inline syntax `text:"query":100`, `[ai] text_limit` in `dam.toml` (default 50), and hardcoded fallback of 50. Applies to both CLI and web UI.
+- **Re-import metadata** — button on the asset detail page that clears tags, description, rating, and color label, then re-extracts from variant source files (XMP sidecars and embedded XMP in JPEG/TIFF). Useful for cleaning up metadata after splitting mis-grouped assets.
+
+### Bug Fixes
+- **Stale browse after detail mutations** — dissolving a stack, changing the pick, or other detail page mutations now mark the browse page as dirty. On back-navigation (including bfcache), the browse grid automatically refreshes.
+- **Stale stack pick on back-navigation** — browse page now sends `Cache-Control: no-store` to prevent the browser from serving stale HTML on back button.
+- **Silent error on preview regenerate** — regenerate/rotate preview buttons are now hidden when source files are offline. If the volume goes offline mid-session, an error message is shown instead of a silent 500.
+
 ## v2.5.1 (2026-03-11)
 
 ### New Features
