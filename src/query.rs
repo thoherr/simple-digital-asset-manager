@@ -92,6 +92,8 @@ pub struct ParsedSearch {
     pub orphan: bool,
     pub stale_days: Option<u64>,
     pub missing: bool,
+    pub volumes: Vec<String>,
+    pub volumes_exclude: Vec<String>,
     pub volume_none: bool,
     pub copies_exact: Option<u64>,
     pub copies_min: Option<u64>,
@@ -327,8 +329,14 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
             if let Ok(days) = value.parse::<u64>() {
                 parsed.stale_days = Some(days);
             }
-        } else if token_body == "volume:none" {
-            parsed.volume_none = true;
+        } else if let Some(value) = token_body.strip_prefix("volume:") {
+            if value == "none" {
+                parsed.volume_none = true;
+            } else if negated {
+                parsed.volumes_exclude.push(value.to_string());
+            } else {
+                parsed.volumes.push(value.to_string());
+            }
         } else if let Some(value) = token_body.strip_prefix("label:") {
             if negated {
                 parsed.color_labels_exclude.push(value.to_string());
@@ -947,20 +955,51 @@ impl QueryEngine {
             opts.text_search_ids = Some(&text_query_ids);
         }
 
-        // Pre-compute online volume IDs for volume:none
+        // Resolve volume labels to volume IDs, and handle volume:none
+        let resolved_volume_ids;
+        let resolved_volume_exclude_ids;
         let online_vol_ids;
-        if parsed.volume_none {
+        if !parsed.volumes.is_empty() || !parsed.volumes_exclude.is_empty() || parsed.volume_none {
             let registry = DeviceRegistry::new(&self.catalog_root);
             let volumes = registry.list()?;
-            online_vol_ids = volumes
-                .iter()
-                .filter(|v| v.is_online)
-                .map(|v| v.id.to_string())
-                .collect::<Vec<_>>();
-            opts.no_online_locations = Some(&online_vol_ids);
+
+            resolved_volume_ids = Self::resolve_volume_labels(&parsed.volumes, &volumes)?;
+            if !resolved_volume_ids.is_empty() {
+                opts.volume_ids = &resolved_volume_ids;
+            }
+
+            resolved_volume_exclude_ids = Self::resolve_volume_labels(&parsed.volumes_exclude, &volumes)?;
+            if !resolved_volume_exclude_ids.is_empty() {
+                opts.volume_ids_exclude = &resolved_volume_exclude_ids;
+            }
+
+            if parsed.volume_none {
+                online_vol_ids = volumes
+                    .iter()
+                    .filter(|v| v.is_online)
+                    .map(|v| v.id.to_string())
+                    .collect::<Vec<_>>();
+                opts.no_online_locations = Some(&online_vol_ids);
+            }
         }
 
         catalog.search_paginated(&opts)
+    }
+
+    /// Resolve volume label strings to volume UUIDs.
+    ///
+    /// Each entry may be comma-separated for OR semantics (e.g. "Photos,Archive").
+    /// Label matching is case-insensitive.
+    fn resolve_volume_labels(labels: &[String], volumes: &[Volume]) -> Result<Vec<String>> {
+        let mut ids = Vec::new();
+        for entry in labels {
+            for label in entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                let vol = volumes.iter().find(|v| v.label.eq_ignore_ascii_case(label))
+                    .ok_or_else(|| anyhow::anyhow!("Unknown volume: '{label}'"))?;
+                ids.push(vol.id.to_string());
+            }
+        }
+        Ok(ids)
     }
 
     /// Look up a single asset by its full ID or a unique prefix.
@@ -3087,7 +3126,44 @@ mod tests {
     fn parse_volume_none_filter() {
         let p = parse_search_query("volume:none");
         assert!(p.volume_none);
+        assert!(p.volumes.is_empty());
         assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_volume_label_filter() {
+        let p = parse_search_query("volume:Photos");
+        assert!(!p.volume_none);
+        assert_eq!(p.volumes, vec!["Photos"]);
+        assert!(p.volumes_exclude.is_empty());
+    }
+
+    #[test]
+    fn parse_volume_label_negated() {
+        let p = parse_search_query("-volume:Archive");
+        assert_eq!(p.volumes_exclude, vec!["Archive"]);
+        assert!(p.volumes.is_empty());
+    }
+
+    #[test]
+    fn parse_volume_label_comma_or() {
+        let p = parse_search_query("volume:Photos,Archive");
+        assert_eq!(p.volumes, vec!["Photos,Archive"]);
+    }
+
+    #[test]
+    fn parse_volume_label_with_other_filters() {
+        let p = parse_search_query("volume:Working type:image rating:3+");
+        assert_eq!(p.volumes, vec!["Working"]);
+        assert_eq!(p.asset_types, vec!["image"]);
+        assert_eq!(p.rating_min, Some(3));
+    }
+
+    #[test]
+    fn parse_volume_quoted_label() {
+        let p = parse_search_query("volume:\"External SSD\" type:image");
+        assert_eq!(p.volumes, vec!["External SSD"]);
+        assert_eq!(p.asset_types, vec!["image"]);
     }
 
     #[test]
@@ -3964,5 +4040,49 @@ mod tests {
         assert!(re.is_match("pre-X-post"));
         assert!(re.is_match("pre-hello world-post"));
         assert!(!re.is_match("pre--post")); // empty wildcard
+    }
+
+    // ── resolve_volume_labels tests ────────────────────────────
+
+    #[test]
+    fn resolve_volume_labels_single() {
+        let vol = make_volume("Photos", "/Volumes/Photos");
+        let id = vol.id.to_string();
+        let result = QueryEngine::resolve_volume_labels(
+            &["Photos".to_string()], &[vol],
+        ).unwrap();
+        assert_eq!(result, vec![id]);
+    }
+
+    #[test]
+    fn resolve_volume_labels_case_insensitive() {
+        let vol = make_volume("ScreenSaver", "/path");
+        let id = vol.id.to_string();
+        let result = QueryEngine::resolve_volume_labels(
+            &["screensaver".to_string()], &[vol],
+        ).unwrap();
+        assert_eq!(result, vec![id]);
+    }
+
+    #[test]
+    fn resolve_volume_labels_comma_or() {
+        let vol1 = make_volume("Photos", "/Volumes/Photos");
+        let vol2 = make_volume("Archive", "/Volumes/Archive");
+        let id1 = vol1.id.to_string();
+        let id2 = vol2.id.to_string();
+        let result = QueryEngine::resolve_volume_labels(
+            &["Photos,Archive".to_string()], &[vol1, vol2],
+        ).unwrap();
+        assert_eq!(result, vec![id1, id2]);
+    }
+
+    #[test]
+    fn resolve_volume_labels_unknown_errors() {
+        let vol = make_volume("Photos", "/Volumes/Photos");
+        let result = QueryEngine::resolve_volume_labels(
+            &["Nonexistent".to_string()], &[vol],
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Unknown volume"));
     }
 }

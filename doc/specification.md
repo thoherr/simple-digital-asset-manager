@@ -67,7 +67,7 @@
   - Global `--debug` / `-d` flag: shows stderr output from external tools (ffmpeg, dcraw, dcraw_emu) for diagnosing preview generation issues
   - `search --format=<preset|template>`: presets are `ids` (one UUID per line), `short` (default compact), `full` (with tags/description), `json` (JSON array). Custom templates use `{placeholder}` syntax, e.g. `'{id}\t{name}\t{tags}'`. Supported placeholders: `id`, `short_id`, `name`, `filename`, `type`, `format`, `date`, `tags`, `description`, `hash`
   - `search -q` / `--quiet`: shorthand for `--format=ids`
-  - Search location health filters: `orphan:true` (assets with zero file_locations), `missing:true` (at least one location points to a non-existent file), `stale:N` (at least one location not verified in N days or never verified), `volume:none` (no locations on any online volume). Combinable with all other search filters.
+  - Search location health filters: `orphan:true` (assets with zero file_locations), `missing:true` (at least one location points to a non-existent file), `stale:N` (at least one location not verified in N days or never verified), `volume:none` (no locations on any online volume), `volume:<label>` (assets on a specific volume, case-insensitive). Combinable with all other search filters.
   - Asset ID prefix filter: `id:<prefix>` matches assets whose UUID starts with the given prefix. Useful for scripting and quick lookup in both CLI and web UI.
   - `duplicates --format=<preset|template>`: same presets, with additional `{locations}` placeholder
   - When `--format` is explicitly set, result counts are suppressed

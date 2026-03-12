@@ -421,6 +421,8 @@ pub struct SearchOptions<'a> {
     pub path_prefixes: &'a [String],
     pub path_prefixes_exclude: &'a [String],
     pub volume: Option<&'a str>,
+    pub volume_ids: &'a [String],
+    pub volume_ids_exclude: &'a [String],
     pub rating_min: Option<u8>,
     pub rating_exact: Option<u8>,
     pub iso_min: Option<i64>,
@@ -486,6 +488,8 @@ impl<'a> Default for SearchOptions<'a> {
             path_prefixes: &[],
             path_prefixes_exclude: &[],
             volume: None,
+            volume_ids: &[],
+            volume_ids_exclude: &[],
             rating_min: None,
             rating_exact: None,
             iso_min: None,
@@ -2500,7 +2504,7 @@ impl Catalog {
     fn build_search_where(opts: &SearchOptions) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>, bool, bool) {
         let mut clauses = Vec::new();
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-        let mut needs_fl_join = opts.volume.is_some();
+        let mut needs_fl_join = opts.volume.is_some() || !opts.volume_ids.is_empty() || !opts.volume_ids_exclude.is_empty();
         let mut needs_v_join = false;
 
         // --- Asset ID prefix match ---
@@ -2607,6 +2611,26 @@ impl Catalog {
             if !volume.is_empty() {
                 clauses.push("fl.volume_id = ?".to_string());
                 params.push(Box::new(volume.to_string()));
+            }
+        }
+        if !opts.volume_ids.is_empty() {
+            let placeholders: Vec<String> = opts.volume_ids.iter().map(|_| "?".to_string()).collect();
+            clauses.push(format!("fl.volume_id IN ({})", placeholders.join(",")));
+            for vid in opts.volume_ids {
+                params.push(Box::new(vid.clone()));
+            }
+        }
+        if !opts.volume_ids_exclude.is_empty() {
+            // Exclude assets that have ANY location on these volumes
+            let placeholders: Vec<String> = opts.volume_ids_exclude.iter().map(|_| "?".to_string()).collect();
+            clauses.push(format!(
+                "a.id NOT IN (SELECT DISTINCT v2.asset_id FROM variants v2 \
+                 JOIN file_locations fl2 ON fl2.content_hash = v2.content_hash \
+                 WHERE fl2.volume_id IN ({}))",
+                placeholders.join(",")
+            ));
+            for vid in opts.volume_ids_exclude {
+                params.push(Box::new(vid.clone()));
             }
         }
 

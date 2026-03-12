@@ -437,22 +437,28 @@ dam search 'collection:"Travel 2026" rating:4+'
 
 ## volume
 
-**Syntax:** `volume:<label>` (web UI and route handler) or `volume:none` (query parser)
+**Syntax:** `volume:<label>`, `volume:<label1>,<label2>`, `-volume:<label>`, `volume:none`
 
-**Description:** The `volume:none` special value finds assets with no file locations on any currently online volume. The `volume:<label>` form (used via the web UI dropdown or programmatically) restricts to assets with at least one file location on the specified volume.
+**Description:** Restricts results to assets that have at least one file location on the specified volume. Volume labels are matched case-insensitively. Supports negation (`-volume:Archive`) and comma-separated OR (`volume:Photos,Working`). The special value `volume:none` finds assets with no file locations on any currently online volume.
 
 **Examples:**
 
 ```
+dam search "volume:Photos"                  # assets on the Photos volume
+dam search "volume:ScreenSaver type:image"  # images on the ScreenSaver volume
+dam search "volume:Photos,Working"          # assets on either volume
+dam search "-volume:Archive"                # exclude assets on the Archive volume
 dam search "volume:none"                    # assets not on any online volume
 dam search "volume:none orphan:false"       # has locations, but all on offline volumes
+dam search "volume:\"External SSD\""        # volume label with spaces (quoted)
 ```
 
-In the web UI, the volume filter is a dropdown control rather than a typed query token. It passes the volume UUID to the search backend.
+In the web UI, the volume filter is also available as a dropdown control that passes the volume UUID directly to the search backend.
 
 **SQL behavior:**
+- `volume:<label>`: Label is resolved to a volume UUID via DeviceRegistry. `WHERE fl.volume_id IN (...)`. Triggers a JOIN to the file_locations table.
+- `-volume:<label>`: Resolved to UUID, then `WHERE a.id NOT IN (SELECT DISTINCT fl2.asset_id FROM file_locations fl2 WHERE fl2.volume_id IN (...))`.
 - `volume:none`: Pre-computes online volume IDs from DeviceRegistry. Adds `WHERE NOT EXISTS (SELECT 1 FROM file_locations fl JOIN variants v ... WHERE fl.volume_id IN (...online_ids...))`.
-- `volume:<id>`: `WHERE fl.volume_id = ?`. Triggers a JOIN to the file_locations table.
 
 ---
 
@@ -871,7 +877,7 @@ dam search "camera:fuji"
 | `meta:` | yes | no | yes |
 | `path:` | yes | yes (text input) | yes |
 | `collection:` | yes | yes (dropdown) | yes |
-| `volume:` | dropdown only | yes (dropdown) | yes |
+| `volume:` | yes | yes (dropdown) | yes |
 | `volume:none` | yes | no | yes |
 | `copies:` | yes | no | yes |
 | `variants:` | yes | no | yes |

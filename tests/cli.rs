@@ -2988,6 +2988,51 @@ fn search_volume_none_filter() {
         .stdout(predicate::str::contains(&asset_id[..8]));
 }
 
+#[test]
+fn search_volume_label_filter() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+    let file = create_test_file(&root, "vol_label_test.jpg", b"vol label data");
+
+    dam()
+        .current_dir(&root)
+        .args(["import", file.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Search by volume label should find the asset
+    dam()
+        .current_dir(&root)
+        .args(["search", "volume:test-vol"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 result"));
+
+    // Case-insensitive match
+    dam()
+        .current_dir(&root)
+        .args(["search", "volume:Test-Vol"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 result"));
+
+    // Unknown volume should error
+    dam()
+        .current_dir(&root)
+        .args(["search", "volume:nonexistent"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Unknown volume"));
+
+    // Negated volume should exclude (use -- to prevent clap flag parsing)
+    dam()
+        .current_dir(&root)
+        .args(["search", "--", "-volume:test-vol"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No results"));
+}
+
 // ── Cleanup orphaned assets and previews ────────────────────────────
 
 #[test]
