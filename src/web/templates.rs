@@ -288,6 +288,7 @@ pub struct AssetPage {
     pub has_smart_preview: bool,
     pub has_online_source: bool,
     pub error: Option<String>,
+    pub best_variant_hash: String,
     pub variants: Vec<VariantRow>,
     pub recipes: Vec<RecipeRow>,
     pub collections: Vec<AssetCollectionChip>,
@@ -349,6 +350,7 @@ impl AssetPage {
         stack_members: Vec<StackMemberCard>,
         is_stack_pick: bool,
         volume_online: &std::collections::HashMap<String, bool>,
+        best_variant_hash: String,
     ) -> Self {
         let fallback_name = details
             .variants
@@ -424,14 +426,12 @@ impl AssetPage {
             .collect();
 
         // Check if the best variant has any online file location
-        let has_online_source = {
-            let best_idx = crate::models::variant::best_preview_index_details(&details.variants);
-            best_idx.map_or(false, |idx| {
-                details.variants[idx].locations.iter().any(|loc| {
-                    volume_online.get(&loc.volume_id).copied().unwrap_or(false)
-                })
+        let best_idx = crate::models::variant::best_preview_index_details(&details.variants);
+        let has_online_source = best_idx.map_or(false, |idx| {
+            details.variants[idx].locations.iter().any(|loc| {
+                volume_online.get(&loc.volume_id).copied().unwrap_or(false)
             })
-        };
+        });
 
         Self {
             asset_id: details.id,
@@ -451,6 +451,7 @@ impl AssetPage {
             has_smart_preview,
             has_online_source,
             error: None,
+            best_variant_hash,
             variants,
             recipes,
             collections: collections

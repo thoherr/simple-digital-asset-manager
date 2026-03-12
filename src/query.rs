@@ -1343,6 +1343,7 @@ impl QueryEngine {
                 rating: source.rating,
                 color_label: source.color_label.clone(),
                 preview_rotation: None,
+                preview_variant: None,
                 variants: vec![variant.clone()],
                 recipes: moved_recipes,
             };
@@ -2070,6 +2071,37 @@ impl QueryEngine {
         catalog.update_asset_preview_rotation(&full_id, rotation)?;
 
         Ok(rotation)
+    }
+
+    /// Set the preview variant override on an asset. Updates both sidecar YAML and SQLite catalog.
+    /// Pass `None` to clear the override and revert to algorithmic selection.
+    pub fn set_preview_variant(
+        &self,
+        asset_id_prefix: &str,
+        content_hash: Option<&str>,
+    ) -> Result<()> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let full_id = catalog
+            .resolve_asset_id(asset_id_prefix)?
+            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+
+        // Validate that the content_hash belongs to this asset
+        if let Some(hash) = content_hash {
+            let details = self.show(&full_id)?;
+            if !details.variants.iter().any(|v| v.content_hash == hash) {
+                anyhow::bail!("Variant {hash} does not belong to asset {full_id}");
+            }
+        }
+
+        let uuid: uuid::Uuid = full_id.parse()?;
+        let store = MetadataStore::new(&self.catalog_root);
+        let mut asset = store.load(uuid)?;
+
+        asset.preview_variant = content_hash.map(|s| s.to_string());
+        store.save(&asset)?;
+        catalog.update_asset_preview_variant(&full_id, content_hash)?;
+
+        Ok(())
     }
 
     /// Set the description on an asset. Updates both sidecar YAML and SQLite catalog.

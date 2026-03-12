@@ -4775,8 +4775,11 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 };
 
                 for asset_data in &assets {
-                    // Select the best variant for preview generation
-                    let idx = dam::models::variant::best_preview_index(&asset_data.variants).unwrap_or(0);
+                    // Select the best variant for preview generation (respects user override)
+                    let idx = asset_data.preview_variant.as_ref()
+                        .and_then(|h| asset_data.variants.iter().position(|v| &v.content_hash == h))
+                        .or_else(|| dam::models::variant::best_preview_index(&asset_data.variants))
+                        .unwrap_or(0);
                     if let Some(variant) = asset_data.variants.get(idx) {
                         // In --upgrade mode, skip assets where the best variant is already the first
                         if upgrade && idx == 0 {

@@ -379,6 +379,7 @@
                         <th>Format</th>
                         <th>Size</th>
                         <th>Locations</th>
+                        {% if variants.len() > 1 %}<th style="width:2em" title="Preview representative"></th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -397,6 +398,9 @@
                                     onclick="fetch('/api/open-terminal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume_id:'{{ loc.volume_id }}',relative_path:'{{ loc.relative_path }}'})}).then(function(r){if(!r.ok)r.text().then(function(t){alert(t)})})">&gt;_</button>{% endif %}</div>
                             {% endfor %}
                         </td>
+                        {% if variants.len() > 1 %}
+                        <td>{% if v.content_hash == best_variant_hash %}<span class="preview-indicator active" title="Current preview representative">&#9733;</span>{% else %}<button class="preview-indicator" title="Use as preview representative" onclick="setPreviewVariant('{{ asset_id }}', '{{ v.content_hash }}')">&#9734;</button>{% endif %}</td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -449,6 +453,22 @@
                 .finally(function() { extractBtn.disabled = false; });
             });
         })();
+        </script>
+        {% endif %}
+        {% if variants.len() > 1 %}
+        <script>
+        function setPreviewVariant(assetId, contentHash) {
+            fetch('/api/asset/' + assetId + '/preview-variant', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({content_hash: contentHash})
+            })
+            .then(function(r) {
+                if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+                window.location.reload();
+            })
+            .catch(function(err) { alert('Failed: ' + err.message); });
+        }
         </script>
         {% endif %}
         {% endif %}

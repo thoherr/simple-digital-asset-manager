@@ -704,16 +704,19 @@ pub async fn asset_page(
             .ok_or_else(|| anyhow::anyhow!("Asset '{full_id}' not found in catalog"))?;
 
         let preview_gen = state.preview_generator();
-        let best = crate::models::variant::best_preview_index_details(&details.variants);
-        let preview_url = best.and_then(|i| {
-            let v = &details.variants[i];
-            if preview_gen.has_preview(&v.content_hash) {
-                Some(super::templates::preview_url(&v.content_hash, &preview_ext))
+        // Use the stored best_variant_hash (respects user override) instead of algorithmic scoring
+        let stored_best_hash = catalog.get_asset_best_variant_hash(&full_id).unwrap_or(None);
+        let best_hash = stored_best_hash.or_else(|| {
+            crate::models::variant::best_preview_index_details(&details.variants)
+                .map(|i| details.variants[i].content_hash.clone())
+        });
+        let preview_url = best_hash.as_ref().and_then(|h| {
+            if preview_gen.has_preview(h) {
+                Some(super::templates::preview_url(h, &preview_ext))
             } else {
                 None
             }
         });
-        let best_hash = best.map(|i| details.variants[i].content_hash.clone());
         let has_smart_preview = best_hash.as_ref().map_or(false, |h| preview_gen.has_smart_preview(h));
         let smart_preview_url = best_hash.as_ref().and_then(|h| {
             if has_smart_preview {
@@ -794,7 +797,7 @@ pub async fn asset_page(
             }
         };
 
-        let mut tmpl = AssetPage::from_details(details, preview_url, smart_preview_url, has_smart_preview, collections, stack_members, is_stack_pick, &volume_online);
+        let mut tmpl = AssetPage::from_details(details, preview_url, smart_preview_url, has_smart_preview, collections, stack_members, is_stack_pick, &volume_online, best_hash.unwrap_or_default());
         tmpl.prev_id = nav_params.prev;
         tmpl.next_id = nav_params.next;
         tmpl.ai_enabled = state.ai_enabled;
@@ -1557,10 +1560,15 @@ pub async fn generate_preview(
     let preview_ext = state.preview_ext.clone();
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
         let engine = state.query_engine();
         let details = engine.show(&asset_id)?;
 
-        let best_idx = crate::models::variant::best_preview_index_details(&details.variants)
+        // Respect user's preview variant override
+        let stored_hash = catalog.get_asset_best_variant_hash(&asset_id).unwrap_or(None);
+        let best_idx = stored_hash.as_ref()
+            .and_then(|h| details.variants.iter().position(|v| &v.content_hash == h))
+            .or_else(|| crate::models::variant::best_preview_index_details(&details.variants))
             .ok_or_else(|| anyhow::anyhow!("Asset has no variants"))?;
         let variant = &details.variants[best_idx];
         let content_hash = &variant.content_hash;
@@ -1694,8 +1702,11 @@ pub async fn set_rotation(
         // Persist rotation
         engine.set_preview_rotation(&asset_id, new_rotation)?;
 
-        // Find the best variant and resolve its source file
-        let best_idx = crate::models::variant::best_preview_index_details(&details.variants)
+        // Find the best variant (respecting user override) and resolve its source file
+        let stored_hash = catalog.get_asset_best_variant_hash(&asset_id).unwrap_or(None);
+        let best_idx = stored_hash.as_ref()
+            .and_then(|h| details.variants.iter().position(|v| &v.content_hash == h))
+            .or_else(|| crate::models::variant::best_preview_index_details(&details.variants))
             .ok_or_else(|| anyhow::anyhow!("Asset has no variants"))?;
         let variant = &details.variants[best_idx];
         let content_hash = &variant.content_hash;
@@ -1785,6 +1796,30 @@ pub async fn set_rotation(
 
     match result {
         Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+/// POST /api/asset/{id}/preview-variant — set or clear the preview variant override.
+pub async fn set_preview_variant(
+    State(state): State<Arc<AppState>>,
+    Path(asset_id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let engine = state.query_engine();
+        let content_hash = body.get("content_hash").and_then(|v| v.as_str());
+        engine.set_preview_variant(&asset_id, content_hash)?;
+        Ok::<_, anyhow::Error>(serde_json::json!({"ok": true}))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
         Ok(Err(e)) => {
             (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
         }

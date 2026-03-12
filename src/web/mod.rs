@@ -303,6 +303,10 @@ fn build_router(state: Arc<AppState>) -> Router {
             axum::routing::post(routes::set_rotation),
         )
         .route(
+            "/api/asset/{id}/preview-variant",
+            axum::routing::post(routes::set_preview_variant),
+        )
+        .route(
             "/api/asset/{id}/reimport-metadata",
             axum::routing::post(routes::reimport_metadata),
         )

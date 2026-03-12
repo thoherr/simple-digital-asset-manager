@@ -79,9 +79,22 @@ pub fn best_preview_index(variants: &[Variant]) -> Option<usize> {
 }
 
 /// Return the content hash of the best variant for display (browse grid, search results).
-/// Reuses the same scoring as `best_preview_index()`.
+/// If `override_hash` is set and matches a variant, use that; otherwise score algorithmically.
 pub fn compute_best_variant_hash(variants: &[Variant]) -> Option<String> {
     best_preview_index(variants).map(|i| variants[i].content_hash.clone())
+}
+
+/// Like `compute_best_variant_hash`, but respects a user-set preview override.
+pub fn compute_best_variant_hash_with_override(
+    variants: &[Variant],
+    preview_variant: Option<&str>,
+) -> Option<String> {
+    if let Some(override_hash) = preview_variant {
+        if variants.iter().any(|v| v.content_hash == override_hash) {
+            return Some(override_hash.to_string());
+        }
+    }
+    compute_best_variant_hash(variants)
 }
 
 /// Return the "primary" format for display — the identity format of the asset.
@@ -296,5 +309,48 @@ mod tests {
     fn primary_format_empty_returns_none() {
         let empty: Vec<Variant> = vec![];
         assert_eq!(compute_primary_format(&empty), None);
+    }
+
+    #[test]
+    fn override_selects_specified_variant() {
+        let variants = vec![
+            make_variant(VariantRole::Original, "nef", 25_000_000),
+            make_variant(VariantRole::Export, "jpg", 5_000_000),
+        ];
+        // Without override: export wins
+        assert_eq!(
+            compute_best_variant_hash(&variants).as_deref(),
+            Some("sha256:jpg_5000000")
+        );
+        // With override: original wins
+        assert_eq!(
+            compute_best_variant_hash_with_override(&variants, Some("sha256:nef_25000000")).as_deref(),
+            Some("sha256:nef_25000000")
+        );
+    }
+
+    #[test]
+    fn override_with_invalid_hash_falls_back() {
+        let variants = vec![
+            make_variant(VariantRole::Original, "nef", 25_000_000),
+            make_variant(VariantRole::Export, "jpg", 5_000_000),
+        ];
+        // Invalid override falls back to algorithmic
+        assert_eq!(
+            compute_best_variant_hash_with_override(&variants, Some("sha256:nonexistent")).as_deref(),
+            Some("sha256:jpg_5000000")
+        );
+    }
+
+    #[test]
+    fn override_none_uses_algorithmic() {
+        let variants = vec![
+            make_variant(VariantRole::Original, "nef", 25_000_000),
+            make_variant(VariantRole::Export, "jpg", 5_000_000),
+        ];
+        assert_eq!(
+            compute_best_variant_hash_with_override(&variants, None).as_deref(),
+            Some("sha256:jpg_5000000")
+        );
     }
 }

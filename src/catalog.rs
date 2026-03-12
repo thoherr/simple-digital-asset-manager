@@ -585,7 +585,7 @@ fn next_date_bound(s: &str) -> String {
 }
 
 /// Current schema version. Bump this whenever `run_migrations()` changes.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// SQLite-backed local catalog for fast queries. This is a derived cache,
 /// not the source of truth (sidecar files are).
@@ -727,6 +727,8 @@ impl Catalog {
         );
         // Preview rotation override
         let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN preview_rotation INTEGER");
+        // Preview variant override — user-chosen content_hash for the preview representative
+        let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN preview_variant TEXT");
         self.backfill_gps_columns();
         // Face count denormalized column
         let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN face_count INTEGER NOT NULL DEFAULT 0");
@@ -799,6 +801,7 @@ impl Catalog {
                 latitude REAL,
                 longitude REAL,
                 preview_rotation INTEGER,
+                preview_variant TEXT,
                 face_count INTEGER NOT NULL DEFAULT 0
             );
 
@@ -974,7 +977,10 @@ impl Catalog {
     /// Insert an asset into the catalog.
     pub fn insert_asset(&self, asset: &Asset) -> Result<()> {
         let tags_json = serde_json::to_string(&asset.tags)?;
-        let best_hash = crate::models::variant::compute_best_variant_hash(&asset.variants);
+        let best_hash = crate::models::variant::compute_best_variant_hash_with_override(
+            &asset.variants,
+            asset.preview_variant.as_deref(),
+        );
         let primary_format = crate::models::variant::compute_primary_format(&asset.variants);
         let variant_count = asset.variants.len() as i64;
         let (latitude, longitude) = crate::models::variant::compute_gps_from_variants(&asset.variants);
@@ -982,8 +988,8 @@ impl Catalog {
         // intermediate DELETE that triggers FK constraint violations on
         // variants/faces/collection_assets referencing this asset.
         self.conn.execute(
-            "INSERT INTO assets (id, name, created_at, asset_type, tags, description, rating, color_label, best_variant_hash, primary_variant_format, variant_count, latitude, longitude, preview_rotation) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) \
+            "INSERT INTO assets (id, name, created_at, asset_type, tags, description, rating, color_label, best_variant_hash, primary_variant_format, variant_count, latitude, longitude, preview_rotation, preview_variant) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
              ON CONFLICT(id) DO UPDATE SET \
                name = excluded.name, \
                created_at = excluded.created_at, \
@@ -997,7 +1003,8 @@ impl Catalog {
                variant_count = excluded.variant_count, \
                latitude = excluded.latitude, \
                longitude = excluded.longitude, \
-               preview_rotation = excluded.preview_rotation",
+               preview_rotation = excluded.preview_rotation, \
+               preview_variant = excluded.preview_variant",
             rusqlite::params![
                 asset.id.to_string(),
                 asset.name,
@@ -1013,6 +1020,7 @@ impl Catalog {
                 latitude,
                 longitude,
                 asset.preview_rotation.map(|r| r as i64),
+                asset.preview_variant,
             ],
         )?;
         Ok(())
@@ -1042,6 +1050,41 @@ impl Catalog {
             "UPDATE assets SET preview_rotation = ?1 WHERE id = ?2",
             rusqlite::params![rotation.map(|r| r as i64), asset_id],
         )?;
+        Ok(())
+    }
+
+    /// Update the preview variant override and recompute best_variant_hash.
+    pub fn update_asset_preview_variant(
+        &self,
+        asset_id: &str,
+        preview_variant: Option<&str>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE assets SET preview_variant = ?1 WHERE id = ?2",
+            rusqlite::params![preview_variant, asset_id],
+        )?;
+        // Recompute best_variant_hash: if override set, use it; else fall back to scoring
+        if let Some(hash) = preview_variant {
+            self.conn.execute(
+                "UPDATE assets SET best_variant_hash = ?1 WHERE id = ?2 AND EXISTS (SELECT 1 FROM variants WHERE content_hash = ?1 AND asset_id = ?2)",
+                rusqlite::params![hash, asset_id],
+            )?;
+        } else {
+            // Clear override — recompute from scoring via SQL
+            self.conn.execute(
+                "UPDATE assets SET best_variant_hash = (
+                    SELECT content_hash FROM variants WHERE asset_id = ?1
+                    ORDER BY
+                        CASE role WHEN 'export' THEN 300 WHEN 'processed' THEN 200
+                            WHEN 'original' THEN 100 ELSE 0 END +
+                        CASE WHEN LOWER(format) IN ('jpg','jpeg','png','tiff','tif','webp')
+                            THEN 50 ELSE 0 END +
+                        MIN(file_size / 1000000, 49)
+                    DESC LIMIT 1
+                ) WHERE id = ?1",
+                rusqlite::params![asset_id],
+            )?;
+        }
         Ok(())
     }
 
@@ -1075,7 +1118,10 @@ impl Catalog {
 
     /// Update all denormalized variant columns from an asset's variants.
     pub fn update_denormalized_variant_columns(&self, asset: &Asset) -> Result<()> {
-        let best_hash = crate::models::variant::compute_best_variant_hash(&asset.variants);
+        let best_hash = crate::models::variant::compute_best_variant_hash_with_override(
+            &asset.variants,
+            asset.preview_variant.as_deref(),
+        );
         let primary_format = crate::models::variant::compute_primary_format(&asset.variants);
         let variant_count = asset.variants.len() as i64;
         let (latitude, longitude) = crate::models::variant::compute_gps_from_variants(&asset.variants);

@@ -994,6 +994,21 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     opacity: 1;
     background: var(--hover-bg);
 }
+.preview-indicator {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    padding: 0;
+    line-height: 1;
+}
+.preview-indicator:hover { color: var(--accent); }
+.preview-indicator.active {
+    color: var(--accent);
+    cursor: default;
+    font-size: 1.1rem;
+}
 
 /* Collapsible sections */
 details { margin-top: 1rem; }
