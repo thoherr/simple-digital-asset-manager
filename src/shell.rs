@@ -571,22 +571,32 @@ fn handle_line(
             return LineResult::Err(anyhow::anyhow!("No command after variable assignment"));
         }
 
-        // Check if it's just `$name = _` — copy last result
-        let expanded = expand_variables(&command_part, vars);
-        let tokens = match shell_split(&expanded) {
+        let tokens = match shell_split(&command_part) {
             Some(t) => t,
             None => return LineResult::Err(anyhow::anyhow!("Unmatched quote in command")),
         };
 
-        // If the expanded result is just IDs (from _ expansion), store directly
-        if tokens.len() == 1 && tokens[0].contains(' ') {
-            vars.named.insert(var_name.clone(), vars.last_ids.clone());
-            let count = vars.last_ids.len();
-            eprintln!("  {count} assets → ${var_name}");
-            return LineResult::Handled;
+        // Check if it's just `$name = _` or `$name = $other` — copy variable contents
+        if tokens.len() == 1 {
+            if tokens[0] == "_" && !vars.last_ids.is_empty() {
+                let count = vars.last_ids.len();
+                vars.named.insert(var_name.clone(), vars.last_ids.clone());
+                eprintln!("  {count} assets → ${var_name}");
+                return LineResult::Handled;
+            }
+            if tokens[0].starts_with('$') {
+                let src_name = &tokens[0][1..];
+                if let Some(ids) = vars.named.get(src_name).cloned() {
+                    let count = ids.len();
+                    vars.named.insert(var_name.clone(), ids);
+                    eprintln!("  {count} assets → ${var_name}");
+                    return LineResult::Handled;
+                }
+            }
         }
 
-        // Otherwise execute the command and store result
+        // Otherwise execute the command (with token-level variable expansion)
+        let tokens = expand_variables_in_tokens(tokens, vars);
         return match execute_tokens(tokens, defaults, executor) {
             LineResult::Ok(ids) => {
                 let count = ids.len();
@@ -709,14 +719,16 @@ fn handle_line(
         return LineResult::Handled;
     }
 
-    // Expand variables ($name and _)
-    let expanded = expand_variables(line, vars);
-
-    // Shell-split the line into tokens
-    let tokens = match shell_split(&expanded) {
+    // Shell-split the line into tokens (before variable expansion)
+    let tokens = match shell_split(line) {
         Some(t) => t,
         None => return LineResult::Err(anyhow::anyhow!("Unmatched quote in command")),
     };
+
+    // Expand variables: extract $name/_ tokens and append their IDs at the end.
+    // This ensures asset ID lists always land in trailing position (where clap
+    // expects positional asset IDs), regardless of where the user typed them.
+    let tokens = expand_variables_in_tokens(tokens, vars);
 
     execute_tokens(tokens, defaults, executor)
 }
@@ -737,42 +749,6 @@ fn parse_variable_assignment(line: &str) -> Option<(String, String)> {
 
     let command = rest[eq_pos + 1..].trim();
     Some((name.to_string(), command.to_string()))
-}
-
-/// Expand `$name` variables and `_` in the command line.
-fn expand_variables(line: &str, vars: &Variables) -> String {
-    // First expand $name variables
-    let mut result = String::new();
-    let mut chars = line.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if c == '$' {
-            // Collect variable name
-            let mut name = String::new();
-            while let Some(&nc) = chars.peek() {
-                if nc.is_alphanumeric() || nc == '_' {
-                    name.push(nc);
-                    chars.next();
-                } else {
-                    break;
-                }
-            }
-            if let Some(ids) = vars.named.get(&name) {
-                result.push_str(&ids.join(" "));
-            } else if !name.is_empty() {
-                // Unknown variable — keep as-is
-                result.push('$');
-                result.push_str(&name);
-            } else {
-                result.push('$');
-            }
-        } else {
-            result.push(c);
-        }
-    }
-
-    // Then expand standalone _ to last IDs
-    expand_underscore(&result, &vars.last_ids)
 }
 
 /// Execute a parsed token list as a dam command.
@@ -829,31 +805,46 @@ fn print_vars(vars: &Variables, defaults: &SessionDefaults) {
 }
 
 /// Expand `_` tokens to the list of asset IDs from the last command.
-fn expand_underscore(line: &str, last_ids: &[String]) -> String {
-    if !line.contains('_') || last_ids.is_empty() {
-        return line.to_string();
-    }
+/// Expand variable references in a token list, appending IDs at the end.
+///
+/// Variables (`$name` and standalone `_`) are **not** expanded in-place.
+/// Instead, the variable token is removed from the list and the referenced
+/// IDs are collected and appended at the end of the argument list.
+///
+/// This ensures asset ID lists always land in the trailing positional slot
+/// (where clap expects `[ASSET_IDS]...`), regardless of where the user
+/// placed them in the command.  As a result, `tag _ --add screensaver` and
+/// `tag --add screensaver _` both produce the same token sequence.
+fn expand_variables_in_tokens(tokens: Vec<String>, vars: &Variables) -> Vec<String> {
+    let mut command_tokens = Vec::new();
+    let mut trailing_ids: Vec<String> = Vec::new();
 
-    // Only expand standalone _ (not inside words like _foo or foo_bar)
-    let mut result = String::new();
-    let mut chars = line.chars().peekable();
-    let mut prev_is_word = false;
-
-    while let Some(c) = chars.next() {
-        if c == '_' && !prev_is_word {
-            // Check if next char is also a word char
-            let next_is_word = chars.peek().map_or(false, |n| n.is_alphanumeric() || *n == '_');
-            if !next_is_word {
-                // Standalone _ — expand
-                result.push_str(&last_ids.join(" "));
-                prev_is_word = true;
-                continue;
+    for token in &tokens {
+        // Standalone _ (not part of a word like _foo or foo_bar)
+        if token == "_" {
+            if !vars.last_ids.is_empty() {
+                trailing_ids.extend(vars.last_ids.iter().cloned());
+            } else {
+                // No last IDs — keep as-is
+                command_tokens.push(token.clone());
             }
+        } else if token.starts_with('$') && token.len() > 1
+            && token[1..].chars().all(|c| c.is_alphanumeric() || c == '_')
+        {
+            let name = &token[1..];
+            if let Some(ids) = vars.named.get(name) {
+                trailing_ids.extend(ids.iter().cloned());
+            } else {
+                // Unknown variable — keep as-is
+                command_tokens.push(token.clone());
+            }
+        } else {
+            command_tokens.push(token.clone());
         }
-        prev_is_word = c.is_alphanumeric() || c == '_' || c == '-';
-        result.push(c);
     }
-    result
+
+    command_tokens.extend(trailing_ids);
+    command_tokens
 }
 
 /// Split a command line into tokens, respecting quotes.
@@ -1039,15 +1030,49 @@ mod tests {
     }
 
     #[test]
-    fn test_expand_underscore_standalone() {
-        let ids = vec!["abc123".to_string(), "def456".to_string()];
-        assert_eq!(expand_underscore("edit --rating 5 _", &ids), "edit --rating 5 abc123 def456");
+    fn test_expand_variables_underscore_at_end() {
+        let mut vars = Variables::new();
+        vars.last_ids = vec!["abc123".to_string(), "def456".to_string()];
+        let tokens = vec!["edit".into(), "--rating".into(), "5".into(), "_".into()];
+        assert_eq!(
+            expand_variables_in_tokens(tokens, &vars),
+            vec!["edit", "--rating", "5", "abc123", "def456"]
+        );
     }
 
     #[test]
-    fn test_expand_underscore_no_ids() {
-        let ids: Vec<String> = vec![];
-        assert_eq!(expand_underscore("edit --rating 5 _", &ids), "edit --rating 5 _");
+    fn test_expand_variables_underscore_at_start() {
+        let mut vars = Variables::new();
+        vars.last_ids = vec!["abc123".to_string(), "def456".to_string()];
+        let tokens = vec!["tag".into(), "_".into(), "--add".into(), "screensaver".into()];
+        // _ is removed from its position and IDs are appended at the end
+        assert_eq!(
+            expand_variables_in_tokens(tokens, &vars),
+            vec!["tag", "--add", "screensaver", "abc123", "def456"]
+        );
+    }
+
+    #[test]
+    fn test_expand_variables_underscore_in_middle() {
+        let mut vars = Variables::new();
+        vars.last_ids = vec!["id1".to_string()];
+        let tokens = vec!["tag".into(), "_".into(), "screensaver".into()];
+        // IDs move to end: tag screensaver id1
+        assert_eq!(
+            expand_variables_in_tokens(tokens, &vars),
+            vec!["tag", "screensaver", "id1"]
+        );
+    }
+
+    #[test]
+    fn test_expand_variables_no_last_ids() {
+        let vars = Variables::new();
+        let tokens = vec!["edit".into(), "--rating".into(), "5".into(), "_".into()];
+        // No last_ids — _ kept as-is
+        assert_eq!(
+            expand_variables_in_tokens(tokens, &vars),
+            vec!["edit", "--rating", "5", "_"]
+        );
     }
 
     #[test]
@@ -1081,10 +1106,20 @@ mod tests {
     }
 
     #[test]
-    fn test_expand_underscore_in_word() {
-        let ids = vec!["abc123".to_string()];
-        assert_eq!(expand_underscore("search _foo", &ids), "search _foo");
-        assert_eq!(expand_underscore("search foo_bar", &ids), "search foo_bar");
+    fn test_expand_variables_underscore_in_word_not_expanded() {
+        let mut vars = Variables::new();
+        vars.last_ids = vec!["abc123".to_string()];
+        // _foo and foo_bar are not standalone _ — they should not be expanded
+        let tokens = vec!["search".into(), "_foo".into()];
+        assert_eq!(
+            expand_variables_in_tokens(tokens, &vars),
+            vec!["search", "_foo"]
+        );
+        let tokens = vec!["search".into(), "foo_bar".into()];
+        assert_eq!(
+            expand_variables_in_tokens(tokens, &vars),
+            vec!["search", "foo_bar"]
+        );
     }
 
     // --- Phase 2: Variable tests ---
@@ -1105,41 +1140,49 @@ mod tests {
     }
 
     #[test]
-    fn test_expand_variables_named() {
+    fn test_expand_variables_named_at_end() {
         let mut vars = Variables::new();
         vars.named.insert("picks".to_string(), vec!["id1".to_string(), "id2".to_string()]);
-        vars.last_ids = vec!["id3".to_string()];
 
+        let tokens = vec!["tag".into(), "--add".into(), "portfolio".into(), "$picks".into()];
         assert_eq!(
-            expand_variables("tag --add portfolio $picks", &vars),
-            "tag --add portfolio id1 id2"
+            expand_variables_in_tokens(tokens, &vars),
+            vec!["tag", "--add", "portfolio", "id1", "id2"]
         );
     }
 
     #[test]
-    fn test_expand_variables_underscore() {
+    fn test_expand_variables_named_at_start() {
         let mut vars = Variables::new();
-        vars.last_ids = vec!["id1".to_string(), "id2".to_string()];
+        vars.named.insert("picks".to_string(), vec!["id1".to_string(), "id2".to_string()]);
 
+        // $picks at start gets moved to end
+        let tokens = vec!["tag".into(), "$picks".into(), "--add".into(), "portfolio".into()];
         assert_eq!(
-            expand_variables("edit --rating 5 _", &vars),
-            "edit --rating 5 id1 id2"
+            expand_variables_in_tokens(tokens, &vars),
+            vec!["tag", "--add", "portfolio", "id1", "id2"]
         );
     }
 
     #[test]
-    fn test_expand_variables_unknown() {
+    fn test_expand_variables_unknown_kept() {
         let vars = Variables::new();
+        let tokens = vec!["tag".into(), "--add".into(), "$unknown".into()];
         assert_eq!(
-            expand_variables("tag --add $unknown", &vars),
-            "tag --add $unknown"
+            expand_variables_in_tokens(tokens, &vars),
+            vec!["tag", "--add", "$unknown"]
         );
     }
 
     #[test]
     fn test_expand_variables_dollar_not_var() {
         let vars = Variables::new();
-        assert_eq!(expand_variables("echo $ done", &vars), "echo $ done");
+        // Bare $ is not a variable reference
+        let tokens = vec!["echo".into(), "$".into(), "done".into()];
+        assert_eq!(
+            expand_variables_in_tokens(tokens, &vars),
+            vec!["echo", "$", "done"]
+        );
     }
 
     #[test]

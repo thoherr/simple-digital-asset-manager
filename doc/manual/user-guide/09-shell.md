@@ -137,9 +137,10 @@ photos> $best = _
 ### Variable rules
 
 - Names start with `$`, followed by letters, digits, or underscores (`$picks`, `$session_2024`, `$batch1`)
-- Variables hold plain asset ID lists -- they are not re-evaluated queries
+- Variables hold asset ID lists -- they are not re-evaluated queries
 - Variables persist for the session and are cleared on `reload`
 - Expanding an undefined variable leaves it as-is in the command
+- **Position does not matter.** When a variable expands, its asset IDs are always placed at the end of the argument list (the trailing positional slot where commands expect asset IDs). This means `tag --add portfolio $picks` and `tag $picks --add portfolio` produce the same result. You never need to worry about where you place the variable in the command.
 
 ### Listing and removing variables
 

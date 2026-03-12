@@ -919,7 +919,7 @@ Runs `<command>` and stores the resulting asset IDs in `$name`. The count is pri
 
 **Expansion:**
 
-`$name` in any command expands to the space-separated asset IDs stored in that variable. Unknown variables are left as-is.
+`$name` and `_` expand to asset IDs. The IDs are always placed at the **end** of the argument list, regardless of where the variable appears in the command. This means `tag $picks --add portfolio` and `tag --add portfolio $picks` are equivalent — the IDs always land in the trailing positional slot where commands expect asset IDs. Unknown variables are left as-is.
 
 `_` (standalone, not inside a word like `_foo` or `foo_bar`) expands to the asset IDs from the most recent command that produced results.
 
