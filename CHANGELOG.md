@@ -76,7 +76,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - Contact sheet footer version printed without "v" prefix for consistency
 - Fixed stale "exports" wording in group comment and confirm dialog
 
-## v2.3.5 — 2026-03-09
+## v2.3.5 (2026-03-09)
 
 ### New Features
 - **`dam sync-metadata` command** — bidirectional XMP metadata sync in a single command. Phase 1 (Inbound): detects externally modified XMP recipe files and re-reads metadata. Phase 2 (Outbound): writes pending DAM edits to XMP. Phase 3 (Media, with `--media`): re-extracts embedded XMP from JPEG/TIFF files. Detects conflicts when both sides changed. Supports `--volume`, `--asset`, `--dry-run`, `--json`, `--log`, `--time`.
@@ -91,7 +91,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **Face preview thumbnails** — people page now auto-backfills `representative_face_id` for people who had no thumbnail (e.g., after clustering).
 - **Nav menu items on non-browse pages** — Stroll and People menu items no longer disappear when navigating away from the browse page.
 
-## v2.3.4 — 2026-03-09
+## v2.3.4 (2026-03-09)
 
 ### Enhancements
 - **Shared lightbox component** — lightbox with full rating/label editing is now available on browse, detail, and stroll pages. Extracted as a reusable shared component with items-based API and page-specific callbacks.
@@ -100,7 +100,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **Nav menu reorganization** — menu items grouped by function (Explore, Organize, Maintain) with visual separators for clarity.
 - **Updated navigation docs** — state diagram expanded with stroll, compare, shared lightbox, and all navigation paths.
 
-## v2.3.3 — 2026-03-08
+## v2.3.3 (2026-03-08)
 
 ### New Features
 - **`embed:` search filter** — `embed:any` and `embed:none` filters to find assets with or without AI embeddings. Works in CLI, web UI, and saved searches. Composable with all other filters.
@@ -112,7 +112,7 @@ All notable changes to the Digital Asset Manager are documented here.
 ### Internal
 - Schema version bumped to 2 (`pending_writeback` column on `recipes` table).
 
-## v2.3.2 — 2026-03-08
+## v2.3.2 (2026-03-08)
 
 ### Bug Fixes
 - **Fix FK constraint error in group/auto-group** — `insert_asset()` used `INSERT OR REPLACE` which SQLite implements as DELETE+INSERT, triggering foreign key violations from variants/faces/collections referencing the asset. Changed to `INSERT ... ON CONFLICT DO UPDATE` (true upsert). Also added proper FK cleanup in `group()` before deleting donor assets.
@@ -122,7 +122,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **Cross-session filtering** — "Other shoots" toggle excludes assets from the same directory/session when finding similar neighbors. Uses parent directory as session root.
 - **`stroll_discover_pool` config** — `dam.toml` `[serve]` section supports `stroll_discover_pool` (default 80) to control the candidate pool size for Discover mode.
 
-## v2.3.1 — 2026-03-08
+## v2.3.1 (2026-03-08)
 
 ### Enhancements
 - **Elliptical satellite layout** — stroll page satellites now follow an elliptical orbit that adapts to the viewport aspect ratio, using more horizontal space in landscape and more vertical space in portrait orientations.
@@ -132,7 +132,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **L1/L2 keyboard navigation** — Arrow Up/Down moves between L1 satellites and their L2 neighbors. Hover suppression during keyboard navigation prevents focus catch-back.
 - **Stroll slider configuration** — `dam.toml` `[serve]` section supports `stroll_neighbors`, `stroll_neighbors_max`, `stroll_fanout`, and `stroll_fanout_max` to configure stroll page slider defaults and ranges.
 
-## v2.3.0
+## v2.3.0 (2026-03-07)
 
 ### New Features
 - **Stroll page** (feature-gated: `--features ai`) — graph-based visual similarity exploration at `/stroll`. A center image surrounded by radially arranged satellite images shows visually similar assets. Click any satellite to navigate — it becomes the new center with fresh neighbors. Features: viewport-adaptive sizing, smart preview loading, keyboard navigation (arrow keys cycle satellites, Enter navigates, `d` opens detail page), rating stars and color label dots on all images, similarity percentage badges, browser history integration (`pushState`/`popstate`). Neighbor count adjustable via slider (5–25, default 12) in a fixed bottom-left overlay. Entry points: nav bar "Stroll" link, `s` keyboard shortcut on browse/lightbox/detail pages, "Stroll from here" button on detail page, or direct URL `/stroll?id=<asset-id>`. Without an `id`, picks a random embedded asset.
@@ -152,7 +152,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **`dam migrate` rating repair** — migration now fixes YAML sidecar files with out-of-range rating values (MicrosoftPhoto:Rating percentages) alongside the SQLite fix. Reports count of fixed sidecars.
 - **`dam migrate` output** — now prints the schema version number: `Schema migrations applied successfully (schema version N).` JSON output includes `schema_version` and `fixed_ratings` fields.
 
-## v2.2.2
+## v2.2.2 (2026-03-07)
 
 ### New Features
 - **`dam migrate` command** — explicit CLI command for running database schema migrations. Migrations now run once at program startup for all commands (not per-connection), making this command useful for manual migration or scripting.
@@ -165,7 +165,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **Migrations removed from hot path** — `Catalog::open()` no longer runs schema migrations. Migrations run once at program startup via `Catalog::open_and_migrate()`. Per-request connections in the web server skip migration checks entirely.
 - **Dropdown cache warming at server startup** — tag, format, volume, collection, and people dropdown data is pre-loaded when `dam serve` starts, so the first browse page load is as fast as subsequent ones.
 
-## v2.2.1
+## v2.2.1 (2026-03-06)
 
 ### New Features
 - **`dam faces export`** — exports faces and people from SQLite to YAML files (`faces.yaml`, `people.yaml`) and ArcFace face embeddings to binary files (`embeddings/arcface/<prefix>/<face_id>.bin`). One-time migration command to populate the new file-based persistence layer from existing SQLite data.
@@ -176,7 +176,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **`rebuild-catalog` restores AI data** — `rebuild-catalog` now drops and restores the `faces`, `people`, and `embeddings` SQLite tables from YAML and binary files, ensuring no AI data is lost during catalog rebuilds.
 - **`dam delete` cleans up AI files** — deleting assets now removes associated ArcFace and SigLIP binary files and updates `faces.yaml`/`people.yaml`.
 
-## v2.2.0
+## v2.2.0 (2026-03-05)
 
 ### New Features
 - **Face detection** (feature-gated: `--features ai`) — `dam faces detect [--query <Q>] [--asset <id>] [--volume <label>] [--apply]` detects faces in images using YuNet ONNX model. Stores face bounding boxes, confidence scores, and 512-dim ArcFace embeddings. Generates 150×150 JPEG crop thumbnails in `faces/` directory. Reports faces found per asset. Supports `--json`, `--log`, `--time`.
@@ -202,7 +202,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - Fix multi-stride YuNet model output parsing (12 separate tensors at strides 8/16/32)
 - Fix `dam faces detect --asset` finding zero results (use direct asset ID resolution)
 
-## v2.1.2
+## v2.1.2 (2026-03-05)
 
 ### New Features
 - **`dam embed` command** (feature-gated: `--features ai`) — batch-generate image embeddings for visual similarity search without tagging. `dam embed [--query <Q>] [--asset <id>] [--volume <label>] [--model <id>] [--force]`. Requires at least one scope filter. `--force` regenerates even if an embedding already exists. Reports embedded/skipped/error counts. Supports `--json`, `--log`, `--time`.
@@ -212,7 +212,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **Opportunistic embedding storage** — the web UI "Suggest tags" and batch "Auto-tag" endpoints now store image embeddings as a side effect, building up the similarity search index without requiring a separate `dam embed` step.
 - **Deferred model loading in similarity search** — `find_similar_inner` no longer acquires the AI model lock when the query embedding already exists in the store, avoiding unnecessary contention and startup latency on repeat searches.
 
-## v2.1.1
+## v2.1.1 (2026-03-04)
 
 ### New Features
 - **Multi-model support for AI auto-tagging** — the system now supports multiple SigLIP model variants. A new `--model` flag on `dam auto-tag` selects the model (default: `siglip-vit-b16-256`). Available models: SigLIP ViT-B/16-256 (768-dim, ~207 MB) and SigLIP ViT-L/16-256 (1024-dim, ~670 MB). `--list-models` shows all known models with download status, size, and active indicator. Embeddings are stored per-model (composite PK) so switching models doesn't corrupt existing data. Configurable via `[ai] model` in `dam.toml`.
@@ -225,7 +225,7 @@ All notable changes to the Digital Asset Manager are documented here.
 ### Bug Fixes
 - **Fix RAW preview orientation** — `dcraw_emu` already pixel-rotates its output, but the code was reading EXIF orientation from the source RAW file and applying it again, turning portrait images back to landscape (affected e.g. Nikon Z9 NEF files). Fixed by reading orientation from the output TIFF instead. Also fixed the `dcraw -e -c` path to apply EXIF orientation from the embedded JPEG (for cameras that don't pixel-rotate their embedded previews).
 
-## v2.1.0
+## v2.1.0 (2026-03-03)
 
 ### New Features
 - **Web UI AI auto-tagging** — two new integration points for AI-powered tag suggestions, feature-gated behind `--features ai`:
@@ -235,7 +235,7 @@ All notable changes to the Digital Asset Manager are documented here.
   - **Two new API endpoints** — `POST /api/asset/{id}/suggest-tags` returns JSON suggestions with tag name and confidence score; `POST /api/batch/auto-tag` accepts `{asset_ids}` and returns `{succeeded, failed, tags_applied, errors}`.
   - **Zero impact without AI feature** — when compiled without `--features ai`, the buttons are absent from the UI and the endpoints are not registered. No additional dependencies, no binary size increase.
 
-## v2.0.1
+## v2.0.1 (2026-03-03)
 
 ### New Features
 - **AI auto-tagging** — `dam auto-tag [--query <QUERY>] [--asset <id>] [--volume <label>] [--threshold 0.25] [--labels <file>] [--apply]` uses SigLIP ViT-B/16-256 (via ONNX Runtime) for zero-shot image classification against a configurable tag vocabulary (~100 default photography categories). Report-only by default; `--apply` writes suggested tags to assets. Feature-gated behind `--features ai` so non-AI users pay zero binary/dependency cost. Model files (~207 MB quantized) downloaded from HuggingFace on first use via `--download`. Model management: `--list-models`, `--remove-model`. Visual similarity search: `--similar <asset-id>` finds the 20 most visually similar assets using stored 768-dim embeddings. Configurable via `[ai]` section in `dam.toml` (threshold, labels file, model directory, prompt template). Supports `--json`, `--log`, `--time`.
@@ -248,7 +248,7 @@ All notable changes to the Digital Asset Manager are documented here.
 ### Testing
 - Added 41 unit tests for AI modules (preprocessing, tokenization, normalization, cosine similarity, embedding store, model manager) and 13 integration tests covering auto-tag dry run, apply, JSON output, custom labels, threshold, similarity search, and non-image skipping.
 
-## v1.8.9
+## v1.8.9 (2026-03-02)
 
 ### New Features
 - **Export command** — `dam export <QUERY> <TARGET> [--layout flat|mirror] [--symlink] [--all-variants] [--include-sidecars] [--dry-run] [--overwrite]` copies files matching a search query to a target directory. Default exports the best variant per asset in flat layout (filename collisions resolved by appending an 8-character hash suffix). `--layout mirror` preserves source directory structure (multi-volume assets get a volume-label prefix). `--symlink` creates symlinks instead of copies. `--all-variants` exports every variant instead of just the best. `--include-sidecars` also copies recipe files (.xmp, .cos, etc.). `--dry-run` reports the plan without writing. `--overwrite` re-copies even if the target already has a matching hash. Files are integrity-verified via SHA-256 after copy. Supports `--json`, `--log`, `--time`.
@@ -256,17 +256,17 @@ All notable changes to the Digital Asset Manager are documented here.
 ### Testing
 - Added 5 unit tests for flat-mode filename collision resolution and 12 integration tests covering all export modes (flat, mirror, dry-run, skip existing, overwrite, sidecars, symlink, all-variants, best-variant-only, filename collision, JSON output, no results).
 
-## v1.8.8
+## v1.8.8 (2026-03-02)
 
 ### Enhancements
 - **Multi-select format filter** — the browse page format filter is now a grouped multi-select dropdown panel instead of a single-select dropdown. Formats are organized by category (RAW, Image, Video, Audio, Other) with group-level "All RAW"/"All Image" toggle checkboxes. Each format shows its variant count. Multiple formats can be selected simultaneously (e.g., all RAW formats, or NEF + TIFF). Trigger button shows compact text: single format name, group name when a full group is selected, or "nef +3..." for mixed selections. Sends comma-separated values to the existing OR filter backend.
 
-## v1.8.7
+## v1.8.7 (2026-03-02)
 
 ### New Features
 - **Delete command** — `dam delete <ASSET_IDS...> [--apply] [--remove-files]` removes assets from the catalog. Default is report-only mode (shows what would be deleted). `--apply` executes deletion (asset rows, variants, file locations, recipes, previews, sidecar YAML, collection memberships, stack membership). `--remove-files` (requires `--apply`) also deletes physical files from disk. Supports stdin piping (`dam search -q "orphan:true" | dam delete --apply`), asset ID prefix matching, `--json`, `--log`, `--time`.
 
-## v1.8.6
+## v1.8.6 (2026-03-02)
 
 ### New Features
 - **Incremental verify** — `dam verify --max-age <DAYS>` skips files verified within the given number of days, enabling fast periodic checks on large catalogs. `--force` overrides the skip and re-verifies everything. Configurable default via `[verify] max_age_days` in `dam.toml`.
@@ -283,7 +283,7 @@ All notable changes to the Digital Asset Manager are documented here.
 ### Testing
 - Added 11 new tests covering verify data flows: `is_recently_verified` edge cases, `get_location_verified_at` queries, `VerifyConfig` parsing, and 4 end-to-end integration tests (JSON output, `--max-age` skip, `--force` override, recipe `verified_at` round-trip).
 
-## v1.8.5
+## v1.8.5 (2026-03-01)
 
 ### Enhancements
 - **Recipe location on detail page** — recipes now show the full volume location (volume label + path) with reveal-in-file-manager and open-terminal buttons, matching the variant location display.
@@ -291,14 +291,14 @@ All notable changes to the Digital Asset Manager are documented here.
 - **PDF cross-document links** — internal links between manual chapters now work correctly in the PDF. Previously they pointed to `.md` files; now they resolve to in-document anchors.
 - **Fix orphaned XMP script** — new Python utility (`scripts/fix-orphaned-xmp.py`) to relocate XMP sidecar files that were imported as standalone assets instead of being attached as recipes. Supports `--path` scoping for large catalogs and dry-run by default.
 
-## v1.8.4
+## v1.8.4 (2026-03-01)
 
 ### Enhancements
 - **Tag autocomplete on assignment inputs** — the batch toolbar tag input and the asset detail page tag input now offer autocomplete suggestions from the catalog's tag list as you type. Navigate suggestions with arrow keys, select with Enter or click. Hierarchical tags show their path prefix in muted text. The browse tag filter input already had autocomplete; the batch and detail inputs now share the same tag data.
 - **Stale tag list fix** — creating a brand-new tag via batch operations or the detail page now immediately refreshes the autocomplete tag list. Previously, newly created tags only appeared after a full page reload.
 - **Browse results loading indicator** — the results grid fades to reduced opacity while page navigation, sorting, or search requests are in flight, giving immediate visual feedback on Shift+arrow page turns and other htmx-driven updates.
 
-## v1.8.3
+## v1.8.3 (2026-03-01)
 
 ### New Features
 - **EXIF auto-orientation** — preview generation now reads EXIF orientation tags and automatically rotates/flips the image to its correct display orientation. Applies to JPEG, TIFF, and RAW previews (both standard and smart). Previously, images shot in portrait mode could appear sideways in the browse grid and lightbox.
@@ -315,19 +315,19 @@ All notable changes to the Digital Asset Manager are documented here.
 - **Preview cache freshness** — preview and smart preview HTTP responses now include `Cache-Control: no-cache`, ensuring browsers revalidate after rotation or regeneration instead of serving stale cached images. Combined with `Last-Modified` headers, unchanged previews still get fast 304 responses.
 - **Batch operation timing logs** — when `dam serve --log` is enabled, batch operations log timing to stderr (e.g. `batch_tag: 30 assets in 1.2s (30 ok, 0 err)`).
 
-## v1.8.2
+## v1.8.2 (2026-03-01)
 
 ### New Features
 - **Editable asset date** — set or clear an asset's creation date via CLI (`dam edit --date 2024-12-25` / `--clear-date`) or the web UI (inline date editor on the asset detail page, `PUT /api/asset/{id}/date` endpoint). Updates both sidecar YAML and SQLite catalog.
 - **Reveal in file manager** — asset detail page shows a folder icon button (📂) next to each file location on online volumes. Clicking it reveals the file in Finder (macOS), Explorer (Windows), or the file manager (Linux). Backed by `POST /api/open-location` endpoint.
 - **Open terminal** — a `>_` button next to the reveal icon opens a terminal window in the file's parent directory (Terminal.app on macOS, cmd on Windows, system terminal emulator on Linux). Backed by `POST /api/open-terminal` endpoint.
 
-## v1.8.1
+## v1.8.1 (2026-03-01)
 
 ### New Features
 - **Faceted browse sidebar** — a toggleable sidebar on the browse page showing a read-only statistical breakdown of the current result set. Displays distribution counts grouped by rating (with bar chart), color label (with color dots), format, volume, tag (top 30), year (with bar chart), and geotagged asset count. Counts update automatically when search filters change. Each section is collapsible with state persisted in the browser. Hidden by default; toggle via the funnel icon button in the results bar or the `f` keyboard shortcut. Preference persisted in localStorage. Hidden on narrow viewports (<768px). Backed by `GET /api/facets` endpoint running 8 aggregate queries that reuse `build_search_where()` for full filter consistency.
 
-## v1.8.0
+## v1.8.0 (2026-03-01)
 
 ### New Features
 - **Map view for geotagged photos** — a third browse view mode alongside grid and calendar, showing asset locations on an OpenStreetMap map. Geotagged assets appear as clustered markers with thumbnail popups. All browse filters (tag, rating, label, type, format, volume, collection, path, date) apply to the map. Click a thumbnail to open the lightbox (with full prev/next navigation), click the name/metadata area to go to the detail page.
@@ -338,7 +338,7 @@ All notable changes to the Digital Asset Manager are documented here.
   - **Keyboard shortcut** — `m` toggles map view. View state persists in localStorage.
 - **Lightbox standalone mode** — `openWithData()` method allows the lightbox to open with explicit asset data (used as fallback when a map marker's asset is not on the current grid page). The lightbox prefers the normal navigable mode when the card exists in the DOM.
 
-## v1.7.1
+## v1.7.1 (2026-02-28)
 
 ### Enhancements
 - **Unified browse/lightbox/detail navigation** — clicking the lightbox image opens the detail page; clicking the detail page image opens the lightbox. All three views form a seamless navigation loop with focus tracked via `dam-browse-focus` in sessionStorage. Lightbox open, navigate, and close sync the focused card. Arrow key navigation in lightbox and detail updates which card will be focused on return to browse.
@@ -346,7 +346,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **Compare page Escape fix** — added `preventDefault()` to the Escape key handler on the compare page, fixing unreliable back-navigation that required double-pressing Escape.
 - **Cursor feedback** — lightbox and detail page preview images now show `cursor: pointer` to indicate they are clickable navigation targets.
 
-## v1.7.0
+## v1.7.0 (2026-02-28)
 
 ### New Features
 - **Smart previews** — a second preview tier at 2560px (configurable) for high-resolution offline browsing. Smart previews are stored alongside regular thumbnails in `smart_previews/<hash-prefix>/<hash>.jpg` and enable zoom and pan in the web UI even when the original media volume is offline.
@@ -368,7 +368,7 @@ All notable changes to the Digital Asset Manager are documented here.
 ### Bug Fixes
 - **generate-previews PATHS mode** — fix fallback to hash-based variant lookup when the file is not on the expected volume, preventing "variant not found" errors for files with valid catalog entries on other volumes.
 
-## v1.6.3
+## v1.6.3 (2026-02-27)
 
 ### Enhancements
 - **Recipe cleanup during dedup** — when dedup removes a duplicate file location, co-located recipe files (XMP sidecars etc.) in the same directory are automatically cleaned up from disk, catalog, and sidecar YAML. Applies to both `dam dedup --apply` and the web UI's per-location "Remove" and "Auto-resolve" actions. Recipe counts shown in dry-run output and web UI confirm dialog.
@@ -376,13 +376,13 @@ All notable changes to the Digital Asset Manager are documented here.
 - **Dedup prefer uses substring matching** — the `--prefer` flag now matches anywhere in the relative path (substring) rather than requiring the path to start with the prefix. This correctly handles nested directories like `Session/Selects/photo.nef` when prefer is set to `Selects`.
 - **CLI filter flags for duplicates and dedup** — `dam duplicates` gains `--filter-format` and `--path` flags matching the web UI's filter controls. `dam dedup` gains `--filter-format` and `--path` flags to scope dedup operations by file format or path prefix. The `--volume` flag on `duplicates` now uses proper SQL filtering instead of post-filtering.
 
-## v1.6.2
+## v1.6.2 (2026-02-27)
 
 ### New Features
 - **Duplicates page** — new `/duplicates` page in the web UI showing duplicate file groups with summary cards (total groups, wasted space, same-volume count), mode tabs (All / Same Volume / Cross Volume), and filters (path prefix, format, volume). Per-location "Remove" buttons delete individual file copies from disk. "Auto-resolve" button removes all same-volume duplicates in one click. Each group header shows a clickable preview thumbnail; clicking opens a lightbox overlay with prev/next navigation (arrow keys), keyboard shortcut `d` to open the detail page, and Escape to close. Back/Escape on the detail page returns to the duplicates page.
 - **Duplicates dedup API** — `POST /api/dedup/resolve` auto-resolves same-volume duplicates, `DELETE /api/dedup/location` removes a specific file location.
 
-## v1.6.1
+## v1.6.1 (2026-02-26)
 
 ### Enhancements
 - **Keyboard help panel** — press `?` on any page (or click the "?" button in the nav bar) to see all available keyboard shortcuts. The overlay shows shortcuts organized by category, specific to the current page (browse, lightbox, or asset detail). Press Escape or click outside to dismiss.
@@ -392,7 +392,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **Lightbox/detail page switching** — press `d` in the lightbox to open the detail page; press `l` on the detail page to return to the lightbox at that asset.
 - **macOS Option+number fix** — Alt/Option+number shortcuts for color labels now work correctly on macOS (uses physical key codes instead of character values).
 
-## v1.6.0
+## v1.6.0 (2026-02-26)
 
 ### New Features
 - **Stacks (scene grouping)** — group burst shots, bracketing sequences, and similar-scene images into lightweight anonymous stacks. The browse grid collapses stacks to show only the "pick" image with a count badge, reducing visual clutter. Click the stack toggle (⊞) in the results bar to expand/collapse all stacks globally. Stacks are position-ordered (index 0 = pick), one stack per asset, with auto-dissolve when only one member remains.
@@ -406,7 +406,7 @@ All notable changes to the Digital Asset Manager are documented here.
 ### Enhancements
 - **Tag search with literal slashes** — tags containing literal `/` characters (not hierarchy separators) are now handled correctly in search and web display.
 
-## v1.5.3
+## v1.5.3 (2026-02-25)
 
 ### New Features
 - **Calendar heatmap view** — the browse page now has a Grid/Calendar view toggle. The calendar view shows a GitHub-style year-at-a-glance heatmap with day cells colored by asset count (quartile-based 5-level scale). Navigate between years with arrow buttons and year chips. Click any day to filter the grid to that date. All existing search filters (tag, rating, label, type, format, volume, collection, path) apply to the calendar aggregation. Includes full dark mode support and `localStorage` persistence for view mode.
@@ -417,7 +417,7 @@ All notable changes to the Digital Asset Manager are documented here.
   - All three compose with each other and all existing filters. Available in CLI, web UI (via query input), and saved searches.
 - **Calendar API endpoint** — `GET /api/calendar?year=2026` returns JSON with per-day asset counts and available years, respecting all search filter parameters.
 
-## v1.5.2
+## v1.5.2 (2026-02-25)
 
 ### New Features
 - **Saved search favorites** — saved searches now have a `favorite` field that controls which ones appear as chips on the browse page. Non-favorites are hidden from the browse page but remain accessible via the management page and CLI.
@@ -429,7 +429,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **New API endpoints** — `PUT /api/saved-searches/{name}/favorite` toggles favorite status, `PUT /api/saved-searches/{name}/rename` renames a saved search with collision detection.
 - **Simplified browse chips** — saved search chips on the browse page are now clean links without inline rename/delete buttons (those moved to the management page).
 
-## v1.5.1
+## v1.5.1 (2026-02-25)
 
 ### Performance
 - **Database indexes for large catalogs** — added 6 missing indexes on `file_locations(content_hash)`, `file_locations(volume_id)`, `assets(created_at)`, `assets(best_variant_hash)`, `variants(format)`, and `recipes(variant_hash)`. Dramatically speeds up browse, search, stats, and backup-status queries at scale (tested with 150k+ assets, 220k+ variants). Indexes are created automatically on first open after upgrade.
@@ -438,20 +438,20 @@ All notable changes to the Digital Asset Manager are documented here.
 ### Enhancements
 - **Three-state rating filter** — clicking a star in the browse rating filter now cycles through exact match (e.g. "3"), minimum match (e.g. "3+"), and clear. Star 5 remains two-state (5 and 5+ are identical). Makes it easy to filter for exactly 1-star photos for culling.
 
-## v1.5.0
+## v1.5.0 (2026-02-25)
 
 ### New Features
 - **Dark mode** — the web UI now supports dark mode. Automatically follows the OS/browser preference (`prefers-color-scheme: dark`). A toggle button (sun/moon) in the navigation bar lets you switch manually between light and dark themes. The preference is persisted in `localStorage` and applied instantly on page load (no flash of unstyled content). Covers all pages: browse, asset detail, tags, collections, stats, and backup status.
 - **Grid density controls** — three density presets for the browse grid: **Compact** (smaller thumbnails, hidden metadata), **Normal** (default), and **Large** (bigger thumbnails, two-line titles). Toggle buttons with grid icons appear in the results bar next to sort controls. Persisted in `localStorage`. The keyboard navigation column count adjusts automatically.
 - **Lightbox viewer** — clicking a thumbnail in the browse grid now opens a full-screen lightbox overlay instead of navigating to the asset detail page. Navigate between assets with on-screen arrow buttons or Left/Right arrow keys. Toggle a side info panel (i key or toolbar button) showing type, format, date, variant count, interactive rating stars, and color label dots. Changes made in the lightbox (rating, label) are written to the API and reflected in the grid behind. Press Escape to close, or click the "Detail" link to open the full asset detail page. Keyboard shortcuts for rating (0-5) and label (r/o/y/g/b/p/u/x, Alt+0-7) work inside the lightbox.
 
-## v1.4.1
+## v1.4.1 (2026-02-25)
 
 ### New Commands
 - **`dam dedup`** — remove same-volume duplicate file locations. Identifies variants with 2+ copies on the same volume, keeps the "best" copy (by `--prefer` path prefix, verification recency, path length), and removes the rest. `--min-copies N` ensures at least N total copies survive across all volumes. Report-only by default; `--apply` to delete files and remove location records. Supports `--volume`, `--json`, `--log`, `--time`.
 - **`dam backup-status`** — check backup coverage and find under-backed-up assets. Shows aggregate overview (totals, coverage by volume purpose, location distribution, volume gaps, at-risk count). `--at-risk` lists under-backed-up assets using the same output formats as `dam search`. `--min-copies N` sets the threshold (default: 2). `--volume <label>` shows which assets are missing from a specific volume. Optional positional query scopes the analysis to matching assets. Supports `--format`, `-q`, `--json`, `--time`.
 
-## v1.4.0
+## v1.4.0 (2026-02-24)
 
 ### New Features
 - **Volume purpose** — volumes can now be assigned a logical purpose (`working`, `archive`, `backup`, `cloud`) describing their role in the storage hierarchy. `dam volume add --purpose <purpose>` sets purpose at registration, `dam volume set-purpose <volume> <purpose>` changes it later. Purpose is shown in `dam volume list` and included in `--json` output. This metadata lays the groundwork for smart duplicate analysis and backup coverage reporting (see storage workflow proposal).
@@ -463,7 +463,7 @@ All notable changes to the Digital Asset Manager are documented here.
   - `DuplicateEntry` JSON output includes `volume_count`, `same_volume_groups`, and enriched `LocationDetails` with `volume_id`, `volume_purpose`, `verified_at`
 - **`copies:` search filter** — find assets by total file location count. `copies:1` finds single-copy assets (no backup), `copies:2+` finds assets with at least two copies. Same syntax pattern as `rating:`. Works in CLI, saved searches, and web UI.
 
-## v1.3.2
+## v1.3.2 (2026-02-24)
 
 ### New Features
 - **PDF manual generation** — `doc/manual/build-pdf.sh` script produces a complete PDF manual from the 21 Markdown source files. Renders mermaid diagrams to PNG, generates table of contents, headers/footers with version and date, and per-command page breaks in the reference section. Requires pandoc, XeLaTeX, and mermaid-cli.
@@ -475,7 +475,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **15 additional RAW format extensions** — added support for `.3fr`, `.cap`, `.dcr`, `.eip`, `.fff`, `.iiq`, `.k25`, `.kdc`, `.mdc`, `.mef`, `.mos`, `.mrw`, `.obm`, `.ptx`, `.rwz` camera formats
 - **`import --auto-group`** — after normal import, runs auto-grouping scoped to the neighborhood of imported files (one directory level up from each imported file). Avoids catalog-wide false positives from restarting camera counters. Combines with `--dry-run` and `--json`.
 
-## v1.3.1
+## v1.3.1 (2026-02-24)
 
 ### New Features
 - **`dam fix-dates` command** — scan assets and correct `created_at` dates from variant EXIF metadata and file modification times. Fixes assets imported with wrong dates (import timestamp instead of capture date). Re-extracts EXIF from files on disk for assets imported before `date_taken` was stored in metadata. Backfills `date_taken` into variant source_metadata on apply so future runs work without the volume online. Reports offline volumes clearly with skip counts and mount instructions. Dry-run by default (`--apply` to execute). Supports `--volume`, `--asset`, `--json`, `--log`, `--time`.
@@ -485,7 +485,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **Second variant date update** — when a second variant joins a stem group during import, if it has an older EXIF date or mtime than the asset's current `created_at`, the asset date is updated
 - **EXIF `date_taken` stored in source_metadata** — DateTimeOriginal is now persisted in variant source_metadata as `date_taken` (RFC 3339), enabling `fix-dates` and future date-aware features to work from metadata alone
 
-## v1.3.0
+## v1.3.0 (2026-02-23)
 
 ### New Features
 - **Comprehensive user manual** — 21 markdown files in `doc/manual/` covering every command, filter, and configuration option, organized into User Guide (7 workflow chapters), Reference Guide (10 man-page style command docs), and Developer Guide (3 pages: REST API, module reference, build/test)
@@ -493,7 +493,7 @@ All notable changes to the Digital Asset Manager are documented here.
 - **7 web UI screenshots** — browse page, saved search chips, asset detail, batch toolbar, tags page, collections page, and catalog structure
 - **README Documentation section** — links to all three guide sections
 
-## v1.2.0
+## v1.2.0 (2026-02-23)
 
 ### Enhancements
 - **Browse grid deduplication** — assets with multiple variants (e.g. RAW+JPEG) now appear as a single card in the browse grid instead of one card per variant. Implemented via a denormalized `best_variant_hash` column on the `assets` table, computed at write time using the same Export > Processed > Original scoring as preview selection. Search queries with no variant-level filters skip the `variants` JOIN entirely for faster queries.
@@ -501,18 +501,18 @@ All notable changes to the Digital Asset Manager are documented here.
 - **Variant count badge** — browse cards show a variant count badge (e.g. "3v") when an asset has more than one variant, making multi-variant assets visible at a glance.
 - **`dam serve --log`** — the global `--log` flag now enables request logging on the web server, printing `METHOD /path -> STATUS (duration)` to stderr for each HTTP request.
 
-## v1.1.1
+## v1.1.1 (2026-02-23)
 
 ### Enhancements
 - **`path:` filter normalization** — the `path:` search filter now accepts filesystem paths in the CLI: `~` expands to `$HOME`, `./` and `../` resolve relative to the current working directory, and absolute paths matching a registered volume's mount point are automatically stripped to volume-relative with the volume filter implicitly applied. Plain relative paths (no `./` prefix) remain volume-relative prefix matches as before.
 
-## v1.1.0
+## v1.1.0 (2026-02-23)
 
 ### New Features
 - **Export-based preview selection** — previews now prefer Export > Processed > Original variants for display. RAW+JPEG assets show the processed JPEG preview instead of the flat dcraw rendering. Affects `dam show`, web UI asset detail page, and `generate-previews` catalog mode.
 - **`generate-previews --upgrade`** — regenerate previews for assets where a better variant (export/processed) exists than the one currently previewed. Useful after importing exports alongside existing RAW files.
 
-## v1.0.0
+## v1.0.0 (2026-02-23)
 
 First stable release. All planned features are implemented, all tests pass, documentation is complete. Ready for production use.
 
@@ -530,13 +530,13 @@ First stable release. All planned features are implemented, all tests pass, docu
 - Complete documentation: architecture overview, component specification, specification
 - Move specification into doc/ directory
 
-## v0.7.1
+## v0.7.1 (2026-02-23)
 
 ### New Features
 - **`dam fix-roles` command** — scan multi-variant assets and re-role non-RAW variants from Original to Export when a RAW variant exists. Fixes assets imported before the auto-grouping role fix. Dry-run by default (`--apply` to execute). Supports `--volume`, `--asset`, `--json`, `--log`, `--time`.
 - **Import auto-grouping role fix** — newly imported RAW+non-RAW pairs now correctly assign Export role to non-RAW variants (previously both were marked Original)
 
-## v0.7.0
+## v0.7.0 (2026-02-23)
 
 ### New Features
 - **`dam auto-group` command** — automatically group assets by filename stem across directories, solving the problem where CaptureOne exports land in different directories than their RAW originals. Uses fuzzy prefix + separator matching (e.g., `Z91_8561.ARW` matches `Z91_8561-1-HighRes-(c)_2025_Thomas Herrmann.tif`). Chain resolution ensures multiple export levels all group to the shortest root stem. RAW files are preferred as the group target; donors are re-roled from Original to Export. Dry-run by default (`--apply` to execute). Supports `--json`, `--log`, `--time`.
@@ -546,30 +546,30 @@ First stable release. All planned features are implemented, all tests pass, docu
 - **`group` now preserves recipes** — merging donor assets into a target now copies recipe records, preventing recipe loss on `rebuild-catalog`
 - **`group` re-roles donor variants** — donor variants with role "original" are changed to "export" in both sidecar YAML and SQLite catalog, correctly reflecting their derived status
 
-## v0.6.4
+## v0.6.4 (2026-02-22)
 
 ### Improvements
 - **Auto-search on all filter changes** — removed the explicit Search button; text inputs (query, path) auto-search with 300ms debounce, dropdowns (type, format, volume, collection) trigger immediately on change, matching the existing behavior of stars, labels, and tags
 
-## v0.6.3
+## v0.6.3 (2026-02-22)
 
 ### New Features
 - **`path:` search filter** — filter assets by file location path prefix (e.g., `path:Capture/2026-02-22`), with quoted value support for paths with spaces; works in CLI, web UI (dedicated input in filter row), and saved searches
 - **Grouped `--help` output** — CLI help now groups commands logically (Core, Organization, Maintenance, Output) for easier discovery
 
-## v0.6.2
+## v0.6.2 (2026-02-22)
 
 ### New Features
 - **Collection filter dropdown** in browse page filter row — collections are now composable with all other search filters (tag, rating, type, format, volume) directly from the browse page
 - Batch toolbar collection buttons now sync from the filter-row dropdown instead of URL params
 
-## v0.6.1
+## v0.6.1 (2026-02-22)
 
 ### New Features
 - **Collection removal** from web UI — asset detail page shows collection membership chips with × remove buttons
 - **Collection creation** from web UI — `/collections` page with "+ New Collection" button
 
-## v0.6.0
+## v0.6.0 (2026-02-22)
 
 ### New Features
 - **Saved searches** (smart albums) — `dam saved-search` (alias `ss`) with save, list, run, delete subcommands; stored in `searches.toml`; web UI chips on browse page with rename/delete on hover
@@ -579,23 +579,23 @@ First stable release. All planned features are implemented, all tests pass, docu
 ### Bug Fixes
 - Fix saved search chip hover showing rename/delete buttons incorrectly
 
-## v0.5.1
+## v0.5.1 (2026-02-22)
 
 ### New Features
 - **Import `--dry-run` flag** — preview what an import would do without writing to catalog, sidecar, or disk
 - **Inline name editing** in web UI — pencil icon toggle, text input with Save/Cancel
 
-## v0.5.0
+## v0.5.0 (2026-02-22)
 
 ### New Features
 - **Keyboard navigation** on browse page — arrow keys navigate cards (column-aware), Enter opens detail, Space toggles selection, 1–5/0 set/clear rating, Alt+1–7/0 set/clear color label, letter keys r/o/y/g/b/p/u/x for quick label
 
-## v0.4.5
+## v0.4.5 (2026-02-21)
 
 ### New Features
 - **`dam refresh` command** — re-read metadata from changed sidecar/recipe files without full re-import; supports `--dry-run`, `--json`, `--log`, `--time`
 
-## v0.4.4
+## v0.4.4 (2026-02-21)
 
 ### New Features
 - **Color labels** — first-class 7-color label support (Red, Orange, Yellow, Green, Blue, Pink, Purple); XMP `xmp:Label` extraction, CLI editing (`dam edit --label`), web UI color dot picker, browse filtering, batch operations, XMP write-back
@@ -606,18 +606,18 @@ First stable release. All planned features are implemented, all tests pass, docu
 - Fix Ctrl+A not working after checkbox click
 - Remove unreliable shift-click range selection, replace with Cmd/Ctrl+A
 
-## v0.4.3
+## v0.4.3 (2026-02-21)
 
 ### New Features
 - **Description XMP write-back** — description changes written back to `.xmp` recipe files on disk
 - **Inline description editing** in web UI — pencil icon toggle, textarea with Save/Cancel
 
-## v0.4.2
+## v0.4.2 (2026-02-20)
 
 ### New Features
 - **Tag XMP write-back** — tag changes written back to `.xmp` recipe files using operation-level deltas (preserves tags added independently in CaptureOne)
 
-## v0.4.1
+## v0.4.1 (2026-02-20)
 
 ### New Features
 - **Rating XMP write-back** — rating changes written back to `.xmp` recipe files on disk, enabling bidirectional sync with CaptureOne
@@ -626,7 +626,7 @@ First stable release. All planned features are implemented, all tests pass, docu
 - Fix back button and reload showing raw HTML instead of full browse page
 - Refresh browse results when returning via back button (bfcache)
 
-## v0.4.0
+## v0.4.0 (2026-02-20)
 
 ### New Features
 - **Browse page redesign** — sort controls (Name/Date/Size with direction indicators), top pagination, star rating filter (click stars for minimum threshold)
@@ -634,40 +634,40 @@ First stable release. All planned features are implemented, all tests pass, docu
 ### Bug Fixes
 - Fix rating loss on pagination when sort changes
 
-## v0.3.5
+## v0.3.5 (2026-02-20)
 
 ### New Features
 - **Tags page enhancements** — sortable columns (name/count), live text filter, multi-column CSS layout
 - **`dam update-location` command** — update file path in catalog after manual moves on disk
 
-## v0.3.4
+## v0.3.4 (2026-02-20)
 
 ### New Features
 - **Extended `dam cleanup`** — now removes orphaned assets (all variants have zero locations) and orphaned preview files, in addition to stale location records
 - **Search location health filters** — `orphan:true`, `missing:true`, `stale:N`, `volume:none`
 
-## v0.3.3
+## v0.3.3 (2026-02-20)
 
 ### New Features
 - **`dam cleanup` command** — remove stale file location records for files no longer on disk
 
-## v0.3.2
+## v0.3.2 (2026-02-20)
 
 ### New Features
 - **`dam sync` command** — reconcile catalog with disk after external file moves, renames, or modifications
 
-## v0.3.1
+## v0.3.1 (2026-02-20)
 
 ### New Features
 - **`dam edit` command** — set or clear asset name, description, and rating from CLI
 - **Photo workflow integration proposal** — documented gaps and planned features for CaptureOne integration
 
-## v0.3.0
+## v0.3.0 (2026-02-20)
 
 ### New Features
 - **Version display** in web UI navigation bar
 
-## v0.2.0
+## v0.2.0 (2026-02-19)
 
 ### New Features
 - **Web UI** (`dam serve`) — browse/search page with filter dropdowns, asset detail page, tag editing, rating support
@@ -683,7 +683,7 @@ First stable release. All planned features are implemented, all tests pass, docu
 ### Bug Fixes
 - Fix multi-component ASCII EXIF fields (Fuji lens_model parsing)
 
-## v0.1.0
+## v0.1.0 (2026-02-18)
 
 ### New Features
 - **`dam init`** — initialize catalog with SQLite schema, volume registry, config
