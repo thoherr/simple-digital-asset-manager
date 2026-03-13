@@ -717,7 +717,8 @@ impl Catalog {
              CREATE INDEX IF NOT EXISTS idx_assets_created_at ON assets(created_at);
              CREATE INDEX IF NOT EXISTS idx_assets_best_variant_hash ON assets(best_variant_hash);
              CREATE INDEX IF NOT EXISTS idx_variants_format ON variants(format);
-             CREATE INDEX IF NOT EXISTS idx_recipes_variant_hash ON recipes(variant_hash);",
+             CREATE INDEX IF NOT EXISTS idx_recipes_variant_hash ON recipes(variant_hash);
+             CREATE INDEX IF NOT EXISTS idx_assets_stack_browse ON assets(stack_position, created_at DESC) WHERE stack_id IS NOT NULL;",
         );
         // GPS coordinate columns
         let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN latitude REAL");
@@ -934,7 +935,8 @@ impl Catalog {
              CREATE INDEX IF NOT EXISTS idx_assets_created_at ON assets(created_at);
              CREATE INDEX IF NOT EXISTS idx_assets_best_variant_hash ON assets(best_variant_hash);
              CREATE INDEX IF NOT EXISTS idx_variants_format ON variants(format);
-             CREATE INDEX IF NOT EXISTS idx_recipes_variant_hash ON recipes(variant_hash);",
+             CREATE INDEX IF NOT EXISTS idx_recipes_variant_hash ON recipes(variant_hash);
+             CREATE INDEX IF NOT EXISTS idx_assets_stack_browse ON assets(stack_position, created_at DESC) WHERE stack_id IS NOT NULL;",
         )?;
 
         // GPS coordinate columns
@@ -3153,63 +3155,104 @@ impl Catalog {
     }
 
     /// Paginated search with dynamic filters and sorting.
-    /// Returns (rows, total_count) in a single query using COUNT(*) OVER().
+    /// Uses a separate COUNT query + paginated data query (faster than COUNT(*) OVER()
+    /// which forces SQLite to materialize the entire result set).
     pub fn search_paginated_with_count(&self, opts: &SearchOptions) -> Result<(Vec<SearchRow>, u64)> {
-        let (where_clause, mut params, needs_fl_join, needs_v_join) = Self::build_search_where(opts);
+        let (where_clause, params, needs_fl_join, needs_v_join) = Self::build_search_where(opts);
 
-        // For the common case (no variant-level joins), use COUNT(*) OVER() window function.
-        // For variant-joined queries, use a CTE to avoid incompatibility with GROUP BY.
-        let sql = if needs_v_join {
-            let mut inner = String::from(
-                "WITH matched AS (SELECT DISTINCT a.id \
-                 FROM assets a \
-                 JOIN variants bv ON bv.content_hash = a.best_variant_hash \
-                 JOIN variants v ON v.asset_id = a.id",
-            );
-            if needs_fl_join {
-                inner.push_str(" JOIN file_locations fl ON v.content_hash = fl.content_hash");
-            }
-            inner.push_str(&where_clause);
-            inner.push_str(") SELECT a.id, a.name, a.asset_type, a.created_at, bv.original_filename, bv.format, \
-                 a.tags, a.description, bv.content_hash, a.rating, a.color_label, \
-                 a.primary_variant_format, a.variant_count, a.stack_id, s.member_count, \
-                 a.preview_rotation, a.face_count, \
-                 (SELECT COUNT(*) FROM matched) as total_count \
-                 FROM matched m \
-                 JOIN assets a ON a.id = m.id \
-                 JOIN variants bv ON bv.content_hash = a.best_variant_hash \
-                 LEFT JOIN stacks s ON s.id = a.stack_id");
-            inner.push_str(&format!(" ORDER BY {}", opts.sort.to_sql()));
+        // --- Step 1: Count total matches ---
+        let total_count = {
+            let count_sql = if needs_v_join {
+                let mut sql = String::from(
+                    "SELECT COUNT(DISTINCT a.id) FROM assets a \
+                     JOIN variants bv ON bv.content_hash = a.best_variant_hash \
+                     JOIN variants v ON v.asset_id = a.id",
+                );
+                if needs_fl_join {
+                    sql.push_str(" JOIN file_locations fl ON v.content_hash = fl.content_hash");
+                }
+                sql.push_str(&where_clause);
+                sql
+            } else if needs_fl_join {
+                let mut sql = String::from(
+                    "SELECT COUNT(*) FROM assets a \
+                     JOIN variants bv ON bv.content_hash = a.best_variant_hash \
+                     JOIN file_locations fl ON bv.content_hash = fl.content_hash",
+                );
+                sql.push_str(&where_clause);
+                sql
+            } else {
+                // Use same bv JOIN as data query so assets with NULL best_variant_hash
+                // are excluded from count (matching the data query behavior)
+                let mut sql = String::from(
+                    "SELECT COUNT(*) FROM assets a \
+                     JOIN variants bv ON bv.content_hash = a.best_variant_hash",
+                );
+                sql.push_str(&where_clause);
+                sql
+            };
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                params.iter().map(|p| p.as_ref()).collect();
+            self.conn.query_row(&count_sql, param_refs.as_slice(), |row| row.get::<_, u64>(0))?
+        };
+
+        if total_count == 0 {
+            return Ok((Vec::new(), 0));
+        }
+
+        // --- Step 2: Fetch one page of results ---
+        let (data_params, data_sql) = {
+            let mut p = params;
             let page = opts.page.max(1);
             let offset = (page - 1) as u64 * opts.per_page as u64;
-            inner.push_str(" LIMIT ? OFFSET ?");
-            params.push(Box::new(opts.per_page as u64));
-            params.push(Box::new(offset));
-            inner
-        } else {
-            let mut sql = String::from(
-                "SELECT a.id, a.name, a.asset_type, a.created_at, bv.original_filename, bv.format, \
-                 a.tags, a.description, bv.content_hash, a.rating, a.color_label, \
-                 a.primary_variant_format, a.variant_count, a.stack_id, s.member_count, \
-                 a.preview_rotation, a.face_count, \
-                 COUNT(*) OVER() as total_count \
-                 FROM assets a \
-                 JOIN variants bv ON bv.content_hash = a.best_variant_hash \
-                 LEFT JOIN stacks s ON s.id = a.stack_id",
-            );
-            sql.push_str(&where_clause);
-            sql.push_str(&format!(" ORDER BY {}", opts.sort.to_sql()));
-            let page = opts.page.max(1);
-            let offset = (page - 1) as u64 * opts.per_page as u64;
-            sql.push_str(" LIMIT ? OFFSET ?");
-            params.push(Box::new(opts.per_page as u64));
-            params.push(Box::new(offset));
-            sql
+
+            let sql = if needs_v_join {
+                let mut inner = String::from(
+                    "WITH matched AS (SELECT DISTINCT a.id \
+                     FROM assets a \
+                     JOIN variants bv ON bv.content_hash = a.best_variant_hash \
+                     JOIN variants v ON v.asset_id = a.id",
+                );
+                if needs_fl_join {
+                    inner.push_str(" JOIN file_locations fl ON v.content_hash = fl.content_hash");
+                }
+                inner.push_str(&where_clause);
+                inner.push_str(") SELECT a.id, a.name, a.asset_type, a.created_at, bv.original_filename, bv.format, \
+                     a.tags, a.description, bv.content_hash, a.rating, a.color_label, \
+                     a.primary_variant_format, a.variant_count, a.stack_id, s.member_count, \
+                     a.preview_rotation, a.face_count \
+                     FROM matched m \
+                     JOIN assets a ON a.id = m.id \
+                     JOIN variants bv ON bv.content_hash = a.best_variant_hash \
+                     LEFT JOIN stacks s ON s.id = a.stack_id");
+                inner.push_str(&format!(" ORDER BY {}", opts.sort.to_sql()));
+                inner.push_str(" LIMIT ? OFFSET ?");
+                p.push(Box::new(opts.per_page as u64));
+                p.push(Box::new(offset));
+                inner
+            } else {
+                let mut sql = String::from(
+                    "SELECT a.id, a.name, a.asset_type, a.created_at, bv.original_filename, bv.format, \
+                     a.tags, a.description, bv.content_hash, a.rating, a.color_label, \
+                     a.primary_variant_format, a.variant_count, a.stack_id, s.member_count, \
+                     a.preview_rotation, a.face_count \
+                     FROM assets a \
+                     JOIN variants bv ON bv.content_hash = a.best_variant_hash \
+                     LEFT JOIN stacks s ON s.id = a.stack_id",
+                );
+                sql.push_str(&where_clause);
+                sql.push_str(&format!(" ORDER BY {}", opts.sort.to_sql()));
+                sql.push_str(" LIMIT ? OFFSET ?");
+                p.push(Box::new(opts.per_page as u64));
+                p.push(Box::new(offset));
+                sql
+            };
+            (p, sql)
         };
 
         let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|p| p.as_ref()).collect();
-        let mut stmt = self.conn.prepare(&sql)?;
+            data_params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&data_sql)?;
         let rows = stmt.query_map(param_refs.as_slice(), |row| {
             let tags_json: String = row.get(6)?;
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
@@ -3218,8 +3261,7 @@ impl Catalog {
             let stack_member_count: Option<i64> = row.get(14)?;
             let rotation_val: Option<i64> = row.get(15)?;
             let face_count_val: i64 = row.get::<_, Option<i64>>(16)?.unwrap_or(0);
-            let total: u64 = row.get(17)?;
-            Ok((SearchRow {
+            Ok(SearchRow {
                 asset_id: row.get(0)?,
                 name: row.get(1)?,
                 asset_type: row.get(2)?,
@@ -3237,15 +3279,12 @@ impl Catalog {
                 stack_count: stack_member_count.map(|n| n as u32),
                 preview_rotation: rotation_val.map(|r| r as u16),
                 face_count: face_count_val as u32,
-            }, total))
+            })
         })?;
 
         let mut results = Vec::new();
-        let mut total_count = 0u64;
         for row in rows {
-            let (search_row, total) = row?;
-            total_count = total;
-            results.push(search_row);
+            results.push(row?);
         }
         Ok((results, total_count))
     }
