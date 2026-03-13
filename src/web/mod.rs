@@ -3,8 +3,9 @@ mod static_assets;
 pub mod templates;
 
 use std::net::SocketAddr;
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use anyhow::Result;
 use axum::Router;
@@ -15,6 +16,77 @@ use crate::catalog::Catalog;
 use crate::config::PreviewConfig;
 use crate::preview::PreviewGenerator;
 use crate::query::QueryEngine;
+
+/// A simple connection pool for SQLite. Pre-opens connections with pragmas set
+/// so per-request overhead is near zero. Connections are returned to the pool on drop.
+pub struct CatalogPool {
+    catalog_root: PathBuf,
+    pool: Mutex<Vec<Catalog>>,
+    capacity: usize,
+}
+
+impl CatalogPool {
+    /// Create a pool and pre-open `capacity` connections.
+    pub fn new(catalog_root: &std::path::Path, capacity: usize) -> Result<Self> {
+        let mut conns = Vec::with_capacity(capacity);
+        for _ in 0..capacity {
+            conns.push(Catalog::open_fast(catalog_root)?);
+        }
+        Ok(Self {
+            catalog_root: catalog_root.to_path_buf(),
+            pool: Mutex::new(conns),
+            capacity,
+        })
+    }
+
+    /// Take a connection from the pool (or open a fresh one if pool is empty).
+    pub fn get(self: &Arc<Self>) -> Result<PooledCatalog> {
+        let conn = {
+            let mut pool = self.pool.lock().unwrap();
+            pool.pop()
+        };
+        let catalog = match conn {
+            Some(c) => c,
+            None => Catalog::open_fast(&self.catalog_root)?,
+        };
+        Ok(PooledCatalog { pool: Arc::clone(self), catalog: Some(catalog) })
+    }
+
+    fn return_conn(&self, catalog: Catalog) {
+        let mut pool = self.pool.lock().unwrap();
+        if pool.len() < self.capacity {
+            pool.push(catalog);
+        }
+        // else: drop the connection (pool is full)
+    }
+}
+
+/// RAII wrapper that returns the connection to the pool on drop.
+pub struct PooledCatalog {
+    pool: Arc<CatalogPool>,
+    catalog: Option<Catalog>,
+}
+
+impl Deref for PooledCatalog {
+    type Target = Catalog;
+    fn deref(&self) -> &Catalog {
+        self.catalog.as_ref().unwrap()
+    }
+}
+
+impl DerefMut for PooledCatalog {
+    fn deref_mut(&mut self) -> &mut Catalog {
+        self.catalog.as_mut().unwrap()
+    }
+}
+
+impl Drop for PooledCatalog {
+    fn drop(&mut self) {
+        if let Some(catalog) = self.catalog.take() {
+            self.pool.return_conn(catalog);
+        }
+    }
+}
 
 #[cfg(feature = "ai")]
 use crate::config::AiConfig;
@@ -144,6 +216,7 @@ impl DropdownCache {
 /// Shared application state for the web server.
 pub struct AppState {
     catalog_root: PathBuf,
+    catalog_pool: Arc<CatalogPool>,
     preview_config: PreviewConfig,
     pub preview_ext: String,
     pub log_requests: bool,
@@ -177,8 +250,10 @@ impl AppState {
         let preview_ext = preview_config.format.extension().to_string();
         let smart_on_demand = preview_config.generate_on_demand;
         let vlm_enabled = check_vlm_at_startup(&vlm_config);
+        let catalog_pool = Arc::new(CatalogPool::new(&catalog_root, 4).expect("Failed to open catalog pool"));
         Self {
             catalog_root,
+            catalog_pool,
             preview_config,
             preview_ext,
             log_requests,
@@ -207,8 +282,10 @@ impl AppState {
         let preview_ext = preview_config.format.extension().to_string();
         let smart_on_demand = preview_config.generate_on_demand;
         let vlm_enabled = check_vlm_at_startup(&vlm_config);
+        let catalog_pool = Arc::new(CatalogPool::new(&catalog_root, 4).expect("Failed to open catalog pool"));
         Self {
             catalog_root,
+            catalog_pool,
             preview_config,
             preview_ext,
             log_requests,
@@ -227,10 +304,9 @@ impl AppState {
         }
     }
 
-    /// Open a fresh catalog connection (each request gets its own).
-    /// Uses `open_fast` since migrations run once at server startup.
-    pub fn catalog(&self) -> Result<Catalog> {
-        Catalog::open_fast(&self.catalog_root)
+    /// Get a catalog connection from the pool (returned on drop).
+    pub fn catalog(&self) -> Result<PooledCatalog> {
+        self.catalog_pool.get()
     }
 
     /// Create a QueryEngine for this catalog.
