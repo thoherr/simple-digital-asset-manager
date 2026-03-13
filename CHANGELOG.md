@@ -2,6 +2,20 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v3.0.3 (2026-03-13)
+
+### Performance
+- **SQLite connection pool** — web server reuses pre-opened database connections instead of opening a new one per request, eliminating repeated PRAGMA setup overhead.
+- **Split COUNT/data queries** — browse pagination replaced `COUNT(*) OVER()` window function (which forced full result materialization) with a separate lightweight count query, reducing browse times from 1–6s to under 300ms.
+- **Version-guarded migrations** — `run_migrations()` checks the stored schema version and skips all work when the catalog is already current, reducing startup to a single SELECT query.
+
+### Code Quality
+- **Deduplicated migration blocks** — `initialize()` now creates base tables and delegates to `run_migrations()` instead of duplicating ~130 lines of ALTER TABLE / CREATE INDEX / backfill statements.
+- **Deduplicated image finder** — `find_image_for_ai()` and `find_image_for_vlm()` (~100 lines each) consolidated into a shared `find_image_for_processing()` with a predicate parameter.
+- **Deduplicated best-variant resolution** — extracted `resolve_best_variant_idx()` helper, replacing 3 copies of the stored-hash-with-algorithmic-fallback pattern in web routes.
+- **Unified variant scoring** — merged `role_score_enum`/`role_score_str` and `best_preview_index`/`best_preview_index_details` into shared implementations.
+- **Gated AI-only imports** — `PeoplePage`, `PersonCard` imports and `people` field on `DropdownCacheInner` are now behind `#[cfg(feature = "ai")]`, eliminating compiler warnings when building without the `ai` feature.
+
 ## v3.0.2 (2026-03-13)
 
 ### New Features

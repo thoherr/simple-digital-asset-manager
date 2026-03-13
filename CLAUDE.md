@@ -33,17 +33,18 @@ See `doc/specification.md` for detailed command behavior, flags, and search filt
 YAML sidecars are the source of truth; SQLite catalog is a derived cache rebuilt via `dam rebuild-catalog`. All write paths must update both stores.
 
 ### Schema Migrations
+- **Version-guarded**: `run_migrations()` reads the stored version once and only executes blocks where `current < N`. On an up-to-date catalog, startup is a single SELECT query.
 - Idempotent: `let _ = conn.execute_batch("ALTER TABLE ... ADD COLUMN ...")` — silently ignores if column exists
 - Backfill with `WHERE column IS NULL` guard
 - `schema_version` table with `SCHEMA_VERSION` constant in `catalog.rs`. All commands (except `init`/`migrate`) check version at startup; exit with error if outdated
-- Only `dam init` and `dam migrate` stamp the version
-- Bump `SCHEMA_VERSION` whenever `run_migrations()` changes
+- `initialize()` creates base tables then delegates to `run_migrations()` for all columns, indexes, backfills, and version stamping
+- Bump `SCHEMA_VERSION` whenever `run_migrations()` changes; add a new `if current < N` block
 
 ### Denormalized Columns on `assets` Table
 `best_variant_hash`, `primary_variant_format`, `variant_count`, `face_count`, `stack_id`, `stack_position`, `latitude`, `longitude` — computed at write time, must be updated in all write paths (`insert_asset`, `update_denormalized_variant_columns`, `fix_roles`, `StackStore` operations, `FaceStore::update_face_count`).
 
-### SQLite Per-Request (Web Server)
-`Catalog::open_fast()` (pragmas only, no migrations) via `spawn_blocking`. Schema migrations run once at startup.
+### SQLite Connection Pool (Web Server)
+`CatalogPool` holds pre-opened connections (RAII `PooledCatalog` returned on drop). `Catalog::open_fast()` (pragmas only, no migrations) via `spawn_blocking`. Schema migrations run once at startup.
 
 ### Conditional JOINs in Search
 `build_search_where()` returns `(where, params, needs_fl_join, needs_v_join)` — variant/location tables only joined when filters need them.
