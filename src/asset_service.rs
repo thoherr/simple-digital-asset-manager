@@ -357,7 +357,7 @@ pub struct RefreshResult {
 }
 
 /// Result of a sync-metadata operation.
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct SyncMetadataResult {
     /// Recipes where external changes were read in (inbound).
     pub inbound: usize,
@@ -432,7 +432,7 @@ pub enum FixDatesStatus {
 }
 
 /// Result of a fix-dates operation.
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct FixDatesResult {
     pub checked: usize,
     pub fixed: usize,
@@ -452,7 +452,7 @@ pub enum FixRecipesStatus {
 }
 
 /// Result of a fix-recipes operation.
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct FixRecipesResult {
     pub checked: usize,
     pub reattached: usize,
@@ -4364,6 +4364,7 @@ impl AssetService {
                 &online,
                 &content_store,
                 None, // no additional asset filter, already filtered above
+                None, // no asset ID set filter
                 dry_run,
                 false, // log handled by our callback
                 None,

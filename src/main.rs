@@ -195,8 +195,8 @@ enum Commands {
     #[cfg(feature = "ai")]
     #[command(display_order = 17)]
     AutoTag {
-        /// Search query to scope assets
-        #[arg(long, display_order = 1)]
+        /// Search query to scope assets (same syntax as `dam search`)
+        #[arg(display_order = 1)]
         query: Option<String>,
 
         /// Process a specific asset (ID or prefix)
@@ -242,14 +242,18 @@ enum Commands {
         /// Find visually similar assets (by asset ID)
         #[arg(long, display_order = 40)]
         similar: Option<String>,
+
+        /// Asset IDs (for shell variable expansion)
+        #[arg(hide = true, trailing_var_arg = true)]
+        asset_ids: Vec<String>,
     },
 
     /// Generate embeddings for visual similarity search (requires --features ai)
     #[cfg(feature = "ai")]
     #[command(display_order = 18)]
     Embed {
-        /// Search query to scope assets
-        #[arg(long, display_order = 1)]
+        /// Search query to scope assets (same syntax as `dam search`)
+        #[arg(display_order = 1)]
         query: Option<String>,
 
         /// Process a specific asset (ID or prefix)
@@ -271,6 +275,10 @@ enum Commands {
         /// Export all embeddings from SQLite to binary files (no scope required)
         #[arg(long, display_order = 11)]
         export: bool,
+
+        /// Asset IDs (for shell variable expansion)
+        #[arg(hide = true, trailing_var_arg = true)]
+        asset_ids: Vec<String>,
     },
 
     /// Face detection and recognition (requires --features ai)
@@ -281,8 +289,8 @@ enum Commands {
     /// Generate image descriptions using a vision-language model (VLM)
     #[command(display_order = 16)]
     Describe {
-        /// Search query to scope assets
-        #[arg(long, display_order = 1)]
+        /// Search query to scope assets (same syntax as `dam search`)
+        #[arg(display_order = 1)]
         query: Option<String>,
 
         /// Process a specific asset (ID or prefix)
@@ -336,6 +344,10 @@ enum Commands {
         /// Check VLM endpoint connectivity
         #[arg(long, display_order = 30)]
         check: bool,
+
+        /// Asset IDs (for shell variable expansion)
+        #[arg(hide = true, trailing_var_arg = true)]
+        asset_ids: Vec<String>,
     },
 
     // --- Organize ---
@@ -667,6 +679,10 @@ enum Commands {
     /// Bidirectional metadata sync: read external XMP changes and write back pending DAM edits
     #[command(name = "sync-metadata", display_order = 42)]
     SyncMetadata {
+        /// Search query to select assets (same syntax as `dam search`)
+        #[arg(display_order = 1)]
+        query: Option<String>,
+
         /// Limit to a specific volume
         #[arg(long, display_order = 10)]
         volume: Option<String>,
@@ -682,11 +698,19 @@ enum Commands {
         /// Also re-extract embedded XMP from JPEG/TIFF media files
         #[arg(long, display_order = 21)]
         media: bool,
+
+        /// Asset IDs (for shell variable expansion)
+        #[arg(hide = true, trailing_var_arg = true)]
+        asset_ids: Vec<String>,
     },
 
     /// Write back pending metadata changes to XMP recipe files
     #[command(display_order = 42)]
     Writeback {
+        /// Search query to select assets (same syntax as `dam search`)
+        #[arg(display_order = 1)]
+        query: Option<String>,
+
         /// Limit to a specific volume
         #[arg(long, display_order = 10)]
         volume: Option<String>,
@@ -702,6 +726,10 @@ enum Commands {
         /// Preview what would be written without modifying files
         #[arg(long, display_order = 20)]
         dry_run: bool,
+
+        /// Asset IDs (for shell variable expansion)
+        #[arg(hide = true, trailing_var_arg = true)]
+        asset_ids: Vec<String>,
     },
 
     /// Remove stale file location records (files no longer on disk)
@@ -847,6 +875,10 @@ enum Commands {
     /// Fix asset dates from variant EXIF metadata and file modification times
     #[command(display_order = 49)]
     FixDates {
+        /// Search query to select assets (same syntax as `dam search`)
+        #[arg(display_order = 1)]
+        query: Option<String>,
+
         /// Limit to a specific volume
         #[arg(long, display_order = 10)]
         volume: Option<String>,
@@ -858,11 +890,19 @@ enum Commands {
         /// Apply changes (default: report-only dry run)
         #[arg(long, display_order = 20)]
         apply: bool,
+
+        /// Asset IDs (for shell variable expansion)
+        #[arg(hide = true, trailing_var_arg = true)]
+        asset_ids: Vec<String>,
     },
 
     /// Re-attach recipe files that were imported as standalone assets
     #[command(display_order = 50)]
     FixRecipes {
+        /// Search query to select assets (same syntax as `dam search`)
+        #[arg(display_order = 1)]
+        query: Option<String>,
+
         /// Limit to a specific volume
         #[arg(long, display_order = 10)]
         volume: Option<String>,
@@ -874,6 +914,10 @@ enum Commands {
         /// Apply changes (default: report-only dry run)
         #[arg(long, display_order = 20)]
         apply: bool,
+
+        /// Asset IDs (for shell variable expansion)
+        #[arg(hide = true, trailing_var_arg = true)]
+        asset_ids: Vec<String>,
     },
 
     /// Rebuild SQLite catalog from sidecar files
@@ -2565,6 +2609,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             force,
             dry_run,
             check,
+            asset_ids,
         } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
@@ -2609,13 +2654,16 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 return Ok(());
             }
 
+            // Merge asset_ids from shell variable expansion into asset/query
+            let (query, asset) = merge_trailing_ids(query, asset, &asset_ids);
+
             if query.is_none() && asset.is_none() && volume.is_none() {
                 anyhow::bail!(
-                    "No scope specified. Use --query, --asset, or --volume to select assets.\n  \
+                    "No scope specified. Use a query, --asset, or --volume to select assets.\n  \
                      Examples:\n    \
-                     dam describe --query '*'                  # all assets\n    \
-                     dam describe --asset <id>                 # single asset\n    \
-                     dam describe --query 'rating:4+' --apply  # apply to rated assets"
+                     dam describe '*'                  # all assets\n    \
+                     dam describe --asset <id>          # single asset\n    \
+                     dam describe 'rating:4+' --apply   # apply to rated assets"
                 );
             }
 
@@ -2724,7 +2772,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             list_models,
             list_labels,
             similar,
+            asset_ids,
         } => {
+            let (query, asset) = merge_trailing_ids(query, asset, &asset_ids);
             use dam::model_manager::{ModelManager, format_size};
 
             // List labels can work without a catalog (uses defaults)
@@ -3044,7 +3094,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             model,
             force,
             export,
+            asset_ids,
         } => {
+            let (query, asset) = merge_trailing_ids(query, asset, &asset_ids);
             use dam::model_manager::ModelManager;
 
             if export {
@@ -4067,11 +4119,12 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             Ok(())
         }
-        Commands::SyncMetadata { volume, asset, dry_run, media } => {
+        Commands::SyncMetadata { query, volume, asset, dry_run, media, asset_ids } => {
             let start = std::time::Instant::now();
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let registry = DeviceRegistry::new(&catalog_root);
+            let engine = dam::query::QueryEngine::new(&catalog_root);
 
             // Resolve volume
             let resolved_volume = if let Some(label) = &volume {
@@ -4080,52 +4133,58 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 None
             };
 
-            // Resolve asset ID prefix
-            let resolved_asset_id = if let Some(prefix) = &asset {
-                let catalog = Catalog::open(&catalog_root)?;
-                match catalog.resolve_asset_id(prefix)? {
-                    Some(id) => Some(id),
-                    None => anyhow::bail!("No asset found matching '{prefix}'"),
-                }
-            } else {
-                None
+            // Resolve scope (query/asset/asset_ids) to individual asset IDs
+            let scope = engine.resolve_scope(query.as_deref(), asset.as_deref(), &asset_ids)?;
+            let asset_id_list: Vec<Option<String>> = match scope {
+                Some(set) => set.into_iter().map(Some).collect(),
+                None => vec![None], // process all
             };
 
             let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
-            let result = if cli.log {
-                use dam::asset_service::SyncMetadataStatus;
-                service.sync_metadata(
-                    resolved_volume.as_ref(),
-                    resolved_asset_id.as_deref(),
-                    dry_run,
-                    media,
-                    &config.import.exclude,
-                    |path, status, elapsed| {
-                        let label = match status {
-                            SyncMetadataStatus::Inbound => "inbound",
-                            SyncMetadataStatus::Outbound => "outbound",
-                            SyncMetadataStatus::Unchanged => "unchanged",
-                            SyncMetadataStatus::Missing => "missing",
-                            SyncMetadataStatus::Offline => "offline",
-                            SyncMetadataStatus::Conflict => "CONFLICT",
-                            SyncMetadataStatus::Error => "error",
-                        };
-                        let name = path.file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                        eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
-                    },
-                )?
-            } else {
-                service.sync_metadata(
-                    resolved_volume.as_ref(),
-                    resolved_asset_id.as_deref(),
-                    dry_run,
-                    media,
-                    &config.import.exclude,
-                    |_, _, _| {},
-                )?
-            };
+            let mut result = dam::asset_service::SyncMetadataResult { dry_run, ..Default::default() };
+            for aid in &asset_id_list {
+                let r = if cli.log {
+                    use dam::asset_service::SyncMetadataStatus;
+                    service.sync_metadata(
+                        resolved_volume.as_ref(),
+                        aid.as_deref(),
+                        dry_run,
+                        media,
+                        &config.import.exclude,
+                        |path, status, elapsed| {
+                            let label = match status {
+                                SyncMetadataStatus::Inbound => "inbound",
+                                SyncMetadataStatus::Outbound => "outbound",
+                                SyncMetadataStatus::Unchanged => "unchanged",
+                                SyncMetadataStatus::Missing => "missing",
+                                SyncMetadataStatus::Offline => "offline",
+                                SyncMetadataStatus::Conflict => "CONFLICT",
+                                SyncMetadataStatus::Error => "error",
+                            };
+                            let name = path.file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or_else(|| path.to_str().unwrap_or("?"));
+                            eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
+                        },
+                    )?
+                } else {
+                    service.sync_metadata(
+                        resolved_volume.as_ref(),
+                        aid.as_deref(),
+                        dry_run,
+                        media,
+                        &config.import.exclude,
+                        |_, _, _| {},
+                    )?
+                };
+                result.inbound += r.inbound;
+                result.outbound += r.outbound;
+                result.unchanged += r.unchanged;
+                result.conflicts += r.conflicts;
+                result.skipped += r.skipped;
+                result.media_refreshed += r.media_refreshed;
+                result.errors.extend(r.errors);
+            }
 
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&result)?);
@@ -4275,14 +4334,17 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             Ok(())
         }
-        Commands::Writeback { volume, asset, all, dry_run } => {
+        Commands::Writeback { query, volume, asset, all, dry_run, asset_ids } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let engine = dam::query::QueryEngine::new(&catalog_root);
             let start = std::time::Instant::now();
 
+            let scope = engine.resolve_scope(query.as_deref(), asset.as_deref(), &asset_ids)?;
+
             let result = engine.writeback(
                 volume.as_deref(),
-                asset.as_deref(),
+                None, // asset_filter replaced by scope
+                scope.as_ref(),
                 all,
                 dry_run,
                 cli.log,
@@ -5009,35 +5071,57 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             Ok(())
         }
-        Commands::FixDates { volume, asset, apply } => {
+        Commands::FixDates { query, volume, asset, apply, asset_ids } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let engine = dam::query::QueryEngine::new(&catalog_root);
+
+            // Resolve scope (query/asset/asset_ids) to individual asset IDs
+            let scope = engine.resolve_scope(query.as_deref(), asset.as_deref(), &asset_ids)?;
+            let asset_id_list: Vec<Option<String>> = match scope {
+                Some(set) => set.into_iter().map(Some).collect(),
+                None => vec![None], // process all
+            };
 
             let show_log = cli.log;
-            let result = service.fix_dates(
-                volume.as_deref(),
-                asset.as_deref(),
-                apply,
-                |name, status, detail| {
-                    if show_log {
-                        let label = match status {
-                            dam::asset_service::FixDatesStatus::AlreadyCorrect => "ok".to_string(),
-                            dam::asset_service::FixDatesStatus::NoDate => "no date available".to_string(),
-                            dam::asset_service::FixDatesStatus::SkippedOffline => "skipped (volume offline)".to_string(),
-                            dam::asset_service::FixDatesStatus::Fixed => {
-                                let action = if apply { "fixed" } else { "would fix" };
-                                if let Some(d) = detail {
-                                    format!("{action}: {d}")
-                                } else {
-                                    action.to_string()
+            let mut result = dam::asset_service::FixDatesResult { dry_run: !apply, ..Default::default() };
+            for aid in &asset_id_list {
+                let r = service.fix_dates(
+                    volume.as_deref(),
+                    aid.as_deref(),
+                    apply,
+                    |name, status, detail| {
+                        if show_log {
+                            let label = match status {
+                                dam::asset_service::FixDatesStatus::AlreadyCorrect => "ok".to_string(),
+                                dam::asset_service::FixDatesStatus::NoDate => "no date available".to_string(),
+                                dam::asset_service::FixDatesStatus::SkippedOffline => "skipped (volume offline)".to_string(),
+                                dam::asset_service::FixDatesStatus::Fixed => {
+                                    let action = if apply { "fixed" } else { "would fix" };
+                                    if let Some(d) = detail {
+                                        format!("{action}: {d}")
+                                    } else {
+                                        action.to_string()
+                                    }
                                 }
-                            }
-                        };
-                        eprintln!("  {} — {}", name, label);
+                            };
+                            eprintln!("  {} — {}", name, label);
+                        }
+                    },
+                )?;
+                result.checked += r.checked;
+                result.fixed += r.fixed;
+                result.already_correct += r.already_correct;
+                result.skipped_offline += r.skipped_offline;
+                result.no_date += r.no_date;
+                result.errors.extend(r.errors);
+                for v in r.offline_volumes {
+                    if !result.offline_volumes.contains(&v) {
+                        result.offline_volumes.push(v);
                     }
-                },
-            )?;
+                }
+            }
 
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&result)?);
@@ -5081,29 +5165,45 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             Ok(())
         }
-        Commands::FixRecipes { volume, asset, apply } => {
+        Commands::FixRecipes { query, volume, asset, apply, asset_ids } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let engine = dam::query::QueryEngine::new(&catalog_root);
+
+            // Resolve scope (query/asset/asset_ids) to individual asset IDs
+            let scope = engine.resolve_scope(query.as_deref(), asset.as_deref(), &asset_ids)?;
+            let asset_id_list: Vec<Option<String>> = match scope {
+                Some(set) => set.into_iter().map(Some).collect(),
+                None => vec![None], // process all
+            };
 
             let show_log = cli.log;
-            let result = service.fix_recipes(
-                volume.as_deref(),
-                asset.as_deref(),
-                apply,
-                |name, status| {
-                    if show_log {
-                        let label = match status {
-                            dam::asset_service::FixRecipesStatus::Reattached => {
-                                if apply { "reattached" } else { "would reattach" }
-                            }
-                            dam::asset_service::FixRecipesStatus::NoParentFound => "no parent found",
-                            dam::asset_service::FixRecipesStatus::Skipped => "skipped",
-                        };
-                        eprintln!("  {} — {}", name, label);
-                    }
-                },
-            )?;
+            let mut result = dam::asset_service::FixRecipesResult { dry_run: !apply, ..Default::default() };
+            for aid in &asset_id_list {
+                let r = service.fix_recipes(
+                    volume.as_deref(),
+                    aid.as_deref(),
+                    apply,
+                    |name, status| {
+                        if show_log {
+                            let label = match status {
+                                dam::asset_service::FixRecipesStatus::Reattached => {
+                                    if apply { "reattached" } else { "would reattach" }
+                                }
+                                dam::asset_service::FixRecipesStatus::NoParentFound => "no parent found",
+                                dam::asset_service::FixRecipesStatus::Skipped => "skipped",
+                            };
+                            eprintln!("  {} — {}", name, label);
+                        }
+                    },
+                )?;
+                result.checked += r.checked;
+                result.reattached += r.reattached;
+                result.no_parent += r.no_parent;
+                result.skipped += r.skipped;
+                result.errors.extend(r.errors);
+            }
 
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&result)?);
@@ -6263,6 +6363,27 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
     })();
 
     result.map(|()| _asset_ids)
+}
+
+/// Merge trailing asset IDs (from shell variable expansion) into query/asset.
+/// Single ID → asset; multiple IDs → `id:xxx id:yyy` query.
+fn merge_trailing_ids(
+    query: Option<String>,
+    asset: Option<String>,
+    asset_ids: &[String],
+) -> (Option<String>, Option<String>) {
+    if asset_ids.is_empty() {
+        return (query, asset);
+    }
+    if asset_ids.len() == 1 {
+        return (query, Some(asset_ids[0].clone()));
+    }
+    let id_query = asset_ids.iter().map(|id| format!("id:{id}")).collect::<Vec<_>>().join(" ");
+    let combined = match query {
+        Some(q) => format!("{q} {id_query}"),
+        None => id_query,
+    };
+    (Some(combined), asset)
 }
 
 fn format_duration(d: std::time::Duration) -> String {

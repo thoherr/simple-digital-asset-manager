@@ -1013,6 +1013,47 @@ impl QueryEngine {
             .ok_or_else(|| anyhow::anyhow!("Asset '{full_id}' not found in catalog"))
     }
 
+    /// Resolve a scope (query, single asset, explicit IDs) to a set of asset IDs.
+    ///
+    /// This is the standard way to turn the CLI's scope options into a concrete
+    /// set of assets to process. Returns `None` if no scope was specified (caller
+    /// should process everything). Returns `Some(set)` to filter by membership.
+    pub fn resolve_scope(
+        &self,
+        query: Option<&str>,
+        asset: Option<&str>,
+        asset_ids: &[String],
+    ) -> Result<Option<HashSet<String>>> {
+        // Explicit asset ID list (from shell variable expansion)
+        if !asset_ids.is_empty() {
+            let catalog = Catalog::open(&self.catalog_root)?;
+            let mut ids = HashSet::new();
+            for raw_id in asset_ids {
+                let full_id = catalog
+                    .resolve_asset_id(raw_id)?
+                    .ok_or_else(|| anyhow::anyhow!("No asset found matching '{raw_id}'"))?;
+                ids.insert(full_id);
+            }
+            return Ok(Some(ids));
+        }
+        // Single asset ID
+        if let Some(prefix) = asset {
+            let catalog = Catalog::open(&self.catalog_root)?;
+            let full_id = catalog
+                .resolve_asset_id(prefix)?
+                .ok_or_else(|| anyhow::anyhow!("No asset found matching '{prefix}'"))?;
+            return Ok(Some(HashSet::from([full_id])));
+        }
+        // Search query
+        if let Some(q) = query {
+            let rows = self.search(q)?;
+            let ids: HashSet<String> = rows.into_iter().map(|r| r.asset_id).collect();
+            return Ok(Some(ids));
+        }
+        // No scope — process everything
+        Ok(None)
+    }
+
     /// Group variants (identified by content hashes) into a single asset.
     ///
     /// Picks the oldest asset as the target, moves all other variants into it,
@@ -2357,6 +2398,7 @@ impl QueryEngine {
         &self,
         volume_filter: Option<&str>,
         asset_filter: Option<&str>,
+        asset_id_set: Option<&HashSet<String>>,
         all: bool,
         dry_run: bool,
         log: bool,
@@ -2417,7 +2459,7 @@ impl QueryEngine {
             catalog.list_pending_writeback_recipes(volume_id_filter.as_deref())?
         };
 
-        self.writeback_process(pending_recipes, &catalog, &store, &online, &content_store, asset_filter, dry_run, log, callback)
+        self.writeback_process(pending_recipes, &catalog, &store, &online, &content_store, asset_filter, asset_id_set, dry_run, log, callback)
     }
 
     /// Process a list of recipes for writeback. Each tuple is (recipe_id, asset_id, volume_id, relative_path).
@@ -2429,6 +2471,7 @@ impl QueryEngine {
         online: &HashMap<uuid::Uuid, PathBuf>,
         content_store: &ContentStore,
         asset_filter: Option<&str>,
+        asset_id_set: Option<&HashSet<String>>,
         dry_run: bool,
         log: bool,
         callback: Option<&dyn Fn(&str, &str)>,
@@ -2441,6 +2484,11 @@ impl QueryEngine {
         for (recipe_id, asset_id, volume_id, rel_path) in recipes {
             if let Some(prefix) = asset_filter {
                 if !asset_id.starts_with(prefix) {
+                    continue;
+                }
+            }
+            if let Some(set) = asset_id_set {
+                if !set.contains(&asset_id) {
                     continue;
                 }
             }
