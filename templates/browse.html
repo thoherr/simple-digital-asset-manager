@@ -370,6 +370,31 @@ window.triggerSearch = onFilterChange;
         updateToolbar();
     }
 
+    // Wire Enter → confirm, Escape → cancel for modal overlays
+    function setupModalKeyboard(overlay, confirmSelector) {
+        var confirmBtn = overlay.querySelector(confirmSelector);
+        if (confirmBtn) confirmBtn.focus();
+        function handler(e) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                overlay.remove();
+            } else if (e.key === 'Enter' && confirmBtn && !confirmBtn.disabled
+                       && document.activeElement.tagName !== 'INPUT') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                confirmBtn.click();
+            }
+        }
+        document.addEventListener('keydown', handler, true);
+        new MutationObserver(function(_, obs) {
+            if (!document.body.contains(overlay)) {
+                document.removeEventListener('keydown', handler, true);
+                obs.disconnect();
+            }
+        }).observe(document.body, {childList: true});
+    }
+
     function getVisibleIds() {
         var ids = [];
         document.querySelectorAll('.asset-select-cb').forEach(function(cb) {
@@ -892,6 +917,7 @@ window.triggerSearch = onFilterChange;
         }
 
         document.body.appendChild(overlay);
+        setupModalKeyboard(overlay, '.group-confirm-ok');
 
         overlay.querySelector('.group-confirm-cancel').addEventListener('click', function() {
             overlay.remove();
@@ -1062,6 +1088,7 @@ window.triggerSearch = onFilterChange;
             '</div>' +
         '</div>';
         document.body.appendChild(overlay);
+        setupModalKeyboard(overlay, '.export-download-btn');
 
         overlay.querySelector('.group-confirm-cancel').addEventListener('click', function() {
             overlay.remove();
@@ -1172,6 +1199,7 @@ window.triggerSearch = onFilterChange;
         });
 
         document.body.appendChild(overlay);
+        setupModalKeyboard(overlay, '.delete-confirm-btn');
 
         overlay.querySelector('.group-confirm-cancel').addEventListener('click', function() { overlay.remove(); });
         overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });

@@ -10,8 +10,9 @@ All notable changes to the Digital Asset Manager are documented here.
 - **`dam cleanup --path`** — scope stale-location scanning to a path prefix instead of full volume. Absolute paths auto-detect the volume and convert to relative prefix.
 - **Locationless variant pruning** — new cleanup pass removes variants with zero file locations from assets that still have other located variants. Prevents ghost variants from accumulating after file moves or reimports.
 
-### Web UI
+#### Web UI
 - **Variant role dropdown** — inline dropdown selector on asset detail page variants table for multi-variant assets, with immediate save via API.
+- **Modal keyboard handling** — Enter confirms and Escape cancels in all custom modal dialogs (group merge, export, batch delete). Default button receives focus on open.
 
 ### Enhancements
 - **Improved VLM error messages** — detect empty responses (with `finish_reason` hints), unexpected formats, and suggest `ollama ps` for Ollama-specific issues. Show configured model at startup with availability warning.
