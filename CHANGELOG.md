@@ -2,6 +2,13 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v3.2.1 (2026-03-14)
+
+### Documentation
+- **Writeback reference entry** — added formal `dam writeback` section to the maintain commands reference (SYNOPSIS, OPTIONS, EXAMPLES, SEE ALSO), matching the format of all other commands.
+- **Manual index completeness** — updated command lists to include all documented commands (added `delete`, `split`, `embed`, `preview`, `contact-sheet`, `backup-status`, `stack`, `faces`, `sync-metadata`, `writeback`, `dedup`, `fix-recipes`, `migrate`).
+- Fixed stale version reference in shell example output.
+
 ## v3.2.0 (2026-03-14)
 
 ### New Features

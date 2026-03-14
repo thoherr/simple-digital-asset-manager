@@ -24,10 +24,10 @@ Man-page style documentation for every command, filter, and configuration option
 
 - [CLI Conventions](reference/00-cli-conventions.md) — Global flags, scripting patterns, exit codes
 - [Setup Commands](reference/01-setup-commands.md) — `init`, `volume add`, `volume list`, `volume combine`, `volume remove`
-- [Ingest Commands](reference/02-ingest-commands.md) — `import`, `tag`, `edit`, `group`, `auto-group`, `auto-tag`, `describe`
-- [Organize Commands](reference/03-organize-commands.md) — `collection`, `saved-search`
-- [Retrieve Commands](reference/04-retrieve-commands.md) — `search`, `show`, `export`, `duplicates`, `stats`, `serve`, `shell`
-- [Maintain Commands](reference/05-maintain-commands.md) — `verify`, `sync`, `refresh`, `cleanup`, `relocate`, `update-location`, `generate-previews`, `fix-roles`, `fix-dates`, `rebuild-catalog`
+- [Ingest Commands](reference/02-ingest-commands.md) — `import`, `delete`, `tag`, `edit`, `group`, `split`, `auto-group`, `auto-tag`, `embed`, `describe`
+- [Organize Commands](reference/03-organize-commands.md) — `collection`, `saved-search`, `stack`, `faces`
+- [Retrieve Commands](reference/04-retrieve-commands.md) — `search`, `show`, `preview`, `export`, `contact-sheet`, `duplicates`, `stats`, `backup-status`, `serve`, `shell`
+- [Maintain Commands](reference/05-maintain-commands.md) — `verify`, `sync`, `refresh`, `sync-metadata`, `writeback`, `cleanup`, `dedup`, `relocate`, `update-location`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `migrate`
 - [Search Filters](reference/06-search-filters.md) — Complete filter syntax reference
 - [Format Templates](reference/07-format-templates.md) — Output format presets, custom templates, placeholders
 - [Configuration](reference/08-configuration.md) — `dam.toml` reference
@@ -43,4 +43,4 @@ Technical documentation for integrators and contributors.
 
 ---
 
-**Version**: v3.2.0 | **Source**: [GitHub](https://github.com/thoherr/simple-digital-asset-manager) | **License**: Apache-2.0
+**Version**: v3.2.1 | **Source**: [GitHub](https://github.com/thoherr/simple-digital-asset-manager) | **License**: Apache-2.0

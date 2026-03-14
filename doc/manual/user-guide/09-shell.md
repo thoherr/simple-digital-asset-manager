@@ -19,7 +19,7 @@ dam shell
 Output:
 
 ```
-dam shell v3.0.2 — type 'help' or 'quit' to exit
+dam shell v3.2.1 — type 'help' or 'quit' to exit
 photos>
 ```
 
