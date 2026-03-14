@@ -628,7 +628,15 @@ temperature = 0.7
 concurrency = 1  # parallel VLM requests (increase for faster batch processing)
 ```
 
-CLI flags (`--endpoint`, `--model`, `--prompt`, `--max-tokens`, `--timeout`, `--temperature`, `--mode`) override `dam.toml` for one-off runs.
+To offer multiple models in the web UI (e.g., a fast model for routine work and a larger model for difficult images), add a `models` list:
+
+```toml
+[vlm]
+model = "moondream"
+models = ["moondream", "qwen3-vl:4b"]
+```
+
+A dropdown appears next to the Describe button when two or more models are configured. CLI flags (`--endpoint`, `--model`, `--prompt`, `--max-tokens`, `--timeout`, `--temperature`, `--mode`) override `dam.toml` for one-off runs.
 
 ### SigLIP vs VLM: When to Use Which
 

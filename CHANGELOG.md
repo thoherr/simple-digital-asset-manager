@@ -2,6 +2,19 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v3.2.4 (2026-03-15)
+
+### New Features
+- **VLM model selector in web UI** — when `[vlm] models` is configured in `dam.toml`, a dropdown appears next to the "Describe" button on the asset detail page and the batch Describe button in the browse toolbar, letting you choose which VLM model to use per request.
+
+### Enhancements
+- **Thinking model support** — Qwen3-VL and other models that use `<think>` reasoning tags now work correctly. dam sends `think: false` to disable extended thinking and strips any `<think>...</think>` tags from responses.
+- **Ollama-first endpoint order** — VLM calls now try the Ollama native API (`/api/generate`) first, falling back to the OpenAI-compatible endpoint (`/v1/chat/completions`) on 404. This avoids a double round-trip for Ollama users and ensures `think: false` is honored.
+- **Default max_tokens increased** — VLM default `max_tokens` raised from 200 to 500, giving models enough headroom for detailed descriptions.
+
+### Bug Fixes
+- **Fix buildSearchUrl error** — batch describe, batch auto-tag, and batch detect-faces no longer show a "buildSearchUrl is not defined" error after completion.
+
 ## v3.2.3 (2026-03-14)
 
 ### New Features

@@ -2,7 +2,7 @@
 
 This document covers vision-language models (VLMs) compatible with `dam describe`. It lists tested models, hardware requirements, quality notes, and setup instructions for each inference backend.
 
-dam uses the **OpenAI-compatible `/v1/chat/completions`** endpoint with base64-encoded images. Any server that implements this API works — Ollama, llama.cpp, vLLM, LM Studio, SGLang, or cloud providers.
+dam tries the **Ollama native API** (`/api/generate`) first, falling back to the **OpenAI-compatible** `/v1/chat/completions` endpoint. Both use base64-encoded images. Any server that implements either API works — Ollama, llama.cpp, vLLM, LM Studio, SGLang, or cloud providers.
 
 ---
 
@@ -226,6 +226,20 @@ Based on describing the same set of 50 photographs (landscapes, portraits, archi
 - **Qwen3-VL 8B**: Rich, natural descriptions. Good at lighting, mood, composition. Rarely generic.
 - **Qwen2.5-VL 7B**: Similar quality to Qwen3-VL 8B but slower.
 - **Qwen3.5 9B**: Best visual reasoning. Catches subtle details (reflections, depth of field, lens characteristics). Needs llama.cpp or vLLM.
+
+---
+
+## Thinking Models
+
+Some models (Qwen3-VL, Qwen3.5) support "extended thinking" — they wrap internal chain-of-thought reasoning in `<think>...</think>` tags before producing the actual answer. This can consume most of the `max_tokens` budget with reasoning text, leaving little room for the description itself.
+
+dam handles this automatically:
+
+- Sends `think: false` to disable extended thinking (works with Ollama's native API)
+- Strips any `<think>...</think>` tags from the response as a fallback
+- Tries the Ollama native API first (where `think: false` is honored), falling back to the OpenAI-compatible endpoint
+
+No configuration is needed — thinking models work out of the box. If you see empty or truncated descriptions, try increasing `max_tokens` (default 500) to give the model more headroom.
 
 ---
 

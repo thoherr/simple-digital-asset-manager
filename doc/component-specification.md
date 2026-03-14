@@ -313,6 +313,9 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 - `POST /api/batch/stack` — create a stack from selected assets (JSON: `{asset_ids}`)
 - `DELETE /api/batch/stack` — unstack selected assets (JSON: `{asset_ids}`)
 - `POST /api/batch/export` — download assets as ZIP archive (JSON: `{asset_ids?, filters?, layout, all_variants, include_sidecars}`)
+- `POST /api/asset/{id}/vlm-describe` — describe a single asset via VLM (JSON: `{mode?, model?}`)
+- `POST /api/batch/describe` — batch describe assets via VLM (JSON: `{asset_ids, mode?, model?}`)
+- `POST /api/batch/delete` — batch delete assets (JSON: `{asset_ids, remove_files?}`)
 - `PUT /api/asset/{id}/stack-pick` — set this asset as the stack pick
 - `DELETE /api/asset/{id}/stack` — dissolve the stack this asset belongs to
 - `PUT /api/asset/{id}/name` — set/clear asset name (form: `name=text`), returns name fragment
