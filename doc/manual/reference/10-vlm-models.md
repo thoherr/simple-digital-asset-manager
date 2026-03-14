@@ -23,37 +23,37 @@ All timings measured on Apple M3 Pro (18 GB) with Ollama, using preview images (
 
 ### Recommended for Photography
 
-| Model | Ollama tag | Size | RAM | Speed | Quality | Notes |
-|-------|-----------|------|-----|-------|---------|-------|
-| **Qwen2.5-VL 3B** | `qwen2.5vl:3b` | 2.0 GB | ~3 GB | ~8--12s | Very good | Default. Best balance of speed, quality, and resource use. |
-| **Qwen3-VL 8B** | `qwen3-vl:8b` | 5.2 GB | ~6 GB | ~15--20s | Excellent | Recommended upgrade from the default. Noticeably better descriptions. |
-| **Qwen3-VL 4B** | `qwen3-vl:4b` | 2.8 GB | ~4 GB | ~10--15s | Very good | Good step up from Qwen2.5-VL 3B without much extra RAM. |
-| **Qwen2.5-VL 7B** | `qwen2.5vl:7b` | 4.7 GB | ~6 GB | ~20--36s | Excellent | Proven, widely tested. |
-| **Gemma 3 4B** | `gemma3:4b` | 3.3 GB | ~4 GB | ~10--15s | Very good | Strong reasoning, good at scene understanding. |
+| Model | RAM `\newline`{=latex} Download | Speed | Notes |
+|-------------------:|---------:|--------:|:----------------------------------------------------------------------|
+| **Qwen2.5-VL 3B** `qwen2.5vl:3b` | **3 GB** `\newline`{=latex} (2.0 GB) | 8--12s | **Default.** Best balance of speed, quality, and resource use. Very good quality. |
+| **Qwen3-VL 8B** `qwen3-vl:8b` | **6 GB** `\newline`{=latex} (5.2 GB) | 15--20s | **Recommended upgrade.** Excellent quality, noticeably better descriptions. |
+| **Qwen3-VL 4B** `qwen3-vl:4b` | **4 GB** `\newline`{=latex} (2.8 GB) | 10--15s | Good step up from Qwen2.5-VL 3B without much extra RAM. Very good quality. |
+| **Qwen2.5-VL 7B** `qwen2.5vl:7b` | **6 GB** `\newline`{=latex} (4.7 GB) | 20--36s | Proven, widely tested. Excellent quality. |
+| **Gemma 3 4B** `gemma3:4b` | **4 GB** `\newline`{=latex} (3.3 GB) | 10--15s | Strong reasoning, good at scene understanding. Very good quality. |
 
 ### Budget / Batch Processing
 
-| Model | Ollama tag | Size | RAM | Speed | Quality | Notes |
-|-------|-----------|------|-----|-------|---------|-------|
-| **Moondream 2B** | `moondream` | 1.7 GB | ~2 GB | ~3--5s | Good | Fastest option. Good for bulk describe passes before refining with a larger model. |
-| **SmolVLM 2.2B** | `smolvlm` | 1.5 GB | ~2 GB | ~4--8s | Good | HuggingFace, very compact. Similar niche to Moondream. |
+| Model | RAM `\newline`{=latex} Download | Speed | Notes |
+|-------------------:|---------:|--------:|:----------------------------------------------------------------------|
+| **Moondream 2B** `moondream` | **2 GB** `\newline`{=latex} (1.7 GB) | 3--5s | Fastest option. Good for bulk first passes before refining with a larger model. |
+| **SmolVLM 2.2B** `smolvlm` | **2 GB** `\newline`{=latex} (1.5 GB) | 4--8s | HuggingFace, very compact. Similar niche to Moondream. |
 
 ### Large / High Quality
 
-| Model | Ollama tag | Size | RAM | Speed | Quality | Notes |
-|-------|-----------|------|-----|-------|---------|-------|
-| **Qwen3-VL 32B** | `qwen3-vl:32b` | 20 GB | ~24 GB | ~60--90s | Outstanding | Best quality via Ollama. Needs 32 GB+ system RAM. |
-| **LLaVA 1.6 7B** | `llava:7b` | 4.7 GB | ~6 GB | ~15--25s | Good | Well-established, wide compatibility. |
+| Model | RAM `\newline`{=latex} Download | Speed | Notes |
+|-------------------:|---------:|--------:|:----------------------------------------------------------------------|
+| **Qwen3-VL 32B** `qwen3-vl:32b` | **24 GB** `\newline`{=latex} (20 GB) | 60--90s | Best quality via Ollama. Needs 32 GB+ system RAM. Outstanding quality. |
+| **LLaVA 1.6 7B** `llava:7b` | **6 GB** `\newline`{=latex} (4.7 GB) | 15--25s | Well-established, wide compatibility. Good quality. |
 
 ### Qwen3.5 (Next Generation)
 
 Qwen3.5 models use **early fusion** — vision and text are processed jointly from the earliest layers, giving better visual reasoning than the separate-encoder approach of older models. All Qwen3.5 models are natively multimodal (no separate "-VL" variant).
 
-| Model | Size | RAM | Quality | Backend | Notes |
-|-------|------|-----|---------|---------|-------|
-| **Qwen3.5 4B** | ~3 GB | ~4 GB | Very good | llama.cpp, vLLM | Comparable to Qwen3-VL 8B in some benchmarks. |
-| **Qwen3.5 9B** | ~6 GB | ~8 GB | Excellent | llama.cpp, vLLM | Best quality-per-GB. Strong upgrade path. |
-| **Qwen3.5 27B** | ~16 GB | ~20 GB | Outstanding | llama.cpp, vLLM | Needs significant RAM; best local quality. |
+| Model | RAM `\newline`{=latex} Download | Backend | Notes |
+|-------------------:|---------:|----------------:|:----------------------------------------------------------------------|
+| **Qwen3.5 4B** | **4 GB** `\newline`{=latex} (3 GB) | llama.cpp, vLLM | Comparable to Qwen3-VL 8B in some benchmarks. Very good quality. |
+| **Qwen3.5 9B** | **8 GB** `\newline`{=latex} (6 GB) | llama.cpp, vLLM | Best quality-per-GB. Strong upgrade path. Excellent quality. |
+| **Qwen3.5 27B** | **20 GB** `\newline`{=latex} (16 GB) | llama.cpp, vLLM | Needs significant RAM; best local quality. Outstanding quality. |
 
 **Ollama caveat (as of March 2026):** Ollama cannot handle Qwen3.5 vision — the model's `mmproj` vision files are not supported yet. Text-only works, but image input silently fails. Use llama.cpp or vLLM for Qwen3.5 multimodal. This will likely be resolved in a future Ollama release.
 
@@ -176,7 +176,7 @@ model = "gpt-4o"
 ### By Use Case
 
 | Scenario | Recommended Model | Why |
-|----------|-------------------|-----|
+|------------------------------|--------------------------|----------------------------------------|
 | **Daily use, modest hardware** | Qwen2.5-VL 3B | Fast, 3 GB RAM, good quality |
 | **Best quality via Ollama** | Qwen3-VL 8B | Excellent descriptions, reasonable speed |
 | **Bulk first pass** | Moondream 2B | 3--5s per image, good-enough descriptions |
@@ -189,7 +189,7 @@ model = "gpt-4o"
 ### By Hardware
 
 | System RAM | GPU VRAM | Suggested Models |
-|-----------|----------|------------------|
+|-------------|----------|-------------------------------------------------------|
 | 8 GB | — | Moondream 2B, SmolVLM 2.2B |
 | 16 GB | — | Qwen2.5-VL 3B (default), Gemma 3 4B, Qwen3-VL 4B |
 | 24--32 GB | — | Qwen3-VL 8B, Qwen2.5-VL 7B, Qwen3.5 9B |
@@ -204,7 +204,7 @@ model = "gpt-4o"
 ### Qwen Model Generations
 
 | | Qwen2.5-VL | Qwen3-VL | Qwen3.5 |
-|-|-----------|----------|---------|
+|--------------------------|------------------------------|------------------------------|-------------------------------|
 | **Architecture** | Late fusion (separate vision encoder) | Late fusion (improved encoder) | Early fusion (native multimodal) |
 | **Vision quality** | Good | Very good | Best |
 | **Document understanding** | Good | Better | Best (90.8 OmniDocBench) |
