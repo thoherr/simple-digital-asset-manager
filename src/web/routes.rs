@@ -1828,6 +1828,33 @@ pub async fn set_preview_variant(
     }
 }
 
+/// POST /api/asset/{id}/variant-role — change a variant's role.
+pub async fn set_variant_role(
+    State(state): State<Arc<AppState>>,
+    Path(asset_id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let engine = state.query_engine();
+        let content_hash = body.get("content_hash").and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing content_hash"))?;
+        let role = body.get("role").and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing role"))?;
+        engine.set_variant_role(&asset_id, content_hash, role)?;
+        Ok::<_, anyhow::Error>(serde_json::json!({"ok": true, "role": role}))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
 /// POST /api/asset/{id}/reimport-metadata — clear tags/description/rating/label and re-extract from source files.
 pub async fn reimport_metadata(
     State(state): State<Arc<AppState>>,

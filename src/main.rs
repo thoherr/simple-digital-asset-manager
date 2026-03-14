@@ -167,6 +167,14 @@ enum Commands {
         /// Reset date to now
         #[arg(long)]
         clear_date: bool,
+
+        /// Set variant role (original, alternate, processed, export, sidecar)
+        #[arg(long)]
+        role: Option<String>,
+
+        /// Variant content hash (required with --role)
+        #[arg(long)]
+        variant: Option<String>,
     },
 
     /// Group variants into one asset
@@ -2376,11 +2384,33 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             }
             Ok(())
         }
-        Commands::Edit { asset_id, name, clear_name, description, clear_description, rating, clear_rating, label, clear_label, date, clear_date } => {
+        Commands::Edit { asset_id, name, clear_name, description, clear_description, rating, clear_rating, label, clear_label, date, clear_date, role, variant } => {
             use dam::query::{EditFields, parse_date_input};
 
+            // Handle --role --variant separately from asset-level edits
+            if role.is_some() || variant.is_some() {
+                let role = role.ok_or_else(|| anyhow::anyhow!("--variant requires --role"))?;
+                let variant_hash = variant.ok_or_else(|| anyhow::anyhow!("--role requires --variant"))?;
+
+                let catalog_root = dam::config::find_catalog_root()?;
+                let engine = QueryEngine::new(&catalog_root);
+                engine.set_variant_role(&asset_id, &variant_hash, &role)?;
+
+                if cli.json {
+                    println!("{}", serde_json::json!({
+                        "asset_id": asset_id,
+                        "variant": variant_hash,
+                        "role": role,
+                    }));
+                } else {
+                    let short_hash = &variant_hash[..16.min(variant_hash.len())];
+                    println!("Variant {short_hash}… role set to {role}");
+                }
+                return Ok(());
+            }
+
             if name.is_none() && !clear_name && description.is_none() && !clear_description && rating.is_none() && !clear_rating && label.is_none() && !clear_label && date.is_none() && !clear_date {
-                anyhow::bail!("No edit flags provided. Use --name, --description, --rating, --label, --date, --clear-name, --clear-description, --clear-rating, --clear-label, or --clear-date.");
+                anyhow::bail!("No edit flags provided. Use --name, --description, --rating, --label, --date, --role/--variant, or --clear-*.");
             }
 
             // Validate label if provided

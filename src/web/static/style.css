@@ -367,6 +367,12 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     background: var(--badge-bg);
     color: var(--text-muted);
 }
+select.badge {
+    border: 1px solid var(--border);
+    cursor: pointer;
+    appearance: auto;
+    transition: outline 0.3s;
+}
 .badge-count {
     background: var(--border);
     font-variant-numeric: tabular-nums;

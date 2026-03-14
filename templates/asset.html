@@ -386,7 +386,7 @@
                     {% for v in variants %}
                     <tr>
                         {% if variants.len() > 1 %}<td><input type="checkbox" class="split-cb" value="{{ v.content_hash }}" {% if variants.len() <= 1 %}disabled{% endif %}></td>{% endif %}
-                        <td><span class="badge">{{ v.role }}</span></td>
+                        <td>{% if variants.len() > 1 %}<select class="badge role-select" data-hash="{{ v.content_hash }}" onchange="setVariantRole('{{ asset_id }}', '{{ v.content_hash }}', this.value, this)"><option value="original" {% if v.role == "original" %}selected{% endif %}>original</option><option value="alternate" {% if v.role == "alternate" %}selected{% endif %}>alternate</option><option value="processed" {% if v.role == "processed" %}selected{% endif %}>processed</option><option value="export" {% if v.role == "export" %}selected{% endif %}>export</option><option value="sidecar" {% if v.role == "sidecar" %}selected{% endif %}>sidecar</option></select>{% else %}<span class="badge">{{ v.role }}</span>{% endif %}</td>
                         <td>{{ v.original_filename }}</td>
                         <td>{{ v.format }}</td>
                         <td>{{ v.size }}</td>
@@ -457,6 +457,19 @@
         {% endif %}
         {% if variants.len() > 1 %}
         <script>
+        function setVariantRole(assetId, contentHash, role, selectEl) {
+            fetch('/api/asset/' + assetId + '/variant-role', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({content_hash: contentHash, role: role})
+            })
+            .then(function(r) {
+                if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+                selectEl.style.outline = '2px solid #4a4';
+                setTimeout(function() { selectEl.style.outline = ''; }, 800);
+            })
+            .catch(function(err) { alert('Failed: ' + err.message); selectEl.style.outline = '2px solid #a44'; });
+        }
         function setPreviewVariant(assetId, contentHash) {
             fetch('/api/asset/' + assetId + '/preview-variant', {
                 method: 'POST',
