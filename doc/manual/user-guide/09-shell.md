@@ -19,7 +19,7 @@ dam shell
 Output:
 
 ```
-dam shell v3.2.1 — type 'help' or 'quit' to exit
+dam shell v3.2.2 — type 'help' or 'quit' to exit
 photos>
 ```
 
@@ -121,7 +121,7 @@ Use variables in any command by referencing `$name`:
 ```
 photos> tag --add "needs-review" $untagged
   142 assets tagged
-photos> export --target /tmp/best $picks
+photos> export $picks /tmp/best
   38 assets exported
 ```
 
@@ -262,7 +262,7 @@ auto-group $new
 generate-previews $new --log
 $picks = search "imported:today rating:4+"
 tag --add "selects" $picks
-export --target /tmp/selects $picks
+export $picks /tmp/selects
 stats
 ```
 
@@ -358,6 +358,58 @@ This produces three tokens: `type:image` (grouping quotes stripped), `camera:"NI
 
 ---
 
+## Tilde Expansion
+
+The shell expands `~` to your home directory (`$HOME` on Unix, `%USERPROFILE%` on Windows) in any token:
+
+```
+photos> export $picks ~/Desktop/delivery
+  38 assets exported to /Users/alice/Desktop/delivery
+photos> export "rating:5" ~/exports/portfolio --zip
+  Export complete: 12 files archived
+```
+
+Only `~` at the start of a token is expanded — `~` appearing elsewhere (e.g. inside a search query) is left as-is.
+
+---
+
+## Built-in Commands
+
+Most commands in the shell are dam subcommands run directly. A few commands are **built-ins** handled specially by the shell:
+
+| Command | Purpose |
+|---------|---------|
+| `export` | Export assets to a directory or ZIP archive (supports `$var` expansion for multi-ID export) |
+| `preview` | Show asset previews in the terminal (supports `$var` and `_`) |
+| `help` | Shell help and syntax reference |
+| `reload` | Re-read config, clear variables and defaults |
+| `set` / `unset` | Manage session defaults and variables |
+| `source` | Run a script file inline |
+| `vars` | List defined variables |
+| `quit` / `exit` | End the session |
+
+### Shell `export`
+
+The `export` command is a built-in that supports variable expansion and all standard export flags:
+
+```
+photos> export <query|$var> <target> [--layout flat|mirror] [--all-variants]
+        [--include-sidecars] [--dry-run] [--overwrite] [--symlink] [--zip]
+```
+
+When a variable expands to multiple asset IDs, all assets are exported in a single operation:
+
+```
+photos> $picks = search "rating:5 tag:landscape"
+  24 assets --> $picks
+photos> export $picks ~/Desktop/landscapes
+  24 assets exported
+photos> export $picks ~/Desktop/landscapes.zip --zip
+  Export complete: 24 files archived
+```
+
+---
+
 ## Practical Examples
 
 ### Curate and export workflow
@@ -370,7 +422,7 @@ photos> $candidates = search "date:2024-06 type:image rating:3+"
 photos> $portraits = search "date:2024-06 tag:portrait rating:4+"
   42 assets --> $portraits
 photos> tag --add "june-selects" $portraits
-photos> export --target /tmp/june-portraits $portraits
+photos> export $portraits /tmp/june-portraits
   42 assets exported
 ```
 
@@ -428,7 +480,7 @@ photos> tag --add "portfolio" $landscapes
 photos> tag --add "portfolio" $portraits
 photos> $portfolio = search "tag:portfolio"
   127 assets --> $portfolio
-photos> export --target /tmp/portfolio $portfolio
+photos> export $portfolio /tmp/portfolio
 ```
 
 ### Quick one-liners with `-c`
@@ -440,7 +492,7 @@ Use `-c` mode for cron jobs or shell aliases:
 dam shell -c 'stats'
 
 # Export today's picks
-dam shell -c '$picks = search "imported:today rating:4+"; export --target /tmp/daily $picks'
+dam shell -c '$picks = search "imported:today rating:4+"; export $picks /tmp/daily'
 
 # Verify with logging
 dam shell -c 'set --log; verify'

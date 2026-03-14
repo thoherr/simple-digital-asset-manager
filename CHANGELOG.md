@@ -2,6 +2,21 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v3.2.2 (2026-03-14)
+
+### New Features
+- **CLI `--zip` export** — `dam export <query> <target> --zip` writes a ZIP archive instead of copying files to a directory. Appends `.zip` extension if missing. Layout, all-variants, and sidecar options work the same as directory export.
+- **Shell tilde expansion** — `~` and `~/path` expand to `$HOME` in shell tokens (e.g. `export $picks ~/Desktop/out`).
+- **Shell `export` built-in** — `export` is now a shell built-in with full variable expansion and `--zip` support. Multi-ID variables export all assets in a single operation.
+- **Web UI batch delete** — delete button in the browse toolbar with confirmation modal, asset thumbnails, "remove files from disk" checkbox, and automatic grid refresh. New `POST /api/batch/delete` endpoint.
+- **Editable ZIP filename** — the web export modal now includes a text field to customize the archive name.
+
+### Bug Fixes
+- **Multi-ID shell export** — exporting a variable with multiple asset IDs now exports all files instead of only the last one (`ParsedSearch.asset_ids` changed from `Option<String>` to `Vec<String>`).
+
+### Internal
+- Deduplicated ZIP-building logic: web export and CLI `--zip` share `AssetService::export_zip_for_ids()`.
+
 ## v3.2.1 (2026-03-14)
 
 ### Documentation

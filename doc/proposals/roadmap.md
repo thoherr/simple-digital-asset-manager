@@ -2,7 +2,7 @@
 
 Living document tracking planned enhancements. Previous proposals (all implemented or deferred) are in `archive/`.
 
-Current version: **v3.2.1** (2026-03-14)
+Current version: **v3.2.2** (2026-03-14)
 
 ---
 
@@ -62,28 +62,13 @@ The ZIP export modal shows "Preparing..." with no progress feedback. For large e
 
 **Complexity:** Low-Medium. Backend plan info already available via `build_export_plan()`; needs a two-phase request or SSE channel.
 
-### Web UI Delete
+### Web UI Delete ✅
 
-The batch toolbar covers most operations but `dam delete` isn't exposed in the web UI. With export now available, a natural workflow is export-then-delete.
+Implemented in v3.2.1. Batch delete from the browse toolbar with confirmation modal, "remove files" checkbox, and grid refresh. `POST /api/batch/delete` endpoint.
 
-**Scope:**
-- "Delete" button in batch toolbar (with confirmation modal showing asset count and warning)
-- `DELETE /api/batch/delete` endpoint — calls `AssetService::delete()` for each asset
-- Option to delete only from current volume vs. all copies
-- Refresh grid after deletion
+### Shell `export` Built-in ✅
 
-**Complexity:** Low. `AssetService::delete()` exists; needs a route, JS handler, and confirmation dialog.
-
-### Shell `export` Built-in
-
-The interactive shell (`dam shell`) doesn't expose the `export` command. Now that `build_export_plan()` is extracted, adding `export $picks /tmp/out` would complete the shell's coverage.
-
-**Scope:**
-- `export <query-or-ids> <target-dir> [--layout flat|mirror] [--all-variants] [--include-sidecars] [--dry-run]`
-- Reuses `AssetService::export()` directly
-- Supports shell variables (`export $picks ~/Desktop/out`)
-
-**Complexity:** Low. All export logic exists; just needs a shell command entry and argument parsing.
+Implemented in v3.2.1. Shell `export` is a built-in with variable expansion, tilde expansion, and `--zip` support. Multi-ID export fixed to handle all IDs from a variable in a single operation.
 
 ---
 
@@ -159,4 +144,4 @@ All previous proposals are in `doc/proposals/archive/`. Key milestones:
 - **v2.5**: Text-to-image semantic search, auto-describe during import, concurrent VLM, analytics dashboard, batch relocate, drag-and-drop, per-stack expand/collapse, audit filters (variants/scattered), metadata reimport
 - **v3.0**: Asset management shell — interactive REPL with named variables, tab completion, session defaults, script files, source command, `-c` one-liner mode
 - **v3.1**: Preview command, consistent positional query and shell variable expansion for all multi-asset commands
-- **v3.2**: Web UI export as ZIP download (selected assets and filtered results), dark mode modal fixes
+- **v3.2**: Web UI export as ZIP download, batch delete, shell export built-in with tilde expansion, CLI `--zip` flag, dark mode modal fixes

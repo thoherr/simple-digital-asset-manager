@@ -284,7 +284,7 @@ photos [picks=12]> preview $picks
 
 ### NAME
 
-dam-export -- copy files matching a search query to a directory
+dam-export -- copy files matching a search query to a directory or ZIP archive
 
 ### SYNOPSIS
 
@@ -294,7 +294,7 @@ dam [GLOBAL FLAGS] export <QUERY> <TARGET> [OPTIONS]
 
 ### DESCRIPTION
 
-Exports files from the catalog to a target directory. Searches for assets matching the query, resolves their file locations on online volumes, and copies (or symlinks) files to the target.
+Exports files from the catalog to a target directory or ZIP archive. Searches for assets matching the query, resolves their file locations on online volumes, and copies (or symlinks) files to the target. With `--zip`, writes a single ZIP archive instead of individual files.
 
 By default, only the **best variant** per asset is exported (Export > Processed > Original, image formats preferred, file size tiebreaker). Use `--all-variants` to export every variant.
 
@@ -311,7 +311,7 @@ Files are copied with SHA-256 integrity verification. Existing files at the targ
 : Search query string (same syntax as `dam search`).
 
 **TARGET** (required)
-: Target directory path. Created automatically if it does not exist (except in `--dry-run` mode).
+: Target directory path (or ZIP file path with `--zip`). Created automatically if it does not exist (except in `--dry-run` mode).
 
 ### OPTIONS
 
@@ -332,6 +332,9 @@ Files are copied with SHA-256 integrity verification. Existing files at the targ
 
 **--overwrite**
 : Re-copy files even if the target already contains a file with a matching content hash. Default behavior skips matching files.
+
+**--zip**
+: Write a ZIP archive to the target path instead of copying files to a directory. The archive uses stored (uncompressed) entries since media files are already compressed. The `.zip` extension is appended automatically if not present. Cannot be combined with `--symlink`. Layout and sidecar options work the same as directory export.
 
 `--json` outputs an `ExportResult` object with fields: `dry_run`, `assets_matched`, `files_exported`, `files_skipped`, `sidecars_exported`, `total_bytes`, `errors`.
 
@@ -365,6 +368,12 @@ Export all variants (RAW + processed):
 
 ```bash
 dam export "tag:portfolio" /tmp/all/ --all-variants
+```
+
+Export as a ZIP archive:
+
+```bash
+dam export "tag:client" ~/Desktop/delivery --zip
 ```
 
 Dry run to see what would be exported:
