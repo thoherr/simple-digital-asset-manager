@@ -281,8 +281,8 @@ fn strip_think_tags(text: &str) -> &str {
 
 /// Call a VLM endpoint with an image.
 ///
-/// Tries OpenAI-compatible `/v1/chat/completions` first, falls back to
-/// Ollama's native `/api/generate` on 404.
+/// Tries Ollama's native `/api/generate` first (supports `think: false`),
+/// falls back to OpenAI-compatible `/v1/chat/completions` on 404.
 pub fn call_vlm(
     endpoint: &str,
     model: &str,
@@ -293,18 +293,18 @@ pub fn call_vlm(
     temperature: f32,
     verbosity: crate::Verbosity,
 ) -> Result<String> {
-    // Try OpenAI-compatible endpoint first
-    match call_openai_compatible(endpoint, model, image_base64, prompt, max_tokens, timeout, temperature, verbosity)
+    // Try Ollama native endpoint first (properly supports think: false)
+    match call_ollama_native(endpoint, model, image_base64, prompt, max_tokens, timeout, temperature, verbosity)
     {
         Ok(text) => return Ok(text),
         Err(e) => {
             let err_str = format!("{e}");
             if err_str.contains("404") || err_str.contains("not found") {
-                if verbosity.debug {
-                    eprintln!("  [debug] /v1/chat/completions returned 404, falling back to /api/generate");
+                if verbosity.verbose {
+                    eprintln!("  VLM: /api/generate returned 404, falling back to /v1/chat/completions");
                 }
-                // Fall back to Ollama native API
-                return call_ollama_native(
+                // Not Ollama — fall back to OpenAI-compatible API
+                return call_openai_compatible(
                     endpoint,
                     model,
                     image_base64,
