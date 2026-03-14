@@ -185,7 +185,7 @@ pub async fn browse_page(
                 let mut model_guard = state.ai_model.blocking_lock();
                 if model_guard.is_none() {
                     if let Ok(m) = crate::ai::SigLipModel::load_with_provider(
-                        &model_dir, model_id, false, &state.ai_config.execution_provider,
+                        &model_dir, model_id, crate::Verbosity::quiet(), &state.ai_config.execution_provider,
                     ) {
                         *model_guard = Some(m);
                     }
@@ -476,7 +476,7 @@ pub async fn search_api(
                 let mut model_guard = state.ai_model.blocking_lock();
                 if model_guard.is_none() {
                     if let Ok(m) = crate::ai::SigLipModel::load_with_provider(
-                        &model_dir, model_id, false, &state.ai_config.execution_provider,
+                        &model_dir, model_id, crate::Verbosity::quiet(), &state.ai_config.execution_provider,
                     ) {
                         *model_guard = Some(m);
                     }
@@ -2376,7 +2376,7 @@ pub async fn batch_delete(
     let catalog_root = state.catalog_root.clone();
     let preview_config = state.preview_config.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let service = crate::asset_service::AssetService::new(&catalog_root, false, &preview_config);
+        let service = crate::asset_service::AssetService::new(&catalog_root, crate::Verbosity::quiet(), &preview_config);
         let result = service.delete_assets(&req.asset_ids, true, req.remove_files, |_id, _status, _elapsed| {})?;
         Ok::<_, anyhow::Error>(serde_json::json!({
             "deleted": result.deleted,
@@ -3768,7 +3768,7 @@ fn suggest_tags_inner(
     let model_guard = state.ai_model.blocking_lock();
     let mut model_opt = model_guard;
     if model_opt.is_none() {
-        let m = ai::SigLipModel::load_with_provider(&model_dir, model_id, false, &state.ai_config.execution_provider)
+        let m = ai::SigLipModel::load_with_provider(&model_dir, model_id, crate::Verbosity::quiet(), &state.ai_config.execution_provider)
             .map_err(|e| format!("Failed to load AI model: {e:#}"))?;
         *model_opt = Some(m);
     }
@@ -3917,7 +3917,7 @@ fn batch_auto_tag_inner(
     let model_id = &state.ai_config.model;
     let mut model_guard = state.ai_model.blocking_lock();
     if model_guard.is_none() {
-        let m = ai::SigLipModel::load_with_provider(&model_dir, model_id, false, &state.ai_config.execution_provider)
+        let m = ai::SigLipModel::load_with_provider(&model_dir, model_id, crate::Verbosity::quiet(), &state.ai_config.execution_provider)
             .map_err(|e| format!("Failed to load AI model: {e:#}"))?;
         *model_guard = Some(m);
     }
@@ -4313,7 +4313,7 @@ fn detect_faces_inner(state: &AppState, asset_ids: &[String]) -> Result<serde_js
         return Err("Face models not downloaded. Run 'dam faces download' first.".to_string());
     }
 
-    let mut detector = crate::face::FaceDetector::load_with_provider(&face_model_dir, false, &state.ai_config.execution_provider)
+    let mut detector = crate::face::FaceDetector::load_with_provider(&face_model_dir, crate::Verbosity::quiet(), &state.ai_config.execution_provider)
         .map_err(|e| format!("Failed to load face detector: {e:#}"))?;
 
     let min_confidence = state.ai_config.face_min_confidence;
@@ -5111,7 +5111,7 @@ fn vlm_describe_asset_inner(
         vlm.timeout,
         vlm.temperature,
         mode,
-        false,
+        crate::Verbosity::quiet(),
     )
     .map_err(|e| e.to_string())?;
 
@@ -5325,7 +5325,7 @@ fn batch_vlm_describe_inner(
 
                             vlm::call_vlm_with_mode(
                                 vlm_endpoint, vlm_model, &image_base64, prompt,
-                                vlm_max_tokens, vlm_timeout, vlm_temperature, mode, false,
+                                vlm_max_tokens, vlm_timeout, vlm_temperature, mode, crate::Verbosity::quiet(),
                             )
                             .map_err(|e| format!("{}: {e}", item.original_id))
                         })
@@ -5578,7 +5578,7 @@ pub async fn export_zip(
     let tmp = std::env::temp_dir().join(format!("dam-export-{}.zip", std::process::id()));
     let tmp2 = tmp.clone();
     let zip_result = tokio::task::spawn_blocking(move || -> Result<std::path::PathBuf, String> {
-        let service = AssetService::new(&root, false, &pc);
+        let service = AssetService::new(&root, crate::Verbosity::quiet(), &pc);
         let result = service.export_zip_for_ids(&ids, &tmp2, layout, all_variants, include_sidecars, |_, _, _| {})
             .map_err(|e| format!("Export failed: {e}"))?;
         if result.files_exported == 0 && result.sidecars_exported == 0 {

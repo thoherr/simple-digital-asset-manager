@@ -21,12 +21,16 @@ struct Cli {
     #[arg(short = 'l', long = "log", global = true, display_order = 40)]
     log: bool,
 
-    /// Show debug output from external tools (ffmpeg, dcraw)
-    #[arg(short = 'd', long = "debug", global = true, display_order = 41)]
+    /// Show operational decisions and program flow
+    #[arg(short = 'v', long = "verbose", global = true, display_order = 41)]
+    verbose: bool,
+
+    /// Show debug output from external tools (ffmpeg, dcraw, curl)
+    #[arg(short = 'd', long = "debug", global = true, display_order = 42)]
     debug: bool,
 
     /// Show elapsed time after command execution
-    #[arg(short = 't', long = "time", global = true, display_order = 42)]
+    #[arg(short = 't', long = "time", global = true, display_order = 43)]
     timing: bool,
 
     #[command(subcommand)]
@@ -743,6 +747,10 @@ enum Commands {
         #[arg(long, display_order = 10)]
         volume: Option<String>,
 
+        /// Limit to files under this path prefix (relative to volume root)
+        #[arg(long, display_order = 11)]
+        path: Option<String>,
+
         /// List stale entries
         #[arg(long, display_order = 15)]
         list: bool,
@@ -1413,6 +1421,7 @@ fn main() {
 
 /// Execute a parsed CLI command. Returns asset IDs produced by the command (for shell _ variable).
 fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
+    let verbosity = dam::Verbosity::new(cli.verbose, cli.debug);
     let mut _asset_ids: Vec<String> = Vec::new();
 
     let result: anyhow::Result<()> = (|| match cli.command {
@@ -1542,7 +1551,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             VolumeCommands::Remove { volume, apply } => {
                 let catalog_root = dam::config::find_catalog_root()?;
                 let config = CatalogConfig::load(&catalog_root)?;
-                let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+                let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
                 let show_log = cli.log;
                 let result = if show_log {
@@ -1621,7 +1630,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             VolumeCommands::Combine { source, target, apply } => {
                 let catalog_root = dam::config::find_catalog_root()?;
                 let config = CatalogConfig::load(&catalog_root)?;
-                let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+                let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
                 let show_log = cli.log;
                 let result = service.combine_volume(
@@ -1738,7 +1747,20 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 }
             }
 
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            if verbosity.verbose {
+                eprintln!("  Import: {} file(s) on volume \"{}\"", canonical_paths.len(), volume.label);
+                if !config.import.exclude.is_empty() {
+                    eprintln!("  Import: exclude patterns: {:?}", config.import.exclude);
+                }
+                if !all_tags.is_empty() {
+                    eprintln!("  Import: auto-tags: {}", all_tags.join(", "));
+                }
+                if smart {
+                    eprintln!("  Import: smart previews enabled");
+                }
+            }
+
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let result = if cli.log {
                 use dam::asset_service::FileStatus;
                 service.import_with_callback(&canonical_paths, &volume, &filter, &config.import.exclude, &all_tags, dry_run, smart, |path, status, elapsed| {
@@ -1835,10 +1857,10 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     let _ = dam::embedding_store::EmbeddingStore::initialize(catalog.conn());
                     let emb_store = dam::embedding_store::EmbeddingStore::new(catalog.conn());
 
-                    let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+                    let service = AssetService::new(&catalog_root, verbosity, &config.preview);
                     let preview_gen = dam::preview::PreviewGenerator::new(
                         &catalog_root,
-                        cli.debug,
+                        verbosity,
                         &config.preview,
                     );
 
@@ -1851,7 +1873,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                             .map(|v| (v.id.to_string(), v))
                             .collect();
 
-                    let mut ai_model = dam::ai::SigLipModel::load_with_provider(&model_dir, model_id, cli.debug, &config.ai.execution_provider)?;
+                    let mut ai_model = dam::ai::SigLipModel::load_with_provider(&model_dir, model_id, verbosity, &config.ai.execution_provider)?;
 
                     let mut embedded = 0u32;
                     let mut embed_skipped = 0u32;
@@ -1919,14 +1941,14 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 // Check VLM endpoint availability first
                 let endpoint = &config.vlm.endpoint;
                 let vlm_model = &config.vlm.model;
-                let vlm_available = dam::vlm::check_endpoint(endpoint, 5, cli.debug).is_ok();
+                let vlm_available = dam::vlm::check_endpoint(endpoint, 5, verbosity).is_ok();
 
                 if vlm_available {
                     let mode = dam::vlm::DescribeMode::from_str(&config.vlm.mode)
                         .unwrap_or(dam::vlm::DescribeMode::Describe);
                     let prompt = config.vlm.prompt.as_deref()
                         .unwrap_or_else(|| dam::vlm::default_prompt_for_mode(mode));
-                    let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+                    let service = AssetService::new(&catalog_root, verbosity, &config.preview);
                     let log = cli.log;
                     match service.describe_assets(
                         &result.new_asset_ids,
@@ -2065,6 +2087,10 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             let engine = QueryEngine::new(&catalog_root);
             let results = engine.search(&query)?;
 
+            if verbosity.verbose {
+                eprintln!("  Search: query=\"{query}\", {} result(s)", results.len());
+            }
+
             // Capture asset IDs for shell _ variable
             _asset_ids = results.iter().map(|r| r.asset_id.clone()).collect();
 
@@ -2172,7 +2198,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&details)?);
             } else {
-                let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, cli.debug, &config.preview);
+                let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
 
                 println!("Asset: {}", details.id);
                 if let Some(name) = &details.name {
@@ -2257,7 +2283,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             let engine = QueryEngine::new(&catalog_root);
             let details = engine.show(&asset_id)?;
             let full_id = &details.id;
-            let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, cli.debug, &config.preview);
+            let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
 
             // Find best preview file (smart preview > regular preview)
             let best_hash = catalog.get_asset_best_variant_hash(full_id)
@@ -2502,7 +2528,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             // Collect face IDs for deleted assets before deletion (for AI cleanup)
             #[cfg(feature = "ai")]
@@ -2630,7 +2656,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 .unwrap_or_else(|| dam::vlm::default_prompt_for_mode(vlm_mode));
 
             if check {
-                match dam::vlm::check_endpoint_status(endpoint, timeout, cli.debug) {
+                match dam::vlm::check_endpoint_status(endpoint, timeout, verbosity) {
                     Ok(status) => {
                         let model_status = if status.available_models.is_empty() {
                             format!("Configured model: {model}")
@@ -2695,7 +2721,12 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 );
             }
 
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            if verbosity.verbose {
+                eprintln!("  VLM: endpoint={endpoint}, model={model}, mode={mode}");
+                eprintln!("  VLM: max_tokens={max_tokens}, timeout={timeout}s, temperature={temperature}, concurrency={}", config.vlm.concurrency);
+            }
+
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             let show_log = cli.log;
             let result = service.describe(
@@ -2949,8 +2980,8 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     None => {
                         // No stored embedding — encode it now
                         let config_preview = &config.preview;
-                        let service = AssetService::new(&catalog_root, cli.debug, config_preview);
-                        let mut ai_model = dam::ai::SigLipModel::load_with_provider(&model_dir, model_id, cli.debug, &config.ai.execution_provider)?;
+                        let service = AssetService::new(&catalog_root, verbosity, config_preview);
+                        let mut ai_model = dam::ai::SigLipModel::load_with_provider(&model_dir, model_id, verbosity, &config.ai.execution_provider)?;
                         let registry = DeviceRegistry::new(&catalog_root);
                         let volumes = registry.list()?;
                         let online_volumes: std::collections::HashMap<String, &dam::models::Volume> =
@@ -2961,7 +2992,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                                 .collect();
                         let preview_gen = dam::preview::PreviewGenerator::new(
                             &catalog_root,
-                            cli.debug,
+                            verbosity,
                             config_preview,
                         );
                         let details = catalog
@@ -3037,7 +3068,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             };
 
             let prompt = &config.ai.prompt;
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             let show_log = cli.log;
             let result = service.auto_tag(
@@ -3225,14 +3256,14 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     .map(|v| (v.id.to_string(), v))
                     .collect();
 
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let preview_gen = dam::preview::PreviewGenerator::new(
                 &catalog_root,
-                cli.debug,
+                verbosity,
                 &config.preview,
             );
 
-            let mut ai_model = dam::ai::SigLipModel::load_with_provider(&model_dir, model_id, cli.debug, &config.ai.execution_provider)?;
+            let mut ai_model = dam::ai::SigLipModel::load_with_provider(&model_dir, model_id, verbosity, &config.ai.execution_provider)?;
 
             let mut embedded: u32 = 0;
             let mut skipped: u32 = 0;
@@ -3290,7 +3321,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                         }
                         // Write SigLIP embedding binary
                         if let Err(e) = dam::embedding_store::write_embedding_binary(&catalog_root, model_id, aid, &emb) {
-                            if cli.debug {
+                            if verbosity.debug {
                                 eprintln!("  {short_id}: embedding binary error: {e:#}");
                             }
                         }
@@ -3388,8 +3419,8 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
                     let engine = QueryEngine::new(&catalog_root);
                     let config_preview = &config.preview;
-                    let service = AssetService::new(&catalog_root, cli.debug, config_preview);
-                    let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, false, config_preview);
+                    let service = AssetService::new(&catalog_root, verbosity, config_preview);
+                    let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, dam::Verbosity::quiet(), config_preview);
                     let registry = DeviceRegistry::new(&catalog_root);
                     let volumes = registry.list()?;
                     let online_volumes: std::collections::HashMap<String, &dam::models::Volume> = volumes
@@ -3421,7 +3452,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                             .collect()
                     };
 
-                    let mut detector = dam::face::FaceDetector::load_with_provider(&face_model_dir, cli.debug, &config.ai.execution_provider)?;
+                    let mut detector = dam::face::FaceDetector::load_with_provider(&face_model_dir, verbosity, &config.ai.execution_provider)?;
 
                     let mut total_faces = 0u32;
                     let mut total_assets = 0u32;
@@ -3484,13 +3515,13 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                                         } else {
                                             // Generate face crop thumbnail
                                             if let Err(e) = dam::face::save_face_crop(&image_path, face, &face_id, &catalog_root) {
-                                                if cli.debug {
+                                                if verbosity.debug {
                                                     eprintln!("  {short_id}: face crop error: {e:#}");
                                                 }
                                             }
                                             // Write ArcFace embedding binary
                                             if let Err(e) = dam::face_store::write_arcface_binary(&catalog_root, &face_id, embedding) {
-                                                if cli.debug {
+                                                if verbosity.debug {
                                                     eprintln!("  {short_id}: arcface binary error: {e:#}");
                                                 }
                                             }
@@ -3802,7 +3833,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
         } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             // Resolve asset IDs: --query, positional args, or stdin
             let ids: Vec<String> = if let Some(ref q) = query {
@@ -3937,7 +3968,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             let max_age_days: Option<u64> = if force {
                 None
@@ -4075,7 +4106,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 registry.find_volume_for_path(&canonical_paths[0])?
             };
 
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let result = if cli.log {
                 use dam::asset_service::SyncStatus;
                 service.sync(
@@ -4168,7 +4199,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 None => vec![None], // process all
             };
 
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let mut result = dam::asset_service::SyncMetadataResult { dry_run, ..Default::default() };
             for aid in &asset_id_list {
                 let r = if cli.log {
@@ -4294,7 +4325,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 None
             };
 
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let result = if cli.log {
                 use dam::asset_service::RefreshStatus;
                 service.refresh(
@@ -4405,10 +4436,54 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             Ok(())
         }
-        Commands::Cleanup { volume, list, apply } => {
+        Commands::Cleanup { volume, path, list, apply } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
+
+            // If --path is given without --volume, try to auto-detect the volume
+            let volume = if volume.is_none() && path.is_some() {
+                let registry = DeviceRegistry::new(&catalog_root);
+                let p = std::path::Path::new(path.as_deref().unwrap());
+                if p.is_absolute() {
+                    // Absolute path: find which volume contains it
+                    match registry.find_volume_for_path(p) {
+                        Ok(v) => Some(v.label.clone()),
+                        Err(_) => None, // fall through — cleanup will check all volumes
+                    }
+                } else {
+                    None
+                }
+            } else {
+                volume
+            };
+
+            // Convert absolute --path to relative (strip volume mount point)
+            let path_prefix = if let (Some(ref p), Some(ref vol_label)) = (&path, &volume) {
+                let abs = std::path::Path::new(p);
+                if abs.is_absolute() {
+                    let registry = DeviceRegistry::new(&catalog_root);
+                    if let Ok(vol) = registry.resolve_volume(vol_label) {
+                        abs.strip_prefix(&vol.mount_point)
+                            .ok()
+                            .and_then(|rel| rel.to_str())
+                            .map(|s| s.to_string())
+                            .or_else(|| path.clone())
+                    } else {
+                        path.clone()
+                    }
+                } else {
+                    path.clone()
+                }
+            } else {
+                path
+            };
+
+            if verbosity.verbose {
+                if let Some(ref prefix) = path_prefix {
+                    eprintln!("  Cleanup: path prefix \"{}\"", prefix);
+                }
+            }
 
             let show_log = cli.log;
             let show_list = list;
@@ -4416,6 +4491,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 use dam::asset_service::CleanupStatus;
                 service.cleanup(
                     volume.as_deref(),
+                    path_prefix.as_deref(),
                     apply,
                     |path, status, elapsed| {
                         match status {
@@ -4454,6 +4530,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             } else {
                 service.cleanup(
                     volume.as_deref(),
+                    path_prefix.as_deref(),
                     apply,
                     |_, _, _| {},
                 )?
@@ -4533,7 +4610,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
         Commands::Dedup { volume, prefer, filter_format, path, min_copies, apply } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             // CLI --prefer overrides config [dedup] prefer
             let effective_prefer = prefer.or(config.dedup.prefer);
@@ -4619,7 +4696,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
         Commands::UpdateLocation { asset_id, from, to, volume } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             let to_path = std::fs::canonicalize(&to)
                 .unwrap_or_else(|_| PathBuf::from(&to));
@@ -4812,7 +4889,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, cli.debug, &config.preview);
+            let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
             let metadata_store = MetadataStore::new(&catalog_root);
             let registry = dam::device_registry::DeviceRegistry::new(&catalog_root);
             let catalog = dam::catalog::Catalog::open(&catalog_root)?;
@@ -5047,7 +5124,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
         Commands::FixRoles { paths, volume, asset, apply } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             let canonical_paths: Vec<PathBuf> = paths
                 .iter()
@@ -5102,7 +5179,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
         Commands::FixDates { query, volume, asset, apply, asset_ids } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let engine = dam::query::QueryEngine::new(&catalog_root);
 
             // Resolve scope (query/asset/asset_ids) to individual asset IDs
@@ -5196,7 +5273,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
         Commands::FixRecipes { query, volume, asset, apply, asset_ids } => {
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let engine = dam::query::QueryEngine::new(&catalog_root);
 
             // Resolve scope (query/asset/asset_ids) to individual asset IDs
@@ -5562,7 +5639,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             let catalog_root = dam::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let service = AssetService::new(&catalog_root, cli.debug, &config.preview);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             let show_log = cli.log;
             let log_callback = |path: &std::path::Path, status: &ExportStatus, elapsed: std::time::Duration| {

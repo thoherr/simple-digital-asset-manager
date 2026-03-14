@@ -19,7 +19,8 @@ use tokenizers::Tokenizer;
 ///
 /// The `provider` parameter selects the strategy: "auto" picks the best
 /// available, "cpu" forces CPU-only, "coreml" requests CoreML explicitly.
-pub fn build_onnx_session(model_path: &Path, provider: &str, debug: bool) -> Result<Session> {
+pub fn build_onnx_session(model_path: &Path, provider: &str, verbosity: crate::Verbosity) -> Result<Session> {
+    let debug = verbosity.debug;
     let builder = Session::builder()
         .context("Failed to create ONNX session builder")?
         .with_intra_threads(4)
@@ -158,7 +159,7 @@ pub struct SigLipModel {
     vision: Session,
     text: Session,
     tokenizer: Tokenizer,
-    debug: bool,
+    verbosity: crate::Verbosity,
     vision_outputs: Vec<OutputInfo>,
     text_outputs: Vec<OutputInfo>,
     spec: &'static ModelSpec,
@@ -167,20 +168,21 @@ pub struct SigLipModel {
 impl SigLipModel {
     /// Load ONNX sessions and tokenizer from the model directory.
     pub fn load(model_dir: &Path, model_id: &str) -> Result<Self> {
-        Self::load_with_debug(model_dir, model_id, false)
+        Self::load_with_debug(model_dir, model_id, crate::Verbosity::quiet())
     }
 
     /// Load ONNX sessions with debug logging and execution provider selection.
-    pub fn load_with_provider(model_dir: &Path, model_id: &str, debug: bool, provider: &str) -> Result<Self> {
-        Self::load_internal(model_dir, model_id, debug, provider)
+    pub fn load_with_provider(model_dir: &Path, model_id: &str, verbosity: crate::Verbosity, provider: &str) -> Result<Self> {
+        Self::load_internal(model_dir, model_id, verbosity, provider)
     }
 
     /// Load ONNX sessions with debug logging enabled (CPU provider).
-    pub fn load_with_debug(model_dir: &Path, model_id: &str, debug: bool) -> Result<Self> {
-        Self::load_internal(model_dir, model_id, debug, "auto")
+    pub fn load_with_debug(model_dir: &Path, model_id: &str, verbosity: crate::Verbosity) -> Result<Self> {
+        Self::load_internal(model_dir, model_id, verbosity, "auto")
     }
 
-    fn load_internal(model_dir: &Path, model_id: &str, debug: bool, provider: &str) -> Result<Self> {
+    fn load_internal(model_dir: &Path, model_id: &str, verbosity: crate::Verbosity, provider: &str) -> Result<Self> {
+        let debug = verbosity.debug;
         let spec = get_model_spec(model_id)
             .ok_or_else(|| anyhow::anyhow!("Unknown model: {model_id}"))?;
         let vision_path = model_dir.join("onnx").join("vision_model_quantized.onnx");
@@ -220,8 +222,8 @@ impl SigLipModel {
             anyhow::bail!("Tokenizer not found at {}", tokenizer_path.display());
         }
 
-        let vision = build_onnx_session(&vision_path, provider, debug)?;
-        let text = build_onnx_session(&text_path, provider, debug)?;
+        let vision = build_onnx_session(&vision_path, provider, verbosity)?;
+        let text = build_onnx_session(&text_path, provider, verbosity)?;
 
         // Cache output metadata (names + dimensionality from dtype)
         let vision_outputs: Vec<OutputInfo> = vision.outputs().iter().map(|o| {
@@ -258,7 +260,7 @@ impl SigLipModel {
             vision,
             text,
             tokenizer,
-            debug,
+            verbosity,
             vision_outputs,
             text_outputs,
             spec,
@@ -289,7 +291,7 @@ impl SigLipModel {
             ort::inputs!["pixel_values" => input_value],
         )?;
 
-        let emb = extract_pooled_embedding(&outputs, &self.vision_outputs, "vision", self.debug)?;
+        let emb = extract_pooled_embedding(&outputs, &self.vision_outputs, "vision", self.verbosity.debug)?;
         Ok(l2_normalize(&emb))
     }
 
@@ -306,7 +308,7 @@ impl SigLipModel {
             ort::inputs!["input_ids" => input_value],
         )?;
 
-        let pooled = extract_pooled_embedding(&outputs, &self.text_outputs, "text", self.debug)?;
+        let pooled = extract_pooled_embedding(&outputs, &self.text_outputs, "text", self.verbosity.debug)?;
         let shape_dim = pooled.len();
         let batch_size = texts.len();
 

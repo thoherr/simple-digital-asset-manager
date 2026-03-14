@@ -381,7 +381,7 @@ pub fn generate_contact_sheet(
 ) -> Result<ContactSheetResult> {
     let engine = QueryEngine::new(catalog_root);
     let preview_config = crate::config::PreviewConfig::default();
-    let preview_gen = PreviewGenerator::new(catalog_root, false, &preview_config);
+    let preview_gen = PreviewGenerator::new(catalog_root, crate::Verbosity::quiet(), &preview_config);
 
     // Search for matching assets
     let results = engine.search(query)?;

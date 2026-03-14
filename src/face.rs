@@ -63,17 +63,18 @@ pub struct DetectedFace {
 pub struct FaceDetector {
     detector: ort::session::Session,
     recognizer: ort::session::Session,
-    debug: bool,
+    verbosity: crate::Verbosity,
 }
 
 impl FaceDetector {
     /// Load the face detection and recognition ONNX models.
-    pub fn load(model_dir: &Path, debug: bool) -> Result<Self> {
-        Self::load_with_provider(model_dir, debug, "auto")
+    pub fn load(model_dir: &Path, verbosity: crate::Verbosity) -> Result<Self> {
+        Self::load_with_provider(model_dir, verbosity, "auto")
     }
 
     /// Load with a specific execution provider ("auto", "cpu", "coreml").
-    pub fn load_with_provider(model_dir: &Path, debug: bool, provider: &str) -> Result<Self> {
+    pub fn load_with_provider(model_dir: &Path, verbosity: crate::Verbosity, provider: &str) -> Result<Self> {
+        let debug = verbosity.debug;
         let detect_path = model_dir.join(&DETECTION_MODEL.filename);
         let recog_path = model_dir.join(&RECOGNITION_MODEL.filename);
 
@@ -90,8 +91,8 @@ impl FaceDetector {
             );
         }
 
-        let detector = build_onnx_session(&detect_path, provider, debug)?;
-        let recognizer = build_onnx_session(&recog_path, provider, debug)?;
+        let detector = build_onnx_session(&detect_path, provider, verbosity)?;
+        let recognizer = build_onnx_session(&recog_path, provider, verbosity)?;
 
         if debug {
             eprintln!("  [debug] detection model inputs:");
@@ -115,7 +116,7 @@ impl FaceDetector {
         Ok(Self {
             detector,
             recognizer,
-            debug,
+            verbosity,
         })
     }
 
@@ -172,10 +173,10 @@ impl FaceDetector {
         let faces = parse_detections(
             &outputs, num_outputs, &output_names,
             input_w as f32, input_h as f32, orig_w, orig_h,
-            min_confidence, self.debug,
+            min_confidence, self.verbosity.debug,
         )?;
 
-        if self.debug {
+        if self.verbosity.debug {
             eprintln!(
                 "  [debug] detected {} faces (min_confidence={min_confidence:.2})",
                 faces.len()
@@ -245,7 +246,7 @@ impl FaceDetector {
             .try_extract_array::<f32>()
             .context("Failed to extract recognition embedding")?;
 
-        if self.debug {
+        if self.verbosity.debug {
             eprintln!(
                 "  [debug] recognition output shape={:?}",
                 embedding_tensor.shape()
@@ -271,7 +272,7 @@ impl FaceDetector {
             match self.embed_face(image_path, &face) {
                 Ok(embedding) => results.push((face, embedding)),
                 Err(e) => {
-                    if self.debug {
+                    if self.verbosity.debug {
                         eprintln!(
                             "  [debug] failed to embed face at ({:.2}, {:.2}): {e:#}",
                             face.bbox_x, face.bbox_y

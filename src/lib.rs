@@ -1,3 +1,37 @@
+/// Controls the level of diagnostic output sent to stderr.
+///
+/// - `verbose`: operational decisions and program flow
+/// - `debug`: low-level details (external commands, API payloads); implies verbose
+#[derive(Clone, Copy, Default)]
+pub struct Verbosity {
+    pub verbose: bool,
+    pub debug: bool,
+}
+
+impl Verbosity {
+    pub fn new(verbose: bool, debug: bool) -> Self {
+        Self {
+            verbose: verbose || debug,
+            debug,
+        }
+    }
+
+    /// True when verbose or debug output is enabled.
+    pub fn verbose(&self) -> bool {
+        self.verbose
+    }
+
+    /// True when debug output is enabled.
+    pub fn debug(&self) -> bool {
+        self.debug
+    }
+
+    /// Shorthand for no output.
+    pub fn quiet() -> Self {
+        Self { verbose: false, debug: false }
+    }
+}
+
 pub mod asset_service;
 pub mod catalog;
 pub mod collection;

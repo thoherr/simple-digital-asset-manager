@@ -318,12 +318,12 @@ impl AppState {
 
     /// Create a PreviewGenerator for checking preview existence.
     pub fn preview_generator(&self) -> PreviewGenerator {
-        PreviewGenerator::new(&self.catalog_root, false, &self.preview_config)
+        PreviewGenerator::new(&self.catalog_root, crate::Verbosity::quiet(), &self.preview_config)
     }
 
     /// Create an AssetService for dedup and other operations.
     pub fn asset_service(&self) -> AssetService {
-        AssetService::new(&self.catalog_root, false, &self.preview_config)
+        AssetService::new(&self.catalog_root, crate::Verbosity::quiet(), &self.preview_config)
     }
 }
 
@@ -604,7 +604,7 @@ async fn log_request(
 /// Quick non-blocking check if the VLM endpoint is reachable at startup.
 /// Validates that the configured model is available on the server.
 fn check_vlm_at_startup(vlm_config: &crate::config::VlmConfig) -> bool {
-    match crate::vlm::check_endpoint_status(&vlm_config.endpoint, 5, false) {
+    match crate::vlm::check_endpoint_status(&vlm_config.endpoint, 5, crate::Verbosity::quiet()) {
         Ok(status) => {
             eprintln!("VLM: {}", status.message);
             if !status.available_models.is_empty() {

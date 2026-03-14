@@ -104,19 +104,19 @@ pub fn call_vlm_with_mode(
     timeout: u32,
     temperature: f32,
     mode: DescribeMode,
-    debug: bool,
+    verbosity: crate::Verbosity,
 ) -> Result<VlmOutput> {
     match mode {
         DescribeMode::Both => {
             // Two separate calls: describe first, then tags
-            let desc_raw = call_vlm(endpoint, model, image_base64, DEFAULT_DESCRIBE_PROMPT, max_tokens, timeout, temperature, debug)?;
-            let tags_raw = call_vlm(endpoint, model, image_base64, DEFAULT_TAGS_PROMPT, max_tokens, timeout, temperature, debug)?;
+            let desc_raw = call_vlm(endpoint, model, image_base64, DEFAULT_DESCRIBE_PROMPT, max_tokens, timeout, temperature, verbosity)?;
+            let tags_raw = call_vlm(endpoint, model, image_base64, DEFAULT_TAGS_PROMPT, max_tokens, timeout, temperature, verbosity)?;
             let description = Some(desc_raw.trim().to_string());
             let tags = extract_tags_from_json(&tags_raw).unwrap_or_default();
             Ok(VlmOutput { description, tags })
         }
         _ => {
-            let raw = call_vlm(endpoint, model, image_base64, prompt, max_tokens, timeout, temperature, debug)?;
+            let raw = call_vlm(endpoint, model, image_base64, prompt, max_tokens, timeout, temperature, verbosity)?;
             parse_vlm_output(&raw, mode)
         }
     }
@@ -270,16 +270,16 @@ pub fn call_vlm(
     max_tokens: u32,
     timeout: u32,
     temperature: f32,
-    debug: bool,
+    verbosity: crate::Verbosity,
 ) -> Result<String> {
     // Try OpenAI-compatible endpoint first
-    match call_openai_compatible(endpoint, model, image_base64, prompt, max_tokens, timeout, temperature, debug)
+    match call_openai_compatible(endpoint, model, image_base64, prompt, max_tokens, timeout, temperature, verbosity)
     {
         Ok(text) => return Ok(text),
         Err(e) => {
             let err_str = format!("{e}");
             if err_str.contains("404") || err_str.contains("not found") {
-                if debug {
+                if verbosity.debug {
                     eprintln!("  [debug] /v1/chat/completions returned 404, falling back to /api/generate");
                 }
                 // Fall back to Ollama native API
@@ -291,7 +291,7 @@ pub fn call_vlm(
                     max_tokens,
                     timeout,
                     temperature,
-                    debug,
+                    verbosity,
                 );
             }
             return Err(e);
@@ -308,7 +308,7 @@ fn call_openai_compatible(
     max_tokens: u32,
     timeout: u32,
     temperature: f32,
-    debug: bool,
+    verbosity: crate::Verbosity,
 ) -> Result<String> {
     let body = serde_json::json!({
         "model": model,
@@ -333,7 +333,7 @@ fn call_openai_compatible(
     });
 
     let url = format!("{}/v1/chat/completions", endpoint.trim_end_matches('/'));
-    let response = curl_post(&url, &body, timeout, debug)?;
+    let response = curl_post(&url, &body, timeout, verbosity)?;
 
     // Parse OpenAI response format
     let resp: serde_json::Value =
@@ -384,7 +384,7 @@ fn call_ollama_native(
     _max_tokens: u32,
     timeout: u32,
     temperature: f32,
-    debug: bool,
+    verbosity: crate::Verbosity,
 ) -> Result<String> {
     let body = serde_json::json!({
         "model": model,
@@ -397,7 +397,7 @@ fn call_ollama_native(
     });
 
     let url = format!("{}/api/generate", endpoint.trim_end_matches('/'));
-    let response = curl_post(&url, &body, timeout, debug)?;
+    let response = curl_post(&url, &body, timeout, verbosity)?;
 
     let resp: serde_json::Value =
         serde_json::from_str(&response).context("Failed to parse Ollama response as JSON")?;
@@ -432,11 +432,11 @@ fn curl_post(
     url: &str,
     body: &serde_json::Value,
     timeout: u32,
-    debug: bool,
+    verbosity: crate::Verbosity,
 ) -> Result<String> {
     let body_str = serde_json::to_string(body)?;
 
-    if debug {
+    if verbosity.debug {
         eprintln!("  [debug] POST {url} (body: {} bytes)", body_str.len());
     }
 
@@ -472,7 +472,7 @@ fn curl_post(
         .wait_with_output()
         .context("Failed to wait for curl")?;
 
-    if debug {
+    if verbosity.debug {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if !stderr.is_empty() {
             eprintln!("  [debug] curl stderr: {stderr}");
@@ -498,6 +498,10 @@ fn curl_post(
     let response = String::from_utf8(output.stdout)
         .context("VLM response is not valid UTF-8")?;
 
+    if verbosity.verbose {
+        eprintln!("  VLM: response {} bytes", response.len());
+    }
+
     // Detect HTTP error status from curl output
     if response.starts_with("<!DOCTYPE") || response.starts_with("<html") {
         anyhow::bail!("VLM endpoint returned HTML (404 or error page)");
@@ -516,10 +520,10 @@ pub struct EndpointStatus {
 }
 
 /// Check VLM endpoint connectivity and list available models.
-pub fn check_endpoint_status(endpoint: &str, timeout: u32, debug: bool) -> Result<EndpointStatus> {
+pub fn check_endpoint_status(endpoint: &str, timeout: u32, verbosity: crate::Verbosity) -> Result<EndpointStatus> {
     let url = format!("{}/api/tags", endpoint.trim_end_matches('/'));
 
-    if debug {
+    if verbosity.debug {
         eprintln!("  [debug] GET {url}");
     }
 
@@ -566,8 +570,8 @@ pub fn check_endpoint_status(endpoint: &str, timeout: u32, debug: bool) -> Resul
     })
 }
 
-pub fn check_endpoint(endpoint: &str, timeout: u32, debug: bool) -> Result<String> {
-    check_endpoint_status(endpoint, timeout, debug).map(|s| s.message)
+pub fn check_endpoint(endpoint: &str, timeout: u32, verbosity: crate::Verbosity) -> Result<String> {
+    check_endpoint_status(endpoint, timeout, verbosity).map(|s| s.message)
 }
 
 /// Check if a model name matches any available model on the server.

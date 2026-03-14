@@ -39,7 +39,7 @@ const DOCUMENT_FORMATS: &[&str] = &[
 pub struct PreviewGenerator {
     preview_dir: PathBuf,
     smart_dir: PathBuf,
-    debug: bool,
+    verbosity: crate::Verbosity,
     max_edge: u32,
     format: PreviewFormat,
     quality: u8,
@@ -48,11 +48,11 @@ pub struct PreviewGenerator {
 }
 
 impl PreviewGenerator {
-    pub fn new(catalog_root: &Path, debug: bool, config: &PreviewConfig) -> Self {
+    pub fn new(catalog_root: &Path, verbosity: crate::Verbosity, config: &PreviewConfig) -> Self {
         Self {
             preview_dir: catalog_root.join("previews"),
             smart_dir: catalog_root.join("smart-previews"),
-            debug,
+            verbosity,
             max_edge: config.max_edge,
             format: config.format.clone(),
             quality: config.quality,
@@ -198,6 +198,21 @@ impl PreviewGenerator {
     ) -> Result<Option<PathBuf>> {
         let fmt = format.to_lowercase();
 
+        if self.verbosity.verbose {
+            let method = match fmt.as_str() {
+                "jpg" | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "tif" | "webp" | "ico" => "image",
+                "raw" | "cr2" | "cr3" | "crw" | "nef" | "nrw" | "arw" | "sr2" | "srf"
+                | "orf" | "rw2" | "dng" | "raf" | "pef" | "srw" | "mrw"
+                | "3fr" | "fff" | "iiq" | "erf" | "kdc" | "dcr"
+                | "mef" | "mos" | "rwl" | "bay" | "x3f" => "RAW (dcraw)",
+                "mp4" | "mov" | "avi" | "mkv" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg"
+                | "3gp" | "mts" | "m2ts" => "video (ffmpeg)",
+                _ => "info card",
+            };
+            let name = source_path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+            eprintln!("  Preview: {name} via {method} ({max_edge}px)");
+        }
+
         let result = match fmt.as_str() {
             // Standard image formats the `image` crate can decode
             "jpg" | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "tif" | "webp" | "ico" => {
@@ -291,7 +306,7 @@ impl PreviewGenerator {
                 .arg(source)
                 .output()
                 .context("Failed to run dcraw")?;
-            if self.debug {
+            if self.verbosity.debug {
                 eprintln!("[debug] dcraw -e -c {}", source.display());
                 if !output.stderr.is_empty() {
                     eprintln!("[debug] dcraw stderr: {}", String::from_utf8_lossy(&output.stderr));
@@ -324,7 +339,7 @@ impl PreviewGenerator {
         // Strategy 2: dcraw_emu — process the RAW to a temp TIFF (half-size for speed)
         if tool_available("dcraw_emu") {
             let temp_tiff = dest.with_extension("tmp.tiff");
-            if self.debug {
+            if self.verbosity.debug {
                 eprintln!("[debug] dcraw_emu -h -T -Z {} {}", temp_tiff.display(), source.display());
             }
             let output = Command::new("dcraw_emu")
@@ -333,7 +348,7 @@ impl PreviewGenerator {
                 .arg(source)
                 .output()
                 .context("Failed to run dcraw_emu")?;
-            if self.debug && !output.stderr.is_empty() {
+            if self.verbosity.debug && !output.stderr.is_empty() {
                 eprintln!("[debug] dcraw_emu stderr: {}", String::from_utf8_lossy(&output.stderr));
             }
             if output.status.success() && temp_tiff.exists() {
@@ -380,7 +395,7 @@ impl PreviewGenerator {
 
         // Extract first frame to a temp file, then resize
         let temp_frame = dest.with_extension("tmp.jpg");
-        if self.debug {
+        if self.verbosity.debug {
             eprintln!("[debug] ffmpeg -i {} -vframes 1 -f image2 -update 1 -y {}", source.display(), temp_frame.display());
         }
         let output = Command::new("ffmpeg")
@@ -391,7 +406,7 @@ impl PreviewGenerator {
             .output()
             .context("Failed to run ffmpeg")?;
 
-        if self.debug && !output.stderr.is_empty() {
+        if self.verbosity.debug && !output.stderr.is_empty() {
             eprintln!("[debug] ffmpeg stderr: {}", String::from_utf8_lossy(&output.stderr));
         }
 
@@ -849,7 +864,7 @@ mod tests {
     #[test]
     fn preview_path_shards_correctly() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
         let path = gen.preview_path("sha256:abcdef1234567890");
         assert_eq!(
             path,
@@ -861,14 +876,14 @@ mod tests {
     #[test]
     fn has_preview_false_when_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
         assert!(!gen.has_preview("sha256:0000000000"));
     }
 
     #[test]
     fn generate_creates_info_card_for_audio() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
 
         // Create a dummy file so file_size can be read
         let source = dir.path().join("song.mp3");
@@ -890,7 +905,7 @@ mod tests {
     #[test]
     fn generate_creates_info_card_for_document() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
 
         let source = dir.path().join("report.pdf");
         std::fs::write(&source, b"fake pdf content").unwrap();
@@ -905,7 +920,7 @@ mod tests {
     #[test]
     fn generate_creates_info_card_for_unknown() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
 
         let source = dir.path().join("data.xyz");
         std::fs::write(&source, b"unknown format data").unwrap();
@@ -920,7 +935,7 @@ mod tests {
     #[test]
     fn info_card_has_expected_dimensions() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
 
         let source = dir.path().join("track.flac");
         std::fs::write(&source, b"fake flac").unwrap();
@@ -995,7 +1010,7 @@ mod tests {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
 
         let source = dir.path().join("photo.nef");
         std::fs::write(&source, b"fake raw data").unwrap();
@@ -1013,7 +1028,7 @@ mod tests {
     #[test]
     fn generate_image_creates_preview() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
 
         // Create a real 1600x1200 PNG in the temp dir
         let img = image::DynamicImage::new_rgb8(1600, 1200);
@@ -1038,7 +1053,7 @@ mod tests {
     #[test]
     fn generate_skips_if_already_exists() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
 
         let img = image::DynamicImage::new_rgb8(100, 100);
         let source = dir.path().join("small.png");
@@ -1064,7 +1079,7 @@ mod tests {
     #[test]
     fn regenerate_overwrites_existing() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
 
         // Create initial preview from a 200x200 image
         let img = image::DynamicImage::new_rgb8(200, 200);
@@ -1112,7 +1127,7 @@ mod tests {
             return; // skip if ffmpeg not installed
         }
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
 
         // Create a file that is not a valid video
         let bad_source = dir.path().join("bad.mov");
@@ -1141,7 +1156,7 @@ mod tests {
             ..PreviewConfig::default()
         };
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &config);
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &config);
 
         let img = image::DynamicImage::new_rgb8(1600, 1200);
         let source = dir.path().join("big.png");
@@ -1160,7 +1175,7 @@ mod tests {
             ..PreviewConfig::default()
         };
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &config);
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &config);
         let path = gen.preview_path("sha256:abcdef1234567890");
         assert!(path.to_string_lossy().ends_with(".webp"));
     }
@@ -1176,7 +1191,7 @@ mod tests {
     #[test]
     fn smart_preview_path_shards_correctly() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
         let path = gen.smart_preview_path("sha256:abcdef1234567890");
         assert_eq!(
             path,
@@ -1188,14 +1203,14 @@ mod tests {
     #[test]
     fn has_smart_preview_false_when_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
         assert!(!gen.has_smart_preview("sha256:0000000000"));
     }
 
     #[test]
     fn generate_smart_creates_larger_preview() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
 
         // Create a 4000x3000 image
         let img = image::DynamicImage::new_rgb8(4000, 3000);
@@ -1219,7 +1234,7 @@ mod tests {
     #[test]
     fn generate_smart_skips_if_exists() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
 
         let img = image::DynamicImage::new_rgb8(100, 100);
         let source = dir.path().join("small.png");
@@ -1244,7 +1259,7 @@ mod tests {
     #[test]
     fn regenerate_smart_overwrites() {
         let dir = tempfile::tempdir().unwrap();
-        let gen = PreviewGenerator::new(dir.path(), false, &PreviewConfig::default());
+        let gen = PreviewGenerator::new(dir.path(), crate::Verbosity::quiet(), &PreviewConfig::default());
 
         let img = image::DynamicImage::new_rgb8(200, 200);
         let source = dir.path().join("regen_smart.png");

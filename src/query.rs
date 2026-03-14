@@ -940,7 +940,7 @@ impl QueryEngine {
 
             // Load model and encode the text query
             let mut model = crate::ai::SigLipModel::load_with_provider(
-                &model_dir, model_id, false, &config.ai.execution_provider,
+                &model_dir, model_id, crate::Verbosity::quiet(), &config.ai.execution_provider,
             )?;
             let query_emb = model.encode_texts(&[text_q.clone()])?;
             let query_emb = &query_emb[0];

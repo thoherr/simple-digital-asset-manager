@@ -582,7 +582,7 @@ fn file_mtime(path: &Path) -> Option<chrono::DateTime<chrono::Utc>> {
 /// High-level operations that orchestrate the other components.
 pub struct AssetService {
     catalog_root: PathBuf,
-    debug: bool,
+    verbosity: crate::Verbosity,
     preview_config: crate::config::PreviewConfig,
 }
 
@@ -639,10 +639,10 @@ fn scan_orphaned_sharded_files(
 }
 
 impl AssetService {
-    pub fn new(catalog_root: &Path, debug: bool, preview_config: &crate::config::PreviewConfig) -> Self {
+    pub fn new(catalog_root: &Path, verbosity: crate::Verbosity, preview_config: &crate::config::PreviewConfig) -> Self {
         Self {
             catalog_root: catalog_root.to_path_buf(),
-            debug,
+            verbosity,
             preview_config: preview_config.clone(),
         }
     }
@@ -674,7 +674,7 @@ impl AssetService {
         let content_store = ContentStore::new(&self.catalog_root);
         let metadata_store = MetadataStore::new(&self.catalog_root);
         let catalog = Catalog::open(&self.catalog_root)?;
-        let preview_gen = crate::preview::PreviewGenerator::new(&self.catalog_root, self.debug, &self.preview_config);
+        let preview_gen = crate::preview::PreviewGenerator::new(&self.catalog_root, self.verbosity, &self.preview_config);
 
         if !dry_run {
             catalog.ensure_volume(volume)?;
@@ -682,6 +682,10 @@ impl AssetService {
 
         let files = resolve_files(paths, exclude_patterns);
         let groups = group_by_stem(&files, filter);
+
+        if self.verbosity.verbose {
+            eprintln!("  Import: {} file(s) resolved, {} group(s)", files.len(), groups.len());
+        }
 
         let mut imported = 0;
         let mut locations_added = 0;
@@ -2675,6 +2679,7 @@ impl AssetService {
     pub fn cleanup(
         &self,
         volume_filter: Option<&str>,
+        path_prefix: Option<&str>,
         apply: bool,
         on_file: impl Fn(&Path, CleanupStatus, Duration),
     ) -> Result<CleanupResult> {
@@ -2719,7 +2724,8 @@ impl AssetService {
             let vol_id_str = volume.id.to_string();
 
             // Check variant file locations
-            let locations = catalog.list_locations_for_volume_under_prefix(&vol_id_str, "")?;
+            let prefix = path_prefix.unwrap_or("");
+            let locations = catalog.list_locations_for_volume_under_prefix(&vol_id_str, prefix)?;
             for (content_hash, relative_path) in &locations {
                 let file_start = Instant::now();
                 let full_path = volume.mount_point.join(relative_path);
@@ -2766,7 +2772,7 @@ impl AssetService {
 
             // Check recipe file locations
             let recipes =
-                catalog.list_recipes_for_volume_under_prefix(&vol_id_str, "")?;
+                catalog.list_recipes_for_volume_under_prefix(&vol_id_str, prefix)?;
             for (recipe_id, _content_hash, variant_hash, relative_path) in &recipes {
                 let file_start = Instant::now();
                 let full_path = volume.mount_point.join(relative_path);
@@ -2816,7 +2822,7 @@ impl AssetService {
             let stack_store = crate::stack::StackStore::new(catalog.conn());
             let preview_gen = crate::preview::PreviewGenerator::new(
                 &self.catalog_root,
-                self.debug,
+                self.verbosity,
                 &self.preview_config,
             );
             for asset_id in &orphaned_ids {
@@ -3008,7 +3014,7 @@ impl AssetService {
         let registry = DeviceRegistry::new(&self.catalog_root);
         let preview_gen = crate::preview::PreviewGenerator::new(
             &self.catalog_root,
-            self.debug,
+            self.verbosity,
             &self.preview_config,
         );
 
@@ -3337,7 +3343,7 @@ impl AssetService {
             let stack_store = crate::stack::StackStore::new(catalog.conn());
             let preview_gen = crate::preview::PreviewGenerator::new(
                 &self.catalog_root,
-                self.debug,
+                self.verbosity,
                 &self.preview_config,
             );
             for asset_id in &orphaned_ids {
@@ -5479,7 +5485,7 @@ impl AssetService {
 
         let catalog = Catalog::open(&self.catalog_root)?;
         let engine = crate::query::QueryEngine::new(&self.catalog_root);
-        let preview_gen = PreviewGenerator::new(&self.catalog_root, self.debug, &self.preview_config);
+        let preview_gen = PreviewGenerator::new(&self.catalog_root, self.verbosity, &self.preview_config);
         let registry = DeviceRegistry::new(&self.catalog_root);
         let volumes = registry.list()?;
         let online_volumes: std::collections::HashMap<String, &crate::models::Volume> = volumes
@@ -5489,7 +5495,7 @@ impl AssetService {
             .collect();
 
         // Load model
-        let mut model = SigLipModel::load_with_provider(model_dir, model_id, self.debug, execution_provider)?;
+        let mut model = SigLipModel::load_with_provider(model_dir, model_id, self.verbosity, execution_provider)?;
 
         // Prepare label texts with prompt template
         let prompted_labels: Vec<String> = labels
@@ -5599,7 +5605,7 @@ impl AssetService {
             }
 
             // Classify
-            let suggestions = if self.debug {
+            let suggestions = if self.verbosity.debug {
                 eprintln!("  [debug] asset {} — image: {}", &aid[..8.min(aid.len())], image_path.display());
                 let norm: f32 = image_emb.iter().map(|x| x * x).sum::<f32>().sqrt();
                 eprintln!("  [debug] embedding norm: {norm:.6} (expected ~1.0 for L2-normalized)");
@@ -5618,7 +5624,7 @@ impl AssetService {
                 .into_iter()
                 .filter(|s| {
                     let dominated = existing_tags.contains(&s.tag.to_lowercase());
-                    if dominated && self.debug {
+                    if dominated && self.verbosity.debug {
                         eprintln!("  [debug] skipping '{}' ({:.2}%) — tag already exists on asset", s.tag, s.confidence * 100.0);
                     }
                     !dominated
@@ -5810,7 +5816,7 @@ impl AssetService {
         let catalog = crate::catalog::Catalog::open(&self.catalog_root)?;
         let engine = crate::query::QueryEngine::new(&self.catalog_root);
         let preview_gen =
-            crate::preview::PreviewGenerator::new(&self.catalog_root, self.debug, &self.preview_config);
+            crate::preview::PreviewGenerator::new(&self.catalog_root, self.verbosity, &self.preview_config);
         let registry = DeviceRegistry::new(&self.catalog_root);
         let volumes = registry.list()?;
         let online_volumes: HashMap<String, &crate::models::Volume> = volumes
@@ -5842,6 +5848,10 @@ impl AssetService {
 
         let wants_description = mode == DescribeMode::Describe || mode == DescribeMode::Both;
         let concurrency = (concurrency.max(1)) as usize;
+
+        if self.verbosity.verbose {
+            eprintln!("  Describe: {} candidate asset(s), concurrency={concurrency}", asset_ids.len());
+        }
 
         let mut result = BatchDescribeResult {
             described: 0,
@@ -5947,7 +5957,7 @@ impl AssetService {
         }
 
         // Phase 2: VLM calls in parallel batches
-        let debug = self.debug;
+        let verbosity = self.verbosity;
         for chunk in work_items.chunks(concurrency) {
             // Each chunk runs concurrently using scoped threads
             let vlm_results: Vec<(String, HashSet<String>, std::time::Duration, Result<vlm::VlmOutput, String>)> =
@@ -5976,7 +5986,7 @@ impl AssetService {
                                 // Call VLM
                                 match vlm::call_vlm_with_mode(
                                     endpoint, model, &image_base64, prompt,
-                                    max_tokens, timeout, temperature, mode, debug,
+                                    max_tokens, timeout, temperature, mode, verbosity,
                                 ) {
                                     Ok(output) => {
                                         if output.description.as_ref().map_or(true, |d| d.is_empty())
@@ -6751,7 +6761,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
 
         // First import
         let r1 = service.import(&[dir_a.join("photo.jpg")], &volume, &default_filter()).unwrap();
@@ -6800,7 +6810,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
 
         // First import
         let r1 = service
@@ -6834,7 +6844,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let result = service
             .import(&[photos.clone()], &volume, &default_filter())
             .unwrap();
@@ -6875,7 +6885,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let result = service
             .import(&[photos.clone()], &volume, &default_filter())
             .unwrap();
@@ -6910,7 +6920,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let result = service
             .import(&[photos.clone()], &volume, &default_filter())
             .unwrap();
@@ -6947,7 +6957,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let mut filter = FileTypeFilter::default();
         filter.include("captureone").unwrap();
         let result = service.import(&[photos.clone()], &volume, &filter).unwrap();
@@ -6984,7 +6994,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let result = service
             .import(&[dir_a, dir_b], &volume, &default_filter())
             .unwrap();
@@ -7010,7 +7020,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let result = service
             .import(&[vol_dir.path().join("solo.jpg")], &volume, &default_filter())
             .unwrap();
@@ -7098,7 +7108,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let result = service.import(&[photos], &volume, &default_filter()).unwrap();
         assert_eq!(result.imported, 1);
         assert_eq!(result.recipes_attached, 1);
@@ -7137,7 +7147,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service.import(&[photos], &volume, &default_filter()).unwrap();
 
         let metadata_store = crate::metadata_store::MetadataStore::new(catalog_dir.path());
@@ -7164,7 +7174,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service.import(&[photos], &volume, &default_filter()).unwrap();
 
         // Now manually add a tag to the asset
@@ -7220,7 +7230,7 @@ mod tests {
         // Create a file on vol1
         std::fs::write(vol1_dir.path().join("photo.jpg"), "photo data").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -7255,7 +7265,7 @@ mod tests {
 
         std::fs::write(vol1_dir.path().join("photo.jpg"), "move me").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -7291,7 +7301,7 @@ mod tests {
         std::fs::write(photos.join("DSC.nef"), "raw data for relocate").unwrap();
         std::fs::write(photos.join("DSC.xmp"), "xmp recipe data").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service
             .import(&[photos], &vol1, &default_filter())
             .unwrap();
@@ -7315,7 +7325,7 @@ mod tests {
 
         std::fs::write(vol1_dir.path().join("photo.jpg"), "skip test").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -7345,7 +7355,7 @@ mod tests {
 
         std::fs::write(vol1_dir.path().join("photo.jpg"), "dry run test").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -7375,7 +7385,7 @@ mod tests {
 
         std::fs::write(vol1_dir.path().join("photo.jpg"), "noop test").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -7401,7 +7411,7 @@ mod tests {
 
         std::fs::write(vol1_dir.path().join("photo.jpg"), "offline test").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -7435,7 +7445,7 @@ mod tests {
     fn relocate_fails_for_unknown_asset_id() {
         let (catalog_dir, _vol1_dir, _vol2_dir, _vol1, _vol2) = setup_relocate();
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let err = service
             .relocate("nonexistent-id", "vol2", false, false)
             .unwrap_err();
@@ -7448,7 +7458,7 @@ mod tests {
 
         std::fs::write(vol1_dir.path().join("photo.jpg"), "unknown vol test").unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service
             .import(
                 &[vol1_dir.path().join("photo.jpg")],
@@ -7515,7 +7525,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let auto_tags = vec!["inbox".to_string(), "unreviewed".to_string()];
         let result = service.import_with_callback(
             &[vol_dir.path().join("photo.jpg")],
@@ -7552,7 +7562,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let exclude = vec!["Thumbs.db".to_string()];
         let result = service.import_with_callback(
             &[vol_dir.path().to_path_buf()],
@@ -7594,7 +7604,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service.import(&[photos.clone()], &volume, &default_filter()).unwrap();
 
         // Manually set the JPG variant back to Original (simulating pre-fix import)
@@ -7641,7 +7651,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service.import(&[photos.clone()], &volume, &default_filter()).unwrap();
 
         // Both should be Original (no RAW)
@@ -7679,7 +7689,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service.import(&[photos.clone()], &volume, &default_filter()).unwrap();
 
         // Manually set the JPG variant back to Original
@@ -7730,7 +7740,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let result = service.import(
             &[photo_path],
             &volume,
@@ -7785,7 +7795,7 @@ mod tests {
             crate::models::VolumeType::Local,
         );
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let result = service.import(
             &[vol_dir.path().to_path_buf()],
             &volume,
@@ -7826,7 +7836,7 @@ mod tests {
         let registry = DeviceRegistry::new(catalog_dir.path());
         let volume = registry.register("test-vol", vol_dir.path(), crate::models::VolumeType::Local, None).unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service.import(
             &[photo_path],
             &volume,
@@ -7880,7 +7890,7 @@ mod tests {
         let registry = DeviceRegistry::new(catalog_dir.path());
         let volume = registry.register("test-vol", vol_dir.path(), crate::models::VolumeType::Local, None).unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service.import(&[photo_path], &volume, &default_filter()).unwrap();
 
         // Manually set a date_taken in source_metadata and a wrong created_at
@@ -7921,7 +7931,7 @@ mod tests {
         let registry = DeviceRegistry::new(catalog_dir.path());
         let volume = registry.register("test-vol", vol_dir.path(), crate::models::VolumeType::Local, None).unwrap();
 
-        let service = AssetService::new(catalog_dir.path(), false, &crate::config::PreviewConfig::default());
+        let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         service.import(&[photo_path], &volume, &default_filter()).unwrap();
 
         // The import now uses mtime fallback, so created_at should already be correct.

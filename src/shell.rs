@@ -304,7 +304,7 @@ struct SessionDefaults {
 }
 
 /// Flags that can be set as session defaults.
-const SETTABLE_FLAGS: &[&str] = &["--json", "--log", "--debug", "--time"];
+const SETTABLE_FLAGS: &[&str] = &["--json", "--log", "--verbose", "--debug", "--time"];
 
 impl SessionDefaults {
     fn new() -> Self {
@@ -958,7 +958,7 @@ fn handle_preview_builtin(
 ) -> Result<Vec<String>> {
     let config = crate::config::CatalogConfig::load(catalog_root)?;
     let catalog = crate::catalog::Catalog::open(catalog_root)?;
-    let preview_gen = crate::preview::PreviewGenerator::new(catalog_root, false, &config.preview);
+    let preview_gen = crate::preview::PreviewGenerator::new(catalog_root, crate::Verbosity::quiet(), &config.preview);
     let engine = crate::query::QueryEngine::new(catalog_root);
 
     let mut displayed = Vec::new();
