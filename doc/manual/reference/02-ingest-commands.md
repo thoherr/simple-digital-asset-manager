@@ -1087,6 +1087,7 @@ dam describe --endpoint https://api.openai.com --model gpt-4o --apply --query "*
 ### SEE ALSO
 
 [edit](#dam-edit) -- manually set or clear an asset's description.
+[VLM Model Guide](10-vlm-models.md) -- tested models, backends, hardware guide, and quality comparison.
 [Configuration](08-configuration.md#vlm-section) -- `[vlm]` section for endpoint, model, and prompt settings.
 [VLM Setup (User Guide)](../user-guide/03-ingest.md#vlm-image-descriptions) -- how to set up a local VLM server.
 

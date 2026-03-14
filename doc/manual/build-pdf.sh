@@ -58,6 +58,7 @@ FILES=(
     reference/07-format-templates.md
     reference/08-configuration.md
     reference/09-data-model.md
+    reference/10-vlm-models.md
 
     # Developer Guide
     developer/01-rest-api.md
@@ -125,6 +126,7 @@ perl -i -pe '
         "07-format-templates.md"    => "format-templates-reference",
         "08-configuration.md"       => "configuration-reference-dam.toml",
         "09-data-model.md"          => "data-model",
+        "10-vlm-models.md"          => "vlm-model-guide",
         "01-rest-api.md"            => "rest-api-reference",
         "02-module-reference.md"    => "module-reference",
         "03-building-and-testing.md"=> "building-testing",

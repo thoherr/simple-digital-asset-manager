@@ -460,10 +460,12 @@ Model name passed to the VLM server. For Ollama, this is the model tag (e.g., `m
 |-------|------|-----|-----------------|---------|
 | Moondream 2B | 1.7 GB | ~2 GB | ~3--5s | Good, fast for batch |
 | Qwen2.5-VL 3B | 2.0 GB | ~3 GB | ~8--12s | Very good (default) |
+| Qwen3-VL 4B | 2.8 GB | ~4 GB | ~10--15s | Very good |
 | Gemma 3 4B | 3.3 GB | ~4 GB | ~10--15s | Very good |
+| Qwen3-VL 8B | 5.2 GB | ~6 GB | ~15--20s | Excellent |
 | Qwen2.5-VL 7B | 4.7 GB | ~6 GB | ~20--36s | Excellent |
-| LLaVA 1.6 7B | 4.7 GB | ~6 GB | ~15--25s | Good |
-| SmolVLM 2.2B | 1.5 GB | ~2 GB | ~4--8s | Good, very compact |
+
+See [VLM Model Guide](10-vlm-models.md) for a comprehensive comparison including Qwen3.5, backend setup instructions, and hardware recommendations.
 
 ### max_tokens
 

@@ -32,6 +32,7 @@ Man-page style documentation for every command, filter, and configuration option
 - [Format Templates](reference/07-format-templates.md) — Output format presets, custom templates, placeholders
 - [Configuration](reference/08-configuration.md) — `dam.toml` reference
 - [Data Model](reference/09-data-model.md) — Asset, Variant, Recipe, Volume, and FileLocation entities
+- [VLM Model Guide](reference/10-vlm-models.md) — Vision-language models for `dam describe`: tested models, backends, hardware guide
 
 ## Developer Guide
 
