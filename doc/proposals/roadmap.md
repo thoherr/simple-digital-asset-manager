@@ -2,7 +2,7 @@
 
 Living document tracking planned enhancements. Previous proposals (all implemented or deferred) are in `archive/`.
 
-Current version: **v3.0.2** (2026-03-13)
+Current version: **v3.2.0** (2026-03-14)
 
 ---
 
@@ -47,6 +47,43 @@ Write metadata changes back into JPEG/TIFF files directly, not just XMP sidecars
 - Re-hashes file after write, updates variant content hash
 
 **Complexity:** High. Modifying binary file metadata without corruption requires careful handling. Could use `img_parts` or `little_cms` crates.
+
+---
+
+### Web UI Export Progress
+
+The ZIP export modal shows "Preparing..." with no progress feedback. For large exports this can take minutes with no indication of progress.
+
+**Scope:**
+- Server sends export plan summary (file count, estimated size) before starting the ZIP build
+- Client shows a progress bar or asset counter during ZIP creation
+- Options: SSE stream, polling endpoint, or initial size estimate + indeterminate progress bar
+- Warn user before very large downloads (e.g. "> 1 GB, continue?")
+
+**Complexity:** Low-Medium. Backend plan info already available via `build_export_plan()`; needs a two-phase request or SSE channel.
+
+### Web UI Delete
+
+The batch toolbar covers most operations but `dam delete` isn't exposed in the web UI. With export now available, a natural workflow is export-then-delete.
+
+**Scope:**
+- "Delete" button in batch toolbar (with confirmation modal showing asset count and warning)
+- `DELETE /api/batch/delete` endpoint — calls `AssetService::delete()` for each asset
+- Option to delete only from current volume vs. all copies
+- Refresh grid after deletion
+
+**Complexity:** Low. `AssetService::delete()` exists; needs a route, JS handler, and confirmation dialog.
+
+### Shell `export` Built-in
+
+The interactive shell (`dam shell`) doesn't expose the `export` command. Now that `build_export_plan()` is extracted, adding `export $picks /tmp/out` would complete the shell's coverage.
+
+**Scope:**
+- `export <query-or-ids> <target-dir> [--layout flat|mirror] [--all-variants] [--include-sidecars] [--dry-run]`
+- Reuses `AssetService::export()` directly
+- Supports shell variables (`export $picks ~/Desktop/out`)
+
+**Complexity:** Low. All export logic exists; just needs a shell command entry and argument parsing.
 
 ---
 
@@ -121,3 +158,5 @@ All previous proposals are in `doc/proposals/archive/`. Key milestones:
 - **v2.4**: Contact sheet export, split command, alternate variant role, grouped CLI help, CoreML GPU acceleration, VLM image descriptions
 - **v2.5**: Text-to-image semantic search, auto-describe during import, concurrent VLM, analytics dashboard, batch relocate, drag-and-drop, per-stack expand/collapse, audit filters (variants/scattered), metadata reimport
 - **v3.0**: Asset management shell — interactive REPL with named variables, tab completion, session defaults, script files, source command, `-c` one-liner mode
+- **v3.1**: Preview command, consistent positional query and shell variable expansion for all multi-asset commands
+- **v3.2**: Web UI export as ZIP download (selected assets and filtered results), dark mode modal fixes
