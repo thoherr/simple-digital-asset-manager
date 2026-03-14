@@ -477,6 +477,12 @@ A fixed toolbar appears at the bottom of the screen whenever one or more assets 
 
 **Detect faces** (requires `--features ai`): runs face detection on each selected asset's preview image using YuNet and ArcFace. Detected faces are stored with bounding boxes, embeddings, and crop thumbnails. A summary reports how many faces were found. This button only appears when the server is compiled with the `ai` feature.
 
+**Export**: downloads the selected assets as a ZIP archive. A modal dialog lets you choose layout (flat — all files in root with hash-suffix collision resolution, or mirror — preserves original directory structure), whether to include all variants or just the best, and whether to include sidecar/recipe files. The ZIP is streamed to the browser as a download.
+
+### Export all results
+
+The results bar includes an "Export all" link that exports all assets matching the current search and filter state — not just the current page. Clicking it opens the same export modal as the batch Export button. The full set of active browse filters (type, tag, format, volume, rating, label, collection, path, person) is sent to the server, which resolves the matching assets using the same search pipeline as the browse page.
+
 After every batch operation, the selection clears and the results grid refreshes to reflect the changes. All toolbar buttons are disabled during the operation to prevent double submissions.
 
 ### Drag-and-drop

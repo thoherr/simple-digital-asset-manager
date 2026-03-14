@@ -2,6 +2,14 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v3.2.0 (2026-03-14)
+
+### New Features
+- **Web UI export as ZIP** — download selected assets or all filtered results as a ZIP archive directly from the browser. "Export" button in the batch toolbar for selected assets; "Export all" link in the results bar for the current search/filter state. Modal dialog offers layout (flat/mirror), all-variants, and include-sidecars options. Backend streams the ZIP via a temp file to handle large exports. New `POST /api/batch/export` endpoint accepts either explicit asset IDs or the full set of browse filter parameters (type, tag, format, volume, rating, label, collection, path, person).
+
+### Bug Fixes
+- **Dark mode modals** — fixed unreadable text in group-confirm and export modals by using correct CSS variables (`--text`, `--bg-input`) instead of undefined `--text-main` and `--bg-hover`.
+
 ## v3.1.0 (2026-03-13)
 
 ### New Features

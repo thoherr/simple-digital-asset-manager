@@ -903,6 +903,72 @@ curl -X POST http://localhost:8080/api/batch/auto-group \
   -d '{"asset_ids": ["uuid-1", "uuid-2", "uuid-3"]}'
 ```
 
+### `POST /api/batch/export` -- Export as ZIP
+
+Downloads matching assets as a ZIP archive. Provide either explicit asset IDs (for selected assets) or browse filter parameters (for "export all" results).
+
+**Content-Type**: `application/json`
+
+**Request body**:
+```json
+{
+  "asset_ids": ["uuid-1", "uuid-2"],
+  "filters": {
+    "q": "sunset",
+    "type": "image",
+    "tag": "landscape",
+    "format": "jpg",
+    "volume": "Photos",
+    "rating": "3+",
+    "label": "Green",
+    "collection": "Best",
+    "path": "2026/March",
+    "person": "Alice"
+  },
+  "layout": "flat",
+  "all_variants": false,
+  "include_sidecars": false
+}
+```
+
+| Field              | Type     | Default   | Description                                             |
+|--------------------|----------|-----------|---------------------------------------------------------|
+| `asset_ids`        | string[] | `[]`      | Explicit asset IDs (used for selected-asset export)     |
+| `filters`          | object   | `null`    | Browse filter params (used for "export all" results)    |
+| `filters.q`        | string   | `""`      | Free-text search query                                  |
+| `filters.type`     | string   | `""`      | Asset type filter (image, video, audio)                 |
+| `filters.tag`      | string   | `""`      | Tag filter                                              |
+| `filters.format`   | string   | `""`      | Format filter                                           |
+| `filters.volume`   | string   | `""`      | Volume label filter                                     |
+| `filters.rating`   | string   | `""`      | Rating filter (e.g. "3+", "5")                          |
+| `filters.label`    | string   | `""`      | Color label filter                                      |
+| `filters.collection` | string | `""`      | Collection name filter                                  |
+| `filters.path`     | string   | `""`      | Path prefix filter                                      |
+| `filters.person`   | string   | `""`      | Person name filter                                      |
+| `layout`           | string   | `"flat"`  | `"flat"` (all files in root) or `"mirror"` (preserve dirs) |
+| `all_variants`     | bool     | `false`   | Include all variants (not just best)                    |
+| `include_sidecars` | bool     | `false`   | Include recipe/sidecar files                            |
+
+When `asset_ids` is non-empty, `filters` is ignored. When `asset_ids` is empty, the server resolves matching assets from the filters using the same search pipeline as the browse page. If both are empty/null, all catalog assets are exported.
+
+**Response**: `application/zip` with `Content-Disposition: attachment; filename="dam-export-N-assets.zip"`.
+
+The ZIP uses `Stored` compression (no deflation) since media files are already compressed.
+
+```bash
+# Export specific assets
+curl -X POST http://localhost:8080/api/batch/export \
+  -H "Content-Type: application/json" \
+  -d '{"asset_ids": ["uuid-1", "uuid-2"], "layout": "flat"}' \
+  -o export.zip
+
+# Export all results matching filters
+curl -X POST http://localhost:8080/api/batch/export \
+  -H "Content-Type: application/json" \
+  -d '{"filters": {"tag": "landscape", "rating": "4+"}, "layout": "mirror"}' \
+  -o export.zip
+```
+
 ---
 
 ## Face & People APIs
@@ -1424,5 +1490,6 @@ Error responses are plain text with a descriptive message.
 | Page routes (`/`, `/asset/*`, etc.)   | --                               | `text/html`            |
 | Single-asset editing (`PUT/POST/DELETE /api/asset/*`) | `application/x-www-form-urlencoded` | `text/html` (partial) |
 | Batch operations (`/api/batch/*`)     | `application/json`               | `application/json`     |
+| Export (`POST /api/batch/export`)     | `application/json`               | `application/zip`      |
 | Data APIs (`GET /api/*`)              | --                               | `application/json`     |
 | Mutation APIs (`POST/DELETE /api/*`)  | `application/json`               | `application/json`     |
