@@ -1007,7 +1007,7 @@ window.triggerSearch = onFilterChange;
                 if (data.failed > 0) parts.push(data.failed + ' failed');
                 alert(parts.join(', ') + ' (' + data.succeeded + ' processed).');
                 clearSelection();
-                htmx.ajax('GET', buildSearchUrl(), {target: '#results', swap: 'innerHTML'});
+                htmx.ajax('GET', window.location.href, {target: '#results', swap: 'innerHTML'});
             })
             .catch(function(err) {
                 setButtonsBusy(false);
@@ -1033,7 +1033,7 @@ window.triggerSearch = onFilterChange;
                 alert(data.tags_applied + ' tag(s) applied to ' + data.succeeded + ' asset(s).' +
                     (data.failed > 0 ? ' ' + data.failed + ' failed.' : ''));
                 clearSelection();
-                htmx.ajax('GET', buildSearchUrl(), {target: '#results', swap: 'innerHTML'});
+                htmx.ajax('GET', window.location.href, {target: '#results', swap: 'innerHTML'});
             })
             .catch(function(err) {
                 setButtonsBusy(false);
@@ -1059,7 +1059,7 @@ window.triggerSearch = onFilterChange;
                 alert(data.faces_detected + ' face(s) detected in ' + data.succeeded + ' asset(s).' +
                     (data.errors && data.errors.length > 0 ? ' ' + data.errors.length + ' error(s).' : ''));
                 clearSelection();
-                htmx.ajax('GET', buildSearchUrl(), {target: '#results', swap: 'innerHTML'});
+                htmx.ajax('GET', window.location.href, {target: '#results', swap: 'innerHTML'});
             })
             .catch(function(err) {
                 setButtonsBusy(false);
