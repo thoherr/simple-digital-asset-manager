@@ -5560,9 +5560,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             let bind = bind.unwrap_or_else(|| config.serve.bind.clone());
             let rt = tokio::runtime::Runtime::new()?;
             #[cfg(feature = "ai")]
-            rt.block_on(dam::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer, config.serve.per_page, config.serve.stroll_neighbors, config.serve.stroll_neighbors_max, config.serve.stroll_fanout, config.serve.stroll_fanout_max, config.serve.stroll_discover_pool, config.ai, config.vlm))?;
+            rt.block_on(dam::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer, config.serve.per_page, config.serve.stroll_neighbors, config.serve.stroll_neighbors_max, config.serve.stroll_fanout, config.serve.stroll_fanout_max, config.serve.stroll_discover_pool, config.ai, config.vlm, verbosity))?;
             #[cfg(not(feature = "ai"))]
-            rt.block_on(dam::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer, config.serve.per_page, config.serve.stroll_neighbors, config.serve.stroll_neighbors_max, config.serve.stroll_fanout, config.serve.stroll_fanout_max, config.serve.stroll_discover_pool, config.vlm))?;
+            rt.block_on(dam::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer, config.serve.per_page, config.serve.stroll_neighbors, config.serve.stroll_neighbors_max, config.serve.stroll_fanout, config.serve.stroll_fanout_max, config.serve.stroll_discover_pool, config.vlm, verbosity))?;
             Ok(())
         }
         Commands::ContactSheet {
