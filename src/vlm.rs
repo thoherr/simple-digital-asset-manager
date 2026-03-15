@@ -50,11 +50,11 @@ impl std::fmt::Display for DescribeMode {
 
 /// Default prompt for describe mode.
 pub const DEFAULT_DESCRIBE_PROMPT: &str =
-    "Describe this photograph in 1-3 concise sentences. Focus on the subject, setting, lighting, and mood. Be specific about what you see, not what you interpret.";
+    "Concise 1-3 sentence description of this photograph — subject, setting, lighting, mood. Be specific, no preamble:";
 
 /// Default prompt for tags mode.
 pub const DEFAULT_TAGS_PROMPT: &str =
-    "Suggest descriptive tags for this photograph. Return a JSON object with a single key \"tags\" containing an array of short, specific tag strings. Focus on subject, scene type, lighting, mood, colors, and photographic style. Example: {\"tags\": [\"golden hour\", \"silhouette\", \"beach\"]}";
+    "Descriptive tags for this photograph as JSON. Focus on subject, scene, lighting, mood, colors, style. Return only: {\"tags\": [\"golden hour\", \"silhouette\", \"beach\"]}";
 
 /// Return the default prompt for a given mode.
 ///
@@ -303,6 +303,10 @@ pub fn call_vlm(
     params: &VlmParams,
     verbosity: crate::Verbosity,
 ) -> Result<String> {
+    if verbosity.verbose {
+        eprintln!("  VLM prompt: {prompt}");
+    }
+
     // Try Ollama native endpoint first (properly supports think: false)
     match call_ollama_native(endpoint, model, image_base64, prompt, params, verbosity) {
         Ok(text) => return Ok(text),
