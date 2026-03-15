@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Browse - DAM{% endblock %}
+{% block title %}Browse - MAKI{% endblock %}
 
 {% block nav_explore %}{% if ai_enabled %}<a href="/stroll">Stroll</a>{% endif %}{% endblock %}
 {% block nav_organize %}{% if ai_enabled %}<a href="/people">People</a>{% endif %}{% endblock %}
@@ -1350,7 +1350,7 @@ window.triggerSearch = onFilterChange;
             '<a class="card-body" href="/asset/' + m.asset_id + '">' +
                 '<div class="card-title">' + esc(m.name) + '</div>' +
                 '<div class="card-meta">' +
-                    '<span class="badge">' + m.asset_type + '</span>' +
+                    '<span class="badge badge-type-' + m.asset_type.toLowerCase() + '">' + m.asset_type + '</span>' +
                     '<span class="badge">' + m.format + '</span>' +
                     (m.variant_count > 1 ? '<span class="badge badge-count">' + m.variant_count + 'v</span>' : '') +
                     '<span>' + m.date + '</span>' +

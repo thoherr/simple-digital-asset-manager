@@ -2,6 +2,11 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v3.2.7 (2026-03-16)
+
+### Enhancements
+- **MAKI branding** — the web UI is now branded as MAKI (Media Asset Keeper & Indexer). New color scheme based on brand guidelines: salmon/coral for images, amber for video, teal for audio, nori blue for documents. Includes favicon, SVG logo in nav bar, asset type color-coded badges, updated light and dark mode palettes, and Inter font family. All page titles updated from "DAM" to "MAKI".
+
 ## v3.2.6 (2026-03-15)
 
 ### Enhancements

@@ -3,15 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}DAM{% endblock %}</title>
-    <script>var t=localStorage.getItem('dam-theme');if(t)document.documentElement.setAttribute('data-theme',t);</script>
+    <title>{% block title %}MAKI{% endblock %}</title>
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x48">
+    <script>var t=localStorage.getItem('maki-theme');if(t)document.documentElement.setAttribute('data-theme',t);</script>
     <link rel="stylesheet" href="/static/style.css">
     <script src="/static/htmx.min.js"></script>
     {% block extra_head %}{% endblock %}
 </head>
 <body>
     <nav>
-        <a href="/" class="brand">DAM</a>
+        <a href="/" class="brand"><img src="/static/maki-icon.svg" alt="MAKI" class="brand-icon">MAKI</a>
         <div class="nav-links">
             <a href="/">Browse</a>
             {% block nav_explore %}{% endblock %}
@@ -136,7 +137,7 @@
     btn.addEventListener('click', function() {
         var next = getEffective() === 'dark' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem('dam-theme', next);
+        localStorage.setItem('maki-theme', next);
         updateIcon();
     });
     updateIcon();

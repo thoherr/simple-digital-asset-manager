@@ -564,6 +564,9 @@ fn build_router(state: Arc<AppState>) -> Router {
     }
 
     router
+        .route("/favicon.ico", axum::routing::get(static_assets::favicon))
+        .route("/static/favicon.ico", axum::routing::get(static_assets::favicon))
+        .route("/static/maki-icon.svg", axum::routing::get(static_assets::maki_icon))
         .route("/static/htmx.min.js", axum::routing::get(static_assets::htmx_js))
         .route("/static/style.css", axum::routing::get(static_assets::style_css))
         .route("/static/leaflet.min.js", axum::routing::get(static_assets::leaflet_js))

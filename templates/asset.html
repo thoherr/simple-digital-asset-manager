@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ display_name }} - DAM{% endblock %}
+{% block title %}{{ display_name }} - MAKI{% endblock %}
 
 {% block nav_explore %}{% if ai_enabled %}<a href="/stroll">Stroll</a>{% endif %}{% endblock %}
 {% block nav_organize %}{% if ai_enabled %}<a href="/people">People</a>{% endif %}{% endblock %}
@@ -24,7 +24,7 @@
 
         <table class="meta-table">
             <tr><th>ID</th><td>{{ asset_id }}</td></tr>
-            <tr><th>Type</th><td><span class="badge">{{ asset_type }}</span></td></tr>
+            <tr><th>Type</th><td><span class="badge badge-type-{{ asset_type|lower }}">{{ asset_type }}</span></td></tr>
             <tr><th>Date</th><td id="date">{% include "date_fragment.html" %}</td></tr>
         </table>
 

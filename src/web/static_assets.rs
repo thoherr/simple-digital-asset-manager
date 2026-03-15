@@ -11,6 +11,10 @@ const MARKERCLUSTER_JS: &[u8] = include_bytes!("static/leaflet.markercluster.min
 const MARKERCLUSTER_CSS: &str = include_str!("static/MarkerCluster.css");
 const MARKERCLUSTER_DEFAULT_CSS: &str = include_str!("static/MarkerCluster.Default.css");
 
+// Brand assets
+const FAVICON_ICO: &[u8] = include_bytes!("static/favicon.ico");
+const MAKI_ICON_SVG: &[u8] = include_bytes!("static/maki-icon.svg");
+
 // Leaflet marker images
 const MARKER_ICON: &[u8] = include_bytes!("static/leaflet-images/marker-icon.png");
 const MARKER_ICON_2X: &[u8] = include_bytes!("static/leaflet-images/marker-icon-2x.png");
@@ -91,6 +95,28 @@ pub async fn markercluster_default_css() -> Response {
             (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
         ],
         MARKERCLUSTER_DEFAULT_CSS,
+    )
+        .into_response()
+}
+
+pub async fn favicon() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/x-icon"),
+            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        FAVICON_ICO,
+    )
+        .into_response()
+}
+
+pub async fn maki_icon() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/svg+xml"),
+            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        MAKI_ICON_SVG,
     )
         .into_response()
 }

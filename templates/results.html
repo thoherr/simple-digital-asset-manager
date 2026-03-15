@@ -127,7 +127,7 @@
         <a class="card-body" href="{{ card.detail_url() }}">
             <div class="card-title">{{ card.display_name }}</div>
             <div class="card-meta">
-                <span class="badge">{{ card.asset_type }}</span>
+                <span class="badge badge-type-{{ card.asset_type|lower }}">{{ card.asset_type }}</span>
                 <span class="badge">{{ card.format }}</span>
                 {% if card.variant_count > 1 %}<span class="badge badge-count">{{ card.variant_count }}v</span>{% endif %}
                 {% if let Some(sc) = card.stack_count %}<span class="badge badge-stack" data-stack-id="{{ card.stack_id.as_deref().unwrap_or_default() }}" title="Click to expand/collapse stack ({{ sc }} members)">&#8862; {{ sc }}</span>{% endif %}
