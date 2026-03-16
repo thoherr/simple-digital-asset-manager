@@ -844,7 +844,7 @@ fn draw_footer(
     // Left: branding + version + date
     let version = env!("CARGO_PKG_VERSION");
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let left_text = format!("dam {} \u{2022} {}", version, date);
+    let left_text = format!("MAKI {} \u{2022} {}", version, date);
     draw_text_mut(img, DIM_COLOR, margin as i32 + 10, text_y, scale, font, &left_text);
 
     // Center: copyright text (if provided)

@@ -5974,7 +5974,7 @@ impl AssetService {
             let image_path = match image_path {
                 Some(p) => p,
                 None => {
-                    let msg = format!("No preview/image for asset {short_id}. Run `dam generate-previews` first.");
+                    let msg = format!("No preview/image for asset {short_id}. Run `maki generate-previews` first.");
                     result.skipped += 1;
                     result.results.push(DescribeResult {
                         asset_id: aid.clone(),

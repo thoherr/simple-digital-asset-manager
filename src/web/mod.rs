@@ -639,7 +639,7 @@ fn check_vlm_at_startup(vlm_config: &crate::config::VlmConfig) -> bool {
                             status.available_models.join(", ")
                         );
                         eprintln!(
-                            "VLM: pull it with `ollama pull {configured}` or set [vlm] model in dam.toml"
+                            "VLM: pull it with `ollama pull {configured}` or set [vlm] model in maki.toml"
                         );
                     }
                 }
@@ -672,7 +672,7 @@ pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config:
     let app = build_router(state);
 
     let addr: SocketAddr = format!("{bind}:{port}").parse()?;
-    eprintln!("dam {} web UI: http://{addr}", env!("CARGO_PKG_VERSION"));
+    eprintln!("MAKI {} web UI: http://{addr}", env!("CARGO_PKG_VERSION"));
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app)
@@ -699,7 +699,7 @@ pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config:
     let app = build_router(state);
 
     let addr: SocketAddr = format!("{bind}:{port}").parse()?;
-    eprintln!("dam {} web UI: http://{addr}", env!("CARGO_PKG_VERSION"));
+    eprintln!("MAKI {} web UI: http://{addr}", env!("CARGO_PKG_VERSION"));
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app)

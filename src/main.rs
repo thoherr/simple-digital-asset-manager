@@ -1,16 +1,16 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use dam::asset_service::AssetService;
-use dam::catalog::Catalog;
-use dam::config::CatalogConfig;
-use dam::device_registry::DeviceRegistry;
-use dam::metadata_store::MetadataStore;
-use dam::query::QueryEngine;
+use maki::asset_service::AssetService;
+use maki::catalog::Catalog;
+use maki::config::CatalogConfig;
+use maki::device_registry::DeviceRegistry;
+use maki::metadata_store::MetadataStore;
+use maki::query::QueryEngine;
 
 #[derive(Parser)]
-#[command(name = "dam", about = "Digital Asset Manager", version,
-    after_help = "Use dam --help for grouped overview, or dam <command> --help for details."
+#[command(name = "maki", about = "Media Asset Keeper & Indexer", version,
+    after_help = "Use maki --help for grouped overview, or maki <command> --help for details."
 )]
 struct Cli {
     /// Output machine-readable JSON (valid JSON on stdout, messages on stderr)
@@ -196,7 +196,7 @@ enum Commands {
     /// Auto-group assets by filename stem
     #[command(display_order = 16)]
     AutoGroup {
-        /// Search query to scope assets (same syntax as dam search)
+        /// Search query to scope assets (same syntax as maki search)
         query: Option<String>,
         /// Apply grouping (default: report-only)
         #[arg(long)]
@@ -207,7 +207,7 @@ enum Commands {
     #[cfg(feature = "ai")]
     #[command(display_order = 17)]
     AutoTag {
-        /// Search query to scope assets (same syntax as `dam search`)
+        /// Search query to scope assets (same syntax as `maki search`)
         #[arg(display_order = 1)]
         query: Option<String>,
 
@@ -219,11 +219,11 @@ enum Commands {
         #[arg(long, display_order = 3)]
         volume: Option<String>,
 
-        /// AI model to use (default from dam.toml or siglip-vit-b16-256)
+        /// AI model to use (default from maki.toml or siglip-vit-b16-256)
         #[arg(long, display_order = 4)]
         model: Option<String>,
 
-        /// Confidence threshold (0.0–1.0, default from dam.toml or 0.1)
+        /// Confidence threshold (0.0–1.0, default from maki.toml or 0.1)
         #[arg(long, display_order = 10)]
         threshold: Option<f32>,
 
@@ -264,7 +264,7 @@ enum Commands {
     #[cfg(feature = "ai")]
     #[command(display_order = 18)]
     Embed {
-        /// Search query to scope assets (same syntax as `dam search`)
+        /// Search query to scope assets (same syntax as `maki search`)
         #[arg(display_order = 1)]
         query: Option<String>,
 
@@ -276,7 +276,7 @@ enum Commands {
         #[arg(long, display_order = 3)]
         volume: Option<String>,
 
-        /// AI model to use (default from dam.toml or siglip-vit-b16-256)
+        /// AI model to use (default from maki.toml or siglip-vit-b16-256)
         #[arg(long, display_order = 4)]
         model: Option<String>,
 
@@ -301,7 +301,7 @@ enum Commands {
     /// Generate image descriptions using a vision-language model (VLM)
     #[command(display_order = 16)]
     Describe {
-        /// Search query to scope assets (same syntax as `dam search`)
+        /// Search query to scope assets (same syntax as `maki search`)
         #[arg(display_order = 1)]
         query: Option<String>,
 
@@ -313,11 +313,11 @@ enum Commands {
         #[arg(long, display_order = 3)]
         volume: Option<String>,
 
-        /// VLM model name (default from dam.toml or qwen2.5vl:3b)
+        /// VLM model name (default from maki.toml or qwen2.5vl:3b)
         #[arg(long, display_order = 4)]
         model: Option<String>,
 
-        /// VLM server endpoint (default from dam.toml or http://localhost:11434)
+        /// VLM server endpoint (default from maki.toml or http://localhost:11434)
         #[arg(long, display_order = 5)]
         endpoint: Option<String>,
 
@@ -329,7 +329,7 @@ enum Commands {
         #[arg(long, display_order = 7)]
         max_tokens: Option<u32>,
 
-        /// Request timeout in seconds (default from dam.toml or 120)
+        /// Request timeout in seconds (default from maki.toml or 120)
         #[arg(long, display_order = 8)]
         timeout: Option<u32>,
 
@@ -461,7 +461,7 @@ enum Commands {
     /// Generate a PDF contact sheet from search results
     #[command(display_order = 35)]
     ContactSheet {
-        /// Search query (same syntax as dam search)
+        /// Search query (same syntax as maki search)
         query: String,
 
         /// Output PDF file path
@@ -531,7 +531,7 @@ enum Commands {
     /// Export files matching a search query to a directory
     #[command(display_order = 34)]
     Export {
-        /// Search query (same syntax as dam search)
+        /// Search query (same syntax as maki search)
         query: String,
 
         /// Target directory (created if needed), or ZIP file path with --zip
@@ -597,7 +597,7 @@ enum Commands {
     /// Check backup coverage and find under-backed-up assets
     #[command(name = "backup-status", display_order = 35)]
     BackupStatus {
-        /// Search query to scope the asset universe (same syntax as dam search)
+        /// Search query to scope the asset universe (same syntax as maki search)
         query: Option<String>,
 
         /// List under-backed-up assets (fewer than --min-copies locations)
@@ -624,11 +624,11 @@ enum Commands {
     /// Start the web UI server
     #[command(display_order = 55)]
     Serve {
-        /// Port to listen on (default: 8080, or from dam.toml [serve] port)
+        /// Port to listen on (default: 8080, or from maki.toml [serve] port)
         #[arg(long, display_order = 10)]
         port: Option<u16>,
 
-        /// Address to bind to (default: 127.0.0.1, or from dam.toml [serve] bind)
+        /// Address to bind to (default: 127.0.0.1, or from maki.toml [serve] bind)
         #[arg(long, display_order = 11)]
         bind: Option<String>,
     },
@@ -657,7 +657,7 @@ enum Commands {
         #[arg(long, display_order = 13)]
         skip: Vec<String>,
 
-        /// Skip files verified within this many days (overrides dam.toml [verify] max_age_days)
+        /// Skip files verified within this many days (overrides maki.toml [verify] max_age_days)
         #[arg(long, display_order = 14)]
         max_age: Option<u64>,
 
@@ -711,7 +711,7 @@ enum Commands {
     /// Bidirectional metadata sync: read external XMP changes and write back pending DAM edits
     #[command(name = "sync-metadata", display_order = 42)]
     SyncMetadata {
-        /// Search query to select assets (same syntax as `dam search`)
+        /// Search query to select assets (same syntax as `maki search`)
         #[arg(display_order = 1)]
         query: Option<String>,
 
@@ -739,7 +739,7 @@ enum Commands {
     /// Write back pending metadata changes to XMP recipe files
     #[command(display_order = 42)]
     Writeback {
-        /// Search query to select assets (same syntax as `dam search`)
+        /// Search query to select assets (same syntax as `maki search`)
         #[arg(display_order = 1)]
         query: Option<String>,
 
@@ -911,7 +911,7 @@ enum Commands {
     /// Fix asset dates from variant EXIF metadata and file modification times
     #[command(display_order = 49)]
     FixDates {
-        /// Search query to select assets (same syntax as `dam search`)
+        /// Search query to select assets (same syntax as `maki search`)
         #[arg(display_order = 1)]
         query: Option<String>,
 
@@ -935,7 +935,7 @@ enum Commands {
     /// Re-attach recipe files that were imported as standalone assets
     #[command(display_order = 50)]
     FixRecipes {
-        /// Search query to select assets (same syntax as `dam search`)
+        /// Search query to select assets (same syntax as `maki search`)
         #[arg(display_order = 1)]
         query: Option<String>,
 
@@ -1038,7 +1038,7 @@ enum SavedSearchCommands {
         /// Name for this saved search
         name: String,
 
-        /// Search query (same format as `dam search`)
+        /// Search query (same format as `maki search`)
         query: String,
 
         /// Sort order (e.g. date_desc, name_asc, size_desc)
@@ -1285,9 +1285,9 @@ fn print_custom_help() {
     let ai_note = if cfg!(feature = "ai") { "" } else { "  (build with --features ai for: auto-tag, embed, faces, stroll)" };
 
     let help = format!("\
-dam {version} — Digital Asset Manager{ai_note}
+maki {version} — Media Asset Keeper & Indexer{ai_note}
 
-Usage: dam [OPTIONS] <COMMAND>
+Usage: maki [OPTIONS] <COMMAND>
 
 Setup:
   init               Initialize a new catalog in the current directory
@@ -1377,13 +1377,13 @@ fn atty_stdout() -> bool {
 }
 
 fn check_schema() {
-    if let Ok(root) = dam::config::find_catalog_root() {
+    if let Ok(root) = maki::config::find_catalog_root() {
         if let Ok(catalog) = Catalog::open(&root) {
             if !catalog.is_schema_current() {
                 eprintln!(
-                    "Error: catalog schema is outdated (v{}, expected v{}). Run `dam migrate` to update.",
+                    "Error: catalog schema is outdated (v{}, expected v{}). Run `maki migrate` to update.",
                     catalog.schema_version(),
-                    dam::catalog::SCHEMA_VERSION,
+                    maki::catalog::SCHEMA_VERSION,
                 );
                 std::process::exit(1);
             }
@@ -1405,19 +1405,19 @@ fn main() {
     // Handle shell command specially — it has its own loop
     if let Commands::Shell { script, command_str, strict } = &cli.command {
         check_schema();
-        let catalog_root = match dam::config::find_catalog_root() {
+        let catalog_root = match maki::config::find_catalog_root() {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("Error: {e:#}");
                 std::process::exit(1);
             }
         };
-        let opts = dam::shell::RunOptions {
+        let opts = maki::shell::RunOptions {
             script: script.as_ref().map(PathBuf::from),
             command: command_str.clone(),
             strict: *strict,
         };
-        dam::shell::run(&catalog_root, opts, |args| {
+        maki::shell::run(&catalog_root, opts, |args| {
             let shell_cli = Cli::try_parse_from(&args).map_err(|e| anyhow::anyhow!("{e}"))?;
             run_command(shell_cli)
         });
@@ -1425,7 +1425,7 @@ fn main() {
     }
 
     // Check schema version at startup (if inside a catalog).
-    // Only `dam init` and `dam migrate` skip this check.
+    // Only `maki init` and `maki migrate` skip this check.
     if !matches!(cli.command, Commands::Init | Commands::Migrate) {
         check_schema();
     }
@@ -1445,15 +1445,15 @@ fn main() {
 
 /// Execute a parsed CLI command. Returns asset IDs produced by the command (for shell _ variable).
 fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
-    let verbosity = dam::Verbosity::new(cli.verbose, cli.debug);
+    let verbosity = maki::Verbosity::new(cli.verbose, cli.debug);
     let mut _asset_ids: Vec<String> = Vec::new();
 
     let result: anyhow::Result<()> = (|| match cli.command {
         Commands::Init => {
             let catalog_root = std::env::current_dir()?;
-            let config_path = catalog_root.join("dam.toml");
+            let config_path = catalog_root.join("maki.toml");
             if config_path.exists() {
-                anyhow::bail!("A dam catalog already exists in this directory.");
+                anyhow::bail!("A maki catalog already exists in this directory.");
             }
 
             // Create directories
@@ -1476,16 +1476,16 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     "path": catalog_root.display().to_string()
                 }));
             } else {
-                println!("Initialized new dam catalog in {}", catalog_root.display());
+                println!("Initialized new maki catalog in {}", catalog_root.display());
             }
             Ok(())
         }
         Commands::Volume(cmd) => match cmd {
             VolumeCommands::Add { label, path, purpose } => {
-                let catalog_root = dam::config::find_catalog_root()?;
+                let catalog_root = maki::config::find_catalog_root()?;
                 let registry = DeviceRegistry::new(&catalog_root);
                 let parsed_purpose = if let Some(ref p) = purpose {
-                    Some(dam::models::VolumePurpose::parse(p).ok_or_else(|| {
+                    Some(maki::models::VolumePurpose::parse(p).ok_or_else(|| {
                         anyhow::anyhow!("Invalid purpose '{}'. Valid values: working, archive, backup, cloud", p)
                     })?)
                 } else {
@@ -1494,7 +1494,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 let volume = registry.register(
                     &label,
                     std::path::Path::new(&path),
-                    dam::models::VolumeType::Local,
+                    maki::models::VolumeType::Local,
                     parsed_purpose,
                 )?;
                 if cli.json {
@@ -1516,7 +1516,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 Ok(())
             }
             VolumeCommands::List => {
-                let catalog_root = dam::config::find_catalog_root()?;
+                let catalog_root = maki::config::find_catalog_root()?;
                 let registry = DeviceRegistry::new(&catalog_root);
                 let volumes = registry.list()?;
                 if cli.json {
@@ -1546,18 +1546,18 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 Ok(())
             }
             VolumeCommands::SetPurpose { volume, purpose } => {
-                let catalog_root = dam::config::find_catalog_root()?;
+                let catalog_root = maki::config::find_catalog_root()?;
                 let registry = DeviceRegistry::new(&catalog_root);
                 let parsed_purpose = if purpose == "none" || purpose == "clear" {
                     None
                 } else {
-                    Some(dam::models::VolumePurpose::parse(&purpose).ok_or_else(|| {
+                    Some(maki::models::VolumePurpose::parse(&purpose).ok_or_else(|| {
                         anyhow::anyhow!("Invalid purpose '{}'. Valid values: working, archive, backup, cloud, none", purpose)
                     })?)
                 };
                 let vol = registry.set_purpose(&volume, parsed_purpose)?;
                 // Update the SQLite cache too
-                let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+                let catalog = maki::catalog::Catalog::open(&catalog_root)?;
                 catalog.ensure_volume(&vol)?;
                 if cli.json {
                     println!("{}", serde_json::json!({
@@ -1573,13 +1573,13 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 Ok(())
             }
             VolumeCommands::Remove { volume, apply } => {
-                let catalog_root = dam::config::find_catalog_root()?;
+                let catalog_root = maki::config::find_catalog_root()?;
                 let config = CatalogConfig::load(&catalog_root)?;
                 let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
                 let show_log = cli.log;
                 let result = if show_log {
-                    use dam::asset_service::CleanupStatus;
+                    use maki::asset_service::CleanupStatus;
                     service.remove_volume(
                         &volume,
                         apply,
@@ -1656,7 +1656,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 Ok(())
             }
             VolumeCommands::Combine { source, target, apply } => {
-                let catalog_root = dam::config::find_catalog_root()?;
+                let catalog_root = maki::config::find_catalog_root()?;
                 let config = CatalogConfig::load(&catalog_root)?;
                 let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
@@ -1720,9 +1720,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             embed,
             describe,
         } => {
-            use dam::asset_service::FileTypeFilter;
+            use maki::asset_service::FileTypeFilter;
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let smart = smart || config.import.smart_previews;
             let registry = DeviceRegistry::new(&catalog_root);
@@ -1790,7 +1790,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let result = if cli.log {
-                use dam::asset_service::FileStatus;
+                use maki::asset_service::FileStatus;
                 service.import_with_callback(&canonical_paths, &volume, &filter, &config.import.exclude, &all_tags, dry_run, smart, |path, status, elapsed| {
                     let label = match status {
                         FileStatus::Imported => "imported",
@@ -1812,7 +1812,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             let auto_group_result = if auto_group
                 && (result.imported > 0 || result.locations_added > 0)
             {
-                use dam::catalog::Catalog;
+                use maki::catalog::Catalog;
                 use std::path::Path;
 
                 let catalog = Catalog::open(&catalog_root)?;
@@ -1867,7 +1867,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 && (embed || config.import.embeddings)
                 && !result.new_asset_ids.is_empty()
             {
-                use dam::model_manager::ModelManager;
+                use maki::model_manager::ModelManager;
 
                 let model_id = &config.ai.model;
                 let model_dir_str = &config.ai.model_dir;
@@ -1881,12 +1881,12 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 let mgr = ModelManager::new(&model_dir, model_id)?;
 
                 if mgr.model_exists() {
-                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                    let _ = dam::embedding_store::EmbeddingStore::initialize(catalog.conn());
-                    let emb_store = dam::embedding_store::EmbeddingStore::new(catalog.conn());
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let _ = maki::embedding_store::EmbeddingStore::initialize(catalog.conn());
+                    let emb_store = maki::embedding_store::EmbeddingStore::new(catalog.conn());
 
                     let service = AssetService::new(&catalog_root, verbosity, &config.preview);
-                    let preview_gen = dam::preview::PreviewGenerator::new(
+                    let preview_gen = maki::preview::PreviewGenerator::new(
                         &catalog_root,
                         verbosity,
                         &config.preview,
@@ -1894,14 +1894,14 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
                     let registry = DeviceRegistry::new(&catalog_root);
                     let volumes_list = registry.list()?;
-                    let online_volumes: std::collections::HashMap<String, &dam::models::Volume> =
+                    let online_volumes: std::collections::HashMap<String, &maki::models::Volume> =
                         volumes_list
                             .iter()
                             .filter(|v| v.is_online)
                             .map(|v| (v.id.to_string(), v))
                             .collect();
 
-                    let mut ai_model = dam::ai::SigLipModel::load_with_provider(&model_dir, model_id, verbosity, &config.ai.execution_provider)?;
+                    let mut ai_model = maki::ai::SigLipModel::load_with_provider(&model_dir, model_id, verbosity, &config.ai.execution_provider)?;
 
                     let mut embedded = 0u32;
                     let mut embed_skipped = 0u32;
@@ -1924,7 +1924,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                         };
 
                         let ext = image_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                        if !dam::ai::is_supported_image(ext) {
+                        if !maki::ai::is_supported_image(ext) {
                             embed_skipped += 1;
                             continue;
                         }
@@ -1937,7 +1937,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                                     }
                                     continue;
                                 }
-                                let _ = dam::embedding_store::write_embedding_binary(&catalog_root, model_id, aid, &emb);
+                                let _ = maki::embedding_store::write_embedding_binary(&catalog_root, model_id, aid, &emb);
                                 embedded += 1;
                                 if cli.log {
                                     eprintln!("  {short_id} — embedded");
@@ -1953,7 +1953,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Some((embedded, embed_skipped))
                 } else {
                     if cli.log {
-                        eprintln!("  Skipping embeddings: model not downloaded. Run 'dam auto-tag --download' first.");
+                        eprintln!("  Skipping embeddings: model not downloaded. Run 'maki auto-tag --download' first.");
                     }
                     None
                 }
@@ -1969,11 +1969,11 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 // Check VLM endpoint availability first
                 let endpoint = &config.vlm.endpoint;
                 let vlm_model = &config.vlm.model;
-                let vlm_available = dam::vlm::check_endpoint(endpoint, 5, verbosity).is_ok();
+                let vlm_available = maki::vlm::check_endpoint(endpoint, 5, verbosity).is_ok();
 
                 if vlm_available {
-                    let mode = dam::vlm::DescribeMode::from_str(&config.vlm.mode)
-                        .unwrap_or(dam::vlm::DescribeMode::Describe);
+                    let mode = maki::vlm::DescribeMode::from_str(&config.vlm.mode)
+                        .unwrap_or(maki::vlm::DescribeMode::Describe);
                     let import_params = config.vlm.params_for_model(vlm_model);
                     let service = AssetService::new(&catalog_root, verbosity, &config.preview);
                     let log = cli.log;
@@ -1990,13 +1990,13 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                             if log {
                                 let short = &aid[..8.min(aid.len())];
                                 match status {
-                                    dam::vlm::DescribeStatus::Described => {
+                                    maki::vlm::DescribeStatus::Described => {
                                         eprintln!("  {short} — described ({})", format_duration(elapsed));
                                     }
-                                    dam::vlm::DescribeStatus::Skipped(msg) => {
+                                    maki::vlm::DescribeStatus::Skipped(msg) => {
                                         eprintln!("  {short} — skipped: {msg}");
                                     }
-                                    dam::vlm::DescribeStatus::Error(msg) => {
+                                    maki::vlm::DescribeStatus::Error(msg) => {
                                         eprintln!("  {short} — error: {msg}");
                                     }
                                 }
@@ -2105,9 +2105,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Search { query, format, quiet } => {
-            use dam::format::{self, OutputFormat};
+            use maki::format::{self, OutputFormat};
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let engine = QueryEngine::new(&catalog_root);
             let results = engine.search(&query)?;
 
@@ -2214,7 +2214,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Show { asset_id } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let engine = QueryEngine::new(&catalog_root);
             let details = engine.show(&asset_id)?;
@@ -2222,7 +2222,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&details)?);
             } else {
-                let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
+                let preview_gen = maki::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
 
                 println!("Asset: {}", details.id);
                 if let Some(name) = &details.name {
@@ -2232,7 +2232,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 println!("Date:  {}", details.created_at);
                 if !details.tags.is_empty() {
                     let display_tags: Vec<String> = details.tags.iter()
-                        .map(|t| dam::tag_util::tag_storage_to_display(t))
+                        .map(|t| maki::tag_util::tag_storage_to_display(t))
                         .collect();
                     println!("Tags:  {}", display_tags.join(", "));
                 }
@@ -2248,7 +2248,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 }
 
                 // Show preview status for the best preview variant
-                if let Some(idx) = dam::models::variant::best_preview_index_details(&details.variants) {
+                if let Some(idx) = maki::models::variant::best_preview_index_details(&details.variants) {
                     let v = &details.variants[idx];
                     let preview_path = preview_gen.preview_path(&v.content_hash);
                     if preview_gen.has_preview(&v.content_hash) {
@@ -2301,19 +2301,19 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Preview { asset_id, open } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+            let catalog = maki::catalog::Catalog::open(&catalog_root)?;
             let engine = QueryEngine::new(&catalog_root);
             let details = engine.show(&asset_id)?;
             let full_id = &details.id;
-            let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
+            let preview_gen = maki::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
 
             // Find best preview file (smart preview > regular preview)
             let best_hash = catalog.get_asset_best_variant_hash(full_id)
                 .unwrap_or(None)
                 .or_else(|| {
-                    dam::models::variant::best_preview_index_details(&details.variants)
+                    maki::models::variant::best_preview_index_details(&details.variants)
                         .map(|i| details.variants[i].content_hash.clone())
                 });
 
@@ -2328,7 +2328,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             match preview_path {
                 Some(path) => {
                     if open {
-                        dam::preview::open_in_viewer(&path)?;
+                        maki::preview::open_in_viewer(&path)?;
                         if !cli.json {
                             let name = details.name.as_deref().unwrap_or(full_id);
                             eprintln!("Opened preview for {name}");
@@ -2338,7 +2338,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                         if !cli.json {
                             eprintln!("{name}");
                         }
-                        dam::preview::display_in_terminal(&path, None, None)?;
+                        maki::preview::display_in_terminal(&path, None, None)?;
                     }
                     if cli.json {
                         println!("{}", serde_json::json!({
@@ -2363,12 +2363,12 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Tag { asset_id, remove, tags } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let engine = QueryEngine::new(&catalog_root);
             // Convert user-facing tag input to storage form:
             // `/` → `|` (hierarchy), `\/` → `/` (literal slash)
             let storage_tags: Vec<String> = tags.iter()
-                .map(|t| dam::tag_util::tag_input_to_storage(t))
+                .map(|t| maki::tag_util::tag_input_to_storage(t))
                 .collect();
             let result = engine.tag(&asset_id, &storage_tags, remove)?;
 
@@ -2380,10 +2380,10 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             } else {
                 // Display tags with `/` for hierarchy, `\/` for literal slashes
                 let display_changed: Vec<String> = result.changed.iter()
-                    .map(|t| dam::tag_util::tag_storage_to_display(t))
+                    .map(|t| maki::tag_util::tag_storage_to_display(t))
                     .collect();
                 let display_tags: Vec<String> = result.current_tags.iter()
-                    .map(|t| dam::tag_util::tag_storage_to_display(t))
+                    .map(|t| maki::tag_util::tag_storage_to_display(t))
                     .collect();
                 if !display_changed.is_empty() {
                     if remove {
@@ -2401,14 +2401,14 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Edit { asset_id, name, clear_name, description, clear_description, rating, clear_rating, label, clear_label, date, clear_date, role, variant } => {
-            use dam::query::{EditFields, parse_date_input};
+            use maki::query::{EditFields, parse_date_input};
 
             // Handle --role --variant separately from asset-level edits
             if role.is_some() || variant.is_some() {
                 let role = role.ok_or_else(|| anyhow::anyhow!("--variant requires --role"))?;
                 let variant_hash = variant.ok_or_else(|| anyhow::anyhow!("--role requires --variant"))?;
 
-                let catalog_root = dam::config::find_catalog_root()?;
+                let catalog_root = maki::config::find_catalog_root()?;
                 let engine = QueryEngine::new(&catalog_root);
                 engine.set_variant_role(&asset_id, &variant_hash, &role)?;
 
@@ -2433,7 +2433,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             let label_field = if clear_label {
                 Some(None)
             } else if let Some(ref l) = label {
-                match dam::models::Asset::validate_color_label(l) {
+                match maki::models::Asset::validate_color_label(l) {
                     Ok(canonical) => Some(canonical),
                     Err(e) => anyhow::bail!(e),
                 }
@@ -2470,7 +2470,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 created_at: date_field,
             };
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let engine = QueryEngine::new(&catalog_root);
             let result = engine.edit(&asset_id, fields)?;
 
@@ -2505,7 +2505,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Group { variant_hashes } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let engine = QueryEngine::new(&catalog_root);
             let result = engine.group(&variant_hashes)?;
 
@@ -2530,7 +2530,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Split { asset_id, variant_hashes } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let engine = QueryEngine::new(&catalog_root);
             let result = engine.split(&asset_id, &variant_hashes)?;
 
@@ -2572,16 +2572,16 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 anyhow::bail!("No asset IDs specified.");
             }
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             // Collect face IDs for deleted assets before deletion (for AI cleanup)
             #[cfg(feature = "ai")]
             let ai_cleanup_info: Vec<(String, Vec<String>)> = if apply {
-                let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                let face_store = dam::face_store::FaceStore::new(catalog.conn());
+                let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                let face_store = maki::face_store::FaceStore::new(catalog.conn());
                 ids.iter().filter_map(|id| {
                     let full_id = catalog.resolve_asset_id(id).ok().flatten()?;
                     let faces = face_store.faces_for_asset(&full_id).unwrap_or_default();
@@ -2601,13 +2601,13 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     if show_log {
                         let short_id = &id[..8.min(id.len())];
                         match status {
-                            dam::asset_service::DeleteStatus::Deleted => {
+                            maki::asset_service::DeleteStatus::Deleted => {
                                 eprintln!("  {short_id} — deleted ({})", format_duration(elapsed));
                             }
-                            dam::asset_service::DeleteStatus::NotFound => {
+                            maki::asset_service::DeleteStatus::NotFound => {
                                 eprintln!("  {short_id} — not found");
                             }
-                            dam::asset_service::DeleteStatus::Error(msg) => {
+                            maki::asset_service::DeleteStatus::Error(msg) => {
                                 eprintln!("  {short_id} — error: {msg}");
                             }
                         }
@@ -2621,16 +2621,16 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 for (asset_id, face_ids) in &ai_cleanup_info {
                     // Delete ArcFace binaries for each face
                     for face_id in face_ids {
-                        dam::face_store::delete_arcface_binary(&catalog_root, face_id);
+                        maki::face_store::delete_arcface_binary(&catalog_root, face_id);
                     }
                     // Delete SigLIP embedding binary
-                    dam::embedding_store::delete_embedding_binary(&catalog_root, "siglip-vit-b16-256", asset_id);
-                    dam::embedding_store::delete_embedding_binary(&catalog_root, "siglip-vit-l16-256", asset_id);
+                    maki::embedding_store::delete_embedding_binary(&catalog_root, "siglip-vit-b16-256", asset_id);
+                    maki::embedding_store::delete_embedding_binary(&catalog_root, "siglip-vit-l16-256", asset_id);
                 }
                 // Update faces/people YAML
-                let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                let face_store = dam::face_store::FaceStore::new(catalog.conn());
+                let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                let face_store = maki::face_store::FaceStore::new(catalog.conn());
                 let _ = face_store.save_all_yaml(&catalog_root);
             }
 
@@ -2691,12 +2691,12 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             check,
             asset_ids,
         } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
 
             let endpoint = endpoint.as_deref().unwrap_or(&config.vlm.endpoint);
             let model = model.as_deref().unwrap_or(&config.vlm.model);
-            let vlm_mode = dam::vlm::DescribeMode::from_str(&mode)?;
+            let vlm_mode = maki::vlm::DescribeMode::from_str(&mode)?;
 
             // Build params: per-model config merged with CLI overrides
             let mut vlm_params = config.vlm.params_for_model(model);
@@ -2710,12 +2710,12 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             if let Some(ref p) = prompt { vlm_params.prompt = Some(p.clone()); }
 
             if check {
-                match dam::vlm::check_endpoint_status(endpoint, vlm_params.timeout, verbosity) {
+                match maki::vlm::check_endpoint_status(endpoint, vlm_params.timeout, verbosity) {
                     Ok(status) => {
                         let model_status = if status.available_models.is_empty() {
                             format!("Configured model: {model}")
                         } else {
-                            match dam::vlm::find_matching_model(model, &status.available_models) {
+                            match maki::vlm::find_matching_model(model, &status.available_models) {
                                 Some(matched) if matched == model => {
                                     format!("Model {model} is available")
                                 }
@@ -2724,14 +2724,14 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                                 }
                                 None => {
                                     format!(
-                                        "WARNING: model \"{model}\" not found. Pull it with `ollama pull {model}` or set [vlm] model in dam.toml"
+                                        "WARNING: model \"{model}\" not found. Pull it with `ollama pull {model}` or set [vlm] model in maki.toml"
                                     )
                                 }
                             }
                         };
                         if cli.json {
                             let model_ok = status.available_models.is_empty()
-                                || dam::vlm::find_matching_model(model, &status.available_models).is_some();
+                                || maki::vlm::find_matching_model(model, &status.available_models).is_some();
                             println!("{}", serde_json::json!({
                                 "status": "ok",
                                 "endpoint": endpoint,
@@ -2769,9 +2769,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 anyhow::bail!(
                     "No scope specified. Use a query, --asset, or --volume to select assets.\n  \
                      Examples:\n    \
-                     dam describe '*'                  # all assets\n    \
-                     dam describe --asset <id>          # single asset\n    \
-                     dam describe 'rating:4+' --apply   # apply to rated assets"
+                     maki describe '*'                  # all assets\n    \
+                     maki describe --asset <id>          # single asset\n    \
+                     maki describe 'rating:4+' --apply   # apply to rated assets"
                 );
             }
 
@@ -2799,16 +2799,16 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     if show_log {
                         let short_id = &id[..8.min(id.len())];
                         match status {
-                            dam::vlm::DescribeStatus::Described => {
+                            maki::vlm::DescribeStatus::Described => {
                                 eprintln!(
                                     "  {short_id} — described ({})",
                                     format_duration(elapsed)
                                 );
                             }
-                            dam::vlm::DescribeStatus::Skipped(msg) => {
+                            maki::vlm::DescribeStatus::Skipped(msg) => {
                                 eprintln!("  {short_id} — skipped: {msg}");
                             }
-                            dam::vlm::DescribeStatus::Error(msg) => {
+                            maki::vlm::DescribeStatus::Error(msg) => {
                                 eprintln!("  {short_id} — error: {msg}");
                             }
                         }
@@ -2823,7 +2823,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 for r in &result.results {
                     let short_id = &r.asset_id[..8.min(r.asset_id.len())];
                     match &r.status {
-                        dam::vlm::DescribeStatus::Described => {
+                        maki::vlm::DescribeStatus::Described => {
                             if let Some(ref desc) = r.description {
                                 println!("{short_id}: {desc}");
                             }
@@ -2831,12 +2831,12 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                                 println!("{short_id}: tags: {}", r.tags.join(", "));
                             }
                         }
-                        dam::vlm::DescribeStatus::Skipped(msg) => {
+                        maki::vlm::DescribeStatus::Skipped(msg) => {
                             if !cli.log {
                                 eprintln!("{short_id}: skipped — {msg}");
                             }
                         }
-                        dam::vlm::DescribeStatus::Error(msg) => {
+                        maki::vlm::DescribeStatus::Error(msg) => {
                             if !cli.log {
                                 eprintln!("{short_id}: error — {msg}");
                             }
@@ -2885,17 +2885,17 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             asset_ids,
         } => {
             let (query, asset) = merge_trailing_ids(query, asset, &asset_ids);
-            use dam::model_manager::{ModelManager, format_size};
+            use maki::model_manager::{ModelManager, format_size};
 
             // List labels can work without a catalog (uses defaults)
             if list_labels {
-                use dam::ai::{DEFAULT_LABELS, load_labels_from_file};
+                use maki::ai::{DEFAULT_LABELS, load_labels_from_file};
 
                 let label_list: Vec<String> = if let Some(ref path) = labels {
                     load_labels_from_file(std::path::Path::new(path))?
                 } else {
                     // Try config if catalog exists, fall back to defaults
-                    let config_labels = dam::config::find_catalog_root()
+                    let config_labels = maki::config::find_catalog_root()
                         .ok()
                         .and_then(|root| CatalogConfig::load(&root).ok())
                         .and_then(|c| c.ai.labels.clone());
@@ -2917,14 +2917,14 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 return Ok(());
             }
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
 
             // Resolve model ID: CLI --model > config ai.model > default
             let model_id = model.as_deref().unwrap_or(&config.ai.model);
-            let _spec = dam::ai::get_model_spec(model_id)
+            let _spec = maki::ai::get_model_spec(model_id)
                 .ok_or_else(|| anyhow::anyhow!(
-                    "Unknown model: {model_id}. Run 'dam auto-tag --list-models' to see available models."
+                    "Unknown model: {model_id}. Run 'maki auto-tag --list-models' to see available models."
                 ))?;
 
             // Resolve model base directory
@@ -3014,13 +3014,13 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             if let Some(ref similar_id) = similar {
                 if !mgr.model_exists() {
                     anyhow::bail!(
-                        "Model not downloaded. Run 'dam auto-tag --download --model {model_id}' first."
+                        "Model not downloaded. Run 'maki auto-tag --download --model {model_id}' first."
                     );
                 }
 
-                let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                let _ = dam::embedding_store::EmbeddingStore::initialize(catalog.conn());
-                let emb_store = dam::embedding_store::EmbeddingStore::new(catalog.conn());
+                let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                let _ = maki::embedding_store::EmbeddingStore::initialize(catalog.conn());
+                let emb_store = maki::embedding_store::EmbeddingStore::new(catalog.conn());
 
                 let full_id = catalog
                     .resolve_asset_id(similar_id)?
@@ -3032,16 +3032,16 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                         // No stored embedding — encode it now
                         let config_preview = &config.preview;
                         let service = AssetService::new(&catalog_root, verbosity, config_preview);
-                        let mut ai_model = dam::ai::SigLipModel::load_with_provider(&model_dir, model_id, verbosity, &config.ai.execution_provider)?;
+                        let mut ai_model = maki::ai::SigLipModel::load_with_provider(&model_dir, model_id, verbosity, &config.ai.execution_provider)?;
                         let registry = DeviceRegistry::new(&catalog_root);
                         let volumes = registry.list()?;
-                        let online_volumes: std::collections::HashMap<String, &dam::models::Volume> =
+                        let online_volumes: std::collections::HashMap<String, &maki::models::Volume> =
                             volumes
                                 .iter()
                                 .filter(|v| v.is_online)
                                 .map(|v| (v.id.to_string(), v))
                                 .collect();
-                        let preview_gen = dam::preview::PreviewGenerator::new(
+                        let preview_gen = maki::preview::PreviewGenerator::new(
                             &catalog_root,
                             verbosity,
                             config_preview,
@@ -3074,7 +3074,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                         .collect();
                     println!("{}", serde_json::to_string_pretty(&json_results)?);
                 } else if results.is_empty() {
-                    println!("No similar assets found. Run 'dam auto-tag' on more assets to build embeddings.");
+                    println!("No similar assets found. Run 'maki auto-tag' on more assets to build embeddings.");
                 } else {
                     println!(
                         "Assets similar to {} ({} results):",
@@ -3094,16 +3094,16 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 anyhow::bail!(
                     "No scope specified. Use --query, --asset, or --volume to select assets.\n  \
                      Examples:\n    \
-                     dam auto-tag --query '*'           # all assets\n    \
-                     dam auto-tag --asset <id>          # single asset\n    \
-                     dam auto-tag --volume <label>      # one volume\n    \
-                     dam auto-tag --query 'tag:landscape' --apply"
+                     maki auto-tag --query '*'           # all assets\n    \
+                     maki auto-tag --asset <id>          # single asset\n    \
+                     maki auto-tag --volume <label>      # one volume\n    \
+                     maki auto-tag --query 'tag:landscape' --apply"
                 );
             }
 
             if !mgr.model_exists() {
                 anyhow::bail!(
-                    "Model not downloaded. Run 'dam auto-tag --download --model {model_id}' first."
+                    "Model not downloaded. Run 'maki auto-tag --download --model {model_id}' first."
                 );
             }
 
@@ -3111,11 +3111,11 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             // Resolve labels
             let label_list: Vec<String> = if let Some(ref labels_path) = labels {
-                dam::ai::load_labels_from_file(std::path::Path::new(labels_path))?
+                maki::ai::load_labels_from_file(std::path::Path::new(labels_path))?
             } else if let Some(ref config_labels) = config.ai.labels {
-                dam::ai::load_labels_from_file(std::path::Path::new(config_labels))?
+                maki::ai::load_labels_from_file(std::path::Path::new(config_labels))?
             } else {
-                dam::ai::DEFAULT_LABELS.iter().map(|s| s.to_string()).collect()
+                maki::ai::DEFAULT_LABELS.iter().map(|s| s.to_string()).collect()
             };
 
             let prompt = &config.ai.prompt;
@@ -3137,7 +3137,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     if show_log {
                         let short_id = &id[..8.min(id.len())];
                         match status {
-                            dam::ai::AutoTagStatus::Suggested(tags) => {
+                            maki::ai::AutoTagStatus::Suggested(tags) => {
                                 let tag_names: Vec<&str> =
                                     tags.iter().map(|t| t.tag.as_str()).collect();
                                 eprintln!(
@@ -3147,7 +3147,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                                     format_duration(elapsed)
                                 );
                             }
-                            dam::ai::AutoTagStatus::Applied(tags) => {
+                            maki::ai::AutoTagStatus::Applied(tags) => {
                                 let tag_names: Vec<&str> =
                                     tags.iter().map(|t| t.tag.as_str()).collect();
                                 eprintln!(
@@ -3157,10 +3157,10 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                                     format_duration(elapsed)
                                 );
                             }
-                            dam::ai::AutoTagStatus::Skipped(msg) => {
+                            maki::ai::AutoTagStatus::Skipped(msg) => {
                                 eprintln!("  {short_id} — skipped: {msg}");
                             }
-                            dam::ai::AutoTagStatus::Error(msg) => {
+                            maki::ai::AutoTagStatus::Error(msg) => {
                                 eprintln!("  {short_id} — error: {msg}");
                             }
                         }
@@ -3207,20 +3207,20 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             asset_ids,
         } => {
             let (query, asset) = merge_trailing_ids(query, asset, &asset_ids);
-            use dam::model_manager::ModelManager;
+            use maki::model_manager::ModelManager;
 
             if export {
-                let catalog_root = dam::config::find_catalog_root()?;
-                let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                let _ = dam::embedding_store::EmbeddingStore::initialize(catalog.conn());
-                let emb_store = dam::embedding_store::EmbeddingStore::new(catalog.conn());
+                let catalog_root = maki::config::find_catalog_root()?;
+                let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                let _ = maki::embedding_store::EmbeddingStore::initialize(catalog.conn());
+                let emb_store = maki::embedding_store::EmbeddingStore::new(catalog.conn());
 
                 let mut total = 0u32;
                 let models = emb_store.list_models()?;
                 for m in &models {
                     let embeddings = emb_store.all_embeddings_for_model(m)?;
                     for (asset_id, emb) in &embeddings {
-                        if let Err(e) = dam::embedding_store::write_embedding_binary(&catalog_root, m, asset_id, emb) {
+                        if let Err(e) = maki::embedding_store::write_embedding_binary(&catalog_root, m, asset_id, emb) {
                             eprintln!("  Warning: {}: {e:#}", &asset_id[..8.min(asset_id.len())]);
                         } else {
                             total += 1;
@@ -3242,19 +3242,19 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 anyhow::bail!(
                     "No scope specified. Use --query, --asset, or --volume to select assets.\n  \
                      Examples:\n    \
-                     dam embed --query '*'           # all assets\n    \
-                     dam embed --asset <id>          # single asset\n    \
-                     dam embed --volume <label>      # one volume"
+                     maki embed --query '*'           # all assets\n    \
+                     maki embed --asset <id>          # single asset\n    \
+                     maki embed --volume <label>      # one volume"
                 );
             }
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
 
             let model_id = model.as_deref().unwrap_or(&config.ai.model);
-            let _spec = dam::ai::get_model_spec(model_id)
+            let _spec = maki::ai::get_model_spec(model_id)
                 .ok_or_else(|| anyhow::anyhow!(
-                    "Unknown model: {model_id}. Run 'dam auto-tag --list-models' to see available models."
+                    "Unknown model: {model_id}. Run 'maki auto-tag --list-models' to see available models."
                 ))?;
 
             let model_dir_str = &config.ai.model_dir;
@@ -3269,11 +3269,11 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             if !mgr.model_exists() {
                 anyhow::bail!(
-                    "Model not downloaded. Run 'dam auto-tag --download --model {model_id}' first."
+                    "Model not downloaded. Run 'maki auto-tag --download --model {model_id}' first."
                 );
             }
 
-            let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+            let catalog = maki::catalog::Catalog::open(&catalog_root)?;
             let engine = QueryEngine::new(&catalog_root);
 
             // Resolve target assets
@@ -3295,12 +3295,12 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 results.into_iter().map(|r| r.asset_id).collect()
             };
 
-            let _ = dam::embedding_store::EmbeddingStore::initialize(catalog.conn());
-            let emb_store = dam::embedding_store::EmbeddingStore::new(catalog.conn());
+            let _ = maki::embedding_store::EmbeddingStore::initialize(catalog.conn());
+            let emb_store = maki::embedding_store::EmbeddingStore::new(catalog.conn());
 
             let registry = DeviceRegistry::new(&catalog_root);
             let volumes_list = registry.list()?;
-            let online_volumes: std::collections::HashMap<String, &dam::models::Volume> =
+            let online_volumes: std::collections::HashMap<String, &maki::models::Volume> =
                 volumes_list
                     .iter()
                     .filter(|v| v.is_online)
@@ -3308,13 +3308,13 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     .collect();
 
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
-            let preview_gen = dam::preview::PreviewGenerator::new(
+            let preview_gen = maki::preview::PreviewGenerator::new(
                 &catalog_root,
                 verbosity,
                 &config.preview,
             );
 
-            let mut ai_model = dam::ai::SigLipModel::load_with_provider(&model_dir, model_id, verbosity, &config.ai.execution_provider)?;
+            let mut ai_model = maki::ai::SigLipModel::load_with_provider(&model_dir, model_id, verbosity, &config.ai.execution_provider)?;
 
             let mut embedded: u32 = 0;
             let mut skipped: u32 = 0;
@@ -3356,7 +3356,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     .extension()
                     .and_then(|e| e.to_str())
                     .unwrap_or("");
-                if !dam::ai::is_supported_image(ext) {
+                if !maki::ai::is_supported_image(ext) {
                     skipped += 1;
                     if cli.log {
                         eprintln!("  {short_id} — skipped: unsupported format '{ext}'");
@@ -3371,7 +3371,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                             continue;
                         }
                         // Write SigLIP embedding binary
-                        if let Err(e) = dam::embedding_store::write_embedding_binary(&catalog_root, model_id, aid, &emb) {
+                        if let Err(e) = maki::embedding_store::write_embedding_binary(&catalog_root, model_id, aid, &emb) {
                             if verbosity.debug {
                                 eprintln!("  {short_id}: embedding binary error: {e:#}");
                             }
@@ -3412,27 +3412,27 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
         }
         #[cfg(feature = "ai")]
         Commands::Faces(cmd) => {
-            let catalog_root = dam::config::find_catalog_root()?;
-            let config = dam::config::CatalogConfig::load(&catalog_root)?;
+            let catalog_root = maki::config::find_catalog_root()?;
+            let config = maki::config::CatalogConfig::load(&catalog_root)?;
 
-            let face_model_dir = dam::face::resolve_face_model_dir(&config.ai);
+            let face_model_dir = maki::face::resolve_face_model_dir(&config.ai);
 
             match cmd {
                 FacesCommands::Download => {
-                    dam::face::FaceDetector::download_models(&face_model_dir, |name, i, total| {
+                    maki::face::FaceDetector::download_models(&face_model_dir, |name, i, total| {
                         eprintln!("  Downloading {name} ({i}/{total})...");
                     })?;
                     println!("Face models downloaded to {}", face_model_dir.display());
                     Ok(())
                 }
                 FacesCommands::Status => {
-                    let exists = dam::face::FaceDetector::models_exist(&face_model_dir);
+                    let exists = maki::face::FaceDetector::models_exist(&face_model_dir);
                     println!("Face model directory: {}", face_model_dir.display());
                     println!("Models downloaded: {}", if exists { "yes" } else { "no" });
 
-                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                    let store = dam::face_store::FaceStore::new(catalog.conn());
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                    let store = maki::face_store::FaceStore::new(catalog.conn());
                     println!("Total faces detected: {}", store.total_faces());
                     println!("Total people: {}", store.total_people());
 
@@ -3448,9 +3448,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Ok(())
                 }
                 FacesCommands::Detect { query, asset, volume, min_confidence, apply, force } => {
-                    if !dam::face::FaceDetector::models_exist(&face_model_dir) {
+                    if !maki::face::FaceDetector::models_exist(&face_model_dir) {
                         anyhow::bail!(
-                            "Face models not downloaded. Run 'dam faces download' first."
+                            "Face models not downloaded. Run 'maki faces download' first."
                         );
                     }
 
@@ -3458,23 +3458,23 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                         anyhow::bail!(
                             "No scope specified. Use --query, --asset, or --volume to select assets.\n  \
                              Examples:\n    \
-                             dam faces detect --query '*' --apply    # all assets\n    \
-                             dam faces detect --asset <id> --apply   # single asset\n    \
-                             dam faces detect --volume <label> --apply"
+                             maki faces detect --query '*' --apply    # all assets\n    \
+                             maki faces detect --asset <id> --apply   # single asset\n    \
+                             maki faces detect --volume <label> --apply"
                         );
                     }
 
-                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = maki::face_store::FaceStore::new(catalog.conn());
 
                     let engine = QueryEngine::new(&catalog_root);
                     let config_preview = &config.preview;
                     let service = AssetService::new(&catalog_root, verbosity, config_preview);
-                    let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, dam::Verbosity::quiet(), config_preview);
+                    let preview_gen = maki::preview::PreviewGenerator::new(&catalog_root, maki::Verbosity::quiet(), config_preview);
                     let registry = DeviceRegistry::new(&catalog_root);
                     let volumes = registry.list()?;
-                    let online_volumes: std::collections::HashMap<String, &dam::models::Volume> = volumes
+                    let online_volumes: std::collections::HashMap<String, &maki::models::Volume> = volumes
                         .iter()
                         .filter(|v| v.is_online)
                         .map(|v| (v.id.to_string(), v))
@@ -3503,7 +3503,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                             .collect()
                     };
 
-                    let mut detector = dam::face::FaceDetector::load_with_provider(&face_model_dir, verbosity, &config.ai.execution_provider)?;
+                    let mut detector = maki::face::FaceDetector::load_with_provider(&face_model_dir, verbosity, &config.ai.execution_provider)?;
 
                     let mut total_faces = 0u32;
                     let mut total_assets = 0u32;
@@ -3565,13 +3565,13 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                                             errors.push(format!("{short_id}: store error: {e:#}"));
                                         } else {
                                             // Generate face crop thumbnail
-                                            if let Err(e) = dam::face::save_face_crop(&image_path, face, &face_id, &catalog_root) {
+                                            if let Err(e) = maki::face::save_face_crop(&image_path, face, &face_id, &catalog_root) {
                                                 if verbosity.debug {
                                                     eprintln!("  {short_id}: face crop error: {e:#}");
                                                 }
                                             }
                                             // Write ArcFace embedding binary
-                                            if let Err(e) = dam::face_store::write_arcface_binary(&catalog_root, &face_id, embedding) {
+                                            if let Err(e) = maki::face_store::write_arcface_binary(&catalog_root, &face_id, embedding) {
                                                 if verbosity.debug {
                                                     eprintln!("  {short_id}: arcface binary error: {e:#}");
                                                 }
@@ -3641,13 +3641,13 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Ok(())
                 }
                 FacesCommands::Cluster { query, asset, volume, threshold, apply } => {
-                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = maki::face_store::FaceStore::new(catalog.conn());
 
                     let thresh = threshold.unwrap_or(config.ai.face_cluster_threshold);
 
-                    // Resolve scope to asset IDs (same pattern as dam embed)
+                    // Resolve scope to asset IDs (same pattern as maki embed)
                     let scoped_ids: Option<Vec<String>> = if query.is_some() || asset.is_some() || volume.is_some() {
                         let engine = QueryEngine::new(&catalog_root);
                         if let Some(ref a) = asset {
@@ -3709,9 +3709,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Ok(())
                 }
                 FacesCommands::People => {
-                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = maki::face_store::FaceStore::new(catalog.conn());
 
                     let people = face_store.list_people()?;
                     if cli.json {
@@ -3726,7 +3726,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                         println!("{}", serde_json::to_string_pretty(&json_people)?);
                     } else {
                         if people.is_empty() {
-                            println!("No people found. Run 'dam faces cluster --apply' to create people from detected faces.");
+                            println!("No people found. Run 'maki faces cluster --apply' to create people from detected faces.");
                         } else {
                             println!("{:<10} {:<30} {}", "ID", "Name", "Faces");
                             for (person, count) in &people {
@@ -3739,9 +3739,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Ok(())
                 }
                 FacesCommands::Name { person_id, name } => {
-                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = maki::face_store::FaceStore::new(catalog.conn());
 
                     // Resolve person ID prefix
                     let full_id = resolve_person_id(&face_store, &person_id)?;
@@ -3752,9 +3752,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Ok(())
                 }
                 FacesCommands::Merge { target_id, source_id } => {
-                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = maki::face_store::FaceStore::new(catalog.conn());
 
                     let target = resolve_person_id(&face_store, &target_id)?;
                     let source = resolve_person_id(&face_store, &source_id)?;
@@ -3766,9 +3766,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Ok(())
                 }
                 FacesCommands::DeletePerson { person_id } => {
-                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = maki::face_store::FaceStore::new(catalog.conn());
 
                     let full_id = resolve_person_id(&face_store, &person_id)?;
                     face_store.delete_person(&full_id)?;
@@ -3778,9 +3778,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Ok(())
                 }
                 FacesCommands::Unassign { face_id } => {
-                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = maki::face_store::FaceStore::new(catalog.conn());
 
                     // Resolve face ID prefix
                     let full_id = resolve_face_id(&face_store, &face_id)?;
@@ -3791,9 +3791,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Ok(())
                 }
                 FacesCommands::Export => {
-                    let catalog = dam::catalog::Catalog::open(&catalog_root)?;
-                    let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                    let face_store = dam::face_store::FaceStore::new(catalog.conn());
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = maki::face_store::FaceStore::new(catalog.conn());
 
                     // Export faces + people YAML
                     face_store.save_all_yaml(&catalog_root)?;
@@ -3805,7 +3805,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     for face in &faces_file.faces {
                         if let Ok(Some(emb)) = face_store.get_face_embedding(&face.id) {
                             if !emb.is_empty() {
-                                if let Err(e) = dam::face_store::write_arcface_binary(&catalog_root, &face.id, &emb) {
+                                if let Err(e) = maki::face_store::write_arcface_binary(&catalog_root, &face.id, &emb) {
                                     eprintln!("  Warning: {}: {e:#}", &face.id[..8.min(face.id.len())]);
                                 } else {
                                     arcface_count += 1;
@@ -3829,7 +3829,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             }
         }
         Commands::AutoGroup { query, apply } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let engine = QueryEngine::new(&catalog_root);
 
             // Search to get asset IDs, deduplicate (search returns one row per variant)
@@ -3882,7 +3882,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             remove_source,
             dry_run,
         } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
@@ -3909,7 +3909,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             let target_volume = match target {
                 Some(t) => t,
                 None => {
-                    // Backward compat: `dam relocate <asset-id> <volume>`
+                    // Backward compat: `maki relocate <asset-id> <volume>`
                     if ids.len() == 2 && query.is_none() {
                         let vol = ids[1].clone();
                         // Treat as single-asset mode: first arg is asset, second is volume
@@ -4015,9 +4015,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Verify { paths, volume, asset, include, skip, max_age, force } => {
-            use dam::asset_service::FileTypeFilter;
+            use maki::asset_service::FileTypeFilter;
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
@@ -4053,7 +4053,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 .collect();
 
             let result = if cli.log {
-                use dam::asset_service::VerifyStatus;
+                use maki::asset_service::VerifyStatus;
                 service.verify(
                     &canonical_paths,
                     volume.as_deref(),
@@ -4139,7 +4139,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 anyhow::bail!("--remove-stale requires --apply.");
             }
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let registry = DeviceRegistry::new(&catalog_root);
 
@@ -4159,7 +4159,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let result = if cli.log {
-                use dam::asset_service::SyncStatus;
+                use maki::asset_service::SyncStatus;
                 service.sync(
                     &canonical_paths,
                     &volume,
@@ -4223,7 +4223,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     println!("Sync complete: {}", parts.join(", "));
                 }
                 if result.new_files > 0 {
-                    println!("  Tip: run 'dam import' to import new files.");
+                    println!("  Tip: run 'maki import' to import new files.");
                 }
             }
 
@@ -4231,10 +4231,10 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
         }
         Commands::SyncMetadata { query, volume, asset, dry_run, media, asset_ids } => {
             let start = std::time::Instant::now();
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let registry = DeviceRegistry::new(&catalog_root);
-            let engine = dam::query::QueryEngine::new(&catalog_root);
+            let engine = maki::query::QueryEngine::new(&catalog_root);
 
             // Resolve volume
             let resolved_volume = if let Some(label) = &volume {
@@ -4251,10 +4251,10 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             };
 
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
-            let mut result = dam::asset_service::SyncMetadataResult { dry_run, ..Default::default() };
+            let mut result = maki::asset_service::SyncMetadataResult { dry_run, ..Default::default() };
             for aid in &asset_id_list {
                 let r = if cli.log {
-                    use dam::asset_service::SyncMetadataStatus;
+                    use maki::asset_service::SyncMetadataStatus;
                     service.sync_metadata(
                         resolved_volume.as_ref(),
                         aid.as_deref(),
@@ -4333,7 +4333,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 }
 
                 if result.conflicts > 0 {
-                    eprintln!("  Tip: resolve conflicts by running 'dam refresh' (accept external) or 'dam writeback' (keep DAM edits).");
+                    eprintln!("  Tip: resolve conflicts by running 'maki refresh' (accept external) or 'maki writeback' (keep DAM edits).");
                 }
             }
 
@@ -4344,7 +4344,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Refresh { paths, volume, asset, dry_run, media } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let registry = DeviceRegistry::new(&catalog_root);
 
@@ -4378,7 +4378,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let result = if cli.log {
-                use dam::asset_service::RefreshStatus;
+                use maki::asset_service::RefreshStatus;
                 service.refresh(
                     &canonical_paths,
                     resolved_volume.as_ref(),
@@ -4445,8 +4445,8 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Writeback { query, volume, asset, all, dry_run, asset_ids } => {
-            let catalog_root = dam::config::find_catalog_root()?;
-            let engine = dam::query::QueryEngine::new(&catalog_root);
+            let catalog_root = maki::config::find_catalog_root()?;
+            let engine = maki::query::QueryEngine::new(&catalog_root);
             let start = std::time::Instant::now();
 
             let scope = engine.resolve_scope(query.as_deref(), asset.as_deref(), &asset_ids)?;
@@ -4488,7 +4488,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Cleanup { volume, path, list, apply } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
@@ -4539,7 +4539,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             let show_log = cli.log;
             let show_list = list;
             let result = if show_log || show_list {
-                use dam::asset_service::CleanupStatus;
+                use maki::asset_service::CleanupStatus;
                 service.cleanup(
                     volume.as_deref(),
                     path_prefix.as_deref(),
@@ -4670,7 +4670,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Dedup { volume, prefer, filter_format, path, min_copies, apply } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
@@ -4679,7 +4679,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             let show_log = cli.log;
             let result = if show_log {
-                use dam::asset_service::DedupStatus;
+                use maki::asset_service::DedupStatus;
                 service.dedup(
                     volume.as_deref(),
                     filter_format.as_deref(),
@@ -4756,7 +4756,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::UpdateLocation { asset_id, from, to, volume } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
@@ -4783,13 +4783,13 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Duplicates { format, same_volume, cross_volume, volume, filter_format, path } => {
-            use dam::format::{self, OutputFormat};
+            use maki::format::{self, OutputFormat};
 
             if same_volume && cross_volume {
                 anyhow::bail!("--same-volume and --cross-volume are mutually exclusive");
             }
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let catalog = Catalog::open(&catalog_root)?;
 
             // Resolve volume label → ID for the SQL filter (unknown volume → empty results)
@@ -4947,14 +4947,14 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::GeneratePreviews { paths, asset, volume, include, skip, force, upgrade, smart } => {
-            use dam::asset_service::FileTypeFilter;
+            use maki::asset_service::FileTypeFilter;
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let preview_gen = dam::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
+            let preview_gen = maki::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
             let metadata_store = MetadataStore::new(&catalog_root);
-            let registry = dam::device_registry::DeviceRegistry::new(&catalog_root);
-            let catalog = dam::catalog::Catalog::open(&catalog_root)?;
+            let registry = maki::device_registry::DeviceRegistry::new(&catalog_root);
+            let catalog = maki::catalog::Catalog::open(&catalog_root)?;
             let volumes = registry.list()?;
 
             // Build file type filter
@@ -4990,8 +4990,8 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             if !canonical_paths.is_empty() {
                 // PATHS mode: resolve files, look up each in catalog
-                let files = dam::asset_service::resolve_files(&canonical_paths, &config.import.exclude);
-                let content_store = dam::content_store::ContentStore::new(&catalog_root);
+                let files = maki::asset_service::resolve_files(&canonical_paths, &config.import.exclude);
+                let content_store = maki::content_store::ContentStore::new(&catalog_root);
 
                 for file_path in &files {
                     // Filter by extension
@@ -5081,7 +5081,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     // Select the best variant for preview generation (respects user override)
                     let idx = asset_data.preview_variant.as_ref()
                         .and_then(|h| asset_data.variants.iter().position(|v| &v.content_hash == h))
-                        .or_else(|| dam::models::variant::best_preview_index(&asset_data.variants))
+                        .or_else(|| maki::models::variant::best_preview_index(&asset_data.variants))
                         .unwrap_or(0);
                     if let Some(variant) = asset_data.variants.get(idx) {
                         // In --upgrade mode, skip assets where the best variant is already the first
@@ -5184,7 +5184,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::FixRoles { paths, volume, asset, apply } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
@@ -5205,8 +5205,8 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 |name, status| {
                     if show_log {
                         let label = match status {
-                            dam::asset_service::FixRolesStatus::AlreadyCorrect => "ok",
-                            dam::asset_service::FixRolesStatus::Fixed => {
+                            maki::asset_service::FixRolesStatus::AlreadyCorrect => "ok",
+                            maki::asset_service::FixRolesStatus::Fixed => {
                                 if apply { "fixed" } else { "would fix" }
                             }
                         };
@@ -5239,10 +5239,10 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::FixDates { query, volume, asset, apply, asset_ids } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
-            let engine = dam::query::QueryEngine::new(&catalog_root);
+            let engine = maki::query::QueryEngine::new(&catalog_root);
 
             // Resolve scope (query/asset/asset_ids) to individual asset IDs
             let scope = engine.resolve_scope(query.as_deref(), asset.as_deref(), &asset_ids)?;
@@ -5252,7 +5252,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             };
 
             let show_log = cli.log;
-            let mut result = dam::asset_service::FixDatesResult { dry_run: !apply, ..Default::default() };
+            let mut result = maki::asset_service::FixDatesResult { dry_run: !apply, ..Default::default() };
             for aid in &asset_id_list {
                 let r = service.fix_dates(
                     volume.as_deref(),
@@ -5261,10 +5261,10 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     |name, status, detail| {
                         if show_log {
                             let label = match status {
-                                dam::asset_service::FixDatesStatus::AlreadyCorrect => "ok".to_string(),
-                                dam::asset_service::FixDatesStatus::NoDate => "no date available".to_string(),
-                                dam::asset_service::FixDatesStatus::SkippedOffline => "skipped (volume offline)".to_string(),
-                                dam::asset_service::FixDatesStatus::Fixed => {
+                                maki::asset_service::FixDatesStatus::AlreadyCorrect => "ok".to_string(),
+                                maki::asset_service::FixDatesStatus::NoDate => "no date available".to_string(),
+                                maki::asset_service::FixDatesStatus::SkippedOffline => "skipped (volume offline)".to_string(),
+                                maki::asset_service::FixDatesStatus::Fixed => {
                                     let action = if apply { "fixed" } else { "would fix" };
                                     if let Some(d) = detail {
                                         format!("{action}: {d}")
@@ -5333,10 +5333,10 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::FixRecipes { query, volume, asset, apply, asset_ids } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
-            let engine = dam::query::QueryEngine::new(&catalog_root);
+            let engine = maki::query::QueryEngine::new(&catalog_root);
 
             // Resolve scope (query/asset/asset_ids) to individual asset IDs
             let scope = engine.resolve_scope(query.as_deref(), asset.as_deref(), &asset_ids)?;
@@ -5346,7 +5346,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             };
 
             let show_log = cli.log;
-            let mut result = dam::asset_service::FixRecipesResult { dry_run: !apply, ..Default::default() };
+            let mut result = maki::asset_service::FixRecipesResult { dry_run: !apply, ..Default::default() };
             for aid in &asset_id_list {
                 let r = service.fix_recipes(
                     volume.as_deref(),
@@ -5355,11 +5355,11 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     |name, status| {
                         if show_log {
                             let label = match status {
-                                dam::asset_service::FixRecipesStatus::Reattached => {
+                                maki::asset_service::FixRecipesStatus::Reattached => {
                                     if apply { "reattached" } else { "would reattach" }
                                 }
-                                dam::asset_service::FixRecipesStatus::NoParentFound => "no parent found",
-                                dam::asset_service::FixRecipesStatus::Skipped => "skipped",
+                                maki::asset_service::FixRecipesStatus::NoParentFound => "no parent found",
+                                maki::asset_service::FixRecipesStatus::Skipped => "skipped",
                             };
                             eprintln!("  {} — {}", name, label);
                         }
@@ -5404,7 +5404,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::RebuildCatalog => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let catalog = Catalog::open(&catalog_root)?;
             catalog.initialize()?;
 
@@ -5423,9 +5423,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             // Restore collections from YAML
             let collections_restored = {
-                let col_file = dam::collection::load_yaml(&catalog_root).unwrap_or_default();
+                let col_file = maki::collection::load_yaml(&catalog_root).unwrap_or_default();
                 if !col_file.collections.is_empty() {
-                    let col_store = dam::collection::CollectionStore::new(catalog.conn());
+                    let col_store = maki::collection::CollectionStore::new(catalog.conn());
                     col_store.import_from_yaml(&col_file).unwrap_or(0)
                 } else {
                     0
@@ -5434,9 +5434,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             // Restore stacks from YAML
             let stacks_restored = {
-                let stacks_file = dam::stack::load_yaml(&catalog_root).unwrap_or_default();
+                let stacks_file = maki::stack::load_yaml(&catalog_root).unwrap_or_default();
                 if !stacks_file.stacks.is_empty() {
-                    let stack_store = dam::stack::StackStore::new(catalog.conn());
+                    let stack_store = maki::stack::StackStore::new(catalog.conn());
                     stack_store.import_from_yaml(&stacks_file).unwrap_or(0)
                 } else {
                     0
@@ -5446,12 +5446,12 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             // Restore faces, people, and embeddings from files
             #[cfg(feature = "ai")]
             let (people_restored, faces_restored, face_embeddings_restored, embeddings_restored) = {
-                let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                let _ = dam::embedding_store::EmbeddingStore::initialize(catalog.conn());
-                let face_store = dam::face_store::FaceStore::new(catalog.conn());
+                let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                let _ = maki::embedding_store::EmbeddingStore::initialize(catalog.conn());
+                let face_store = maki::face_store::FaceStore::new(catalog.conn());
 
                 // Import people first (faces reference people via FK)
-                let people_file = dam::face_store::load_people_yaml(&catalog_root).unwrap_or_default();
+                let people_file = maki::face_store::load_people_yaml(&catalog_root).unwrap_or_default();
                 let people_restored = if !people_file.people.is_empty() {
                     face_store.import_people_from_yaml(&people_file).unwrap_or(0)
                 } else {
@@ -5459,7 +5459,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 };
 
                 // Import faces (with empty embedding placeholder)
-                let faces_file = dam::face_store::load_faces_yaml(&catalog_root).unwrap_or_default();
+                let faces_file = maki::face_store::load_faces_yaml(&catalog_root).unwrap_or_default();
                 let faces_restored = if !faces_file.faces.is_empty() {
                     face_store.import_faces_from_yaml(&faces_file).unwrap_or(0)
                 } else {
@@ -5468,7 +5468,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
                 // Restore ArcFace embeddings from binary files
                 let mut face_embeddings_restored = 0u32;
-                if let Ok(arcface_entries) = dam::face_store::scan_arcface_binaries(&catalog_root) {
+                if let Ok(arcface_entries) = maki::face_store::scan_arcface_binaries(&catalog_root) {
                     for (face_id, embedding) in &arcface_entries {
                         if face_store.import_face_embedding(face_id, embedding).is_ok() {
                             face_embeddings_restored += 1;
@@ -5478,7 +5478,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
                 // Restore SigLIP embeddings from binary files
                 let mut embeddings_restored = 0u32;
-                let emb_store = dam::embedding_store::EmbeddingStore::new(catalog.conn());
+                let emb_store = maki::embedding_store::EmbeddingStore::new(catalog.conn());
                 // Scan all model directories under embeddings/ (skip "arcface")
                 let emb_base = catalog_root.join("embeddings");
                 if emb_base.exists() {
@@ -5488,7 +5488,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                             if name == "arcface" || !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                                 continue;
                             }
-                            if let Ok(model_entries) = dam::embedding_store::scan_embedding_binaries(&catalog_root, &name) {
+                            if let Ok(model_entries) = maki::embedding_store::scan_embedding_binaries(&catalog_root, &name) {
                                 for (asset_id, embedding) in &model_entries {
                                     if emb_store.store(asset_id, embedding, &name).is_ok() {
                                         embeddings_restored += 1;
@@ -5554,15 +5554,15 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Serve { port, bind } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let port = port.unwrap_or(config.serve.port);
             let bind = bind.unwrap_or_else(|| config.serve.bind.clone());
             let rt = tokio::runtime::Runtime::new()?;
             #[cfg(feature = "ai")]
-            rt.block_on(dam::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer, config.serve.per_page, config.serve.stroll_neighbors, config.serve.stroll_neighbors_max, config.serve.stroll_fanout, config.serve.stroll_fanout_max, config.serve.stroll_discover_pool, config.ai, config.vlm, verbosity))?;
+            rt.block_on(maki::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer, config.serve.per_page, config.serve.stroll_neighbors, config.serve.stroll_neighbors_max, config.serve.stroll_fanout, config.serve.stroll_fanout_max, config.serve.stroll_discover_pool, config.ai, config.vlm, verbosity))?;
             #[cfg(not(feature = "ai"))]
-            rt.block_on(dam::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer, config.serve.per_page, config.serve.stroll_neighbors, config.serve.stroll_neighbors_max, config.serve.stroll_fanout, config.serve.stroll_fanout_max, config.serve.stroll_discover_pool, config.vlm, verbosity))?;
+            rt.block_on(maki::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer, config.serve.per_page, config.serve.stroll_neighbors, config.serve.stroll_neighbors_max, config.serve.stroll_fanout, config.serve.stroll_fanout_max, config.serve.stroll_discover_pool, config.vlm, verbosity))?;
             Ok(())
         }
         Commands::ContactSheet {
@@ -5584,12 +5584,12 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             copyright,
             dry_run,
         } => {
-            use dam::contact_sheet::{
+            use maki::contact_sheet::{
                 generate_contact_sheet, ContactSheetConfig, ContactSheetLayout,
                 ContactSheetStatus, GroupByField, LabelStyle, MetadataField, PaperSize,
             };
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let cs_defaults = &config.contact_sheet;
 
@@ -5691,7 +5691,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             overwrite,
             zip,
         } => {
-            use dam::asset_service::{ExportLayout, ExportStatus};
+            use maki::asset_service::{ExportLayout, ExportStatus};
 
             let export_layout = match layout.as_str() {
                 "flat" => ExportLayout::Flat,
@@ -5699,7 +5699,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 _ => anyhow::bail!("Unknown layout '{}'. Valid layouts: flat, mirror", layout),
             };
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
@@ -5815,7 +5815,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Stats { types, volumes, tags, verified, all, limit } => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let catalog = Catalog::open(&catalog_root)?;
             let registry = DeviceRegistry::new(&catalog_root);
             let vol_list = registry.list()?;
@@ -5847,9 +5847,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::BackupStatus { query, at_risk, min_copies, volume, format, quiet } => {
-            use dam::format::{self, OutputFormat};
+            use maki::format::{self, OutputFormat};
 
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let catalog = Catalog::open(&catalog_root)?;
             let registry = DeviceRegistry::new(&catalog_root);
             let vol_list = registry.list()?;
@@ -5893,7 +5893,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 let results = if risk_ids.is_empty() {
                     Vec::new()
                 } else {
-                    let opts = dam::catalog::SearchOptions {
+                    let opts = maki::catalog::SearchOptions {
                         collection_asset_ids: Some(&risk_ids),
                         per_page: u32::MAX,
                         ..Default::default()
@@ -6005,15 +6005,15 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Collection(cmd) => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let catalog = Catalog::open(&catalog_root)?;
-            let store = dam::collection::CollectionStore::new(catalog.conn());
+            let store = maki::collection::CollectionStore::new(catalog.conn());
             match cmd {
                 CollectionCommands::Create { name, description } => {
                     let col = store.create(&name, description.as_deref())?;
                     // Persist to YAML
                     let yaml = store.export_all()?;
-                    dam::collection::save_yaml(&catalog_root, &yaml)?;
+                    maki::collection::save_yaml(&catalog_root, &yaml)?;
                     if cli.json {
                         println!("{}", serde_json::json!({
                             "id": col.id.to_string(),
@@ -6043,7 +6043,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Ok(())
                 }
                 CollectionCommands::Show { name, format } => {
-                    use dam::format::{self, OutputFormat};
+                    use maki::format::{self, OutputFormat};
 
                     let col = store.get_by_name(&name)?
                         .ok_or_else(|| anyhow::anyhow!("No collection named '{name}'"))?;
@@ -6164,7 +6164,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     let added = store.add_assets(&name, &ids)?;
                     // Persist to YAML
                     let yaml = store.export_all()?;
-                    dam::collection::save_yaml(&catalog_root, &yaml)?;
+                    maki::collection::save_yaml(&catalog_root, &yaml)?;
                     if cli.json {
                         println!("{}", serde_json::json!({
                             "added": added,
@@ -6182,7 +6182,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     let removed = store.remove_assets(&name, &asset_ids)?;
                     // Persist to YAML
                     let yaml = store.export_all()?;
-                    dam::collection::save_yaml(&catalog_root, &yaml)?;
+                    maki::collection::save_yaml(&catalog_root, &yaml)?;
                     if cli.json {
                         println!("{}", serde_json::json!({
                             "removed": removed,
@@ -6197,7 +6197,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     store.delete(&name)?;
                     // Persist to YAML
                     let yaml = store.export_all()?;
-                    dam::collection::save_yaml(&catalog_root, &yaml)?;
+                    maki::collection::save_yaml(&catalog_root, &yaml)?;
                     if cli.json {
                         println!("{}", serde_json::json!({
                             "status": "deleted",
@@ -6211,9 +6211,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             }
         }
         Commands::Stack(cmd) => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let catalog = Catalog::open(&catalog_root)?;
-            let store = dam::stack::StackStore::new(catalog.conn());
+            let store = maki::stack::StackStore::new(catalog.conn());
             match cmd {
                 StackCommands::Create { asset_ids } => {
                     if asset_ids.len() < 2 {
@@ -6221,7 +6221,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     }
                     let stack = store.create(&asset_ids)?;
                     let yaml = store.export_all()?;
-                    dam::stack::save_yaml(&catalog_root, &yaml)?;
+                    maki::stack::save_yaml(&catalog_root, &yaml)?;
                     if cli.json {
                         println!("{}", serde_json::json!({
                             "id": stack.id.to_string(),
@@ -6239,7 +6239,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 StackCommands::Add { reference, asset_ids } => {
                     let added = store.add(&reference, &asset_ids)?;
                     let yaml = store.export_all()?;
-                    dam::stack::save_yaml(&catalog_root, &yaml)?;
+                    maki::stack::save_yaml(&catalog_root, &yaml)?;
                     if cli.json {
                         println!("{}", serde_json::json!({ "added": added }));
                     } else {
@@ -6253,7 +6253,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     }
                     let removed = store.remove(&asset_ids)?;
                     let yaml = store.export_all()?;
-                    dam::stack::save_yaml(&catalog_root, &yaml)?;
+                    maki::stack::save_yaml(&catalog_root, &yaml)?;
                     if cli.json {
                         println!("{}", serde_json::json!({ "removed": removed }));
                     } else {
@@ -6264,7 +6264,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 StackCommands::Pick { asset_id } => {
                     store.set_pick(&asset_id)?;
                     let yaml = store.export_all()?;
-                    dam::stack::save_yaml(&catalog_root, &yaml)?;
+                    maki::stack::save_yaml(&catalog_root, &yaml)?;
                     if cli.json {
                         println!("{}", serde_json::json!({ "pick": asset_id }));
                     } else {
@@ -6275,7 +6275,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 StackCommands::Dissolve { asset_id } => {
                     store.dissolve(&asset_id)?;
                     let yaml = store.export_all()?;
-                    dam::stack::save_yaml(&catalog_root, &yaml)?;
+                    maki::stack::save_yaml(&catalog_root, &yaml)?;
                     if cli.json {
                         println!("{}", serde_json::json!({ "status": "dissolved" }));
                     } else {
@@ -6353,12 +6353,12 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             }
         }
         Commands::SavedSearch(cmd) => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             match cmd {
                 SavedSearchCommands::Save { name, query, sort, favorite } => {
-                    let mut file = dam::saved_search::load(&catalog_root)?;
+                    let mut file = maki::saved_search::load(&catalog_root)?;
                     // Replace existing entry with same name, or append
-                    let entry = dam::saved_search::SavedSearch {
+                    let entry = maki::saved_search::SavedSearch {
                         name: name.clone(),
                         query,
                         sort,
@@ -6369,7 +6369,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     } else {
                         file.searches.push(entry);
                     }
-                    dam::saved_search::save(&catalog_root, &file)?;
+                    maki::saved_search::save(&catalog_root, &file)?;
                     if cli.json {
                         println!("{}", serde_json::json!({
                             "status": "saved",
@@ -6381,7 +6381,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Ok(())
                 }
                 SavedSearchCommands::List => {
-                    let file = dam::saved_search::load(&catalog_root)?;
+                    let file = maki::saved_search::load(&catalog_root)?;
                     if cli.json {
                         println!("{}", serde_json::to_string_pretty(&file.searches)?);
                     } else if file.searches.is_empty() {
@@ -6396,10 +6396,10 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Ok(())
                 }
                 SavedSearchCommands::Run { name, format } => {
-                    use dam::format::{self, OutputFormat};
+                    use maki::format::{self, OutputFormat};
 
-                    let file = dam::saved_search::load(&catalog_root)?;
-                    let ss = dam::saved_search::find_by_name(&file, &name)
+                    let file = maki::saved_search::load(&catalog_root)?;
+                    let ss = maki::saved_search::find_by_name(&file, &name)
                         .ok_or_else(|| anyhow::anyhow!("No saved search named '{name}'"))?;
 
                     let engine = QueryEngine::new(&catalog_root);
@@ -6498,13 +6498,13 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     Ok(())
                 }
                 SavedSearchCommands::Delete { name } => {
-                    let mut file = dam::saved_search::load(&catalog_root)?;
+                    let mut file = maki::saved_search::load(&catalog_root)?;
                     let before = file.searches.len();
                     file.searches.retain(|s| s.name != name);
                     if file.searches.len() == before {
                         anyhow::bail!("No saved search named '{name}'");
                     }
-                    dam::saved_search::save(&catalog_root, &file)?;
+                    maki::saved_search::save(&catalog_root, &file)?;
                     if cli.json {
                         println!("{}", serde_json::json!({
                             "status": "deleted",
@@ -6518,15 +6518,15 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             }
         }
         Commands::Migrate => {
-            let catalog_root = dam::config::find_catalog_root()?;
+            let catalog_root = maki::config::find_catalog_root()?;
             let catalog = Catalog::open_and_migrate(&catalog_root)?;
             #[cfg(feature = "ai")]
             {
-                let _ = dam::face_store::FaceStore::initialize(catalog.conn());
-                let _ = dam::embedding_store::EmbeddingStore::initialize(catalog.conn());
+                let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                let _ = maki::embedding_store::EmbeddingStore::initialize(catalog.conn());
             }
             // Fix sidecar YAML files with MicrosoftPhoto:Rating percentage values
-            let store = dam::metadata_store::MetadataStore::new(&catalog_root);
+            let store = maki::metadata_store::MetadataStore::new(&catalog_root);
             let mut fixed_sidecars = 0u32;
             let mut stmt = catalog.conn().prepare(
                 "SELECT id FROM assets WHERE rating IS NOT NULL",
@@ -6540,7 +6540,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     if let Ok(mut asset) = store.load_raw(uuid) {
                         if let Some(r) = asset.rating {
                             if r > 5 {
-                                asset.rating = Some(dam::asset_service::normalize_rating(r));
+                                asset.rating = Some(maki::asset_service::normalize_rating(r));
                                 let _ = store.save(&asset);
                                 fixed_sidecars += 1;
                             }
@@ -6622,7 +6622,7 @@ fn format_size(bytes: u64) -> String {
 
 /// Resolve a person ID prefix to a full ID.
 #[cfg(feature = "ai")]
-fn resolve_person_id(face_store: &dam::face_store::FaceStore, prefix: &str) -> anyhow::Result<String> {
+fn resolve_person_id(face_store: &maki::face_store::FaceStore, prefix: &str) -> anyhow::Result<String> {
     let people = face_store.list_people()?;
     let matches: Vec<_> = people
         .iter()
@@ -6637,7 +6637,7 @@ fn resolve_person_id(face_store: &dam::face_store::FaceStore, prefix: &str) -> a
 
 /// Resolve a face ID prefix to a full ID.
 #[cfg(feature = "ai")]
-fn resolve_face_id(face_store: &dam::face_store::FaceStore, prefix: &str) -> anyhow::Result<String> {
+fn resolve_face_id(face_store: &maki::face_store::FaceStore, prefix: &str) -> anyhow::Result<String> {
     // Try exact match first
     if let Ok(Some(_)) = face_store.get_face(prefix) {
         return Ok(prefix.to_string());
@@ -6655,7 +6655,7 @@ fn resolve_face_id(face_store: &dam::face_store::FaceStore, prefix: &str) -> any
     }
 }
 
-fn print_stats_human(stats: &dam::catalog::CatalogStats) {
+fn print_stats_human(stats: &maki::catalog::CatalogStats) {
     let o = &stats.overview;
     println!("Catalog Overview");
     println!("  Assets:    {}", o.assets);
@@ -6743,7 +6743,7 @@ fn print_stats_human(stats: &dam::catalog::CatalogStats) {
     }
 }
 
-fn print_backup_status_human(result: &dam::catalog::BackupStatusResult) {
+fn print_backup_status_human(result: &maki::catalog::BackupStatusResult) {
     println!("Backup Status ({})", result.scope);
     println!("{}", "=".repeat(40));
     println!();
@@ -6802,8 +6802,8 @@ fn print_backup_status_human(result: &dam::catalog::BackupStatusResult) {
             result.min_copies,
             if result.min_copies == 1 { "" } else { "s" },
         );
-        println!("  Use 'dam backup-status --at-risk' to list them");
-        println!("  Use 'dam backup-status --at-risk -q' for asset IDs (pipeable)");
+        println!("  Use 'maki backup-status --at-risk' to list them");
+        println!("  Use 'maki backup-status --at-risk -q' for asset IDs (pipeable)");
     } else {
         println!();
         println!(

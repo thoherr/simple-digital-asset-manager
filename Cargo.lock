@@ -669,46 +669,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dam"
-version = "3.2.7"
-dependencies = [
- "ab_glyph",
- "anyhow",
- "askama",
- "assert_cmd",
- "axum",
- "chrono",
- "clap",
- "glob-match",
- "image",
- "imageproc",
- "kamadak-exif",
- "lofty",
- "ndarray",
- "ort",
- "predicates",
- "printpdf",
- "quick-xml",
- "regex",
- "rusqlite",
- "rustyline",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "tempfile",
- "thiserror 1.0.69",
- "tokenizers",
- "tokio",
- "tokio-stream",
- "toml",
- "tower-http",
- "uuid",
- "viuer",
- "zip",
-]
-
-[[package]]
 name = "darling"
 version = "0.20.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1756,6 +1716,46 @@ name = "macro_rules_attribute-proc_macro"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
+
+[[package]]
+name = "maki"
+version = "3.2.7"
+dependencies = [
+ "ab_glyph",
+ "anyhow",
+ "askama",
+ "assert_cmd",
+ "axum",
+ "chrono",
+ "clap",
+ "glob-match",
+ "image",
+ "imageproc",
+ "kamadak-exif",
+ "lofty",
+ "ndarray",
+ "ort",
+ "predicates",
+ "printpdf",
+ "quick-xml",
+ "regex",
+ "rusqlite",
+ "rustyline",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokenizers",
+ "tokio",
+ "tokio-stream",
+ "toml",
+ "tower-http",
+ "uuid",
+ "viuer",
+ "zip",
+]
 
 [[package]]
 name = "matchit"

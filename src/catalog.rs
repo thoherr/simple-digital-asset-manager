@@ -310,7 +310,7 @@ pub struct YearCount {
     pub count: u64,
 }
 
-/// Top-level result for `dam backup-status`.
+/// Top-level result for `maki backup-status`.
 #[derive(Debug, serde::Serialize)]
 pub struct BackupStatusResult {
     pub scope: String,
@@ -646,7 +646,7 @@ impl Catalog {
     ///
     /// Checks the current schema version and only executes migration blocks
     /// for versions newer than what the database already has.  Called once at
-    /// startup (server init, `dam migrate`) and from `initialize()` for fresh
+    /// startup (server init, `maki migrate`) and from `initialize()` for fresh
     /// catalogs (where version is 0, so everything runs).
     pub fn run_migrations(&self) {
         let current = self.schema_version();

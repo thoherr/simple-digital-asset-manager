@@ -80,13 +80,13 @@ impl FaceDetector {
 
         if !detect_path.exists() {
             anyhow::bail!(
-                "Face detection model not found at {}. Run 'dam faces download' first.",
+                "Face detection model not found at {}. Run 'maki faces download' first.",
                 detect_path.display()
             );
         }
         if !recog_path.exists() {
             anyhow::bail!(
-                "Face recognition model not found at {}. Run 'dam faces download' first.",
+                "Face recognition model not found at {}. Run 'maki faces download' first.",
                 recog_path.display()
             );
         }
@@ -765,13 +765,13 @@ fn l2_normalize(v: &[f32]) -> Vec<f32> {
     v.iter().map(|x| x / norm).collect()
 }
 
-/// Default face model directory: `~/.dam/models/faces/`.
+/// Default face model directory: `~/.maki/models/faces/`.
 pub fn default_face_model_dir() -> Result<std::path::PathBuf> {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .context("Cannot determine home directory")?;
     Ok(std::path::PathBuf::from(home)
-        .join(".dam")
+        .join(".maki")
         .join("models")
         .join("faces"))
 }
@@ -821,8 +821,8 @@ mod tests {
     fn default_face_model_dir_path() {
         let dir = default_face_model_dir().unwrap();
         assert!(
-            dir.to_str().unwrap().contains(".dam/models/faces"),
-            "Expected .dam/models/faces path, got: {}",
+            dir.to_str().unwrap().contains(".maki/models/faces"),
+            "Expected .maki/models/faces path, got: {}",
             dir.display()
         );
     }

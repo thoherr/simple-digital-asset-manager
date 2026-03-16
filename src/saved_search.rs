@@ -9,7 +9,7 @@ use crate::query::parse_search_query;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SavedSearch {
     pub name: String,
-    /// Search query in the same format as `dam search` (e.g. "type:image tag:landscape rating:4+")
+    /// Search query in the same format as `maki search` (e.g. "type:image tag:landscape rating:4+")
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub query: String,
     /// Sort order (e.g. "date_desc", "name_asc"). Omitted = default (date_desc).

@@ -1,5 +1,5 @@
 [package]
-name = "dam"
+name = "maki"
 version = "3.2.7"
 edition = "2021"
 description = "A digital asset manager for large collections of images and videos"

@@ -132,7 +132,7 @@ impl ShellHelper {
 
 /// Load tag names and volume labels from the catalog for completion.
 fn load_completion_data(catalog_root: &Path) -> (Vec<String>, Vec<String>) {
-    let db_path = catalog_root.join(".dam").join("catalog.db");
+    let db_path = catalog_root.join(".maki").join("catalog.db");
     let tags;
     let volumes;
 
@@ -330,14 +330,14 @@ impl SessionDefaults {
         self.flags.is_empty()
     }
 
-    /// Inject session defaults into a token list (after "dam" argv[0], before other args).
+    /// Inject session defaults into a token list (after "maki" argv[0], before other args).
     fn inject(&self, tokens: &mut Vec<String>) {
         if self.flags.is_empty() {
             return;
         }
         // Insert after the first token (the subcommand) — but we insert into
-        // the args list after "dam" is prepended, so position 2 (after "dam" + subcommand).
-        // Actually, global flags go right after "dam" (before the subcommand) for clap.
+        // the args list after "maki" is prepended, so position 2 (after "maki" + subcommand).
+        // Actually, global flags go right after "maki" (before the subcommand) for clap.
         // But clap also accepts them after the subcommand. Let's append to the end
         // to avoid interfering with subcommand position detection.
         for flag in &self.flags {
@@ -369,14 +369,14 @@ fn run_interactive(
     let catalog_name = catalog_root
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("dam");
+        .unwrap_or("maki");
 
     let helper = ShellHelper::new(catalog_root);
     let mut rl = rustyline::Editor::new().unwrap();
     rl.set_helper(Some(helper));
 
     // Load history (ignore errors — file may not exist yet)
-    let history_path = catalog_root.join(".dam").join("shell_history");
+    let history_path = catalog_root.join(".maki").join("shell_history");
     if history_path.exists() {
         let _ = rl.load_history(&history_path);
     }
@@ -384,7 +384,7 @@ fn run_interactive(
     let mut vars = Variables::new();
     let mut defaults = SessionDefaults::new();
 
-    eprintln!("dam shell v{} — type 'help' or 'quit' to exit", env!("CARGO_PKG_VERSION"));
+    eprintln!("maki shell v{} — type 'help' or 'quit' to exit", env!("CARGO_PKG_VERSION"));
 
     loop {
         // Update variable names in the helper for completion
@@ -469,7 +469,7 @@ fn run_script(
     run_lines(&content, Some(path), strict, executor);
 }
 
-/// Run a single command string (dam shell -c '...').
+/// Run a single command string (maki shell -c '...').
 fn run_single_command(
     command: &str,
     strict: bool,
@@ -722,7 +722,7 @@ fn handle_line(
         }
 
         let mut args = vec![
-            "dam".to_string(),
+            "maki".to_string(),
             "export".to_string(),
             query,
             target,
@@ -888,7 +888,7 @@ fn execute_with_ids(
 
     // If no variable IDs were expanded, run the command as-is
     if asset_ids.is_empty() {
-        let mut args = vec!["dam".to_string()];
+        let mut args = vec!["maki".to_string()];
         args.extend(command_tokens);
         defaults.inject(&mut args);
         return match executor(args) {
@@ -906,7 +906,7 @@ fn execute_with_ids(
         let mut all_ids = Vec::new();
         let mut errors = 0;
         for (i, id) in asset_ids.iter().enumerate() {
-            let mut args = vec!["dam".to_string()];
+            let mut args = vec!["maki".to_string()];
             // Insert: subcommand, then asset ID, then remaining args
             args.push(command_tokens[0].clone()); // subcommand name
             args.push(id.clone());                // asset ID
@@ -928,7 +928,7 @@ fn execute_with_ids(
 
     // Single ID for a single-asset command: insert ID after subcommand
     if SINGLE_ASSET_COMMANDS.contains(&cmd.as_str()) && asset_ids.len() == 1 {
-        let mut args = vec!["dam".to_string()];
+        let mut args = vec!["maki".to_string()];
         args.push(command_tokens[0].clone());
         args.push(asset_ids[0].clone());
         args.extend(command_tokens[1..].iter().cloned());
@@ -940,7 +940,7 @@ fn execute_with_ids(
     }
 
     // Batch commands: append IDs at end
-    let mut args = vec!["dam".to_string()];
+    let mut args = vec!["maki".to_string()];
     args.extend(command_tokens);
     args.extend(asset_ids);
     defaults.inject(&mut args);
@@ -1179,9 +1179,9 @@ fn shell_split(line: &str) -> Option<Vec<String>> {
 
 fn print_shell_help() {
     eprintln!("\
-dam shell — interactive asset management shell
+maki shell — interactive asset management shell
 
-Enter any dam command without the 'dam' prefix:
+Enter any maki command without the 'maki' prefix:
   search \"tag:landscape rating:4+\"
   edit --rating 5 abc12345
   stats
@@ -1508,7 +1508,7 @@ mod tests {
         defaults.set("--json");
         defaults.set("--log");
 
-        let mut args = vec!["dam".to_string(), "search".to_string(), "tag:landscape".to_string()];
+        let mut args = vec!["maki".to_string(), "search".to_string(), "tag:landscape".to_string()];
         defaults.inject(&mut args);
 
         assert!(args.contains(&"--json".to_string()));
@@ -1521,7 +1521,7 @@ mod tests {
         defaults.set("--json");
 
         // Command already has --json
-        let mut args = vec!["dam".to_string(), "search".to_string(), "--json".to_string()];
+        let mut args = vec!["maki".to_string(), "search".to_string(), "--json".to_string()];
         defaults.inject(&mut args);
 
         // Should not add a duplicate
@@ -1612,7 +1612,7 @@ mod tests {
         execute_with_ids(command, vec![], &defaults, &executor);
 
         let args = received.borrow();
-        assert_eq!(args[0], "dam");
+        assert_eq!(args[0], "maki");
         assert_eq!(args[1], "stats");
         assert!(args.contains(&"--json".to_string()));
     }
@@ -1628,16 +1628,16 @@ mod tests {
         let defaults = SessionDefaults::new();
 
         // `tag` is a single-asset command — with 3 IDs, it should loop 3 times
-        // Each call inserts the asset ID after the subcommand: dam tag <ID> screensaver
+        // Each call inserts the asset ID after the subcommand: maki tag <ID> screensaver
         let command = vec!["tag".to_string(), "screensaver".to_string()];
         let ids = vec!["id1".to_string(), "id2".to_string(), "id3".to_string()];
         execute_with_ids(command, ids, &defaults, &executor);
 
         let calls = calls.borrow();
         assert_eq!(calls.len(), 3);
-        assert_eq!(calls[0], vec!["dam", "tag", "id1", "screensaver"]);
-        assert_eq!(calls[1], vec!["dam", "tag", "id2", "screensaver"]);
-        assert_eq!(calls[2], vec!["dam", "tag", "id3", "screensaver"]);
+        assert_eq!(calls[0], vec!["maki", "tag", "id1", "screensaver"]);
+        assert_eq!(calls[1], vec!["maki", "tag", "id2", "screensaver"]);
+        assert_eq!(calls[2], vec!["maki", "tag", "id3", "screensaver"]);
     }
 
     #[test]
@@ -1656,7 +1656,7 @@ mod tests {
 
         let calls = calls.borrow();
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0], vec!["dam", "delete", "--apply", "id1", "id2"]);
+        assert_eq!(calls[0], vec!["maki", "delete", "--apply", "id1", "id2"]);
     }
 
     #[test]
@@ -1668,14 +1668,14 @@ mod tests {
         };
         let defaults = SessionDefaults::new();
 
-        // Single ID for single-asset command: dam tag <ID> screensaver
+        // Single ID for single-asset command: maki tag <ID> screensaver
         let command = vec!["tag".to_string(), "screensaver".to_string()];
         let ids = vec!["id1".to_string()];
         execute_with_ids(command, ids, &defaults, &executor);
 
         let calls = calls.borrow();
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0], vec!["dam", "tag", "id1", "screensaver"]);
+        assert_eq!(calls[0], vec!["maki", "tag", "id1", "screensaver"]);
     }
 
     /// Helper for debug output in test assertions.

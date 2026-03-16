@@ -4339,7 +4339,7 @@ pub async fn batch_detect_faces(
 fn detect_faces_inner(state: &AppState, asset_ids: &[String]) -> Result<serde_json::Value, String> {
     let face_model_dir = crate::face::resolve_face_model_dir(&state.ai_config);
     if !crate::face::FaceDetector::models_exist(&face_model_dir) {
-        return Err("Face models not downloaded. Run 'dam faces download' first.".to_string());
+        return Err("Face models not downloaded. Run 'maki faces download' first.".to_string());
     }
 
     let mut detector = crate::face::FaceDetector::load_with_provider(&face_model_dir, state.verbosity, &state.ai_config.execution_provider)
@@ -4759,7 +4759,7 @@ fn stroll_page_inner(
         // Pick a random asset that has an embedding
         let all = emb_store.all_embeddings_for_model(model_id).map_err(|e| format!("{e:#}"))?;
         if all.is_empty() {
-            return Err("No embeddings found. Run `dam embed` first.".into());
+            return Err("No embeddings found. Run `maki embed` first.".into());
         }
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
@@ -5167,7 +5167,7 @@ fn vlm_describe_asset_inner(
         .collect();
 
     let image_path = service.find_image_for_vlm(&details, &preview_gen, &online_volumes)
-        .ok_or_else(|| "No preview image available. Run `dam generate-previews` first.".to_string())?;
+        .ok_or_else(|| "No preview image available. Run `maki generate-previews` first.".to_string())?;
 
     // Encode and call VLM
     let max_edge = if params.max_image_edge > 0 { Some(params.max_image_edge) } else { None };
@@ -5646,7 +5646,7 @@ pub async fn export_zip(
     let ids = asset_ids;
     let root = catalog_root.clone();
     let pc = preview_config.clone();
-    let tmp = std::env::temp_dir().join(format!("dam-export-{}.zip", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("maki-export-{}.zip", std::process::id()));
     let tmp2 = tmp.clone();
     let zip_result = tokio::task::spawn_blocking(move || -> Result<std::path::PathBuf, String> {
         let service = AssetService::new(&root, state.verbosity, &pc);
@@ -5697,7 +5697,7 @@ pub async fn export_zip(
     let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
     let body = Body::from_stream(stream);
 
-    let filename = format!("dam-export-{}-assets.zip", count);
+    let filename = format!("maki-export-{}-assets.zip", count);
 
     Response::builder()
         .status(StatusCode::OK)

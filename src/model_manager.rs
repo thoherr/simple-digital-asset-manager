@@ -40,15 +40,15 @@ impl ModelManager {
         })
     }
 
-    /// Default model base directory: `~/.dam/models/`.
+    /// Default model base directory: `~/.maki/models/`.
     pub fn default_model_base() -> Result<PathBuf> {
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .context("Cannot determine home directory")?;
-        Ok(PathBuf::from(home).join(".dam").join("models"))
+        Ok(PathBuf::from(home).join(".maki").join("models"))
     }
 
-    /// Default model directory for a specific model: `~/.dam/models/<model_id>/`.
+    /// Default model directory for a specific model: `~/.maki/models/<model_id>/`.
     pub fn default_model_dir(model_id: &str) -> Result<PathBuf> {
         Ok(Self::default_model_base()?.join(model_id))
     }
@@ -204,8 +204,8 @@ mod tests {
     fn default_model_dir_under_home() {
         let dir = ModelManager::default_model_dir(DEFAULT_MODEL_ID).unwrap();
         assert!(
-            dir.to_str().unwrap().contains(".dam/models/siglip-vit-b16-256"),
-            "Expected .dam/models path, got: {}",
+            dir.to_str().unwrap().contains(".maki/models/siglip-vit-b16-256"),
+            "Expected .maki/models path, got: {}",
             dir.display()
         );
     }
@@ -214,8 +214,8 @@ mod tests {
     fn default_model_dir_large() {
         let dir = ModelManager::default_model_dir("siglip-vit-l16-256").unwrap();
         assert!(
-            dir.to_str().unwrap().contains(".dam/models/siglip-vit-l16-256"),
-            "Expected .dam/models path, got: {}",
+            dir.to_str().unwrap().contains(".maki/models/siglip-vit-l16-256"),
+            "Expected .maki/models path, got: {}",
             dir.display()
         );
     }

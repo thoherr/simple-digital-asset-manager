@@ -234,7 +234,7 @@ fn default_execution_provider() -> String {
 }
 
 fn default_ai_model_dir() -> String {
-    "~/.dam/models".to_string()
+    "~/.maki/models".to_string()
 }
 
 fn default_ai_prompt() -> String {
@@ -255,7 +255,7 @@ impl Default for AiConfig {
             model: "siglip-vit-b16-256".to_string(),
             threshold: 0.1,
             labels: None,
-            model_dir: "~/.dam/models".to_string(),
+            model_dir: "~/.maki/models".to_string(),
             prompt: "a photograph of {}".to_string(),
             face_cluster_threshold: 0.5,
             face_min_confidence: 0.5,
@@ -272,7 +272,7 @@ fn is_default_ai(a: &AiConfig) -> bool {
 /// Per-model VLM parameter overrides.
 ///
 /// All fields are optional — when absent, the global `[vlm]` value is used.
-/// Configured under `[vlm.model_config."model-name"]` in `dam.toml`.
+/// Configured under `[vlm.model_config."model-name"]` in `maki.toml`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct VlmModelConfig {
     pub max_tokens: Option<u32>,
@@ -481,7 +481,7 @@ fn is_default_contact_sheet(c: &ContactSheetDefaults) -> bool {
     *c == ContactSheetDefaults::default()
 }
 
-/// Catalog configuration stored in dam.toml.
+/// Catalog configuration stored in maki.toml.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CatalogConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -521,22 +521,26 @@ impl Default for CatalogConfig {
 }
 
 impl CatalogConfig {
-    /// Load configuration from a dam.toml file.
+    /// Load configuration from a maki.toml file (falls back to legacy dam.toml).
     pub fn load(catalog_root: &Path) -> Result<Self> {
-        let path = catalog_root.join("dam.toml");
-        if path.exists() {
-            let contents = std::fs::read_to_string(&path)?;
-            let config: Self = toml::from_str(&contents)?;
-            config.validate()?;
-            Ok(config)
+        let path = catalog_root.join("maki.toml");
+        let legacy_path = catalog_root.join("dam.toml");
+        let config_path = if path.exists() {
+            path
+        } else if legacy_path.exists() {
+            legacy_path
         } else {
-            Ok(Self::default())
-        }
+            return Ok(Self::default());
+        };
+        let contents = std::fs::read_to_string(&config_path)?;
+        let config: Self = toml::from_str(&contents)?;
+        config.validate()?;
+        Ok(config)
     }
 
-    /// Save configuration to a dam.toml file.
+    /// Save configuration to a maki.toml file.
     pub fn save(&self, catalog_root: &Path) -> Result<()> {
-        let path = catalog_root.join("dam.toml");
+        let path = catalog_root.join("maki.toml");
         let contents = toml::to_string_pretty(self)?;
         std::fs::write(path, contents)?;
         Ok(())
@@ -566,15 +570,19 @@ impl CatalogConfig {
     }
 }
 
-/// Find the catalog root by looking for dam.toml in current and parent directories.
+/// Find the catalog root by looking for maki.toml (or legacy dam.toml) in current and parent directories.
 pub fn find_catalog_root() -> Result<PathBuf> {
     let mut dir = std::env::current_dir()?;
     loop {
+        if dir.join("maki.toml").exists() {
+            return Ok(dir);
+        }
         if dir.join("dam.toml").exists() {
+            eprintln!("Note: found legacy dam.toml — consider renaming to maki.toml");
             return Ok(dir);
         }
         if !dir.pop() {
-            anyhow::bail!("No dam catalog found. Run `dam init` to create one.");
+            anyhow::bail!("No maki catalog found. Run `maki init` to create one.");
         }
     }
 }
@@ -613,7 +621,7 @@ mod tests {
 
     #[test]
     fn parse_comment_only() {
-        let config: CatalogConfig = toml::from_str("# dam catalog configuration\n").unwrap();
+        let config: CatalogConfig = toml::from_str("# maki catalog configuration\n").unwrap();
         assert!(config.default_volume.is_none());
     }
 
@@ -629,7 +637,7 @@ mod tests {
 
     #[test]
     fn parse_default_volume_only_backward_compat() {
-        // Old dam.toml files that only had default_volume should still parse
+        // Old maki.toml files that only had default_volume should still parse
         let input = "default_volume = \"550e8400-e29b-41d4-a716-446655440000\"\n";
         let config: CatalogConfig = toml::from_str(input).unwrap();
         assert!(config.default_volume.is_some());

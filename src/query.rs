@@ -630,7 +630,7 @@ pub struct TagResult {
     pub current_tags: Vec<String>,
 }
 
-/// Result of a `dam writeback` operation.
+/// Result of a `maki writeback` operation.
 #[derive(Debug, Default, serde::Serialize)]
 pub struct WritebackResult {
     /// Number of XMP files written (or that would be written in dry-run).
@@ -907,7 +907,7 @@ impl QueryEngine {
             let query_emb = emb_store
                 .get(&full_id, model_id)?
                 .ok_or_else(|| anyhow::anyhow!(
-                    "No embedding found for asset '{similar_ref}'. Run `dam embed --asset {full_id}` first."
+                    "No embedding found for asset '{similar_ref}'. Run `maki embed --asset {full_id}` first."
                 ))?;
             let limit = parsed.similar_limit.unwrap_or(20);
             let dim = query_emb.len();

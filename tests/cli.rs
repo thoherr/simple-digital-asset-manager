@@ -5,8 +5,8 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 use tempfile::tempdir;
 
-/// Return a Command for the `dam` binary.
-fn dam() -> Command {
+/// Return a Command for the `maki` binary.
+fn maki() -> Command {
     cargo_bin_cmd!(assert_cmd::pkg_name!()).into()
 }
 
@@ -15,8 +15,8 @@ fn dam() -> Command {
 /// so that volume lookup matches canonicalized import paths.
 fn init_catalog(dir: &Path) -> PathBuf {
     let canonical = dir.canonicalize().expect("canonicalize tempdir");
-    dam().current_dir(&canonical).arg("init").assert().success();
-    dam()
+    maki().current_dir(&canonical).arg("init").assert().success();
+    maki()
         .current_dir(&canonical)
         .args(["volume", "add", "test-vol", canonical.to_str().unwrap()])
         .assert()
@@ -58,7 +58,7 @@ fn count_preview_files(previews_dir: &Path) -> usize {
 #[test]
 fn init_creates_catalog() {
     let dir = tempdir().unwrap();
-    dam()
+    maki()
         .current_dir(dir.path())
         .arg("init")
         .assert()
@@ -69,8 +69,8 @@ fn init_creates_catalog() {
 #[test]
 fn init_fails_if_already_exists() {
     let dir = tempdir().unwrap();
-    dam().current_dir(dir.path()).arg("init").assert().success();
-    dam()
+    maki().current_dir(dir.path()).arg("init").assert().success();
+    maki()
         .current_dir(dir.path())
         .arg("init")
         .assert()
@@ -81,26 +81,26 @@ fn init_fails_if_already_exists() {
 #[test]
 fn commands_fail_without_init() {
     let dir = tempdir().unwrap();
-    dam()
+    maki()
         .current_dir(dir.path())
         .args(["search", "foo"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No dam catalog found"));
+        .stderr(predicate::str::contains("No maki catalog found"));
 }
 
 #[test]
 fn volume_add_and_list() {
     let dir = tempdir().unwrap();
-    dam().current_dir(dir.path()).arg("init").assert().success();
-    dam()
+    maki().current_dir(dir.path()).arg("init").assert().success();
+    maki()
         .current_dir(dir.path())
         .args(["volume", "add", "my-vol", dir.path().to_str().unwrap()])
         .assert()
         .success()
         .stdout(predicate::str::contains("my-vol"));
 
-    dam()
+    maki()
         .current_dir(dir.path())
         .args(["volume", "list"])
         .assert()
@@ -114,7 +114,7 @@ fn import_single_file() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "photo.jpg", b"fake jpeg data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
@@ -132,7 +132,7 @@ fn import_directory() {
     create_test_file(&sub, "a.jpg", b"aaa");
     create_test_file(&sub, "b.png", b"bbb");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub.to_str().unwrap()])
         .assert()
@@ -146,13 +146,13 @@ fn search_finds_imported_asset() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "sunset.jpg", b"sunset data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "sunset"])
         .assert()
@@ -166,14 +166,14 @@ fn show_displays_asset_details() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "rose.jpg", b"rose data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Extract asset ID from search output
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "rose"])
         .output()
@@ -181,7 +181,7 @@ fn show_displays_asset_details() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -199,13 +199,13 @@ fn tag_add_and_remove() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "bird.jpg", b"bird data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "bird"])
         .output()
@@ -214,7 +214,7 @@ fn tag_add_and_remove() {
     let short_id = stdout.split_whitespace().next().unwrap();
 
     // Add tag
-    dam()
+    maki()
         .current_dir(&root)
         .args(["tag", short_id, "nature", "wildlife"])
         .assert()
@@ -225,7 +225,7 @@ fn tag_add_and_remove() {
         );
 
     // Remove tag
-    dam()
+    maki()
         .current_dir(&root)
         .args(["tag", short_id, "--remove", "wildlife"])
         .assert()
@@ -233,7 +233,7 @@ fn tag_add_and_remove() {
         .stdout(predicate::str::contains("Removed tags:").and(predicate::str::contains("wildlife")));
 
     // Verify remaining tags via show
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -253,19 +253,19 @@ fn duplicates_shows_multi_location_files() {
     let file1 = create_test_file(&root, "copy1.jpg", content);
     let file2 = create_test_file(&root, "subdir/copy2.jpg", content);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file1.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file2.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .arg("duplicates")
         .assert()
@@ -282,13 +282,13 @@ fn duplicates_empty_when_no_duplicates() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "unique.jpg", b"unique bytes");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .arg("duplicates")
         .assert()
@@ -324,7 +324,7 @@ fn import_xmp_applies_metadata() {
 </x:xmpmeta>"#;
     create_test_file(&photos, "DSC_100.xmp", xmp.as_bytes());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
@@ -335,7 +335,7 @@ fn import_xmp_applies_metadata() {
         );
 
     // Get asset ID via search
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "DSC_100"])
         .output()
@@ -344,7 +344,7 @@ fn import_xmp_applies_metadata() {
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
     // Verify tags and metadata appear in show output
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -369,7 +369,7 @@ fn import_skips_captureone_by_default() {
     create_test_file(&photos, "DSC_001.nef", b"raw data for cos test");
     create_test_file(&photos, "DSC_001.cos", b"captureone sidecar");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
@@ -377,7 +377,7 @@ fn import_skips_captureone_by_default() {
         .stdout(predicate::str::contains("1 imported"));
 
     // Show should NOT mention CaptureOne recipe
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "DSC_001"])
         .output()
@@ -385,7 +385,7 @@ fn import_skips_captureone_by_default() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -403,7 +403,7 @@ fn import_includes_captureone_with_flag() {
     create_test_file(&photos, "DSC_002.nef", b"raw data for cos include test");
     create_test_file(&photos, "DSC_002.cos", b"captureone sidecar data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -419,7 +419,7 @@ fn import_includes_captureone_with_flag() {
         );
 
     // Show should mention CaptureOne recipe
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "DSC_002"])
         .output()
@@ -427,7 +427,7 @@ fn import_includes_captureone_with_flag() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -447,7 +447,7 @@ fn import_skip_audio_excludes_audio_files() {
     create_test_file(&root, "song.mp3", b"audio data");
 
     // Import with --skip audio
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -461,7 +461,7 @@ fn import_skip_audio_excludes_audio_files() {
         .stdout(predicate::str::contains("1 imported"));
 
     // Only photo should be searchable
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "song"])
         .assert()
@@ -475,7 +475,7 @@ fn import_unknown_group_errors() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "photo.jpg", b"data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -494,13 +494,13 @@ fn generate_previews_command_runs() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "preview_test.jpg", b"preview data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .arg("generate-previews")
         .assert()
@@ -514,13 +514,13 @@ fn show_displays_preview_status() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "preview_show.jpg", b"show preview data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "preview_show"])
         .output()
@@ -528,7 +528,7 @@ fn show_displays_preview_status() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -540,19 +540,19 @@ fn show_displays_preview_status() {
 /// Returns (canonical root, vol1 path, vol2 path).
 fn init_two_volumes(dir: &Path) -> (PathBuf, PathBuf, PathBuf) {
     let canonical = dir.canonicalize().expect("canonicalize tempdir");
-    dam().current_dir(&canonical).arg("init").assert().success();
+    maki().current_dir(&canonical).arg("init").assert().success();
 
     let vol1 = canonical.join("vol1");
     let vol2 = canonical.join("vol2");
     std::fs::create_dir_all(&vol1).unwrap();
     std::fs::create_dir_all(&vol2).unwrap();
 
-    dam()
+    maki()
         .current_dir(&canonical)
         .args(["volume", "add", "vol1", vol1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&canonical)
         .args(["volume", "add", "vol2", vol2.to_str().unwrap()])
         .assert()
@@ -569,7 +569,7 @@ fn relocate_copies_files_between_volumes() {
     create_test_file(&vol1, "photo.jpg", b"relocate test data");
 
     // Import on vol1
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", vol1.join("photo.jpg").to_str().unwrap()])
         .assert()
@@ -577,7 +577,7 @@ fn relocate_copies_files_between_volumes() {
         .stdout(predicate::str::contains("1 imported"));
 
     // Get asset ID
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "photo"])
         .output()
@@ -586,7 +586,7 @@ fn relocate_copies_files_between_volumes() {
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
     // Relocate to vol2
-    dam()
+    maki()
         .current_dir(&root)
         .args(["relocate", short_id, "vol2"])
         .assert()
@@ -599,7 +599,7 @@ fn relocate_copies_files_between_volumes() {
     assert!(vol1.join("photo.jpg").exists());
 
     // Show should list both volumes
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -617,13 +617,13 @@ fn relocate_with_remove_source_flag() {
 
     create_test_file(&vol1, "move_me.jpg", b"move test data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", vol1.join("move_me.jpg").to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "move_me"])
         .output()
@@ -632,7 +632,7 @@ fn relocate_with_remove_source_flag() {
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
     // Relocate with --remove-source
-    dam()
+    maki()
         .current_dir(&root)
         .args(["relocate", short_id, "vol2", "--remove-source"])
         .assert()
@@ -644,7 +644,7 @@ fn relocate_with_remove_source_flag() {
     assert!(!vol1.join("move_me.jpg").exists());
 
     // Show should only list vol2
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -662,13 +662,13 @@ fn relocate_dry_run_no_changes() {
 
     create_test_file(&vol1, "dry.jpg", b"dry run test data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", vol1.join("dry.jpg").to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "dry"])
         .output()
@@ -677,7 +677,7 @@ fn relocate_dry_run_no_changes() {
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
     // Dry run
-    dam()
+    maki()
         .current_dir(&root)
         .args(["relocate", short_id, "vol2", "--dry-run"])
         .assert()
@@ -699,14 +699,14 @@ fn relocate_batch_with_query() {
     create_test_file(&vol1, "b.jpg", b"batch relocate B");
 
     // Import both files with a tag for querying
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--add-tag", "batch-test", vol1.to_str().unwrap()])
         .assert()
         .success();
 
     // Batch relocate all tagged assets to vol2
-    dam()
+    maki()
         .current_dir(&root)
         .args(["relocate", "--query", "tag:batch-test", "--target", "vol2"])
         .assert()
@@ -729,13 +729,13 @@ fn relocate_batch_dry_run() {
 
     create_test_file(&vol1, "dry_batch.jpg", b"dry batch data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--add-tag", "drybatch", vol1.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["relocate", "--query", "tag:drybatch", "--target", "vol2", "--dry-run"])
         .assert()
@@ -752,7 +752,7 @@ fn import_conflicting_include_skip_errors() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "photo.jpg", b"data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -773,14 +773,14 @@ fn rebuild_catalog_restores_data() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "keeper.jpg", b"keeper data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Verify it's searchable
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "keeper"])
         .assert()
@@ -788,7 +788,7 @@ fn rebuild_catalog_restores_data() {
         .stdout(predicate::str::contains("keeper"));
 
     // Rebuild
-    dam()
+    maki()
         .current_dir(&root)
         .arg("rebuild-catalog")
         .assert()
@@ -796,7 +796,7 @@ fn rebuild_catalog_restores_data() {
         .stdout(predicate::str::contains("Rebuild complete"));
 
     // Still searchable after rebuild
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "keeper"])
         .assert()
@@ -810,13 +810,13 @@ fn verify_all_passes() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "intact.jpg", b"intact file data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .arg("verify")
         .assert()
@@ -830,7 +830,7 @@ fn verify_detects_corruption() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "corrupt.jpg", b"original data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
@@ -839,7 +839,7 @@ fn verify_detects_corruption() {
     // Corrupt the file
     std::fs::write(&file, b"corrupted data!!!").unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .arg("verify")
         .assert()
@@ -853,13 +853,13 @@ fn verify_with_volume_flag() {
     let (root, vol1, _vol2) = init_two_volumes(dir.path());
     let file = create_test_file(&vol1, "vol_verify.jpg", b"vol verify data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["verify", "--volume", "vol1"])
         .assert()
@@ -874,14 +874,14 @@ fn verify_specific_path() {
     let file1 = create_test_file(&root, "file_a.jpg", b"data a");
     let file2 = create_test_file(&root, "file_b.jpg", b"data b");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file1.to_str().unwrap(), file2.to_str().unwrap()])
         .assert()
         .success();
 
     // Verify only file_a
-    dam()
+    maki()
         .current_dir(&root)
         .args(["verify", file1.to_str().unwrap()])
         .assert()
@@ -899,7 +899,7 @@ fn verify_path_recognizes_recipe_sidecars() {
     create_test_file(&photos, "DSC_500.nef", b"raw image for verify");
     create_test_file(&photos, "DSC_500.xmp", b"xmp sidecar for verify");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
@@ -910,7 +910,7 @@ fn verify_path_recognizes_recipe_sidecars() {
         );
 
     // Verify the whole directory — both the NEF and XMP should be verified, not untracked
-    dam()
+    maki()
         .current_dir(&root)
         .args(["verify", photos.to_str().unwrap()])
         .assert()
@@ -950,7 +950,7 @@ fn reimport_updated_recipe_updates_in_place() {
     create_test_file(&photos, "DSC_200.xmp", xmp_v1.as_bytes());
 
     // First import
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
@@ -985,7 +985,7 @@ fn reimport_updated_recipe_updates_in_place() {
     std::fs::write(photos.join("DSC_200.xmp"), xmp_v2).unwrap();
 
     // Re-import same directory
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
@@ -996,7 +996,7 @@ fn reimport_updated_recipe_updates_in_place() {
         );
 
     // Verify metadata was updated
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "DSC_200"])
         .output()
@@ -1004,7 +1004,7 @@ fn reimport_updated_recipe_updates_in_place() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -1026,7 +1026,7 @@ fn standalone_recipe_attaches_to_parent() {
     create_test_file(&photos, "DSC_300.nef", b"raw image for standalone test");
 
     // Import NEF only
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.join("DSC_300.nef").to_str().unwrap()])
         .assert()
@@ -1051,7 +1051,7 @@ fn standalone_recipe_attaches_to_parent() {
 </x:xmpmeta>"#;
     create_test_file(&photos, "DSC_300.xmp", xmp.as_bytes());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.join("DSC_300.xmp").to_str().unwrap()])
         .assert()
@@ -1059,7 +1059,7 @@ fn standalone_recipe_attaches_to_parent() {
         .stdout(predicate::str::contains("1 recipe"));
 
     // Verify only one asset exists (no standalone Other asset created)
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "DSC_300"])
         .output()
@@ -1072,7 +1072,7 @@ fn standalone_recipe_attaches_to_parent() {
 
     // Verify the recipe is attached and metadata applied
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -1095,7 +1095,7 @@ fn verify_recipe_modification_not_failure() {
     create_test_file(&photos, "DSC_400.xmp", b"xmp original content");
 
     // Import
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
@@ -1109,7 +1109,7 @@ fn verify_recipe_modification_not_failure() {
     std::fs::write(photos.join("DSC_400.xmp"), b"xmp modified content").unwrap();
 
     // Verify — should report "modified", NOT "FAILED", and exit 0
-    dam()
+    maki()
         .current_dir(&root)
         .arg("verify")
         .assert()
@@ -1128,13 +1128,13 @@ fn search_format_ids_outputs_uuids() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "photo.jpg", b"ids-format-test");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "--format=ids", "type:image"])
         .assert()
@@ -1158,13 +1158,13 @@ fn search_quiet_shorthand() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "photo.jpg", b"quiet-test");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .assert()
@@ -1185,13 +1185,13 @@ fn search_format_json_outputs_valid_json() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "photo.jpg", b"json-format-test");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "--format=json", "type:image"])
         .assert()
@@ -1215,13 +1215,13 @@ fn search_format_template_renders_placeholders() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "sunset.jpg", b"template-test");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "--format={short_id}\t{filename}\t{format}", "type:image"])
         .assert()
@@ -1246,13 +1246,13 @@ fn search_json_global_flag() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "photo.jpg", b"global-json-test");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "search", "type:image"])
         .assert()
@@ -1272,14 +1272,14 @@ fn show_json_outputs_asset_details() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "photo.jpg", b"show-json-test");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset ID via search -q
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .assert()
@@ -1289,7 +1289,7 @@ fn show_json_outputs_asset_details() {
         .clone();
     let asset_id = String::from_utf8(output).unwrap().trim().to_string();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .assert()
@@ -1310,7 +1310,7 @@ fn volume_list_json() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "volume", "list"])
         .assert()
@@ -1331,9 +1331,9 @@ fn volume_list_json() {
 fn volume_add_with_purpose() {
     let dir = tempdir().unwrap();
     let canonical = dir.path().canonicalize().unwrap();
-    dam().current_dir(&canonical).arg("init").assert().success();
+    maki().current_dir(&canonical).arg("init").assert().success();
 
-    dam()
+    maki()
         .current_dir(&canonical)
         .args([
             "volume", "add", "backup-drive",
@@ -1346,7 +1346,7 @@ fn volume_add_with_purpose() {
         .stdout(predicate::str::contains("Purpose: backup"));
 
     // Verify it shows in list
-    dam()
+    maki()
         .current_dir(&canonical)
         .args(["volume", "list"])
         .assert()
@@ -1357,9 +1357,9 @@ fn volume_add_with_purpose() {
 #[test]
 fn volume_add_purpose_invalid() {
     let dir = tempdir().unwrap();
-    dam().current_dir(dir.path()).arg("init").assert().success();
+    maki().current_dir(dir.path()).arg("init").assert().success();
 
-    dam()
+    maki()
         .current_dir(dir.path())
         .args([
             "volume", "add", "test",
@@ -1377,7 +1377,7 @@ fn volume_set_purpose() {
     let root = init_catalog(dir.path());
 
     // Volume starts with no purpose
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "list"])
         .assert()
@@ -1386,7 +1386,7 @@ fn volume_set_purpose() {
         .stdout(predicate::str::is_match(r"\[backup\]|\[archive\]|\[working\]|\[cloud\]").unwrap().not());
 
     // Set purpose
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "set-purpose", "test-vol", "archive"])
         .assert()
@@ -1394,7 +1394,7 @@ fn volume_set_purpose() {
         .stdout(predicate::str::contains("purpose set to: archive"));
 
     // Verify in list
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "list"])
         .assert()
@@ -1402,7 +1402,7 @@ fn volume_set_purpose() {
         .stdout(predicate::str::contains("[archive]"));
 
     // Clear purpose
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "set-purpose", "test-vol", "none"])
         .assert()
@@ -1415,7 +1415,7 @@ fn volume_set_purpose_json() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "volume", "set-purpose", "test-vol", "backup"])
         .assert()
@@ -1434,9 +1434,9 @@ fn volume_set_purpose_json() {
 fn volume_purpose_in_list_json() {
     let dir = tempdir().unwrap();
     let canonical = dir.path().canonicalize().unwrap();
-    dam().current_dir(&canonical).arg("init").assert().success();
+    maki().current_dir(&canonical).arg("init").assert().success();
 
-    dam()
+    maki()
         .current_dir(&canonical)
         .args([
             "volume", "add", "my-archive",
@@ -1446,7 +1446,7 @@ fn volume_purpose_in_list_json() {
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&canonical)
         .args(["--json", "volume", "list"])
         .assert()
@@ -1467,14 +1467,14 @@ fn volume_remove_report_only() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "photo.jpg", b"volume-remove-report");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Report-only (no --apply)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "remove", "test-vol"])
         .assert()
@@ -1483,7 +1483,7 @@ fn volume_remove_report_only() {
         .stdout(predicate::str::contains("1 locations"));
 
     // Volume should still exist
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "list"])
         .assert()
@@ -1491,7 +1491,7 @@ fn volume_remove_report_only() {
         .stdout(predicate::str::contains("test-vol"));
 
     // Catalog should still have the asset
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stats"])
         .assert()
@@ -1505,14 +1505,14 @@ fn volume_remove_apply() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "photo.jpg", b"volume-remove-apply");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Apply removal
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "remove", "test-vol", "--apply"])
         .assert()
@@ -1520,7 +1520,7 @@ fn volume_remove_apply() {
         .stdout(predicate::str::contains("removed"));
 
     // Volume should be gone
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "list"])
         .assert()
@@ -1528,7 +1528,7 @@ fn volume_remove_apply() {
         .stdout(predicate::str::contains("No volumes"));
 
     // Asset should be gone (orphaned)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stats"])
         .assert()
@@ -1540,15 +1540,15 @@ fn volume_remove_apply() {
 fn volume_remove_empty() {
     let dir = tempdir().unwrap();
     let canonical = dir.path().canonicalize().unwrap();
-    dam().current_dir(&canonical).arg("init").assert().success();
-    dam()
+    maki().current_dir(&canonical).arg("init").assert().success();
+    maki()
         .current_dir(&canonical)
         .args(["volume", "add", "empty-vol", canonical.to_str().unwrap()])
         .assert()
         .success();
 
     // Remove empty volume
-    dam()
+    maki()
         .current_dir(&canonical)
         .args(["volume", "remove", "empty-vol", "--apply"])
         .assert()
@@ -1556,7 +1556,7 @@ fn volume_remove_empty() {
         .stdout(predicate::str::contains("0 locations removed"));
 
     // Volume should be gone
-    dam()
+    maki()
         .current_dir(&canonical)
         .args(["volume", "list"])
         .assert()
@@ -1569,7 +1569,7 @@ fn volume_remove_unknown() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "remove", "nonexistent"])
         .assert()
@@ -1583,13 +1583,13 @@ fn volume_remove_json() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "photo.jpg", b"volume-remove-json");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "volume", "remove", "test-vol"])
         .assert()
@@ -1612,7 +1612,7 @@ fn import_json_outputs_result() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "photo.jpg", b"import-json-test");
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "import", root.to_str().unwrap()])
         .assert()
@@ -1638,7 +1638,7 @@ fn import_dry_run_reports_without_changes() {
     create_test_file(&sub, "b.png", b"dry-run-b");
 
     // Dry run should report what would happen
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--dry-run", sub.to_str().unwrap()])
         .assert()
@@ -1647,7 +1647,7 @@ fn import_dry_run_reports_without_changes() {
         .stdout(predicate::str::contains("2 imported"));
 
     // Search should find nothing — no actual imports happened
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", ""])
         .assert()
@@ -1667,7 +1667,7 @@ fn import_dry_run_json_includes_flag() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "photo.jpg", b"dry-run-json-test");
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "import", "--dry-run", root.to_str().unwrap()])
         .assert()
@@ -1687,7 +1687,7 @@ fn duplicates_format_json() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["duplicates", "--format=json"])
         .assert()
@@ -1709,13 +1709,13 @@ fn stats_shows_overview() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "photo.jpg", b"stats overview data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .arg("stats")
         .assert()
@@ -1733,7 +1733,7 @@ fn stats_empty_catalog() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .arg("stats")
         .assert()
@@ -1750,13 +1750,13 @@ fn stats_all_shows_all_sections() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "photo.jpg", b"stats all data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stats", "--all"])
         .assert()
@@ -1776,13 +1776,13 @@ fn stats_types_flag() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "photo.jpg", b"stats types data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stats", "--types"])
         .assert()
@@ -1801,13 +1801,13 @@ fn stats_json_output() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "photo.jpg", b"stats json data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "stats", "--all"])
         .assert()
@@ -1832,27 +1832,27 @@ fn stats_tags_shows_frequencies() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "photo.jpg", b"stats tags data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset ID and add tags
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .output()
         .unwrap();
     let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["tag", &asset_id, "landscape", "sunset"])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stats", "--tags"])
         .assert()
@@ -1871,14 +1871,14 @@ fn debug_flag_accepted() {
     let root = init_catalog(dir.path());
 
     // --debug before subcommand
-    dam()
+    maki()
         .current_dir(&root)
         .args(["--debug", "stats"])
         .assert()
         .success();
 
     // -d shorthand
-    dam()
+    maki()
         .current_dir(&root)
         .args(["-d", "stats"])
         .assert()
@@ -1893,7 +1893,7 @@ fn import_with_volume_flag() {
     create_test_file(&vol1, "explicit_vol.jpg", b"explicit volume test data");
 
     // Import with explicit --volume instead of auto-detect
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -1906,7 +1906,7 @@ fn import_with_volume_flag() {
         .stdout(predicate::str::contains("1 imported"));
 
     // Verify it landed on vol1
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "explicit_vol"])
         .output()
@@ -1914,7 +1914,7 @@ fn import_with_volume_flag() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -1931,19 +1931,19 @@ fn generate_previews_with_volume_filter() {
     create_test_file(&vol2, "vol2_photo.jpg", b"vol2 preview data");
 
     // Import both
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", vol1.join("vol1_photo.jpg").to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", vol2.join("vol2_photo.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     // Generate previews only for vol1
-    dam()
+    maki()
         .current_dir(&root)
         .args(["generate-previews", "--volume", "vol1"])
         .assert()
@@ -1961,14 +1961,14 @@ fn generate_previews_with_paths() {
     create_test_file(&sub, "path_test.jpg", b"path preview data");
 
     // Import first
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub.to_str().unwrap()])
         .assert()
         .success();
 
     // Generate previews using PATHS mode
-    dam()
+    maki()
         .current_dir(&root)
         .args(["generate-previews", sub.to_str().unwrap()])
         .assert()
@@ -1982,13 +1982,13 @@ fn edit_sets_name_and_description() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "editable.jpg", b"edit test data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .output()
@@ -1996,7 +1996,7 @@ fn edit_sets_name_and_description() {
     let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     // Set name and description
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id, "--name", "My Photo", "--description", "A lovely sunset"])
         .assert()
@@ -2007,7 +2007,7 @@ fn edit_sets_name_and_description() {
         );
 
     // Verify via show --json
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .output()
@@ -2024,13 +2024,13 @@ fn edit_sets_and_clears_rating() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "rated.jpg", b"rating test data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .output()
@@ -2038,7 +2038,7 @@ fn edit_sets_and_clears_rating() {
     let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     // Set rating
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id, "--rating", "4"])
         .assert()
@@ -2046,7 +2046,7 @@ fn edit_sets_and_clears_rating() {
         .stdout(predicate::str::contains("Rating: \u{2605}\u{2605}\u{2605}\u{2605}\u{2606} (4/5)"));
 
     // Verify via show --json
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .output()
@@ -2056,7 +2056,7 @@ fn edit_sets_and_clears_rating() {
     assert_eq!(parsed["rating"].as_u64(), Some(4));
 
     // Clear rating
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id, "--clear-rating"])
         .assert()
@@ -2064,7 +2064,7 @@ fn edit_sets_and_clears_rating() {
         .stdout(predicate::str::contains("Rating: (none)"));
 
     // Verify cleared
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .output()
@@ -2080,13 +2080,13 @@ fn edit_clears_name_and_description() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "clearable.jpg", b"clear test data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .output()
@@ -2094,14 +2094,14 @@ fn edit_clears_name_and_description() {
     let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     // Set name and description
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id, "--name", "Test Name", "--description", "Test Desc"])
         .assert()
         .success();
 
     // Clear them
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id, "--clear-name", "--clear-description"])
         .assert()
@@ -2112,7 +2112,7 @@ fn edit_clears_name_and_description() {
         );
 
     // Verify via show --json
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .output()
@@ -2129,20 +2129,20 @@ fn edit_json_output() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "json_edit.jpg", b"json edit test");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .output()
         .unwrap();
     let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "edit", &asset_id, "--name", "JSON Name", "--rating", "3"])
         .assert()
@@ -2164,20 +2164,20 @@ fn edit_no_flags_errors() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "noflags.jpg", b"no flags test");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .output()
         .unwrap();
     let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id])
         .assert()
@@ -2197,14 +2197,14 @@ fn generate_previews_log_shows_per_file_progress() {
     let img_path = root.join("log_test.png");
     img.save(&img_path).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", img_path.to_str().unwrap()])
         .assert()
         .success();
 
     // With --log, per-file progress appears on stderr
-    dam()
+    maki()
         .current_dir(&root)
         .args(["--log", "generate-previews"])
         .assert()
@@ -2212,7 +2212,7 @@ fn generate_previews_log_shows_per_file_progress() {
         .stderr(predicate::str::contains("log_test.png"));
 
     // Without --log, no per-file output on stderr
-    dam()
+    maki()
         .current_dir(&root)
         .args(["generate-previews"])
         .assert()
@@ -2228,13 +2228,13 @@ fn sync_detects_unchanged() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "photo.jpg", b"photo data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync", root.to_str().unwrap()])
         .assert()
@@ -2250,7 +2250,7 @@ fn sync_detects_moved_file() {
     std::fs::create_dir_all(&sub).unwrap();
     let file = create_test_file(&sub, "photo.jpg", b"moved photo data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
@@ -2262,7 +2262,7 @@ fn sync_detects_moved_file() {
     std::fs::rename(&file, new_sub.join("photo.jpg")).unwrap();
 
     // Dry run — should detect moved
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync", root.to_str().unwrap()])
         .assert()
@@ -2270,7 +2270,7 @@ fn sync_detects_moved_file() {
         .stdout(predicate::str::contains("moved"));
 
     // Apply — should update location
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync", "--apply", root.to_str().unwrap()])
         .assert()
@@ -2278,7 +2278,7 @@ fn sync_detects_moved_file() {
         .stdout(predicate::str::contains("moved"));
 
     // Verify the location was updated by running show (should show new path)
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "*"])
         .assert()
@@ -2286,7 +2286,7 @@ fn sync_detects_moved_file() {
     let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
     let asset_id = stdout.trim();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["--json", "show", asset_id])
         .assert()
@@ -2300,7 +2300,7 @@ fn sync_detects_new_file() {
     let root = init_catalog(dir.path());
     let file1 = create_test_file(&root, "existing.jpg", b"existing data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file1.to_str().unwrap()])
         .assert()
@@ -2309,13 +2309,13 @@ fn sync_detects_new_file() {
     // Create a new file that wasn't imported
     create_test_file(&root, "brand_new.jpg", b"brand new data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync", root.to_str().unwrap()])
         .assert()
         .success()
         .stdout(predicate::str::contains("new"))
-        .stdout(predicate::str::contains("Tip: run 'dam import'"));
+        .stdout(predicate::str::contains("Tip: run 'maki import'"));
 }
 
 #[test]
@@ -2324,7 +2324,7 @@ fn sync_detects_missing_file() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "gone.jpg", b"will be deleted");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
@@ -2333,7 +2333,7 @@ fn sync_detects_missing_file() {
     // Delete the file
     std::fs::remove_file(&file).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync", root.to_str().unwrap()])
         .assert()
@@ -2347,14 +2347,14 @@ fn sync_remove_stale() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "stale.jpg", b"stale data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset id before deleting
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "*"])
         .assert()
@@ -2365,7 +2365,7 @@ fn sync_remove_stale() {
     std::fs::remove_file(&file).unwrap();
 
     // --remove-stale requires --apply
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync", "--remove-stale", root.to_str().unwrap()])
         .assert()
@@ -2373,7 +2373,7 @@ fn sync_remove_stale() {
         .stderr(predicate::str::contains("--remove-stale requires --apply"));
 
     // Apply with --remove-stale
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync", "--apply", "--remove-stale", root.to_str().unwrap()])
         .assert()
@@ -2381,7 +2381,7 @@ fn sync_remove_stale() {
         .stdout(predicate::str::contains("stale removed"));
 
     // Show should still work but location should be gone
-    let show_output = dam()
+    let show_output = maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .assert()
@@ -2401,7 +2401,7 @@ fn sync_detects_modified_recipe() {
     create_test_file(&root, "DSC_001.nef", b"raw image data");
     let xmp = create_test_file(&root, "DSC_001.xmp", b"<xmp>original</xmp>");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--include", "captureone", root.to_str().unwrap()])
         .assert()
@@ -2410,7 +2410,7 @@ fn sync_detects_modified_recipe() {
     // Modify the XMP
     std::fs::write(&xmp, b"<xmp>modified content</xmp>").unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync", root.to_str().unwrap()])
         .assert()
@@ -2426,7 +2426,7 @@ fn sync_default_is_dry_run() {
     std::fs::create_dir_all(&sub).unwrap();
     let file = create_test_file(&sub, "moveme.jpg", b"dry run data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
@@ -2438,7 +2438,7 @@ fn sync_default_is_dry_run() {
     std::fs::rename(&file, new_sub.join("moveme.jpg")).unwrap();
 
     // Sync without --apply (dry run)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync", root.to_str().unwrap()])
         .assert()
@@ -2446,7 +2446,7 @@ fn sync_default_is_dry_run() {
         .stdout(predicate::str::contains("moved"));
 
     // Show should still have the old path (catalog unchanged)
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "*"])
         .assert()
@@ -2454,7 +2454,7 @@ fn sync_default_is_dry_run() {
     let stdout = String::from_utf8_lossy(&search_output.get_output().stdout);
     let asset_id = stdout.trim();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["--json", "show", asset_id])
         .assert()
@@ -2468,13 +2468,13 @@ fn sync_json_output() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "json_test.jpg", b"json test data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "sync", root.to_str().unwrap()])
         .assert()
@@ -2496,7 +2496,7 @@ fn sync_no_paths_errors() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync"])
         .assert()
@@ -2512,13 +2512,13 @@ fn cleanup_no_stale() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "photo.jpg", b"photo data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["cleanup"])
         .assert()
@@ -2532,7 +2532,7 @@ fn cleanup_detects_stale() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "gone.jpg", b"gone data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
@@ -2540,7 +2540,7 @@ fn cleanup_detects_stale() {
 
     std::fs::remove_file(&file).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["cleanup"])
         .assert()
@@ -2554,7 +2554,7 @@ fn cleanup_apply_removes_stale() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "remove_me.jpg", b"remove data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
@@ -2562,7 +2562,7 @@ fn cleanup_apply_removes_stale() {
 
     std::fs::remove_file(&file).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["cleanup", "--apply"])
         .assert()
@@ -2571,7 +2571,7 @@ fn cleanup_apply_removes_stale() {
         .stdout(predicate::str::contains("1 orphaned assets removed"));
 
     // Asset should be fully removed (no results from search)
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "-q", "*"])
         .assert()
@@ -2589,13 +2589,13 @@ fn cleanup_default_is_report_only() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "keep_it.jpg", b"keep data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "*"])
         .assert()
@@ -2606,7 +2606,7 @@ fn cleanup_default_is_report_only() {
     std::fs::remove_file(&file).unwrap();
 
     // Without --apply: reports stale but doesn't remove
-    dam()
+    maki()
         .current_dir(&root)
         .args(["cleanup"])
         .assert()
@@ -2615,7 +2615,7 @@ fn cleanup_default_is_report_only() {
         .stdout(predicate::str::contains("--apply"));
 
     // Location should still be in the catalog
-    let show_output = dam()
+    let show_output = maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .assert()
@@ -2634,7 +2634,7 @@ fn cleanup_volume_filter() {
     // Add a second volume
     let dir2 = tempdir().unwrap();
     let vol2_path = dir2.path().canonicalize().unwrap();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "vol2", vol2_path.to_str().unwrap()])
         .assert()
@@ -2642,7 +2642,7 @@ fn cleanup_volume_filter() {
 
     // Import a file on the main volume
     let file1 = create_test_file(&root, "on_vol1.jpg", b"vol1 data");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file1.to_str().unwrap()])
         .assert()
@@ -2650,7 +2650,7 @@ fn cleanup_volume_filter() {
 
     // Import a file on volume 2
     let file2 = create_test_file(&vol2_path, "on_vol2.jpg", b"vol2 data");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--volume", "vol2", file2.to_str().unwrap()])
         .assert()
@@ -2661,7 +2661,7 @@ fn cleanup_volume_filter() {
     std::fs::remove_file(&file2).unwrap();
 
     // Cleanup only vol2 — should only see 1 stale
-    dam()
+    maki()
         .current_dir(&root)
         .args(["cleanup", "--volume", "vol2"])
         .assert()
@@ -2675,13 +2675,13 @@ fn cleanup_json_output() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "json_cleanup.jpg", b"json cleanup data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "cleanup"])
         .assert()
@@ -2705,14 +2705,14 @@ fn cleanup_stale_recipe() {
     create_test_file(&root, "DSC_001.nef", b"raw image data for cleanup");
     let xmp = create_test_file(&root, "DSC_001.xmp", b"<xmp>recipe data</xmp>");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset id
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "*"])
         .assert()
@@ -2721,7 +2721,7 @@ fn cleanup_stale_recipe() {
     let asset_id = stdout.trim().to_string();
 
     // Confirm recipe exists
-    let show_output = dam()
+    let show_output = maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .assert()
@@ -2734,7 +2734,7 @@ fn cleanup_stale_recipe() {
     std::fs::remove_file(&xmp).unwrap();
 
     // Cleanup --apply should remove the stale recipe
-    dam()
+    maki()
         .current_dir(&root)
         .args(["cleanup", "--apply"])
         .assert()
@@ -2742,7 +2742,7 @@ fn cleanup_stale_recipe() {
         .stdout(predicate::str::contains("stale"));
 
     // Recipe should be gone
-    let show_output2 = dam()
+    let show_output2 = maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .assert()
@@ -2759,7 +2759,7 @@ fn cleanup_list_shows_only_stale() {
     create_test_file(&root, "present.jpg", b"present data");
     let gone = create_test_file(&root, "gone.jpg", b"gone data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
@@ -2767,7 +2767,7 @@ fn cleanup_list_shows_only_stale() {
 
     std::fs::remove_file(&gone).unwrap();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["cleanup", "--list"])
         .assert()
@@ -2788,14 +2788,14 @@ fn search_orphan_filter() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "orphan_test.jpg", b"orphan data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset id
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .assert()
@@ -2808,7 +2808,7 @@ fn search_orphan_filter() {
     std::fs::remove_file(&file).unwrap();
 
     // Use report-only cleanup — doesn't remove anything
-    dam()
+    maki()
         .current_dir(&root)
         .args(["cleanup"])
         .assert()
@@ -2826,7 +2826,7 @@ fn search_orphan_filter() {
     drop(conn);
 
     // Now search orphan:true should find the asset
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "orphan:true"])
         .assert()
@@ -2840,14 +2840,14 @@ fn search_orphan_filter_excludes_located() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "located.jpg", b"located data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
     // File still exists on disk, locations intact — orphan:true should return nothing
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "orphan:true"])
         .assert()
@@ -2866,14 +2866,14 @@ fn search_missing_filter() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "missing_test.jpg", b"missing data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset id
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .assert()
@@ -2886,7 +2886,7 @@ fn search_missing_filter() {
     std::fs::remove_file(&file).unwrap();
 
     // missing:true should find it (file missing from disk but location in catalog)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "missing:true"])
         .assert()
@@ -2900,14 +2900,14 @@ fn search_missing_filter_excludes_present() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "present.jpg", b"present data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
     // File still exists — missing:true should find nothing
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "missing:true"])
         .assert()
@@ -2926,14 +2926,14 @@ fn search_stale_filter() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "stale_test.jpg", b"stale data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset id
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .assert()
@@ -2943,7 +2943,7 @@ fn search_stale_filter() {
     assert!(!asset_id.is_empty(), "should find imported asset");
 
     // Never explicitly verified, so verified_at is NULL — stale:0 should match
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "stale:0"])
         .assert()
@@ -2957,14 +2957,14 @@ fn search_volume_none_filter() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "volnone_test.jpg", b"volnone data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset id
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .assert()
@@ -2980,7 +2980,7 @@ fn search_volume_none_filter() {
     drop(conn);
 
     // volume:none should find the asset (no locations on any online volume)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "volume:none"])
         .assert()
@@ -2994,14 +2994,14 @@ fn search_volume_label_filter() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "vol_label_test.jpg", b"vol label data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Search by volume label should find the asset
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "volume:test-vol"])
         .assert()
@@ -3009,7 +3009,7 @@ fn search_volume_label_filter() {
         .stdout(predicate::str::contains("1 result"));
 
     // Case-insensitive match
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "volume:Test-Vol"])
         .assert()
@@ -3017,7 +3017,7 @@ fn search_volume_label_filter() {
         .stdout(predicate::str::contains("1 result"));
 
     // Unknown volume should error
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "volume:nonexistent"])
         .assert()
@@ -3025,7 +3025,7 @@ fn search_volume_label_filter() {
         .stderr(predicate::str::contains("Unknown volume"));
 
     // Negated volume should exclude (use -- to prevent clap flag parsing)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "--", "-volume:test-vol"])
         .assert()
@@ -3041,7 +3041,7 @@ fn cleanup_removes_orphaned_assets() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "orphan_cleanup.jpg", b"orphan cleanup data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
@@ -3049,7 +3049,7 @@ fn cleanup_removes_orphaned_assets() {
 
     std::fs::remove_file(&file).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["cleanup", "--apply"])
         .assert()
@@ -3057,7 +3057,7 @@ fn cleanup_removes_orphaned_assets() {
         .stdout(predicate::str::contains("1 orphaned assets removed"));
 
     // search orphan:true should return nothing — the orphan was removed
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "-q", "orphan:true"])
         .assert()
@@ -3075,14 +3075,14 @@ fn cleanup_reports_orphaned_without_apply() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "report_orphan.jpg", b"report orphan data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset id
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .assert()
@@ -3093,7 +3093,7 @@ fn cleanup_reports_orphaned_without_apply() {
     std::fs::remove_file(&file).unwrap();
 
     // Report-only mode: should count orphaned assets but not remove them
-    dam()
+    maki()
         .current_dir(&root)
         .args(["cleanup"])
         .assert()
@@ -3101,7 +3101,7 @@ fn cleanup_reports_orphaned_without_apply() {
         .stdout(predicate::str::contains("1 orphaned assets"));
 
     // Asset should still exist
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &asset_id])
         .assert()
@@ -3115,7 +3115,7 @@ fn cleanup_removes_orphaned_previews() {
     // Use .mp3 extension — generates an info card preview (always succeeds, audio is on by default)
     let file = create_test_file(&root, "preview_orphan.mp3", b"preview orphan data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
@@ -3128,7 +3128,7 @@ fn cleanup_removes_orphaned_previews() {
 
     std::fs::remove_file(&file).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["cleanup", "--apply"])
         .assert()
@@ -3146,14 +3146,14 @@ fn cleanup_preserves_non_orphaned_assets() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "keep_me.jpg", b"keep me data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset id
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .assert()
@@ -3162,7 +3162,7 @@ fn cleanup_preserves_non_orphaned_assets() {
     let asset_id = stdout.trim().to_string();
 
     // File still on disk — cleanup --apply should not remove anything
-    dam()
+    maki()
         .current_dir(&root)
         .args(["cleanup", "--apply"])
         .assert()
@@ -3170,7 +3170,7 @@ fn cleanup_preserves_non_orphaned_assets() {
         .stdout(predicate::str::contains("0 stale"));
 
     // Asset should still exist
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &asset_id])
         .assert()
@@ -3183,7 +3183,7 @@ fn cleanup_json_includes_orphan_fields() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "json_orphan.jpg", b"json orphan data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
@@ -3191,7 +3191,7 @@ fn cleanup_json_includes_orphan_fields() {
 
     std::fs::remove_file(&file).unwrap();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "cleanup", "--apply"])
         .assert()
@@ -3215,14 +3215,14 @@ fn update_location_moves_variant_path() {
     std::fs::create_dir_all(&sub).unwrap();
     let file = create_test_file(&sub, "photo.jpg", b"update location test data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset ID
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "*"])
         .assert()
@@ -3239,7 +3239,7 @@ fn update_location_moves_variant_path() {
     let new_path = new_sub.join("photo.jpg");
 
     // Run update-location
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "update-location", &asset_id,
@@ -3251,7 +3251,7 @@ fn update_location_moves_variant_path() {
         .stdout(predicate::str::contains("Updated variant location"));
 
     // Verify show has the new path
-    dam()
+    maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .assert()
@@ -3270,14 +3270,14 @@ fn update_location_moves_recipe_path() {
     create_test_file(&root, "DSC_001.nef", b"raw image for recipe move");
     let xmp = create_test_file(&root, "DSC_001.xmp", b"<xmp>recipe</xmp>");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset ID
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "*"])
         .assert()
@@ -3293,7 +3293,7 @@ fn update_location_moves_recipe_path() {
     let new_path = sub.join("DSC_001.xmp");
 
     // Run update-location
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "update-location", &asset_id,
@@ -3305,7 +3305,7 @@ fn update_location_moves_recipe_path() {
         .stdout(predicate::str::contains("Updated recipe location"));
 
     // Verify show has the new recipe path
-    dam()
+    maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .assert()
@@ -3319,13 +3319,13 @@ fn update_location_rejects_wrong_hash() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "photo.jpg", b"original content");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "*"])
         .assert()
@@ -3336,7 +3336,7 @@ fn update_location_rejects_wrong_hash() {
     // Create a DIFFERENT file at the new path
     let new_file = create_test_file(&root, "moved/photo.jpg", b"different content entirely");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "update-location", &asset_id,
@@ -3354,13 +3354,13 @@ fn update_location_rejects_missing_from() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "photo.jpg", b"some data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "*"])
         .assert()
@@ -3371,7 +3371,7 @@ fn update_location_rejects_missing_from() {
     // --from path doesn't exist in catalog, --to is a valid file
     let new_file = create_test_file(&root, "elsewhere/photo.jpg", b"some data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "update-location", &asset_id,
@@ -3391,13 +3391,13 @@ fn update_location_json_output() {
     std::fs::create_dir_all(&sub).unwrap();
     let file = create_test_file(&sub, "photo.jpg", b"json output test data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "*"])
         .assert()
@@ -3412,7 +3412,7 @@ fn update_location_json_output() {
 
     let new_path = new_sub.join("photo.jpg");
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args([
             "--json", "update-location", &asset_id,
@@ -3438,13 +3438,13 @@ fn update_location_auto_detects_volume() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "auto.jpg", b"auto detect volume test");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let search_output = dam()
+    let search_output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "*"])
         .assert()
@@ -3459,7 +3459,7 @@ fn update_location_auto_detects_volume() {
 
     let new_path = new_sub.join("auto.jpg");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "update-location", &asset_id,
@@ -3471,7 +3471,7 @@ fn update_location_auto_detects_volume() {
         .stdout(predicate::str::contains("Updated variant location"));
 
     // Verify new path in show output
-    dam()
+    maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .assert()
@@ -3487,7 +3487,7 @@ fn saved_search_save_and_list() {
     let root = init_catalog(dir.path());
 
     // Save a search
-    dam()
+    maki()
         .current_dir(&root)
         .args(["saved-search", "save", "Landscapes", "type:image tag:landscape rating:4+"])
         .assert()
@@ -3495,7 +3495,7 @@ fn saved_search_save_and_list() {
         .stdout(predicate::str::contains("Saved search 'Landscapes'"));
 
     // List shows it
-    dam()
+    maki()
         .current_dir(&root)
         .args(["saved-search", "list"])
         .assert()
@@ -3509,14 +3509,14 @@ fn saved_search_alias_works() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["ss", "save", "Test", "type:video"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Saved search 'Test'"));
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["ss", "list"])
         .assert()
@@ -3531,20 +3531,20 @@ fn saved_search_run() {
 
     // Import a file
     create_test_file(&root, "photo.jpg", b"saved-search-test-photo");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("photo.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     // Save and run a search that matches
-    dam()
+    maki()
         .current_dir(&root)
         .args(["ss", "save", "All Images", "type:image"])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["ss", "run", "All Images"])
         .assert()
@@ -3557,7 +3557,7 @@ fn saved_search_run_not_found() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["ss", "run", "nonexistent"])
         .assert()
@@ -3570,13 +3570,13 @@ fn saved_search_delete() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["ss", "save", "ToDelete", "type:video"])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["ss", "delete", "ToDelete"])
         .assert()
@@ -3584,7 +3584,7 @@ fn saved_search_delete() {
         .stdout(predicate::str::contains("Deleted saved search 'ToDelete'"));
 
     // List is now empty
-    dam()
+    maki()
         .current_dir(&root)
         .args(["ss", "list"])
         .assert()
@@ -3597,7 +3597,7 @@ fn saved_search_delete_not_found() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["ss", "delete", "nonexistent"])
         .assert()
@@ -3610,7 +3610,7 @@ fn saved_search_json_output() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["--json", "ss", "save", "Test", "type:image"])
         .assert()
@@ -3618,7 +3618,7 @@ fn saved_search_json_output() {
         .stdout(predicate::str::contains("\"status\""))
         .stdout(predicate::str::contains("\"saved\""));
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["--json", "ss", "list"])
         .assert()
@@ -3632,21 +3632,21 @@ fn saved_search_replace_existing() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["ss", "save", "My Search", "type:image"])
         .assert()
         .success();
 
     // Save again with same name — should replace
-    dam()
+    maki()
         .current_dir(&root)
         .args(["ss", "save", "My Search", "type:video", "--sort", "name_asc"])
         .assert()
         .success();
 
     // List should show updated query
-    dam()
+    maki()
         .current_dir(&root)
         .args(["ss", "list"])
         .assert()
@@ -3662,14 +3662,14 @@ fn collection_create_and_list() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["collection", "create", "Portfolio", "--description", "Best shots"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Created collection 'Portfolio'"));
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["collection", "list"])
         .assert()
@@ -3683,14 +3683,14 @@ fn collection_alias_works() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "create", "Test"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Created collection 'Test'"));
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "list"])
         .assert()
@@ -3705,14 +3705,14 @@ fn collection_add_and_show() {
 
     // Import a file
     create_test_file(&root, "col_photo.jpg", b"collection-test-photo");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("col_photo.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     // Get the asset ID
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "col_photo"])
         .output()
@@ -3724,13 +3724,13 @@ fn collection_add_and_show() {
     assert!(!asset_id.is_empty());
 
     // Create collection and add asset
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "create", "MyPicks"])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "add", "MyPicks", &asset_id])
         .assert()
@@ -3738,7 +3738,7 @@ fn collection_add_and_show() {
         .stdout(predicate::str::contains("Added 1 asset"));
 
     // Show collection contents
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "show", "MyPicks"])
         .assert()
@@ -3746,7 +3746,7 @@ fn collection_add_and_show() {
         .stdout(predicate::str::contains("col_photo"));
 
     // List shows count
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "list"])
         .assert()
@@ -3761,13 +3761,13 @@ fn collection_remove_and_delete() {
 
     // Import a file
     create_test_file(&root, "rm_photo.jpg", b"collection-remove-test");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("rm_photo.jpg").to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "rm_photo"])
         .output()
@@ -3777,20 +3777,20 @@ fn collection_remove_and_delete() {
         .trim()
         .to_string();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "create", "Temp"])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "add", "Temp", &asset_id])
         .assert()
         .success();
 
     // Remove asset from collection
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "remove", "Temp", &asset_id])
         .assert()
@@ -3798,7 +3798,7 @@ fn collection_remove_and_delete() {
         .stdout(predicate::str::contains("Removed 1 asset"));
 
     // Delete collection
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "delete", "Temp"])
         .assert()
@@ -3806,7 +3806,7 @@ fn collection_remove_and_delete() {
         .stdout(predicate::str::contains("Deleted collection 'Temp'"));
 
     // List shows empty
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "list"])
         .assert()
@@ -3819,7 +3819,7 @@ fn collection_json_output() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["--json", "col", "create", "JTest"])
         .assert()
@@ -3827,7 +3827,7 @@ fn collection_json_output() {
         .stdout(predicate::str::contains("\"name\""))
         .stdout(predicate::str::contains("JTest"));
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["--json", "col", "list"])
         .assert()
@@ -3843,19 +3843,19 @@ fn collection_search_filter() {
     // Import two files with unique names
     create_test_file(&root, "alpha_col.jpg", b"alpha-collection-unique");
     create_test_file(&root, "beta_col.jpg", b"beta-collection-unique");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("alpha_col.jpg").to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("beta_col.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     // Get alpha's asset ID
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "alpha_col"])
         .output()
@@ -3867,19 +3867,19 @@ fn collection_search_filter() {
     assert!(!asset_id.is_empty(), "alpha_col asset should exist");
 
     // Create collection with only alpha
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "create", "Filtered"])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "add", "Filtered", &asset_id])
         .assert()
         .success();
 
     // Search with collection filter should find only the one in the collection
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "collection:Filtered"])
         .assert()
@@ -3898,14 +3898,14 @@ fn search_path_filter() {
     let file_b = create_test_file(&root, "Capture/2026-02-22/DSC_002.jpg", b"photo b");
     let file_c = create_test_file(&root, "Archive/old/sunset.jpg", b"photo c");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file_a.to_str().unwrap(), file_b.to_str().unwrap(), file_c.to_str().unwrap()])
         .assert()
         .success();
 
     // path: filter should match only files under Capture/2026-02-22
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "path:Capture/2026-02-22"])
         .assert()
@@ -3915,7 +3915,7 @@ fn search_path_filter() {
         .stdout(predicate::str::contains("2 result"));
 
     // path: filter for Archive should match only the sunset file
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "path:Archive/"])
         .assert()
@@ -3924,7 +3924,7 @@ fn search_path_filter() {
         .stdout(predicate::str::contains("1 result"));
 
     // path: with no match
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "path:Nonexistent/"])
         .assert()
@@ -3942,7 +3942,7 @@ fn search_path_absolute_normalizes_to_relative() {
     let file_b = create_test_file(&root, "photos/DSC_002.jpg", b"abs path photo b");
     let file_c = create_test_file(&root, "other/sunset.jpg", b"abs path photo c");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file_a.to_str().unwrap(), file_b.to_str().unwrap(), file_c.to_str().unwrap()])
         .assert()
@@ -3950,7 +3950,7 @@ fn search_path_absolute_normalizes_to_relative() {
 
     // Search with absolute path should find the same results as relative
     let abs_path = format!("path:{}/photos", root.display());
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", &abs_path])
         .assert()
@@ -3960,7 +3960,7 @@ fn search_path_absolute_normalizes_to_relative() {
         .stdout(predicate::str::contains("2 result"));
 
     // Verify relative path works identically
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "path:photos"])
         .assert()
@@ -3970,7 +3970,7 @@ fn search_path_absolute_normalizes_to_relative() {
         .stdout(predicate::str::contains("2 result"));
 
     // Bogus absolute path should return nothing
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "path:/nonexistent/volume/photos"])
         .assert()
@@ -3978,7 +3978,7 @@ fn search_path_absolute_normalizes_to_relative() {
         .stdout(predicate::str::contains("No results found"));
 
     // ./ relative to cwd should resolve and normalize
-    dam()
+    maki()
         .current_dir(root.join("photos"))
         .args(["search", "path:./"])
         .assert()
@@ -3988,7 +3988,7 @@ fn search_path_absolute_normalizes_to_relative() {
         .stdout(predicate::str::contains("2 result"));
 
     // ../ relative to cwd should resolve and normalize
-    dam()
+    maki()
         .current_dir(root.join("photos"))
         .args(["search", "path:../other"])
         .assert()
@@ -4013,7 +4013,7 @@ fn import_auto_group_sibling_dirs() {
     std::fs::write(output.join("DSC_100.JPG"), b"jpeg-auto-group-sibling").unwrap();
 
     // Import both directories at once with --auto-group
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -4028,7 +4028,7 @@ fn import_auto_group_sibling_dirs() {
         .stdout(predicate::str::contains("merged"));
 
     // Should be 1 asset with 2 variants
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", ""])
         .assert()
@@ -4045,7 +4045,7 @@ fn import_auto_group_incremental() {
     let capture = root.join("session2/Capture");
     std::fs::create_dir_all(&capture).unwrap();
     std::fs::write(capture.join("DSC_200.ARW"), b"raw-incr-auto-group").unwrap();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", capture.to_str().unwrap()])
         .assert()
@@ -4055,7 +4055,7 @@ fn import_auto_group_incremental() {
     let output = root.join("session2/Output");
     std::fs::create_dir_all(&output).unwrap();
     std::fs::write(output.join("DSC_200.JPG"), b"jpeg-incr-auto-group").unwrap();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--auto-group", output.to_str().unwrap()])
         .assert()
@@ -4063,7 +4063,7 @@ fn import_auto_group_incremental() {
         .stdout(predicate::str::contains("Auto-group"));
 
     // Should be 1 asset (existing RAW picked up the export)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", ""])
         .assert()
@@ -4088,7 +4088,7 @@ fn import_auto_group_fuzzy_prefix() {
     )
     .unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -4101,7 +4101,7 @@ fn import_auto_group_fuzzy_prefix() {
         .stdout(predicate::str::contains("Auto-group"));
 
     // Should be 1 asset
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", ""])
         .assert()
@@ -4123,7 +4123,7 @@ fn import_auto_group_no_false_positives() {
     std::fs::write(session_b.join("DSC_001.ARW"), b"raw-session-b-001").unwrap();
 
     // Import session A first (no --auto-group)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", session_a.to_str().unwrap()])
         .assert()
@@ -4131,14 +4131,14 @@ fn import_auto_group_no_false_positives() {
 
     // Import session B with --auto-group — should NOT merge with session A
     // because they are under different session roots
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--auto-group", session_b.to_str().unwrap()])
         .assert()
         .success();
 
     // Should still be 2 separate assets
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", ""])
         .assert()
@@ -4158,7 +4158,7 @@ fn import_auto_group_json() {
     std::fs::write(capture.join("IMG_001.ARW"), b"raw-json-auto-group").unwrap();
     std::fs::write(output.join("IMG_001.JPG"), b"jpeg-json-auto-group").unwrap();
 
-    let out = dam()
+    let out = maki()
         .current_dir(&root)
         .args([
             "--json",
@@ -4194,19 +4194,19 @@ fn auto_group_dry_run_reports() {
     std::fs::write(sub2.join("DSC_001.JPG"), b"jpeg-content-for-autogroup").unwrap();
 
     // Import each directory separately so they become separate assets
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub2.to_str().unwrap()])
         .assert()
         .success();
 
     // Verify we have 2 assets (search returns one row per variant)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", ""])
         .assert()
@@ -4214,7 +4214,7 @@ fn auto_group_dry_run_reports() {
         .stdout(predicate::str::contains("2 result(s)"));
 
     // Dry run should report the match
-    dam()
+    maki()
         .current_dir(&root)
         .args(["auto-group"])
         .assert()
@@ -4223,7 +4223,7 @@ fn auto_group_dry_run_reports() {
         .stdout(predicate::str::contains("would merge"));
 
     // Assets should still be separate (dry run)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", ""])
         .assert()
@@ -4243,19 +4243,19 @@ fn auto_group_apply_merges() {
     std::fs::write(sub1.join("DSC_002.ARW"), b"raw-content-ag-apply").unwrap();
     std::fs::write(sub2.join("DSC_002.JPG"), b"jpeg-content-ag-apply").unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub2.to_str().unwrap()])
         .assert()
         .success();
 
     // Apply auto-group
-    dam()
+    maki()
         .current_dir(&root)
         .args(["auto-group", "--apply"])
         .assert()
@@ -4264,7 +4264,7 @@ fn auto_group_apply_merges() {
         .stdout(predicate::str::contains("merged"));
 
     // Should now be 1 unique asset (search -q outputs one ID per variant row)
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", ""])
         .assert()
@@ -4288,13 +4288,13 @@ fn auto_group_no_matches() {
     create_test_file(&root, "IMG_001.JPG", b"content-ag-no-match-1");
     create_test_file(&root, "IMG_002.JPG", b"content-ag-no-match-2");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["auto-group"])
         .assert()
@@ -4314,18 +4314,18 @@ fn auto_group_json_output() {
     std::fs::write(sub1.join("DSC_003.ARW"), b"raw-content-ag-json").unwrap();
     std::fs::write(sub2.join("DSC_003.JPG"), b"jpeg-content-ag-json").unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub2.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "auto-group"])
         .assert()
@@ -4356,19 +4356,19 @@ fn auto_group_fuzzy_prefix_merges_exports() {
     )
     .unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub2.to_str().unwrap()])
         .assert()
         .success();
 
     // Apply auto-group — fuzzy prefix should match
-    dam()
+    maki()
         .current_dir(&root)
         .args(["auto-group", "--apply"])
         .assert()
@@ -4377,7 +4377,7 @@ fn auto_group_fuzzy_prefix_merges_exports() {
         .stdout(predicate::str::contains("merged"));
 
     // Should be 1 unique asset
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", ""])
         .assert()
@@ -4402,13 +4402,13 @@ fn auto_group_fuzzy_rejects_numeric_continuation() {
     create_test_file(&root, "sub/DSC_001.ARW", b"raw-content-no-fuzzy-1");
     create_test_file(&root, "sub/DSC_0010.JPG", b"jpg-content-no-fuzzy-2");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("sub").to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["auto-group"])
         .assert()
@@ -4429,19 +4429,19 @@ fn group_merges_two_assets() {
     std::fs::write(sub1.join("IMG_100.ARW"), b"raw-group-test").unwrap();
     std::fs::write(sub2.join("IMG_100_edit.JPG"), b"jpg-group-test").unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub2.to_str().unwrap()])
         .assert()
         .success();
 
     // Should be 2 separate assets
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", ""])
         .assert()
@@ -4449,7 +4449,7 @@ fn group_merges_two_assets() {
         .stdout(predicate::str::contains("2 result(s)"));
 
     // Get variant hashes from show --json
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", ""])
         .output()
@@ -4463,7 +4463,7 @@ fn group_merges_two_assets() {
 
     let mut hashes = Vec::new();
     for id in &ids {
-        let output = dam()
+        let output = maki()
             .current_dir(&root)
             .args(["--json", "show", id])
             .output()
@@ -4478,7 +4478,7 @@ fn group_merges_two_assets() {
     }
 
     // Group them
-    dam()
+    maki()
         .current_dir(&root)
         .args(["group", &hashes[0], &hashes[1]])
         .assert()
@@ -4486,7 +4486,7 @@ fn group_merges_two_assets() {
         .stdout(predicate::str::contains("Grouped 2 variant(s)"));
 
     // Should now be 1 asset
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", ""])
         .output()
@@ -4511,18 +4511,18 @@ fn group_json_output() {
     std::fs::write(sub1.join("GRP_001.ARW"), b"raw-grp-json").unwrap();
     std::fs::write(sub2.join("GRP_001_v2.JPG"), b"jpg-grp-json").unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", sub2.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", ""])
         .output()
@@ -4535,7 +4535,7 @@ fn group_json_output() {
 
     let mut hashes = Vec::new();
     for id in &ids {
-        let output = dam()
+        let output = maki()
             .current_dir(&root)
             .args(["--json", "show", id])
             .output()
@@ -4550,7 +4550,7 @@ fn group_json_output() {
         );
     }
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "group", &hashes[0], &hashes[1]])
         .output()
@@ -4571,14 +4571,14 @@ fn split_extracts_variant_into_new_asset() {
     std::fs::write(root.join("IMG_001.ARW"), b"raw-split-test").unwrap();
     std::fs::write(root.join("IMG_001.JPG"), b"jpg-split-test").unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
     // Should be 1 asset with 2 variants
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", ""])
         .output()
@@ -4591,7 +4591,7 @@ fn split_extracts_variant_into_new_asset() {
     assert_eq!(ids.len(), 1);
 
     // Get variant hashes
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "show", ids[0]])
         .output()
@@ -4608,7 +4608,7 @@ fn split_extracts_variant_into_new_asset() {
         .as_str()
         .unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["split", ids[0], alt_hash])
         .assert()
@@ -4616,7 +4616,7 @@ fn split_extracts_variant_into_new_asset() {
         .stdout(predicate::str::contains("Split 1 variant(s)"));
 
     // Should now be 2 assets
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", ""])
         .output()
@@ -4637,13 +4637,13 @@ fn split_json_output() {
     std::fs::write(root.join("IMG_002.ARW"), b"raw-split-json").unwrap();
     std::fs::write(root.join("IMG_002.JPG"), b"jpg-split-json").unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", ""])
         .output()
@@ -4655,7 +4655,7 @@ fn split_json_output() {
         .collect();
     assert_eq!(ids.len(), 1);
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "show", ids[0]])
         .output()
@@ -4669,7 +4669,7 @@ fn split_json_output() {
         .as_str()
         .unwrap();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "split", ids[0], alt_hash])
         .output()
@@ -4689,13 +4689,13 @@ fn split_refuses_all_variants() {
 
     std::fs::write(root.join("single.jpg"), b"single-file").unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", ""])
         .output()
@@ -4707,7 +4707,7 @@ fn split_refuses_all_variants() {
         .unwrap()
         .trim();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "show", id])
         .output()
@@ -4716,7 +4716,7 @@ fn split_refuses_all_variants() {
     let hash = parsed["variants"][0]["content_hash"].as_str().unwrap();
 
     // Splitting the only variant should fail
-    dam()
+    maki()
         .current_dir(&root)
         .args(["split", id, hash])
         .assert()
@@ -4732,13 +4732,13 @@ fn split_inherits_metadata() {
     std::fs::write(root.join("META_001.ARW"), b"raw-meta-split").unwrap();
     std::fs::write(root.join("META_001.JPG"), b"jpg-meta-split").unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", ""])
         .output()
@@ -4751,19 +4751,19 @@ fn split_inherits_metadata() {
         .trim();
 
     // Add tags and rating
-    dam()
+    maki()
         .current_dir(&root)
         .args(["tag", id, "landscape", "nature"])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", id, "--rating", "4"])
         .assert()
         .success();
 
     // Get alternate variant hash
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "show", id])
         .output()
@@ -4779,7 +4779,7 @@ fn split_inherits_metadata() {
         .unwrap();
 
     // Split
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "split", id, alt_hash])
         .output()
@@ -4788,7 +4788,7 @@ fn split_inherits_metadata() {
     let new_id = split_result["new_assets"][0]["asset_id"].as_str().unwrap();
 
     // Check new asset has inherited metadata
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "show", new_id])
         .output()
@@ -4814,14 +4814,14 @@ fn fix_roles_dry_run_reports() {
 
     create_test_file(&root, "photos/DSC_100.ARW", b"raw-fixroles-1");
     create_test_file(&root, "photos/DSC_100.JPG", b"jpg-fixroles-1");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("photos").to_str().unwrap()])
         .assert()
         .success();
 
     // Since auto-grouping now sets roles correctly, fix-roles should report already correct
-    dam()
+    maki()
         .current_dir(&root)
         .args(["fix-roles"])
         .assert()
@@ -4842,26 +4842,26 @@ fn fix_roles_apply_corrects_roles() {
     std::fs::write(raw_dir.join("DSC_200.ARW"), b"raw-fixroles-apply").unwrap();
     std::fs::write(jpg_dir.join("DSC_200.JPG"), b"jpg-fixroles-apply").unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", raw_dir.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", jpg_dir.to_str().unwrap()])
         .assert()
         .success();
 
     // Auto-group to merge them into one asset
-    dam()
+    maki()
         .current_dir(&root)
         .args(["auto-group", "--apply"])
         .assert()
         .success();
 
     // After auto-group the JPG should already be Export — fix-roles reports 0 fixed
-    dam()
+    maki()
         .current_dir(&root)
         .args(["fix-roles"])
         .assert()
@@ -4876,13 +4876,13 @@ fn fix_roles_json_output() {
 
     create_test_file(&root, "photos/DSC_300.ARW", b"raw-fixroles-json");
     create_test_file(&root, "photos/DSC_300.JPG", b"jpg-fixroles-json");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("photos").to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "fix-roles"])
         .output()
@@ -4907,14 +4907,14 @@ fn refresh_detects_unchanged_recipes() {
         "photos/DSC_400.xmp",
         b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"3\"/></rdf:RDF></x:xmpmeta>",
     );
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("photos").to_str().unwrap()])
         .assert()
         .success();
 
     // Refresh without changes — should report unchanged
-    dam()
+    maki()
         .current_dir(&root)
         .args(["refresh"])
         .assert()
@@ -4934,7 +4934,7 @@ fn refresh_detects_modified_recipe() {
         "photos/DSC_500.xmp",
         b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"2\"/></rdf:RDF></x:xmpmeta>",
     );
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("photos").to_str().unwrap()])
         .assert()
@@ -4948,7 +4948,7 @@ fn refresh_detects_modified_recipe() {
     .unwrap();
 
     // Refresh should detect the change
-    dam()
+    maki()
         .current_dir(&root)
         .args(["refresh"])
         .assert()
@@ -4968,7 +4968,7 @@ fn refresh_dry_run_does_not_apply() {
         "photos/DSC_600.xmp",
         b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"1\"/></rdf:RDF></x:xmpmeta>",
     );
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("photos").to_str().unwrap()])
         .assert()
@@ -4982,7 +4982,7 @@ fn refresh_dry_run_does_not_apply() {
     .unwrap();
 
     // Dry run — should report but not apply
-    dam()
+    maki()
         .current_dir(&root)
         .args(["refresh", "--dry-run"])
         .assert()
@@ -4991,7 +4991,7 @@ fn refresh_dry_run_does_not_apply() {
         .stderr(predicate::str::contains("Dry run"));
 
     // Run again without dry-run — should still see the change (wasn't applied)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["refresh"])
         .assert()
@@ -5005,13 +5005,13 @@ fn edit_sets_and_clears_label() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "labeled.jpg", b"label test data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .output()
@@ -5019,7 +5019,7 @@ fn edit_sets_and_clears_label() {
     let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     // Set label
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id, "--label", "Red"])
         .assert()
@@ -5027,7 +5027,7 @@ fn edit_sets_and_clears_label() {
         .stdout(predicate::str::contains("Label: Red"));
 
     // Verify via show --json
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .output()
@@ -5037,7 +5037,7 @@ fn edit_sets_and_clears_label() {
     assert_eq!(parsed["color_label"].as_str(), Some("Red"));
 
     // Change to another label (case-insensitive)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id, "--label", "blue"])
         .assert()
@@ -5045,7 +5045,7 @@ fn edit_sets_and_clears_label() {
         .stdout(predicate::str::contains("Label: Blue"));
 
     // Clear label
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id, "--clear-label"])
         .assert()
@@ -5053,7 +5053,7 @@ fn edit_sets_and_clears_label() {
         .stdout(predicate::str::contains("Label: (none)"));
 
     // Verify cleared
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .output()
@@ -5069,13 +5069,13 @@ fn edit_label_validates_color() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "badlabel.jpg", b"bad label test");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .output()
@@ -5083,7 +5083,7 @@ fn edit_label_validates_color() {
     let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     // Invalid label should fail
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id, "--label", "Magenta"])
         .assert()
@@ -5093,7 +5093,7 @@ fn edit_label_validates_color() {
 
 // ── Export-based preview tests ──────────────────────────────────
 
-/// Helper: compute the SHA-256 hex of some content (matches dam's content_hash minus "sha256:" prefix).
+/// Helper: compute the SHA-256 hex of some content (matches maki's content_hash minus "sha256:" prefix).
 fn sha256_hex(data: &[u8]) -> String {
     use sha2::{Sha256, Digest};
     let digest = Sha256::digest(data);
@@ -5119,14 +5119,14 @@ fn show_preview_prefers_export_variant() {
     img.save(&jpg_path).unwrap();
     let jpg_content = std::fs::read(&jpg_path).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
         .success();
 
     // Get asset ID — may return multiple rows (one per variant), take the first
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "DSC_900"])
         .output()
@@ -5136,7 +5136,7 @@ fn show_preview_prefers_export_variant() {
     assert_eq!(asset_id.len(), 36, "Should get a UUID");
 
     // Verify via show --json that the asset has an export variant
-    let show_json = dam()
+    let show_json = maki()
         .current_dir(&root)
         .args(["--json", "show", &asset_id])
         .output()
@@ -5149,9 +5149,9 @@ fn show_preview_prefers_export_variant() {
     let has_alternate = variants.iter().any(|v| v["role"].as_str() == Some("alternate"));
     assert!(has_alternate, "JPG variant should have alternate role");
 
-    // dam show should show the JPG's hash in the Preview line (export preferred)
+    // maki show should show the JPG's hash in the Preview line (export preferred)
     let jpg_hash = sha256_hex(&jpg_content);
-    let show_output = dam()
+    let show_output = maki()
         .current_dir(&root)
         .args(["show", &asset_id])
         .output()
@@ -5184,13 +5184,13 @@ fn show_preview_falls_back_to_original() {
     img.save(&img_path).unwrap();
     let content = std::fs::read(&img_path).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", img_path.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "solo"])
         .output()
@@ -5198,7 +5198,7 @@ fn show_preview_falls_back_to_original() {
     let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     let hash = sha256_hex(&content);
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &asset_id])
         .assert()
@@ -5228,26 +5228,26 @@ fn group_shows_export_preview() {
     let jpg_content = std::fs::read(&jpg_path).unwrap();
 
     // Import separately so they become different assets
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", dir_a.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", dir_b.to_str().unwrap()])
         .assert()
         .success();
 
     // Get variant hashes via show --json
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "IMG_001.nef"])
         .output()
         .unwrap();
     let raw_asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "IMG_001_export"])
         .output()
@@ -5255,7 +5255,7 @@ fn group_shows_export_preview() {
     let jpg_asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     // Get content hashes from show --json
-    let raw_show = dam()
+    let raw_show = maki()
         .current_dir(&root)
         .args(["--json", "show", &raw_asset_id])
         .output()
@@ -5263,7 +5263,7 @@ fn group_shows_export_preview() {
     let raw_json: serde_json::Value = serde_json::from_slice(&raw_show.stdout).unwrap();
     let raw_variant_hash = raw_json["variants"][0]["content_hash"].as_str().unwrap().to_string();
 
-    let jpg_show = dam()
+    let jpg_show = maki()
         .current_dir(&root)
         .args(["--json", "show", &jpg_asset_id])
         .output()
@@ -5272,7 +5272,7 @@ fn group_shows_export_preview() {
     let jpg_variant_hash = jpg_json["variants"][0]["content_hash"].as_str().unwrap().to_string();
 
     // Group them
-    dam()
+    maki()
         .current_dir(&root)
         .args(["group", &raw_variant_hash, &jpg_variant_hash])
         .assert()
@@ -5281,7 +5281,7 @@ fn group_shows_export_preview() {
     // After grouping, the merged asset should prefer JPG (export) preview.
     // The target of `group` is the oldest asset (the RAW one, imported first).
     let jpg_hash = sha256_hex(&jpg_content);
-    let show_output = dam()
+    let show_output = maki()
         .current_dir(&root)
         .args(["show", &raw_asset_id])
         .output()
@@ -5306,14 +5306,14 @@ fn generate_previews_upgrade_flag() {
     create_test_file(&photos, "DSC_800.nef", b"raw for upgrade test");
     create_test_file(&photos, "DSC_800.jpg", b"jpg for upgrade test");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
         .success();
 
     // --upgrade should run without error and report results
-    dam()
+    maki()
         .current_dir(&root)
         .args(["generate-previews", "--upgrade"])
         .assert()
@@ -5321,7 +5321,7 @@ fn generate_previews_upgrade_flag() {
         .stdout(predicate::str::contains("preview(s)"));
 
     // --upgrade --json should include upgraded field
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "generate-previews", "--upgrade"])
         .assert()
@@ -5383,7 +5383,7 @@ fn import_jpeg_with_embedded_xmp_extracts_metadata() {
     let jpeg_path = photos.join("skyline.jpg");
     std::fs::write(&jpeg_path, &jpeg_data).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
@@ -5391,7 +5391,7 @@ fn import_jpeg_with_embedded_xmp_extracts_metadata() {
         .stdout(predicate::str::contains("1 imported"));
 
     // Get asset ID via search
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "skyline"])
         .output()
@@ -5400,7 +5400,7 @@ fn import_jpeg_with_embedded_xmp_extracts_metadata() {
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
     // Verify embedded XMP metadata appears in show output
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -5461,7 +5461,7 @@ fn refresh_media_extracts_embedded_xmp() {
     std::fs::write(photos.join("forest.jpg"), &jpeg_data).unwrap();
 
     // Import — metadata should be extracted
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
@@ -5469,7 +5469,7 @@ fn refresh_media_extracts_embedded_xmp() {
         .stdout(predicate::str::contains("1 imported"));
 
     // Get asset ID
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .output()
@@ -5477,7 +5477,7 @@ fn refresh_media_extracts_embedded_xmp() {
     let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     // Verify initial metadata
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &asset_id])
         .assert()
@@ -5489,19 +5489,19 @@ fn refresh_media_extracts_embedded_xmp() {
         );
 
     // Clear the metadata
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id, "--clear-rating"])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["tag", &asset_id, "--remove", "nature", "forest"])
         .assert()
         .success();
 
     // Verify tags are cleared
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &asset_id])
         .assert()
@@ -5512,7 +5512,7 @@ fn refresh_media_extracts_embedded_xmp() {
         );
 
     // Run refresh --media to re-extract embedded XMP
-    dam()
+    maki()
         .current_dir(&root)
         .args(["refresh", "--media"])
         .assert()
@@ -5520,7 +5520,7 @@ fn refresh_media_extracts_embedded_xmp() {
         .stdout(predicate::str::contains("1 refreshed"));
 
     // Verify metadata is restored
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &asset_id])
         .assert()
@@ -5551,13 +5551,13 @@ fn refresh_media_dry_run_does_not_apply() {
     let jpeg_data = build_test_jpeg_with_xmp(xmp_xml);
     std::fs::write(photos.join("drytest.jpg"), &jpeg_data).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .output()
@@ -5565,14 +5565,14 @@ fn refresh_media_dry_run_does_not_apply() {
     let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     // Clear rating
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id, "--clear-rating"])
         .assert()
         .success();
 
     // Dry run — should report but not apply
-    dam()
+    maki()
         .current_dir(&root)
         .args(["refresh", "--media", "--dry-run"])
         .assert()
@@ -5581,7 +5581,7 @@ fn refresh_media_dry_run_does_not_apply() {
         .stderr(predicate::str::contains("Dry run"));
 
     // Verify rating is still cleared (not restored)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &asset_id])
         .assert()
@@ -5616,13 +5616,13 @@ fn refresh_without_media_ignores_jpeg() {
     let jpeg_data = build_test_jpeg_with_xmp(xmp_xml);
     std::fs::write(photos.join("mountain.jpg"), &jpeg_data).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "type:image"])
         .output()
@@ -5630,19 +5630,19 @@ fn refresh_without_media_ignores_jpeg() {
     let asset_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     // Clear metadata
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", &asset_id, "--clear-rating"])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["tag", &asset_id, "--remove", "mountain"])
         .assert()
         .success();
 
     // Regular refresh (no --media) — no recipes, nothing to check
-    dam()
+    maki()
         .current_dir(&root)
         .args(["refresh"])
         .assert()
@@ -5650,7 +5650,7 @@ fn refresh_without_media_ignores_jpeg() {
         .stdout(predicate::str::contains("nothing to check"));
 
     // Verify metadata is NOT restored (no Tags: or Rating: lines)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &asset_id])
         .assert()
@@ -5688,7 +5688,7 @@ fn fix_recipes_reattaches_xmp() {
  </rdf:RDF>
 </x:xmpmeta>"#;
     create_test_file(&photos, "DSC_001.xmp", xmp.as_bytes());
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.join("DSC_001.xmp").to_str().unwrap()])
         .assert()
@@ -5697,7 +5697,7 @@ fn fix_recipes_reattaches_xmp() {
 
     // Now create and import the NRW media file
     create_test_file(&photos, "DSC_001.NRW", b"raw-nrw-fix-recipes-test");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.join("DSC_001.NRW").to_str().unwrap()])
         .assert()
@@ -5705,7 +5705,7 @@ fn fix_recipes_reattaches_xmp() {
         .stdout(predicate::str::contains("1 imported"));
 
     // Verify we have 2 assets (standalone XMP + NRW)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stats"])
         .assert()
@@ -5713,7 +5713,7 @@ fn fix_recipes_reattaches_xmp() {
         .stdout(predicate::str::contains("Assets:    2"));
 
     // Run fix-recipes --apply
-    dam()
+    maki()
         .current_dir(&root)
         .args(["fix-recipes", "--apply"])
         .assert()
@@ -5721,7 +5721,7 @@ fn fix_recipes_reattaches_xmp() {
         .stdout(predicate::str::contains("1 reattached"));
 
     // Should be down to 1 asset now
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stats"])
         .assert()
@@ -5729,7 +5729,7 @@ fn fix_recipes_reattaches_xmp() {
         .stdout(predicate::str::contains("Assets:    1"));
 
     // Get the NRW asset's ID via search --format ids
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "type:image"])
         .output()
@@ -5739,7 +5739,7 @@ fn fix_recipes_reattaches_xmp() {
     assert!(!asset_id.is_empty(), "should have the NRW image asset");
 
     // The remaining asset should have the recipe attached and XMP metadata applied
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", asset_id])
         .assert()
@@ -5760,21 +5760,21 @@ fn fix_recipes_dry_run() {
     std::fs::create_dir_all(&photos).unwrap();
 
     create_test_file(&photos, "DSC_002.xmp", b"xmp-dry-run-test");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.join("DSC_002.xmp").to_str().unwrap()])
         .assert()
         .success();
 
     create_test_file(&photos, "DSC_002.NRW", b"nrw-dry-run-test");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.join("DSC_002.NRW").to_str().unwrap()])
         .assert()
         .success();
 
     // Dry run (no --apply) — reports what would happen
-    dam()
+    maki()
         .current_dir(&root)
         .args(["fix-recipes"])
         .assert()
@@ -5785,7 +5785,7 @@ fn fix_recipes_dry_run() {
         );
 
     // Still 2 assets — nothing changed
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stats"])
         .assert()
@@ -5803,7 +5803,7 @@ fn fix_recipes_compound_extension() {
 
     // Create DSC_003.NRW.xmp (compound extension) and import as standalone
     create_test_file(&photos, "DSC_003.NRW.xmp", b"xmp-compound-test");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.join("DSC_003.NRW.xmp").to_str().unwrap()])
         .assert()
@@ -5812,14 +5812,14 @@ fn fix_recipes_compound_extension() {
 
     // Import the NRW media file
     create_test_file(&photos, "DSC_003.NRW", b"nrw-compound-test");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.join("DSC_003.NRW").to_str().unwrap()])
         .assert()
         .success();
 
     // fix-recipes should match via compound stem stripping
-    dam()
+    maki()
         .current_dir(&root)
         .args(["fix-recipes", "--apply"])
         .assert()
@@ -5827,7 +5827,7 @@ fn fix_recipes_compound_extension() {
         .stdout(predicate::str::contains("1 reattached"));
 
     // Only 1 asset remains
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stats"])
         .assert()
@@ -5845,14 +5845,14 @@ fn fix_recipes_no_parent() {
 
     // Import an XMP with no matching media file
     create_test_file(&photos, "ORPHAN.xmp", b"xmp-orphan-test");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.join("ORPHAN.xmp").to_str().unwrap()])
         .assert()
         .success();
 
     // fix-recipes reports no parent found
-    dam()
+    maki()
         .current_dir(&root)
         .args(["fix-recipes"])
         .assert()
@@ -5869,20 +5869,20 @@ fn fix_recipes_json() {
     std::fs::create_dir_all(&photos).unwrap();
 
     create_test_file(&photos, "DSC_004.xmp", b"xmp-json-test");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.join("DSC_004.xmp").to_str().unwrap()])
         .assert()
         .success();
 
     create_test_file(&photos, "DSC_004.NRW", b"nrw-json-test");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.join("DSC_004.NRW").to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "fix-recipes"])
         .output()
@@ -5908,19 +5908,19 @@ fn duplicates_same_volume_flag() {
     let file1 = create_test_file(&root, "copy_a.jpg", content);
     let file2 = create_test_file(&root, "subdir/copy_b.jpg", content);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file2.to_str().unwrap()])
         .assert()
         .success();
 
     // --same-volume should find the duplicate
-    dam()
+    maki()
         .current_dir(&root)
         .args(["duplicates", "--same-volume"])
         .assert()
@@ -5928,7 +5928,7 @@ fn duplicates_same_volume_flag() {
         .stdout(predicate::str::contains("same-volume duplicate"));
 
     // --cross-volume should NOT find anything (both on same volume)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["duplicates", "--cross-volume"])
         .assert()
@@ -5944,7 +5944,7 @@ fn duplicates_cross_volume_flag() {
     // Set up a second volume
     let dir2 = tempdir().unwrap();
     let vol2_path = dir2.path().canonicalize().unwrap();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "vol2", vol2_path.to_str().unwrap()])
         .assert()
@@ -5955,19 +5955,19 @@ fn duplicates_cross_volume_flag() {
     let file1 = create_test_file(&root, "original.jpg", content);
     let file2 = create_test_file(&vol2_path, "backup.jpg", content);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--volume", "vol2", file2.to_str().unwrap()])
         .assert()
         .success();
 
     // --cross-volume should find the cross-volume copy
-    dam()
+    maki()
         .current_dir(&root)
         .args(["duplicates", "--cross-volume"])
         .assert()
@@ -5975,7 +5975,7 @@ fn duplicates_cross_volume_flag() {
         .stdout(predicate::str::contains("2 volumes"));
 
     // --same-volume should NOT find it (each volume has only 1 copy)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["duplicates", "--same-volume"])
         .assert()
@@ -5991,7 +5991,7 @@ fn duplicates_volume_filter() {
     // Set up a second volume
     let dir2 = tempdir().unwrap();
     let vol2_path = dir2.path().canonicalize().unwrap();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "vol2", vol2_path.to_str().unwrap()])
         .assert()
@@ -6002,19 +6002,19 @@ fn duplicates_volume_filter() {
     let file1 = create_test_file(&root, "vf_orig.jpg", content);
     let file2 = create_test_file(&vol2_path, "vf_backup.jpg", content);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--volume", "vol2", file2.to_str().unwrap()])
         .assert()
         .success();
 
     // --volume test-vol should show the duplicate
-    dam()
+    maki()
         .current_dir(&root)
         .args(["duplicates", "--volume", "test-vol"])
         .assert()
@@ -6022,7 +6022,7 @@ fn duplicates_volume_filter() {
         .stdout(predicate::str::contains("duplicate locations"));
 
     // --volume nonexistent should find nothing
-    dam()
+    maki()
         .current_dir(&root)
         .args(["duplicates", "--volume", "nonexistent"])
         .assert()
@@ -6035,7 +6035,7 @@ fn duplicates_mutually_exclusive_flags() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["duplicates", "--same-volume", "--cross-volume"])
         .assert()
@@ -6053,7 +6053,7 @@ fn search_copies_filter() {
     // Set up a second volume
     let dir2 = tempdir().unwrap();
     let vol2_path = dir2.path().canonicalize().unwrap();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "vol2", vol2_path.to_str().unwrap()])
         .assert()
@@ -6061,7 +6061,7 @@ fn search_copies_filter() {
 
     // File A: only on one volume (1 copy)
     let file_a = create_test_file(&root, "single.jpg", b"single copy data");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file_a.to_str().unwrap()])
         .assert()
@@ -6071,19 +6071,19 @@ fn search_copies_filter() {
     let content_b = b"two copy data bytes";
     let file_b1 = create_test_file(&root, "multi_orig.jpg", content_b);
     let file_b2 = create_test_file(&vol2_path, "multi_backup.jpg", content_b);
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file_b1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--volume", "vol2", file_b2.to_str().unwrap()])
         .assert()
         .success();
 
     // copies:1 should only return the single-copy asset
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "search", "copies:1"])
         .output()
@@ -6094,7 +6094,7 @@ fn search_copies_filter() {
     assert_eq!(results[0]["original_filename"], "single.jpg");
 
     // copies:2 should only return the two-copy asset
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "search", "copies:2"])
         .output()
@@ -6105,7 +6105,7 @@ fn search_copies_filter() {
     assert_eq!(results[0]["original_filename"], "multi_orig.jpg");
 
     // copies:2+ should return the two-copy asset
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "search", "copies:2+"])
         .output()
@@ -6116,7 +6116,7 @@ fn search_copies_filter() {
     assert_eq!(results[0]["original_filename"], "multi_orig.jpg");
 
     // copies:1+ should return both
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "search", "copies:1+"])
         .output()
@@ -6131,7 +6131,7 @@ fn search_copies_filter() {
     assert!(filenames.contains(&"multi_orig.jpg"));
 }
 
-// ── dam dedup ──────────────────────────────────────────────────────
+// ── maki dedup ──────────────────────────────────────────────────────
 
 #[test]
 fn dedup_report_mode() {
@@ -6142,19 +6142,19 @@ fn dedup_report_mode() {
     let file1 = create_test_file(&root, "original.jpg", content);
     let file2 = create_test_file(&root, "subdir/copy.jpg", content);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file2.to_str().unwrap()])
         .assert()
         .success();
 
     // Report mode (no --apply)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["dedup"])
         .assert()
@@ -6178,18 +6178,18 @@ fn dedup_apply() {
     let file1 = create_test_file(&root, "keep.jpg", content);
     let file2 = create_test_file(&root, "subdir/remove.jpg", content);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file2.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["dedup", "--apply"])
         .assert()
@@ -6203,7 +6203,7 @@ fn dedup_apply() {
     assert_eq!(remaining, 1, "exactly one copy should remain");
 
     // Duplicates should now be empty
-    dam()
+    maki()
         .current_dir(&root)
         .args(["duplicates", "--same-volume"])
         .assert()
@@ -6220,19 +6220,19 @@ fn dedup_prefer_flag() {
     let file1 = create_test_file(&root, "Originals/photo.jpg", content);
     let file2 = create_test_file(&root, "Selects/photo.jpg", content);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file2.to_str().unwrap()])
         .assert()
         .success();
 
     // Prefer Selects path — so the Selects copy should be kept
-    dam()
+    maki()
         .current_dir(&root)
         .args(["dedup", "--prefer", "Selects", "--apply"])
         .assert()
@@ -6253,19 +6253,19 @@ fn dedup_min_copies() {
     let file1 = create_test_file(&root, "copy_a.jpg", content);
     let file2 = create_test_file(&root, "copy_b.jpg", content);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file1.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file2.to_str().unwrap()])
         .assert()
         .success();
 
     // With min-copies=2, nothing should be removed (only 2 locations total)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["dedup", "--min-copies", "2", "--apply"])
         .assert()
@@ -6285,7 +6285,7 @@ fn dedup_volume_filter() {
     // Set up a second volume
     let dir2 = tempdir().unwrap();
     let vol2_path = dir2.path().canonicalize().unwrap();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "vol2", vol2_path.to_str().unwrap()])
         .assert()
@@ -6296,19 +6296,19 @@ fn dedup_volume_filter() {
     let file_v2a = create_test_file(&vol2_path, "a.jpg", content);
     let file_v2b = create_test_file(&vol2_path, "subdir/b.jpg", content);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--volume", "vol2", file_v2a.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--volume", "vol2", file_v2b.to_str().unwrap()])
         .assert()
         .success();
 
     // Dedup only test-vol — should find nothing (dups are on vol2)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["dedup", "--volume", "test-vol"])
         .assert()
@@ -6316,7 +6316,7 @@ fn dedup_volume_filter() {
         .stdout(predicate::str::contains("0 duplicate groups"));
 
     // Dedup vol2 — should find the duplicates
-    dam()
+    maki()
         .current_dir(&root)
         .args(["dedup", "--volume", "vol2", "--apply"])
         .assert()
@@ -6337,10 +6337,10 @@ fn backup_status_overview() {
     let file1 = create_test_file(&root, "photo1.jpg", b"backup status photo 1");
     let file2 = create_test_file(&root, "photo2.jpg", b"backup status photo 2");
 
-    dam().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
-    dam().current_dir(&root).args(["import", file2.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", file2.to_str().unwrap()]).assert().success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["backup-status"])
         .assert()
@@ -6358,11 +6358,11 @@ fn backup_status_at_risk() {
     let file1 = create_test_file(&root, "risk1.jpg", b"at risk content 1");
     let file2 = create_test_file(&root, "risk2.jpg", b"at risk content 2");
 
-    dam().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
-    dam().current_dir(&root).args(["import", file2.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", file2.to_str().unwrap()]).assert().success();
 
     // --at-risk -q should output 2 asset IDs (one per line)
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["backup-status", "--at-risk", "-q"])
         .assert()
@@ -6390,7 +6390,7 @@ fn backup_status_min_copies() {
     // Set up a second volume
     let dir2 = tempdir().unwrap();
     let vol2_path = dir2.path().canonicalize().unwrap();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "vol2", vol2_path.to_str().unwrap()])
         .assert()
@@ -6401,11 +6401,11 @@ fn backup_status_min_copies() {
     let file1 = create_test_file(&root, "orig.jpg", content);
     let file2 = create_test_file(&vol2_path, "copy.jpg", content);
 
-    dam().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
-    dam().current_dir(&root).args(["import", "--volume", "vol2", file2.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", "--volume", "vol2", file2.to_str().unwrap()]).assert().success();
 
     // With --min-copies 1, the asset is on 2 volumes so it's not at risk
-    dam()
+    maki()
         .current_dir(&root)
         .args(["backup-status", "--min-copies", "1"])
         .assert()
@@ -6413,7 +6413,7 @@ fn backup_status_min_copies() {
         .stdout(predicate::str::contains("No at-risk assets"));
 
     // With --min-copies 3, the asset is on only 2 volumes so it IS at risk
-    dam()
+    maki()
         .current_dir(&root)
         .args(["backup-status", "--min-copies", "3"])
         .assert()
@@ -6429,11 +6429,11 @@ fn backup_status_with_query() {
     let img = create_test_file(&root, "scene.jpg", b"backup query image");
     let aud = create_test_file(&root, "track.mp3", b"backup query audio");
 
-    dam().current_dir(&root).args(["import", "--include", "audio", img.to_str().unwrap()]).assert().success();
-    dam().current_dir(&root).args(["import", "--include", "audio", aud.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", "--include", "audio", img.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", "--include", "audio", aud.to_str().unwrap()]).assert().success();
 
     // Scope to images only — should show 1 total asset
-    dam()
+    maki()
         .current_dir(&root)
         .args(["backup-status", "type:image"])
         .assert()
@@ -6449,7 +6449,7 @@ fn backup_status_volume_gap() {
     // Second volume
     let dir2 = tempdir().unwrap();
     let vol2_path = dir2.path().canonicalize().unwrap();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "vol2", vol2_path.to_str().unwrap()])
         .assert()
@@ -6457,10 +6457,10 @@ fn backup_status_volume_gap() {
 
     // Import file on test-vol only
     let file1 = create_test_file(&root, "gap_test.jpg", b"volume gap content");
-    dam().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
 
     // --volume vol2 --at-risk -q should list the asset (missing from vol2)
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["backup-status", "--volume", "vol2", "--at-risk", "-q"])
         .assert()
@@ -6482,9 +6482,9 @@ fn backup_status_json() {
     let root = init_catalog(dir.path());
 
     let file1 = create_test_file(&root, "json_test.jpg", b"backup json content");
-    dam().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", file1.to_str().unwrap()]).assert().success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "backup-status"])
         .assert()
@@ -6513,20 +6513,20 @@ fn backup_status_purpose_coverage() {
     // First we need to add a volume with --purpose
     let dir2 = tempdir().unwrap();
     let vol2_path = dir2.path().canonicalize().unwrap();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "working-vol", vol2_path.to_str().unwrap(), "--purpose", "working"])
         .assert()
         .success();
 
     let file1 = create_test_file(&vol2_path, "purpose_test.jpg", b"purpose coverage content");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--volume", "working-vol", file1.to_str().unwrap()])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["backup-status"])
         .assert()
@@ -6543,18 +6543,18 @@ fn volume_combine_report_only() {
     let root = dir.path().canonicalize().unwrap();
 
     // Init catalog at root
-    dam().current_dir(&root).arg("init").assert().success();
+    maki().current_dir(&root).arg("init").assert().success();
 
     // Create parent volume at root, child volume at root/sub
     let sub = root.join("sub");
     std::fs::create_dir_all(&sub).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "parent-vol", root.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "child-vol", sub.to_str().unwrap()])
         .assert()
@@ -6562,14 +6562,14 @@ fn volume_combine_report_only() {
 
     // Import a file on the child volume
     let file = create_test_file(&sub, "photo.jpg", b"combine-report-content");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--volume", "child-vol", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Report-only (no --apply)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "combine", "child-vol", "parent-vol"])
         .assert()
@@ -6579,7 +6579,7 @@ fn volume_combine_report_only() {
         .stdout(predicate::str::contains("prefix 'sub/'"));
 
     // Volume should still exist
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "list"])
         .assert()
@@ -6587,7 +6587,7 @@ fn volume_combine_report_only() {
         .stdout(predicate::str::contains("child-vol"));
 
     // Asset should still exist
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stats"])
         .assert()
@@ -6600,31 +6600,31 @@ fn volume_combine_apply() {
     let dir = tempdir().unwrap();
     let root = dir.path().canonicalize().unwrap();
 
-    dam().current_dir(&root).arg("init").assert().success();
+    maki().current_dir(&root).arg("init").assert().success();
 
     let sub = root.join("sub");
     std::fs::create_dir_all(&sub).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "parent-vol", root.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "child-vol", sub.to_str().unwrap()])
         .assert()
         .success();
 
     let file = create_test_file(&sub, "photo.jpg", b"combine-apply-content");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", "--volume", "child-vol", file.to_str().unwrap()])
         .assert()
         .success();
 
     // Apply combine
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "combine", "child-vol", "parent-vol", "--apply"])
         .assert()
@@ -6633,7 +6633,7 @@ fn volume_combine_apply() {
         .stdout(predicate::str::contains("1 locations moved"));
 
     // Child volume should be gone
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "list"])
         .assert()
@@ -6641,7 +6641,7 @@ fn volume_combine_apply() {
         .stdout(predicate::str::contains("child-vol").not());
 
     // Asset should still exist
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stats"])
         .assert()
@@ -6649,7 +6649,7 @@ fn volume_combine_apply() {
         .stdout(predicate::str::contains("Assets:    1"));
 
     // Verify path was rewritten: search for asset, then show it
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "photo"])
         .output()
@@ -6657,7 +6657,7 @@ fn volume_combine_apply() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", "--json", short_id])
         .assert()
@@ -6670,17 +6670,17 @@ fn volume_combine_with_recipes() {
     let dir = tempdir().unwrap();
     let root = dir.path().canonicalize().unwrap();
 
-    dam().current_dir(&root).arg("init").assert().success();
+    maki().current_dir(&root).arg("init").assert().success();
 
     let sub = root.join("sub");
     std::fs::create_dir_all(&sub).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "parent-vol", root.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "child-vol", sub.to_str().unwrap()])
         .assert()
@@ -6694,7 +6694,7 @@ fn volume_combine_with_recipes() {
         b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"3\"/></rdf:RDF></x:xmpmeta>",
     );
 
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -6708,7 +6708,7 @@ fn volume_combine_with_recipes() {
         .success();
 
     // Combine with --apply
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "combine", "child-vol", "parent-vol", "--apply"])
         .assert()
@@ -6716,7 +6716,7 @@ fn volume_combine_with_recipes() {
         .stdout(predicate::str::contains("1 recipes moved"));
 
     // Verify paths were rewritten
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "photo"])
         .output()
@@ -6724,7 +6724,7 @@ fn volume_combine_with_recipes() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let short_id = stdout.split_whitespace().next().expect("search returned an ID");
 
-    let show_output = dam()
+    let show_output = maki()
         .current_dir(&root)
         .args(["show", "--json", short_id])
         .output()
@@ -6739,7 +6739,7 @@ fn volume_combine_same_volume_error() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "combine", "test-vol", "test-vol"])
         .assert()
@@ -6752,7 +6752,7 @@ fn volume_combine_not_subdirectory_error() {
     let dir = tempdir().unwrap();
     let root = dir.path().canonicalize().unwrap();
 
-    dam().current_dir(&root).arg("init").assert().success();
+    maki().current_dir(&root).arg("init").assert().success();
 
     // Create two sibling directories as separate volumes
     let vol_a = root.join("vol_a");
@@ -6760,19 +6760,19 @@ fn volume_combine_not_subdirectory_error() {
     std::fs::create_dir_all(&vol_a).unwrap();
     std::fs::create_dir_all(&vol_b).unwrap();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "vol-a", vol_a.to_str().unwrap()])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "add", "vol-b", vol_b.to_str().unwrap()])
         .assert()
         .success();
 
     // Neither is a subdirectory of the other
-    dam()
+    maki()
         .current_dir(&root)
         .args(["volume", "combine", "vol-a", "vol-b"])
         .assert()
@@ -6788,13 +6788,13 @@ fn tag_hierarchy_search() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "eagle.jpg", b"eagle data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "eagle"])
         .output()
@@ -6803,14 +6803,14 @@ fn tag_hierarchy_search() {
     let short_id = stdout.split_whitespace().next().unwrap();
 
     // Add hierarchical tag
-    dam()
+    maki()
         .current_dir(&root)
         .args(["tag", short_id, "animals/birds/eagles"])
         .assert()
         .success();
 
     // Search for parent tag should match
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "tag:animals"])
         .assert()
@@ -6818,7 +6818,7 @@ fn tag_hierarchy_search() {
         .stdout(predicate::str::contains("eagle"));
 
     // Search for intermediate tag should match
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "tag:animals/birds"])
         .assert()
@@ -6826,7 +6826,7 @@ fn tag_hierarchy_search() {
         .stdout(predicate::str::contains("eagle"));
 
     // Search for exact tag should match
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "tag:animals/birds/eagles"])
         .assert()
@@ -6834,7 +6834,7 @@ fn tag_hierarchy_search() {
         .stdout(predicate::str::contains("eagle"));
 
     // Search for unrelated tag should not match
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "tag:cats"])
         .assert()
@@ -6848,13 +6848,13 @@ fn tag_hierarchy_add_remove() {
     let root = init_catalog(dir.path());
     let file = create_test_file(&root, "hawk.jpg", b"hawk data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "hawk"])
         .output()
@@ -6863,7 +6863,7 @@ fn tag_hierarchy_add_remove() {
     let short_id = stdout.split_whitespace().next().unwrap();
 
     // Add hierarchical tag
-    dam()
+    maki()
         .current_dir(&root)
         .args(["tag", short_id, "animals/birds/hawks"])
         .assert()
@@ -6871,7 +6871,7 @@ fn tag_hierarchy_add_remove() {
         .stdout(predicate::str::contains("animals/birds/hawks"));
 
     // Verify in show
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -6879,7 +6879,7 @@ fn tag_hierarchy_add_remove() {
         .stdout(predicate::str::contains("animals/birds/hawks"));
 
     // Remove hierarchical tag
-    dam()
+    maki()
         .current_dir(&root)
         .args(["tag", short_id, "--remove", "animals/birds/hawks"])
         .assert()
@@ -6887,7 +6887,7 @@ fn tag_hierarchy_add_remove() {
         .stdout(predicate::str::contains("Removed tags:"));
 
     // Verify removal
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", short_id])
         .assert()
@@ -6930,13 +6930,13 @@ fn import_xmp_hierarchical_subject() {
 </x:xmpmeta>"#;
     create_test_file(&photos, "DSC_200.xmp", xmp.as_bytes());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "DSC_200"])
         .output()
@@ -6946,7 +6946,7 @@ fn import_xmp_hierarchical_subject() {
 
     // Verify: flat components (animals, birds, eagles) should be deduplicated
     // into the hierarchical tag, while "sunset" remains
-    let show_output = dam()
+    let show_output = maki()
         .current_dir(&root)
         .args(["show", short_id])
         .output()
@@ -6963,7 +6963,7 @@ fn import_xmp_hierarchical_subject() {
     );
 
     // Hierarchical search should work
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "tag:animals"])
         .assert()
@@ -6977,7 +6977,7 @@ fn import_xmp_hierarchical_subject() {
 fn import_and_get_ids(root: &Path, names: &[&str]) -> Vec<String> {
     for name in names {
         create_test_file(root, name, name.as_bytes());
-        dam()
+        maki()
             .current_dir(root)
             .args(["import", root.join(name).to_str().unwrap()])
             .assert()
@@ -6986,7 +6986,7 @@ fn import_and_get_ids(root: &Path, names: &[&str]) -> Vec<String> {
     let mut ids = Vec::new();
     for name in names {
         let stem = Path::new(name).file_stem().unwrap().to_str().unwrap();
-        let output = dam()
+        let output = maki()
             .current_dir(root)
             .args(["search", "--format", "ids", stem])
             .output()
@@ -7008,7 +7008,7 @@ fn stack_create_and_list() {
 
     let ids = import_and_get_ids(&root, &["stack_a.jpg", "stack_b.jpg", "stack_c.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "create", &ids[0], &ids[1], &ids[2]])
         .assert()
@@ -7016,7 +7016,7 @@ fn stack_create_and_list() {
         .stdout(predicate::str::contains("Created stack"))
         .stdout(predicate::str::contains("3 assets"));
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "list"])
         .assert()
@@ -7032,7 +7032,7 @@ fn stack_alias_works() {
 
     let ids = import_and_get_ids(&root, &["st_a.jpg", "st_b.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["st", "create", &ids[0], &ids[1]])
         .assert()
@@ -7047,13 +7047,13 @@ fn stack_show_members() {
 
     let ids = import_and_get_ids(&root, &["show_a.jpg", "show_b.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "create", &ids[0], &ids[1]])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "show", &ids[0]])
         .assert()
@@ -7070,14 +7070,14 @@ fn stack_set_pick() {
 
     let ids = import_and_get_ids(&root, &["pick_a.jpg", "pick_b.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "create", &ids[0], &ids[1]])
         .assert()
         .success();
 
     // Initially ids[0] is the pick
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "show", &ids[0]])
         .assert()
@@ -7085,7 +7085,7 @@ fn stack_set_pick() {
         .stdout(predicate::str::contains(format!("{} [pick]", &ids[0])));
 
     // Change pick to ids[1]
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "pick", &ids[1]])
         .assert()
@@ -7093,7 +7093,7 @@ fn stack_set_pick() {
         .stdout(predicate::str::contains("as stack pick"));
 
     // Verify ids[1] is now pick
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "show", &ids[1]])
         .assert()
@@ -7108,13 +7108,13 @@ fn stack_remove_members() {
 
     let ids = import_and_get_ids(&root, &["rm_a.jpg", "rm_b.jpg", "rm_c.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "create", &ids[0], &ids[1], &ids[2]])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "remove", &ids[2]])
         .assert()
@@ -7122,7 +7122,7 @@ fn stack_remove_members() {
         .stdout(predicate::str::contains("Removed 1 asset"));
 
     // Stack should now have 2 members
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "show", &ids[0]])
         .assert()
@@ -7138,13 +7138,13 @@ fn stack_dissolve() {
 
     let ids = import_and_get_ids(&root, &["diss_a.jpg", "diss_b.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "create", &ids[0], &ids[1]])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "dissolve", &ids[0]])
         .assert()
@@ -7152,7 +7152,7 @@ fn stack_dissolve() {
         .stdout(predicate::str::contains("Stack dissolved"));
 
     // No stacks should remain
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "list"])
         .assert()
@@ -7168,14 +7168,14 @@ fn stack_add_to_existing() {
     let ids = import_and_get_ids(&root, &["add_a.jpg", "add_b.jpg", "add_c.jpg"]);
 
     // Create stack with first two
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "create", &ids[0], &ids[1]])
         .assert()
         .success();
 
     // Add third to existing stack (reference: ids[0])
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "add", &ids[0], &ids[1], &ids[2]])
         .assert()
@@ -7183,7 +7183,7 @@ fn stack_add_to_existing() {
         .stdout(predicate::str::contains("Added"));
 
     // Show should include all three
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "show", &ids[0]])
         .assert()
@@ -7198,7 +7198,7 @@ fn stack_json_output() {
 
     let ids = import_and_get_ids(&root, &["json_a.jpg", "json_b.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "create", "--json", &ids[0], &ids[1]])
         .assert()
@@ -7206,7 +7206,7 @@ fn stack_json_output() {
         .stdout(predicate::str::contains("member_count"))
         .stdout(predicate::str::contains("2"));
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "list", "--json"])
         .assert()
@@ -7223,14 +7223,14 @@ fn stack_search_stacked_filter() {
     let ids = import_and_get_ids(&root, &["sf_a.jpg", "sf_b.jpg", "sf_solo.jpg"]);
 
     // Stack first two, leave third solo
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "create", &ids[0], &ids[1]])
         .assert()
         .success();
 
     // stacked:true should find 2 assets
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "stacked:true"])
         .assert()
@@ -7238,7 +7238,7 @@ fn stack_search_stacked_filter() {
         .stdout(predicate::str::contains("2 result"));
 
     // stacked:false should find 1 asset
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "stacked:false"])
         .assert()
@@ -7253,14 +7253,14 @@ fn stack_rebuild_catalog_preserves_stacks() {
 
     let ids = import_and_get_ids(&root, &["rb_a.jpg", "rb_b.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "create", &ids[0], &ids[1]])
         .assert()
         .success();
 
     // Rebuild catalog
-    dam()
+    maki()
         .current_dir(&root)
         .args(["rebuild-catalog"])
         .assert()
@@ -7268,7 +7268,7 @@ fn stack_rebuild_catalog_preserves_stacks() {
         .stdout(predicate::str::contains("stack"));
 
     // Stacks should survive
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "list"])
         .assert()
@@ -7283,21 +7283,21 @@ fn stack_remove_dissolves_when_one_left() {
 
     let ids = import_and_get_ids(&root, &["auto_a.jpg", "auto_b.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "create", &ids[0], &ids[1]])
         .assert()
         .success();
 
     // Remove one member — stack should auto-dissolve since only 1 would remain
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "remove", &ids[1]])
         .assert()
         .success();
 
     // No stacks should remain
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "list"])
         .assert()
@@ -7316,15 +7316,15 @@ fn stack_from_tag_dry_run() {
 
     // Tag 3 assets with "Group A"
     for id in &ids[0..3] {
-        dam().current_dir(&root).args(["tag", id, "Group A"]).assert().success();
+        maki().current_dir(&root).args(["tag", id, "Group A"]).assert().success();
     }
     // Tag 2 assets with "Group B"
     for id in &ids[3..5] {
-        dam().current_dir(&root).args(["tag", id, "Group B"]).assert().success();
+        maki().current_dir(&root).args(["tag", id, "Group B"]).assert().success();
     }
 
     // Dry run
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "from-tag", "Group {}"])
         .assert()
@@ -7334,7 +7334,7 @@ fn stack_from_tag_dry_run() {
         .stdout(predicate::str::contains("dry run"));
 
     // Verify no stacks were actually created
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "list"])
         .assert()
@@ -7350,10 +7350,10 @@ fn stack_from_tag_apply() {
     let ids = import_and_get_ids(&root, &["fta_a.jpg", "fta_b.jpg", "fta_c.jpg"]);
 
     for id in &ids {
-        dam().current_dir(&root).args(["tag", id, "MyGroup X"]).assert().success();
+        maki().current_dir(&root).args(["tag", id, "MyGroup X"]).assert().success();
     }
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "from-tag", "MyGroup {}", "--apply"])
         .assert()
@@ -7362,7 +7362,7 @@ fn stack_from_tag_apply() {
         .stdout(predicate::str::contains("Assets stacked: 3"));
 
     // Verify stack was created
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "list"])
         .assert()
@@ -7378,11 +7378,11 @@ fn stack_from_tag_remove_tags() {
     let ids = import_and_get_ids(&root, &["ftr_a.jpg", "ftr_b.jpg"]);
 
     for id in &ids {
-        dam().current_dir(&root).args(["tag", id, "Stack 99"]).assert().success();
-        dam().current_dir(&root).args(["tag", id, "keeper"]).assert().success();
+        maki().current_dir(&root).args(["tag", id, "Stack 99"]).assert().success();
+        maki().current_dir(&root).args(["tag", id, "keeper"]).assert().success();
     }
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "from-tag", "Stack {}", "--apply", "--remove-tags"])
         .assert()
@@ -7390,7 +7390,7 @@ fn stack_from_tag_remove_tags() {
         .stdout(predicate::str::contains("Tags removed: 2"));
 
     // Verify "Stack 99" tag is gone but "keeper" remains
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &ids[0]])
         .assert()
@@ -7408,18 +7408,18 @@ fn stack_from_tag_skips_already_stacked() {
 
     // Tag all three with same tag FIRST (tagging does insert_asset which resets stack_id)
     for id in &ids {
-        dam().current_dir(&root).args(["tag", id, "Overlap X"]).assert().success();
+        maki().current_dir(&root).args(["tag", id, "Overlap X"]).assert().success();
     }
 
     // Then stack first two
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "create", &ids[0], &ids[1]])
         .assert()
         .success();
 
     // Only 1 unstacked asset — too few to create a stack
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "from-tag", "Overlap {}", "--apply"])
         .assert()
@@ -7435,9 +7435,9 @@ fn stack_from_tag_single_asset_skipped() {
 
     let ids = import_and_get_ids(&root, &["fts1_a.jpg"]);
 
-    dam().current_dir(&root).args(["tag", &ids[0], "Solo 1"]).assert().success();
+    maki().current_dir(&root).args(["tag", &ids[0], "Solo 1"]).assert().success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "from-tag", "Solo {}", "--apply"])
         .assert()
@@ -7454,10 +7454,10 @@ fn stack_from_tag_json_output() {
     let ids = import_and_get_ids(&root, &["ftj_a.jpg", "ftj_b.jpg"]);
 
     for id in &ids {
-        dam().current_dir(&root).args(["tag", id, "Batch 42"]).assert().success();
+        maki().current_dir(&root).args(["tag", id, "Batch 42"]).assert().success();
     }
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "stack", "from-tag", "Batch {}", "--apply"])
         .output()
@@ -7477,7 +7477,7 @@ fn stack_from_tag_no_wildcard_errors() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "from-tag", "no wildcard"])
         .assert()
@@ -7494,22 +7494,22 @@ fn search_negated_tag_excludes_matching() {
     let f1 = create_test_file(&root, "good.jpg", b"good image data");
     let f2 = create_test_file(&root, "bad.jpg", b"bad image data");
 
-    dam().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
-    dam().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
 
     // Tag f2 as "rejected"
-    let output = dam().current_dir(&root).args(["search", "-q", "bad"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "-q", "bad"]).output().unwrap();
     let bad_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    dam().current_dir(&root).args(["tag", &bad_id, "rejected"]).assert().success();
+    maki().current_dir(&root).args(["tag", &bad_id, "rejected"]).assert().success();
 
     // Tag f1 as "keeper"
-    let output = dam().current_dir(&root).args(["search", "-q", "good"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "-q", "good"]).output().unwrap();
     let good_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    dam().current_dir(&root).args(["tag", &good_id, "keeper"]).assert().success();
+    maki().current_dir(&root).args(["tag", &good_id, "keeper"]).assert().success();
 
     // -tag:rejected should find good but not bad
     // Use `--` to separate flags from the query containing `-`
-    let output = dam().current_dir(&root).args(["search", "-q", "--", "-tag:rejected"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "-q", "--", "-tag:rejected"]).output().unwrap();
     let ids = String::from_utf8_lossy(&output.stdout);
     assert!(ids.contains(&good_id), "should include non-rejected asset");
     assert!(!ids.contains(&bad_id), "should exclude rejected asset");
@@ -7522,11 +7522,11 @@ fn search_negated_format_excludes_matching() {
     let f1 = create_test_file(&root, "photo.jpg", b"jpeg data here");
     let f2 = create_test_file(&root, "raw.arw", b"raw data here");
 
-    dam().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
-    dam().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
 
     // -format:arw should exclude the raw file
-    let output = dam().current_dir(&root).args(["search", "--json", "--", "-format:arw"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "--json", "--", "-format:arw"]).output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("photo.jpg"), "should include jpg");
     assert!(!stdout.contains("raw.arw"), "should exclude arw");
@@ -7540,12 +7540,12 @@ fn search_comma_or_format() {
     let f2 = create_test_file(&root, "b.png", b"png data");
     let f3 = create_test_file(&root, "c.tif", b"tif data");
 
-    dam().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
-    dam().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
-    dam().current_dir(&root).args(["import", f3.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f3.to_str().unwrap()]).assert().success();
 
     // format:jpg,png should find both jpg and png but not tif
-    let output = dam().current_dir(&root).args(["search", "--json", "format:jpg,png"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "--json", "format:jpg,png"]).output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("a.jpg"), "should include jpg");
     assert!(stdout.contains("b.png"), "should include png");
@@ -7559,23 +7559,23 @@ fn search_repeated_tags_and() {
     let f1 = create_test_file(&root, "both.jpg", b"both tags data");
     let f2 = create_test_file(&root, "onlya.jpg", b"only a tag data");
 
-    dam().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
-    dam().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
 
-    let output = dam().current_dir(&root).args(["search", "-q", "both"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "-q", "both"]).output().unwrap();
     let both_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let output = dam().current_dir(&root).args(["search", "-q", "onlya"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "-q", "onlya"]).output().unwrap();
     let onlya_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     // Tag both assets with "landscape"
-    dam().current_dir(&root).args(["tag", &both_id, "landscape"]).assert().success();
-    dam().current_dir(&root).args(["tag", &onlya_id, "landscape"]).assert().success();
+    maki().current_dir(&root).args(["tag", &both_id, "landscape"]).assert().success();
+    maki().current_dir(&root).args(["tag", &onlya_id, "landscape"]).assert().success();
 
     // Tag only the first with "sunset"
-    dam().current_dir(&root).args(["tag", &both_id, "sunset"]).assert().success();
+    maki().current_dir(&root).args(["tag", &both_id, "sunset"]).assert().success();
 
     // tag:landscape tag:sunset should only match the asset with both tags
-    let output = dam().current_dir(&root).args(["search", "-q", "tag:landscape tag:sunset"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "-q", "tag:landscape tag:sunset"]).output().unwrap();
     let ids = String::from_utf8_lossy(&output.stdout);
     assert!(ids.contains(&both_id), "should include asset with both tags");
     assert!(!ids.contains(&onlya_id), "should exclude asset with only one tag");
@@ -7589,23 +7589,23 @@ fn search_comma_or_tag() {
     let f2 = create_test_file(&root, "bob.jpg", b"bob data");
     let f3 = create_test_file(&root, "carol.jpg", b"carol data");
 
-    dam().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
-    dam().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
-    dam().current_dir(&root).args(["import", f3.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f3.to_str().unwrap()]).assert().success();
 
-    let output = dam().current_dir(&root).args(["search", "-q", "alice"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "-q", "alice"]).output().unwrap();
     let alice_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let output = dam().current_dir(&root).args(["search", "-q", "bob"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "-q", "bob"]).output().unwrap();
     let bob_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let output = dam().current_dir(&root).args(["search", "-q", "carol"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "-q", "carol"]).output().unwrap();
     let carol_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    dam().current_dir(&root).args(["tag", &alice_id, "tagA"]).assert().success();
-    dam().current_dir(&root).args(["tag", &bob_id, "tagB"]).assert().success();
-    dam().current_dir(&root).args(["tag", &carol_id, "tagC"]).assert().success();
+    maki().current_dir(&root).args(["tag", &alice_id, "tagA"]).assert().success();
+    maki().current_dir(&root).args(["tag", &bob_id, "tagB"]).assert().success();
+    maki().current_dir(&root).args(["tag", &carol_id, "tagC"]).assert().success();
 
     // tag:tagA,tagB should find alice and bob but not carol
-    let output = dam().current_dir(&root).args(["search", "-q", "tag:tagA,tagB"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "-q", "tag:tagA,tagB"]).output().unwrap();
     let ids = String::from_utf8_lossy(&output.stdout);
     assert!(ids.contains(&alice_id), "should include alice (tagA)");
     assert!(ids.contains(&bob_id), "should include bob (tagB)");
@@ -7619,11 +7619,11 @@ fn search_negated_text_excludes_matching() {
     let f1 = create_test_file(&root, "sunset_beach.jpg", b"beach data");
     let f2 = create_test_file(&root, "sunset_mountain.jpg", b"mountain data");
 
-    dam().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
-    dam().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f1.to_str().unwrap()]).assert().success();
+    maki().current_dir(&root).args(["import", f2.to_str().unwrap()]).assert().success();
 
     // "sunset -mountain" should find beach but not mountain
-    let output = dam().current_dir(&root).args(["search", "--json", "--", "sunset -mountain"]).output().unwrap();
+    let output = maki().current_dir(&root).args(["search", "--json", "--", "sunset -mountain"]).output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("sunset_beach"), "should include beach");
     assert!(!stdout.contains("sunset_mountain"), "should exclude mountain");
@@ -7637,13 +7637,13 @@ fn verify_json_output() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "check.jpg", b"verify json test data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "verify"])
         .assert()
@@ -7663,21 +7663,21 @@ fn verify_max_age_skips_recent() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "recent.jpg", b"max-age skip test data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
     // First verify sets timestamps
-    dam()
+    maki()
         .current_dir(&root)
         .arg("verify")
         .assert()
         .success();
 
     // Second verify with --max-age should skip recently verified
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "verify", "--max-age", "1"])
         .assert()
@@ -7698,21 +7698,21 @@ fn verify_force_overrides_max_age() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "force.jpg", b"force override test data");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.to_str().unwrap()])
         .assert()
         .success();
 
     // First verify sets timestamps
-    dam()
+    maki()
         .current_dir(&root)
         .arg("verify")
         .assert()
         .success();
 
     // --force should override --max-age and re-verify everything
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "verify", "--force", "--max-age", "1"])
         .assert()
@@ -7738,7 +7738,7 @@ fn verify_recipe_verified_at_round_trip() {
     create_test_file(&photos, "DSC_500.xmp", b"xmp recipe for verify round trip");
 
     // Import NEF + XMP (recipe attached)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", photos.to_str().unwrap()])
         .assert()
@@ -7749,14 +7749,14 @@ fn verify_recipe_verified_at_round_trip() {
         );
 
     // First verify — sets verified_at on both variant location and recipe location
-    dam()
+    maki()
         .current_dir(&root)
         .arg("verify")
         .assert()
         .success();
 
     // Second verify with --max-age — both should be skipped as recently verified
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "verify", "--max-age", "1"])
         .assert()
@@ -7783,7 +7783,7 @@ fn delete_report_only_by_default() {
     let root = init_catalog(dir.path());
     let ids = import_and_get_ids(&root, &["del_report.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["delete", &ids[0]])
         .assert()
@@ -7791,7 +7791,7 @@ fn delete_report_only_by_default() {
         .stdout(predicate::str::contains("would be deleted"));
 
     // Asset should still exist
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &ids[0]])
         .assert()
@@ -7804,7 +7804,7 @@ fn delete_apply_removes_asset() {
     let root = init_catalog(dir.path());
     let ids = import_and_get_ids(&root, &["del_apply.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["delete", "--apply", &ids[0]])
         .assert()
@@ -7812,7 +7812,7 @@ fn delete_apply_removes_asset() {
         .stdout(predicate::str::contains("1 deleted"));
 
     // Asset should be gone
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &ids[0]])
         .assert()
@@ -7825,7 +7825,7 @@ fn delete_json_output() {
     let root = init_catalog(dir.path());
     let ids = import_and_get_ids(&root, &["del_json.jpg"]);
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "delete", "--apply", &ids[0]])
         .assert()
@@ -7850,14 +7850,14 @@ fn delete_prefix_matching() {
     // Use first 8 chars as prefix
     let prefix = &ids[0][..8];
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["delete", "--apply", prefix])
         .assert()
         .success()
         .stdout(predicate::str::contains("1 deleted"));
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &ids[0]])
         .assert()
@@ -7869,13 +7869,13 @@ fn delete_not_found() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["--json", "delete", "--apply", "nonexistent-id-12345"])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["--json", "delete", "--apply", "nonexistent-id-12345"])
         .assert()
@@ -7896,7 +7896,7 @@ fn delete_multiple_assets() {
     let root = init_catalog(dir.path());
     let ids = import_and_get_ids(&root, &["del_multi_a.jpg", "del_multi_b.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["delete", "--apply", &ids[0], &ids[1]])
         .assert()
@@ -7905,7 +7905,7 @@ fn delete_multiple_assets() {
 
     // Both should be gone
     for id in &ids {
-        dam()
+        maki()
             .current_dir(&root)
             .args(["show", id])
             .assert()
@@ -7919,7 +7919,7 @@ fn delete_stdin_piping() {
     let root = init_catalog(dir.path());
     let ids = import_and_get_ids(&root, &["del_stdin.jpg"]);
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["delete", "--apply"])
         .write_stdin(format!("{}\n", ids[0]))
@@ -7927,7 +7927,7 @@ fn delete_stdin_piping() {
         .success()
         .stdout(predicate::str::contains("1 deleted"));
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["show", &ids[0]])
         .assert()
@@ -7941,13 +7941,13 @@ fn delete_remove_files() {
     let file = create_test_file(&root, "del_rm.jpg", b"delete-me-file");
     let file_path = file.clone();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "--format", "ids", "del_rm"])
         .output()
@@ -7956,7 +7956,7 @@ fn delete_remove_files() {
 
     assert!(file_path.exists(), "file should exist before delete");
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["delete", "--apply", "--remove-files", &asset_id])
         .assert()
@@ -7972,7 +7972,7 @@ fn delete_remove_files_requires_apply() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["delete", "--remove-files", "some-id"])
         .assert()
@@ -7987,27 +7987,27 @@ fn delete_removes_from_collection() {
     let ids = import_and_get_ids(&root, &["del_col.jpg"]);
 
     // Add to a collection
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "create", "TestCol"])
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "add", "TestCol", &ids[0]])
         .assert()
         .success();
 
     // Delete the asset
-    dam()
+    maki()
         .current_dir(&root)
         .args(["delete", "--apply", &ids[0]])
         .assert()
         .success();
 
     // Collection should now be empty
-    dam()
+    maki()
         .current_dir(&root)
         .args(["col", "show", "TestCol"])
         .assert()
@@ -8022,21 +8022,21 @@ fn delete_removes_from_stack() {
     let ids = import_and_get_ids(&root, &["del_stack_a.jpg", "del_stack_b.jpg", "del_stack_c.jpg"]);
 
     // Create a stack with all three
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "create", &ids[0], &ids[1], &ids[2]])
         .assert()
         .success();
 
     // Delete one member
-    dam()
+    maki()
         .current_dir(&root)
         .args(["delete", "--apply", &ids[1]])
         .assert()
         .success();
 
     // Stack should still exist with 2 members
-    dam()
+    maki()
         .current_dir(&root)
         .args(["stack", "list"])
         .assert()
@@ -8051,14 +8051,14 @@ fn export_flat_copies_best_variant() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
     create_test_file(&root, "export_flat.jpg", b"flat export content");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("export_flat.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     let export_dir = dir.path().join("exported");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["export", "export_flat", export_dir.to_str().unwrap()])
         .assert()
@@ -8077,14 +8077,14 @@ fn export_mirror_preserves_paths() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
     create_test_file(&root, "subdir/mirror_test.jpg", b"mirror content");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("subdir/mirror_test.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     let export_dir = dir.path().join("mirror_out");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "export",
@@ -8104,14 +8104,14 @@ fn export_dry_run_no_files() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
     create_test_file(&root, "dry_run_export.jpg", b"dry run content");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("dry_run_export.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     let export_dir = dir.path().join("dry_out");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "export",
@@ -8132,7 +8132,7 @@ fn export_skip_existing_matching_hash() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
     create_test_file(&root, "skip_test.jpg", b"skip content");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("skip_test.jpg").to_str().unwrap()])
         .assert()
@@ -8140,7 +8140,7 @@ fn export_skip_existing_matching_hash() {
 
     let export_dir = dir.path().join("skip_out");
     // First export
-    dam()
+    maki()
         .current_dir(&root)
         .args(["export", "skip_test", export_dir.to_str().unwrap()])
         .assert()
@@ -8148,7 +8148,7 @@ fn export_skip_existing_matching_hash() {
     assert!(export_dir.join("skip_test.jpg").exists());
 
     // Second export — should skip
-    dam()
+    maki()
         .current_dir(&root)
         .args(["export", "skip_test", export_dir.to_str().unwrap()])
         .assert()
@@ -8161,7 +8161,7 @@ fn export_overwrite() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
     create_test_file(&root, "overwrite_test.jpg", b"overwrite content");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("overwrite_test.jpg").to_str().unwrap()])
         .assert()
@@ -8169,14 +8169,14 @@ fn export_overwrite() {
 
     let export_dir = dir.path().join("overwrite_out");
     // First export
-    dam()
+    maki()
         .current_dir(&root)
         .args(["export", "overwrite_test", export_dir.to_str().unwrap()])
         .assert()
         .success();
 
     // Second export with --overwrite
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "export",
@@ -8200,7 +8200,7 @@ fn export_include_sidecars() {
         "sidecar_test.xmp",
         b"<?xml version='1.0'?><x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'><rdf:Description/></rdf:RDF></x:xmpmeta>",
     );
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -8211,7 +8211,7 @@ fn export_include_sidecars() {
         .success();
 
     let export_dir = dir.path().join("sidecar_out");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "export",
@@ -8233,14 +8233,14 @@ fn export_symlink() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
     create_test_file(&root, "link_test.jpg", b"symlink content");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("link_test.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     let export_dir = dir.path().join("link_out");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "export",
@@ -8264,7 +8264,7 @@ fn export_all_variants() {
     // Create two files with the same stem (auto-grouped into one asset)
     create_test_file(&root, "multi.jpg", b"jpeg variant");
     create_test_file(&root, "multi.tif", b"tiff variant");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -8275,7 +8275,7 @@ fn export_all_variants() {
         .success();
 
     let export_dir = dir.path().join("all_variants_out");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "export",
@@ -8297,7 +8297,7 @@ fn export_best_variant_only() {
     let root = init_catalog(dir.path());
     create_test_file(&root, "best.jpg", b"jpeg best variant");
     create_test_file(&root, "best.tif", b"tiff extra variant data");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -8308,7 +8308,7 @@ fn export_best_variant_only() {
         .success();
 
     let export_dir = dir.path().join("best_only_out");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["export", "best", export_dir.to_str().unwrap()])
         .assert()
@@ -8331,7 +8331,7 @@ fn export_flat_filename_collision() {
     // Two files with the same name in different directories
     create_test_file(&root, "subA/collision.jpg", b"content A");
     create_test_file(&root, "subB/collision.jpg", b"content B");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -8339,7 +8339,7 @@ fn export_flat_filename_collision() {
         ])
         .assert()
         .success();
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "import",
@@ -8349,7 +8349,7 @@ fn export_flat_filename_collision() {
         .success();
 
     let export_dir = dir.path().join("collision_out");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["export", "collision", export_dir.to_str().unwrap()])
         .assert()
@@ -8369,14 +8369,14 @@ fn export_json_output() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
     create_test_file(&root, "json_export.jpg", b"json test");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("json_export.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     let export_dir = dir.path().join("json_out");
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args([
             "--json",
@@ -8403,7 +8403,7 @@ fn export_no_results() {
     let root = init_catalog(dir.path());
 
     let export_dir = dir.path().join("empty_out");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "export",
@@ -8424,7 +8424,7 @@ fn migrate_runs_successfully() {
     let tmp = tempdir().unwrap();
     let root = init_catalog(tmp.path());
 
-    dam()
+    maki()
         .current_dir(&root)
         .arg("migrate")
         .assert()
@@ -8437,7 +8437,7 @@ fn migrate_json_output() {
     let tmp = tempdir().unwrap();
     let root = init_catalog(tmp.path());
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["migrate", "--json"])
         .assert()
@@ -8454,13 +8454,13 @@ fn migrate_idempotent() {
     let root = init_catalog(tmp.path());
 
     // Run twice — should succeed both times
-    dam()
+    maki()
         .current_dir(&root)
         .arg("migrate")
         .assert()
         .success();
 
-    dam()
+    maki()
         .current_dir(&root)
         .arg("migrate")
         .assert()
@@ -8480,7 +8480,7 @@ mod export_ai_data {
         let tmp = tempdir().unwrap();
         let root = init_catalog(tmp.path());
 
-        dam()
+        maki()
             .current_dir(&root)
             .args(["faces", "export"])
             .assert()
@@ -8496,7 +8496,7 @@ mod export_ai_data {
         let tmp = tempdir().unwrap();
         let root = init_catalog(tmp.path());
 
-        let output = dam()
+        let output = maki()
             .current_dir(&root)
             .args(["faces", "export", "--json"])
             .assert()
@@ -8514,7 +8514,7 @@ mod export_ai_data {
         let tmp = tempdir().unwrap();
         let root = init_catalog(tmp.path());
 
-        dam()
+        maki()
             .current_dir(&root)
             .args(["embed", "--export"])
             .assert()
@@ -8527,7 +8527,7 @@ mod export_ai_data {
         let tmp = tempdir().unwrap();
         let root = init_catalog(tmp.path());
 
-        let output = dam()
+        let output = maki()
             .current_dir(&root)
             .args(["embed", "--export", "--json"])
             .assert()
@@ -8561,7 +8561,7 @@ mod auto_tag {
             .or_else(|_| std::env::var("USERPROFILE"))
             .unwrap();
         PathBuf::from(home)
-            .join(".dam")
+            .join(".maki")
             .join("models")
             .join("siglip-vit-b16-256")
     }
@@ -8572,7 +8572,7 @@ mod auto_tag {
         let root = init_catalog(tmp.path());
 
         // Use a custom empty model dir so we don't depend on real model
-        dam()
+        maki()
             .current_dir(&root)
             .args(["auto-tag", "--list-models"])
             .assert()
@@ -8584,7 +8584,7 @@ mod auto_tag {
         let tmp = tempdir().unwrap();
         let root = init_catalog(tmp.path());
 
-        let output = dam()
+        let output = maki()
             .current_dir(&root)
             .args(["auto-tag", "--list-models", "--json"])
             .assert()
@@ -8611,7 +8611,7 @@ mod auto_tag {
         let root = init_catalog(tmp.path());
 
         // Use --model with an unknown model
-        dam()
+        maki()
             .current_dir(&root)
             .args(["auto-tag", "--model", "nonexistent-model", "--list-models"])
             .assert()
@@ -8625,7 +8625,7 @@ mod auto_tag {
         let root = init_catalog(tmp.path());
 
         // Running auto-tag without --query/--asset/--volume should fail
-        dam()
+        maki()
             .current_dir(&root)
             .args(["auto-tag"])
             .assert()
@@ -8639,7 +8639,7 @@ mod auto_tag {
         let root = init_catalog(tmp.path());
 
         // Override model dir to an empty location
-        let config_path = root.join("dam.toml");
+        let config_path = root.join("maki.toml");
         let model_tmp = tempdir().unwrap();
         std::fs::write(
             &config_path,
@@ -8650,7 +8650,7 @@ mod auto_tag {
         )
         .unwrap();
 
-        dam()
+        maki()
             .current_dir(&root)
             .args(["auto-tag", "--query", "*"])
             .assert()
@@ -8664,7 +8664,7 @@ mod auto_tag {
         let root = init_catalog(tmp.path());
 
         // Override model dir to a temp location
-        let config_path = root.join("dam.toml");
+        let config_path = root.join("maki.toml");
         let model_tmp = tempdir().unwrap();
         std::fs::write(
             &config_path,
@@ -8675,7 +8675,7 @@ mod auto_tag {
         )
         .unwrap();
 
-        dam()
+        maki()
             .current_dir(&root)
             .args(["auto-tag", "--remove-model"])
             .assert()
@@ -8701,14 +8701,14 @@ mod auto_tag {
         img.save(&img_path).unwrap();
 
         // Import
-        dam()
+        maki()
             .current_dir(&root)
             .args(["import", img_path.to_str().unwrap()])
             .assert()
             .success();
 
         // Auto-tag dry run
-        dam()
+        maki()
             .current_dir(&root)
             .args(["auto-tag", "--query", "type:image"])
             .assert()
@@ -8730,13 +8730,13 @@ mod auto_tag {
         let img_path = root.join("test.jpg");
         img.save(&img_path).unwrap();
 
-        dam()
+        maki()
             .current_dir(&root)
             .args(["import", img_path.to_str().unwrap()])
             .assert()
             .success();
 
-        dam()
+        maki()
             .current_dir(&root)
             .args([
                 "auto-tag",
@@ -8765,13 +8765,13 @@ mod auto_tag {
         let img_path = root.join("test.jpg");
         img.save(&img_path).unwrap();
 
-        dam()
+        maki()
             .current_dir(&root)
             .args(["import", img_path.to_str().unwrap()])
             .assert()
             .success();
 
-        let output = dam()
+        let output = maki()
             .current_dir(&root)
             .args(["auto-tag", "--query", "type:image", "--json"])
             .assert()
@@ -8798,7 +8798,7 @@ mod auto_tag {
         let img_path = root.join("test.jpg");
         img.save(&img_path).unwrap();
 
-        dam()
+        maki()
             .current_dir(&root)
             .args(["import", img_path.to_str().unwrap()])
             .assert()
@@ -8808,7 +8808,7 @@ mod auto_tag {
         let labels_path = root.join("my_labels.txt");
         std::fs::write(&labels_path, "purple\nblue\nred\n").unwrap();
 
-        dam()
+        maki()
             .current_dir(&root)
             .args([
                 "auto-tag",
@@ -8835,14 +8835,14 @@ mod auto_tag {
         let img_path = root.join("test.jpg");
         img.save(&img_path).unwrap();
 
-        dam()
+        maki()
             .current_dir(&root)
             .args(["import", img_path.to_str().unwrap()])
             .assert()
             .success();
 
         // High threshold = fewer/no suggestions
-        let output = dam()
+        let output = maki()
             .current_dir(&root)
             .args([
                 "auto-tag",
@@ -8875,14 +8875,14 @@ mod auto_tag {
         img.save(&img_path).unwrap();
 
         // Import
-        dam()
+        maki()
             .current_dir(&root)
             .args(["import", img_path.to_str().unwrap()])
             .assert()
             .success();
 
         // Get asset ID via search
-        let search_output = dam()
+        let search_output = maki()
             .current_dir(&root)
             .args(["search", "-q", "type:image"])
             .assert()
@@ -8894,7 +8894,7 @@ mod auto_tag {
         let asset_id = asset_id.trim();
         let short_id = &asset_id[..8];
 
-        dam()
+        maki()
             .current_dir(&root)
             .args(["auto-tag", "--asset", short_id])
             .assert()
@@ -8921,21 +8921,21 @@ mod auto_tag {
         let img_path2 = root.join("test2.jpg");
         img2.save(&img_path2).unwrap();
 
-        dam()
+        maki()
             .current_dir(&root)
             .args(["import", img_path1.to_str().unwrap(), img_path2.to_str().unwrap()])
             .assert()
             .success();
 
         // Auto-tag both to generate embeddings
-        dam()
+        maki()
             .current_dir(&root)
             .args(["auto-tag", "--query", "type:image"])
             .assert()
             .success();
 
         // Get first asset ID
-        let search_output = dam()
+        let search_output = maki()
             .current_dir(&root)
             .args(["search", "type:image", "--format", "ids"])
             .assert()
@@ -8946,7 +8946,7 @@ mod auto_tag {
         let short_id = &first_id[..8];
 
         // Find similar
-        dam()
+        maki()
             .current_dir(&root)
             .args(["auto-tag", "--similar", short_id])
             .assert()
@@ -8965,7 +8965,7 @@ mod auto_tag {
         let root = init_catalog(tmp.path());
 
         // No assets to tag
-        dam()
+        maki()
             .current_dir(&root)
             .args(["auto-tag", "--query", "type:image", "--json"])
             .assert()
@@ -8985,13 +8985,13 @@ mod auto_tag {
         // Create a non-image file
         create_test_file(&root, "document.txt", b"hello world");
 
-        dam()
+        maki()
             .current_dir(&root)
             .args(["import", root.join("document.txt").to_str().unwrap()])
             .assert()
             .success();
 
-        let output = dam()
+        let output = maki()
             .current_dir(&root)
             .args(["auto-tag", "--query", "*", "--json"])
             .assert()
@@ -9017,14 +9017,14 @@ fn sync_metadata_unchanged() {
         "photos/SM_001.xmp",
         b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"3\"/></rdf:RDF></x:xmpmeta>",
     );
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("photos").to_str().unwrap()])
         .assert()
         .success();
 
     // No changes — should report unchanged
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync-metadata"])
         .assert()
@@ -9044,7 +9044,7 @@ fn sync_metadata_inbound_reads_external_changes() {
         "photos/SM_002.xmp",
         b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"2\"/></rdf:RDF></x:xmpmeta>",
     );
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("photos").to_str().unwrap()])
         .assert()
@@ -9058,7 +9058,7 @@ fn sync_metadata_inbound_reads_external_changes() {
     .unwrap();
 
     // sync-metadata should read external change
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync-metadata"])
         .assert()
@@ -9066,7 +9066,7 @@ fn sync_metadata_inbound_reads_external_changes() {
         .stdout(predicate::str::contains("1 read from disk"));
 
     // Verify rating was updated
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "--json", "rating:5"])
         .assert()
@@ -9086,14 +9086,14 @@ fn sync_metadata_outbound_writes_pending() {
         "photos/SM_003.xmp",
         b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"1\"/></rdf:RDF></x:xmpmeta>",
     );
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("photos").to_str().unwrap()])
         .assert()
         .success();
 
     // Get the asset ID
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["search", "-q", "*"])
         .assert()
@@ -9102,14 +9102,14 @@ fn sync_metadata_outbound_writes_pending() {
     let asset_id = stdout.trim();
 
     // Edit rating in DAM — this writes back immediately
-    dam()
+    maki()
         .current_dir(&root)
         .args(["edit", asset_id, "--rating", "4"])
         .assert()
         .success();
 
     // sync-metadata should report unchanged (writeback already happened inline)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync-metadata"])
         .assert()
@@ -9133,7 +9133,7 @@ fn sync_metadata_dry_run() {
         "photos/SM_004.xmp",
         b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"2\"/></rdf:RDF></x:xmpmeta>",
     );
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("photos").to_str().unwrap()])
         .assert()
@@ -9147,7 +9147,7 @@ fn sync_metadata_dry_run() {
     .unwrap();
 
     // Dry run should report but not apply
-    dam()
+    maki()
         .current_dir(&root)
         .args(["sync-metadata", "--dry-run"])
         .assert()
@@ -9155,7 +9155,7 @@ fn sync_metadata_dry_run() {
         .stdout(predicate::str::contains("1 read from disk"));
 
     // Rating should still be 2 (unchanged)
-    dam()
+    maki()
         .current_dir(&root)
         .args(["search", "--json", "rating:2"])
         .assert()
@@ -9174,13 +9174,13 @@ fn sync_metadata_json_output() {
         "photos/SM_005.xmp",
         b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"3\"/></rdf:RDF></x:xmpmeta>",
     );
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("photos").to_str().unwrap()])
         .assert()
         .success();
 
-    let output = dam()
+    let output = maki()
         .current_dir(&root)
         .args(["sync-metadata", "--json"])
         .assert()
@@ -9202,14 +9202,14 @@ fn contact_sheet_generates_pdf() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
     create_test_file(&root, "cs_test.jpg", b"contact sheet image");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("cs_test.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     let output = dir.path().join("output.pdf");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "contact-sheet",
@@ -9230,14 +9230,14 @@ fn contact_sheet_dry_run() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
     create_test_file(&root, "cs_dry.jpg", b"dry run image");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("cs_dry.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     let output = dir.path().join("dry.pdf");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "contact-sheet",
@@ -9256,14 +9256,14 @@ fn contact_sheet_json_output() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
     create_test_file(&root, "cs_json.jpg", b"json image");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("cs_json.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     let output = dir.path().join("json.pdf");
-    let cmd = dam()
+    let cmd = maki()
         .current_dir(&root)
         .args([
             "contact-sheet",
@@ -9289,7 +9289,7 @@ fn contact_sheet_zero_results_errors() {
     let root = init_catalog(dir.path());
 
     let output = dir.path().join("empty.pdf");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "contact-sheet",
@@ -9307,14 +9307,14 @@ fn contact_sheet_layout_options() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
     create_test_file(&root, "cs_opts.jpg", b"layout test");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("cs_opts.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     let output = dir.path().join("opts.pdf");
-    dam()
+    maki()
         .current_dir(&root)
         .args([
             "contact-sheet",
@@ -9338,14 +9338,14 @@ fn contact_sheet_dry_run_json() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
     create_test_file(&root, "cs_drj.jpg", b"dry run json");
-    dam()
+    maki()
         .current_dir(&root)
         .args(["import", root.join("cs_drj.jpg").to_str().unwrap()])
         .assert()
         .success();
 
     let output = dir.path().join("drj.pdf");
-    let cmd = dam()
+    let cmd = maki()
         .current_dir(&root)
         .args([
             "contact-sheet",
@@ -9373,10 +9373,10 @@ fn shell_batch_tag_via_variable() {
     let file1 = create_test_file(&root, "shell_tag1.jpg", b"shell tag data 1");
     let file2 = create_test_file(&root, "shell_tag2.jpg", b"shell tag data 2");
 
-    dam().current_dir(&root)
+    maki().current_dir(&root)
         .args(["import", file1.to_str().unwrap()])
         .assert().success();
-    dam().current_dir(&root)
+    maki().current_dir(&root)
         .args(["import", file2.to_str().unwrap()])
         .assert().success();
 
@@ -9384,13 +9384,13 @@ fn shell_batch_tag_via_variable() {
     let script = root.join("batch-tag.dam");
     std::fs::write(&script, "search type:image\ntag _ batch-test\n").unwrap();
 
-    dam().current_dir(&root)
+    maki().current_dir(&root)
         .args(["shell", script.to_str().unwrap()])
         .assert()
         .success();
 
     // Both assets should now have the "batch-test" tag
-    dam().current_dir(&root)
+    maki().current_dir(&root)
         .args(["search", "tag:batch-test", "--format", "ids"])
         .assert()
         .success()
