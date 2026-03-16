@@ -214,7 +214,7 @@ cat > "$TMPDIR/header.tex" << 'LATEX'
 % Header/footer styling
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\small\textit{\textcolor{maki-stone}{MAKI User Manual}}}
+\fancyhead[L]{\raisebox{-2pt}{\includegraphics[height=10pt]{__MANUAL_DIR__/maki-icon-header.png}}\;\small\textit{\textcolor{maki-stone}{MAKI User Manual}}}
 \fancyhead[R]{\small\textit{\textcolor{maki-stone}{v__VERSION__}}}
 \fancyfoot[C]{\small\thepage}
 \fancyfoot[L]{\small\textcolor{maki-stone}{MAKI v__VERSION__}}
@@ -225,7 +225,7 @@ cat > "$TMPDIR/header.tex" << 'LATEX'
 % Apply to chapter opening pages (plain style)
 \fancypagestyle{plain}{
   \fancyhf{}
-  \fancyhead[L]{\small\textit{\textcolor{maki-stone}{MAKI User Manual}}}
+  \fancyhead[L]{\raisebox{-2pt}{\includegraphics[height=10pt]{__MANUAL_DIR__/maki-icon-header.png}}\;\small\textit{\textcolor{maki-stone}{MAKI User Manual}}}
   \fancyhead[R]{\small\textit{\textcolor{maki-stone}{v__VERSION__}}}
   \fancyfoot[C]{\small\thepage}
   \fancyfoot[L]{\small\textcolor{maki-stone}{MAKI v__VERSION__}}
@@ -241,7 +241,7 @@ cat > "$TMPDIR/header.tex" << 'LATEX'
     \vspace*{2cm}
 
     % Logo
-    \includegraphics[height=5cm]{maki-wordmark-tagline.png}
+    \includegraphics[height=5cm]{__MANUAL_DIR__/maki-wordmark-tagline.png}
 
     \vspace{2cm}
 
@@ -268,7 +268,8 @@ cat > "$TMPDIR/header.tex" << 'LATEX'
 LATEX
 
 # Substitute version and date into the header
-sed -i '' "s/__VERSION__/$VERSION/g; s/__DATE__/$DATE/g" "$TMPDIR/header.tex"
+MANUAL_DIR_ESCAPED=$(echo "$MANUAL_DIR" | sed 's/\//\\\//g')
+sed -i '' "s/__VERSION__/$VERSION/g; s/__DATE__/$DATE/g; s/__MANUAL_DIR__/$MANUAL_DIR_ESCAPED/g" "$TMPDIR/header.tex"
 
 # --- Generate PDF ---
 
@@ -281,8 +282,8 @@ pandoc "$TMPDIR/manual-final.md" \
     --toc-depth=2 \
     -V geometry:margin=1in \
     -V documentclass=report \
-    -V title="" \
-    -V date="" \
+    -V title=" " \
+    -V date=" " \
     -V colorlinks=true \
     -V linkcolor=blue \
     -V urlcolor=blue \
