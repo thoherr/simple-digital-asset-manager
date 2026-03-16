@@ -247,6 +247,8 @@ pub struct BrowsePage {
     pub ai_enabled: bool,
     pub vlm_enabled: bool,
     pub vlm_models: Vec<String>,
+    pub default_filter: String,
+    pub default_filter_active: bool,
 }
 
 #[derive(Template)]
@@ -730,6 +732,8 @@ pub struct StrollPage {
     pub collection: String,
     pub path: String,
     pub person: String,
+    pub default_filter: String,
+    pub default_filter_active: bool,
 }
 
 /// Custom askama filters for templates.

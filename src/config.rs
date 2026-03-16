@@ -481,6 +481,19 @@ fn is_default_contact_sheet(c: &ContactSheetDefaults) -> bool {
     *c == ContactSheetDefaults::default()
 }
 
+/// Browse behavior configuration.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BrowseConfig {
+    /// Default search filter applied to browse/search/stroll views.
+    /// Uses standard search syntax (e.g. "rating:1+", "-tag:rest").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_filter: Option<String>,
+}
+
+fn is_default_browse(b: &BrowseConfig) -> bool {
+    *b == BrowseConfig::default()
+}
+
 /// Catalog configuration stored in maki.toml.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CatalogConfig {
@@ -502,6 +515,8 @@ pub struct CatalogConfig {
     pub contact_sheet: ContactSheetDefaults,
     #[serde(default, skip_serializing_if = "is_default_vlm")]
     pub vlm: VlmConfig,
+    #[serde(default, skip_serializing_if = "is_default_browse")]
+    pub browse: BrowseConfig,
 }
 
 impl Default for CatalogConfig {
@@ -516,6 +531,7 @@ impl Default for CatalogConfig {
             ai: AiConfig::default(),
             contact_sheet: ContactSheetDefaults::default(),
             vlm: VlmConfig::default(),
+            browse: BrowseConfig::default(),
         }
     }
 }
@@ -741,6 +757,7 @@ max_edge = 1000
             ai: AiConfig::default(),
             contact_sheet: ContactSheetDefaults::default(),
             vlm: VlmConfig::default(),
+            browse: BrowseConfig::default(),
         };
         let toml_str = toml::to_string_pretty(&original).unwrap();
         let parsed: CatalogConfig = toml::from_str(&toml_str).unwrap();
@@ -889,11 +906,26 @@ max_edge = 1000
             ai: AiConfig::default(),
             contact_sheet: ContactSheetDefaults::default(),
             vlm: VlmConfig::default(),
+            browse: BrowseConfig::default(),
         };
         original.save(dir.path()).unwrap();
         let loaded = CatalogConfig::load(dir.path()).unwrap();
         assert_eq!(loaded.preview, original.preview);
         assert_eq!(loaded.import.exclude, original.import.exclude);
+    }
+
+    #[test]
+    fn parse_browse_default_filter() {
+        let input = "[browse]\ndefault_filter = \"rating:1+ -tag:rest\"\n";
+        let config: CatalogConfig = toml::from_str(input).unwrap();
+        assert_eq!(config.browse.default_filter, Some("rating:1+ -tag:rest".to_string()));
+    }
+
+    #[test]
+    fn parse_browse_empty_section() {
+        let input = "[browse]\n";
+        let config: CatalogConfig = toml::from_str(input).unwrap();
+        assert_eq!(config.browse.default_filter, None);
     }
 
     #[test]

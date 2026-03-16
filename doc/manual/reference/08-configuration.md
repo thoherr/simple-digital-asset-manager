@@ -612,6 +612,40 @@ repeat_penalty = 0.0
 
 ---
 
+## [browse] Section
+
+Controls default browsing behavior for both the CLI `maki search` and the web UI.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `default_filter` | string | *(none)* | Search filter applied to all browse, search, and stroll views. Uses the same syntax as the search bar. |
+
+The default filter is AND'd with whatever the user types — it acts as a persistent base filter. In the web UI, a toggle next to the search bar lets you temporarily disable it.
+
+**Scope**: Applied to browse, search results, stroll, analytics, and map views. NOT applied to operational commands (`export`, `describe`, `contact-sheet`, `auto-tag`, etc.) where you pass your own explicit query.
+
+### Examples
+
+```toml
+# Only show rated assets (hide unreviewed and unrated)
+[browse]
+default_filter = "rating:1+"
+
+# Hide assets tagged "rest" (recommended for most users)
+[browse]
+default_filter = "-tag:rest"
+
+# Combine multiple conditions
+[browse]
+default_filter = "-tag:rest -tag:rejected"
+
+# Show only images
+[browse]
+default_filter = "type:image"
+```
+
+---
+
 ## Full Example
 
 A complete `maki.toml` with all options set and annotated:
@@ -811,6 +845,7 @@ When a field is absent from `maki.toml`, these defaults apply:
 | `vlm.top_p` | `0.0` (server default) |
 | `vlm.top_k` | `0` (server default) |
 | `vlm.repeat_penalty` | `0.0` (server default) |
+| `browse.default_filter` | none |
 
 ---
 

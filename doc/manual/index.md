@@ -17,6 +17,7 @@ Workflow-oriented guides that walk you through common tasks.
 7. [Maintenance](user-guide/07-maintenance.md) — Verification, sync, refresh, cleanup, and relocation
 8. [Scripting](user-guide/08-scripting.md) — Shell and Python scripting patterns, workflow automation
 9. [Interactive Shell](user-guide/09-shell.md) — Variables, tab completion, script files, and session management
+10. [Organizing & Culling](user-guide/10-organizing-and-culling.md) — Rating vs. curation, default filters, and workflow patterns
 
 ## Reference Guide
 

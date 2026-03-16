@@ -359,6 +359,12 @@
         pathInput.addEventListener('keyup', function(e) { e.stopPropagation(); });
     }
 
+    // --- Default filter toggle ---
+    var dfCb = document.getElementById('default-filter-cb');
+    if (dfCb) {
+        dfCb.addEventListener('change', onFilterChange);
+    }
+
     // --- Filter toggle (Shift+F) ---
     var filterRow = document.getElementById('filter-row');
     var filterBtn = document.getElementById('filter-toggle');

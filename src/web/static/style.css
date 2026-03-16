@@ -152,6 +152,26 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     font-size: 0.95rem;
     background: var(--bg-input);
 }
+.default-filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-input);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.default-filter-toggle code {
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+.default-filter-toggle input[type="checkbox"] {
+    margin: 0;
+}
 .filter-toggle {
     padding: 0.4rem 0.75rem;
     border: 1px solid var(--border);

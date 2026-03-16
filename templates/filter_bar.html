@@ -1,6 +1,12 @@
 <div class="search-row">
     <input type="text" name="q" placeholder="Search assets..." value="{{ query }}" autocomplete="off">
     <button type="button" class="filter-toggle" id="filter-toggle" title="Toggle filters (Shift+F)">&#9660; Filters</button>
+    {% if !default_filter.is_empty() %}
+    <label class="default-filter-toggle" title="Default filter from maki.toml [browse]">
+        <input type="checkbox" id="default-filter-cb" {% if default_filter_active %}checked{% endif %}>
+        <code>{{ default_filter }}</code>
+    </label>
+    {% endif %}
 </div>
 <div class="filter-row" id="filter-row">
     <div class="tag-filter" id="tag-filter">

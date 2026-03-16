@@ -234,6 +234,7 @@ pub struct AppState {
     pub ai_enabled: bool,
     pub vlm_enabled: bool,
     pub verbosity: crate::Verbosity,
+    pub default_filter: Option<String>,
     pub vlm_config: crate::config::VlmConfig,
     #[cfg(feature = "ai")]
     pub ai_model: tokio::sync::Mutex<Option<crate::ai::SigLipModel>>,
@@ -249,7 +250,7 @@ pub struct AppState {
 
 impl AppState {
     #[cfg(feature = "ai")]
-    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig, log_requests: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, stroll_discover_pool: u32, ai_config: AiConfig, vlm_config: crate::config::VlmConfig, verbosity: crate::Verbosity) -> Self {
+    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig, log_requests: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, stroll_discover_pool: u32, ai_config: AiConfig, vlm_config: crate::config::VlmConfig, default_filter: Option<String>, verbosity: crate::Verbosity) -> Self {
         let preview_ext = preview_config.format.extension().to_string();
         let smart_on_demand = preview_config.generate_on_demand;
         let vlm_enabled = check_vlm_at_startup(&vlm_config);
@@ -270,6 +271,7 @@ impl AppState {
             stroll_fanout_max,
             stroll_discover_pool,
             ai_enabled: true,
+            default_filter,
             verbosity,
             vlm_enabled,
             vlm_config,
@@ -282,7 +284,7 @@ impl AppState {
     }
 
     #[cfg(not(feature = "ai"))]
-    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig, log_requests: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, stroll_discover_pool: u32, vlm_config: crate::config::VlmConfig, verbosity: crate::Verbosity) -> Self {
+    pub fn new(catalog_root: PathBuf, preview_config: PreviewConfig, log_requests: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, stroll_discover_pool: u32, vlm_config: crate::config::VlmConfig, default_filter: Option<String>, verbosity: crate::Verbosity) -> Self {
         let preview_ext = preview_config.format.extension().to_string();
         let smart_on_demand = preview_config.generate_on_demand;
         let vlm_enabled = check_vlm_at_startup(&vlm_config);
@@ -303,6 +305,7 @@ impl AppState {
             stroll_fanout_max,
             stroll_discover_pool,
             ai_enabled: false,
+            default_filter,
             verbosity,
             vlm_enabled,
             vlm_config,
@@ -655,8 +658,8 @@ fn check_vlm_at_startup(vlm_config: &crate::config::VlmConfig) -> bool {
 
 /// Start the web server.
 #[cfg(feature = "ai")]
-pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, stroll_discover_pool: u32, ai_config: AiConfig, vlm_config: crate::config::VlmConfig, verbosity: crate::Verbosity) -> Result<()> {
-    let state = Arc::new(AppState::new(catalog_root, preview_config, log, dedup_prefer, per_page, stroll_neighbors, stroll_neighbors_max, stroll_fanout, stroll_fanout_max, stroll_discover_pool, ai_config, vlm_config, verbosity));
+pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, stroll_discover_pool: u32, ai_config: AiConfig, vlm_config: crate::config::VlmConfig, default_filter: Option<String>, verbosity: crate::Verbosity) -> Result<()> {
+    let state = Arc::new(AppState::new(catalog_root, preview_config, log, dedup_prefer, per_page, stroll_neighbors, stroll_neighbors_max, stroll_fanout, stroll_fanout_max, stroll_discover_pool, ai_config, vlm_config, default_filter, verbosity));
 
     // Verify catalog is accessible and warm dropdown caches
     {
@@ -684,8 +687,8 @@ pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config:
 
 /// Start the web server.
 #[cfg(not(feature = "ai"))]
-pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, stroll_discover_pool: u32, vlm_config: crate::config::VlmConfig, verbosity: crate::Verbosity) -> Result<()> {
-    let state = Arc::new(AppState::new(catalog_root, preview_config, log, dedup_prefer, per_page, stroll_neighbors, stroll_neighbors_max, stroll_fanout, stroll_fanout_max, stroll_discover_pool, vlm_config, verbosity));
+pub async fn serve(catalog_root: PathBuf, bind: &str, port: u16, preview_config: PreviewConfig, log: bool, dedup_prefer: Option<String>, per_page: u32, stroll_neighbors: u32, stroll_neighbors_max: u32, stroll_fanout: u32, stroll_fanout_max: u32, stroll_discover_pool: u32, vlm_config: crate::config::VlmConfig, default_filter: Option<String>, verbosity: crate::Verbosity) -> Result<()> {
+    let state = Arc::new(AppState::new(catalog_root, preview_config, log, dedup_prefer, per_page, stroll_neighbors, stroll_neighbors_max, stroll_fanout, stroll_fanout_max, stroll_discover_pool, vlm_config, default_filter, verbosity));
 
     // Verify catalog is accessible and warm dropdown caches
     {

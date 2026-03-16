@@ -2108,7 +2108,8 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             use maki::format::{self, OutputFormat};
 
             let catalog_root = maki::config::find_catalog_root()?;
-            let engine = QueryEngine::new(&catalog_root);
+            let config = CatalogConfig::load(&catalog_root)?;
+            let engine = QueryEngine::with_default_filter(&catalog_root, config.browse.default_filter);
             let results = engine.search(&query)?;
 
             if verbosity.verbose {
@@ -5560,9 +5561,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             let bind = bind.unwrap_or_else(|| config.serve.bind.clone());
             let rt = tokio::runtime::Runtime::new()?;
             #[cfg(feature = "ai")]
-            rt.block_on(maki::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer, config.serve.per_page, config.serve.stroll_neighbors, config.serve.stroll_neighbors_max, config.serve.stroll_fanout, config.serve.stroll_fanout_max, config.serve.stroll_discover_pool, config.ai, config.vlm, verbosity))?;
+            rt.block_on(maki::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer, config.serve.per_page, config.serve.stroll_neighbors, config.serve.stroll_neighbors_max, config.serve.stroll_fanout, config.serve.stroll_fanout_max, config.serve.stroll_discover_pool, config.ai, config.vlm, config.browse.default_filter, verbosity))?;
             #[cfg(not(feature = "ai"))]
-            rt.block_on(maki::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer, config.serve.per_page, config.serve.stroll_neighbors, config.serve.stroll_neighbors_max, config.serve.stroll_fanout, config.serve.stroll_fanout_max, config.serve.stroll_discover_pool, config.vlm, verbosity))?;
+            rt.block_on(maki::web::serve(catalog_root, &bind, port, config.preview, cli.log, config.dedup.prefer, config.serve.per_page, config.serve.stroll_neighbors, config.serve.stroll_neighbors_max, config.serve.stroll_fanout, config.serve.stroll_fanout_max, config.serve.stroll_discover_pool, config.vlm, config.browse.default_filter, verbosity))?;
             Ok(())
         }
         Commands::ContactSheet {

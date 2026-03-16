@@ -124,6 +124,79 @@ pub struct ParsedSearch {
 }
 
 impl ParsedSearch {
+    /// Merge another `ParsedSearch` into this one (AND semantics).
+    ///
+    /// Vec fields are extended (both must match). Option fields prefer `self`'s
+    /// value; the other's value is used only when `self` has `None`.
+    /// Bool fields are OR'd (either being true activates the filter).
+    pub fn merge_from(&mut self, other: &ParsedSearch) {
+        // Vec fields: extend
+        self.text_exclude.extend(other.text_exclude.iter().cloned());
+        self.asset_types.extend(other.asset_types.iter().cloned());
+        self.asset_types_exclude.extend(other.asset_types_exclude.iter().cloned());
+        self.tags.extend(other.tags.iter().cloned());
+        self.tags_exclude.extend(other.tags_exclude.iter().cloned());
+        self.formats.extend(other.formats.iter().cloned());
+        self.formats_exclude.extend(other.formats_exclude.iter().cloned());
+        self.color_labels.extend(other.color_labels.iter().cloned());
+        self.color_labels_exclude.extend(other.color_labels_exclude.iter().cloned());
+        self.cameras.extend(other.cameras.iter().cloned());
+        self.cameras_exclude.extend(other.cameras_exclude.iter().cloned());
+        self.lenses.extend(other.lenses.iter().cloned());
+        self.lenses_exclude.extend(other.lenses_exclude.iter().cloned());
+        self.collections.extend(other.collections.iter().cloned());
+        self.collections_exclude.extend(other.collections_exclude.iter().cloned());
+        self.path_prefixes.extend(other.path_prefixes.iter().cloned());
+        self.path_prefixes_exclude.extend(other.path_prefixes_exclude.iter().cloned());
+        self.volumes.extend(other.volumes.iter().cloned());
+        self.volumes_exclude.extend(other.volumes_exclude.iter().cloned());
+        self.meta_filters.extend(other.meta_filters.iter().cloned());
+        self.persons.extend(other.persons.iter().cloned());
+        self.persons_exclude.extend(other.persons_exclude.iter().cloned());
+        self.asset_ids.extend(other.asset_ids.iter().cloned());
+
+        // Option fields: prefer self, fall back to other
+        if self.text.is_none() { self.text = other.text.clone(); }
+        if self.rating_min.is_none() { self.rating_min = other.rating_min; }
+        if self.rating_exact.is_none() { self.rating_exact = other.rating_exact; }
+        if self.iso_min.is_none() { self.iso_min = other.iso_min; }
+        if self.iso_max.is_none() { self.iso_max = other.iso_max; }
+        if self.focal_min.is_none() { self.focal_min = other.focal_min; }
+        if self.focal_max.is_none() { self.focal_max = other.focal_max; }
+        if self.f_min.is_none() { self.f_min = other.f_min; }
+        if self.f_max.is_none() { self.f_max = other.f_max; }
+        if self.width_min.is_none() { self.width_min = other.width_min; }
+        if self.height_min.is_none() { self.height_min = other.height_min; }
+        if self.stale_days.is_none() { self.stale_days = other.stale_days; }
+        if self.copies_exact.is_none() { self.copies_exact = other.copies_exact; }
+        if self.copies_min.is_none() { self.copies_min = other.copies_min; }
+        if self.variant_count_exact.is_none() { self.variant_count_exact = other.variant_count_exact; }
+        if self.variant_count_min.is_none() { self.variant_count_min = other.variant_count_min; }
+        if self.scattered_min.is_none() { self.scattered_min = other.scattered_min; }
+        if self.date_prefix.is_none() { self.date_prefix = other.date_prefix.clone(); }
+        if self.date_from.is_none() { self.date_from = other.date_from.clone(); }
+        if self.date_until.is_none() { self.date_until = other.date_until.clone(); }
+        if self.stacked.is_none() { self.stacked = other.stacked; }
+        if self.geo_bbox.is_none() { self.geo_bbox = other.geo_bbox; }
+        if self.has_gps.is_none() { self.has_gps = other.has_gps; }
+        if self.has_faces.is_none() { self.has_faces = other.has_faces; }
+        if self.face_count_min.is_none() { self.face_count_min = other.face_count_min; }
+        if self.face_count_exact.is_none() { self.face_count_exact = other.face_count_exact; }
+        if self.has_embed.is_none() { self.has_embed = other.has_embed; }
+        #[cfg(feature = "ai")]
+        {
+            if self.similar.is_none() { self.similar = other.similar.clone(); }
+            if self.similar_limit.is_none() { self.similar_limit = other.similar_limit; }
+            if self.text_query.is_none() { self.text_query = other.text_query.clone(); }
+            if self.text_query_limit.is_none() { self.text_query_limit = other.text_query_limit; }
+        }
+
+        // Bool fields: OR
+        self.orphan = self.orphan || other.orphan;
+        self.missing = self.missing || other.missing;
+        self.volume_none = self.volume_none || other.volume_none;
+    }
+
     /// Convert to `SearchOptions` for passing to catalog search methods.
     pub fn to_search_options(&self) -> SearchOptions<'_> {
         SearchOptions {
@@ -742,12 +815,22 @@ pub struct BatchContext {
 
 pub struct QueryEngine {
     catalog_root: PathBuf,
+    default_filter: Option<String>,
 }
 
 impl QueryEngine {
     pub fn new(catalog_root: &Path) -> Self {
         Self {
             catalog_root: catalog_root.to_path_buf(),
+            default_filter: None,
+        }
+    }
+
+    /// Create a QueryEngine with a default filter from config.
+    pub fn with_default_filter(catalog_root: &Path, default_filter: Option<String>) -> Self {
+        Self {
+            catalog_root: catalog_root.to_path_buf(),
+            default_filter,
         }
     }
 
@@ -759,6 +842,14 @@ impl QueryEngine {
     /// Remaining tokens are joined as free-text search against name/filename/description/metadata.
     pub fn search(&self, query: &str) -> Result<Vec<SearchRow>> {
         let mut parsed = parse_search_query(query);
+
+        // Apply default filter from config (AND semantics)
+        if let Some(ref df) = self.default_filter {
+            if !df.is_empty() {
+                let default_parsed = parse_search_query(df);
+                parsed.merge_from(&default_parsed);
+            }
+        }
 
         // Normalize path prefixes: ~, ./, ../, /absolute → volume-relative + volume filter
         let path_volume_id: Option<String>;
@@ -4219,5 +4310,33 @@ mod tests {
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Unknown volume"));
+    }
+
+    #[test]
+    fn merge_from_combines_vec_fields() {
+        let mut base = parse_search_query("tag:sunset");
+        let default = parse_search_query("-tag:rest rating:1+");
+        base.merge_from(&default);
+        assert_eq!(base.tags, vec!["sunset".to_string()]);
+        assert_eq!(base.tags_exclude, vec!["rest".to_string()]);
+        assert_eq!(base.rating_min, Some(1));
+    }
+
+    #[test]
+    fn merge_from_prefers_self_options() {
+        let mut base = parse_search_query("rating:3+");
+        let default = parse_search_query("rating:1+");
+        base.merge_from(&default);
+        // Self's rating takes priority
+        assert_eq!(base.rating_min, Some(3));
+    }
+
+    #[test]
+    fn merge_from_empty_base() {
+        let mut base = ParsedSearch::default();
+        let default = parse_search_query("-tag:rest type:image");
+        base.merge_from(&default);
+        assert_eq!(base.tags_exclude, vec!["rest".to_string()]);
+        assert_eq!(base.asset_types, vec!["image".to_string()]);
     }
 }

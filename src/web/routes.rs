@@ -53,6 +53,8 @@ pub struct SearchParams {
     pub sort: Option<String>,
     pub page: Option<u32>,
     pub stacks: Option<String>,
+    /// Set to "1" to disable the default filter from maki.toml [browse].
+    pub nodefault: Option<String>,
 }
 
 /// GET / — browse page with initial results (full page for browser, partial for htmx).
@@ -82,7 +84,9 @@ pub async fn browse_page(
         let person_str = params.person.as_deref().unwrap_or("");
         let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
 
+        let nodefault = params.nodefault.as_deref() == Some("1");
         let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        apply_default_filter(&mut parsed, &state.default_filter, nodefault);
 
         // Normalize absolute path → volume-relative + implicit volume filter
         let path_volume_id = if !path_str.is_empty() {
@@ -313,6 +317,8 @@ pub async fn browse_page(
             ai_enabled: state.ai_enabled,
             vlm_enabled: state.vlm_enabled,
             vlm_models: state.vlm_config.available_models(),
+            default_filter: state.default_filter.clone().unwrap_or_default(),
+            default_filter_active: !nodefault && state.default_filter.is_some(),
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
@@ -374,7 +380,9 @@ pub async fn search_api(
         let person_str = params.person.as_deref().unwrap_or("");
         let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
 
+        let nodefault = params.nodefault.as_deref() == Some("1");
         let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        apply_default_filter(&mut parsed, &state.default_filter, nodefault);
 
         // Normalize absolute path → volume-relative + implicit volume filter
         let path_volume_id = if !path_str.is_empty() {
@@ -574,7 +582,9 @@ pub async fn page_ids_api(
         let person_str = params.person.as_deref().unwrap_or("");
         let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
 
+        let nodefault = params.nodefault.as_deref() == Some("1");
         let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        apply_default_filter(&mut parsed, &state.default_filter, nodefault);
 
         // Normalize absolute path → volume-relative + implicit volume filter
         let path_volume_id = if !path_str.is_empty() {
@@ -1277,6 +1287,19 @@ fn merge_search_params(
     }
 
     parsed
+}
+
+/// Apply the default filter from config to a parsed search, unless disabled.
+fn apply_default_filter(parsed: &mut ParsedSearch, default_filter: &Option<String>, nodefault: bool) {
+    if nodefault {
+        return;
+    }
+    if let Some(df) = default_filter {
+        if !df.is_empty() {
+            let default_parsed = parse_search_query(df);
+            parsed.merge_from(&default_parsed);
+        }
+    }
 }
 
 /// Parse a rating filter string into (rating_min, rating_exact).
@@ -2664,6 +2687,7 @@ pub struct CalendarParams {
     pub path: Option<String>,
     pub stacks: Option<String>,
     pub person: Option<String>,
+    pub nodefault: Option<String>,
 }
 
 /// GET /api/calendar — calendar heatmap data.
@@ -2690,7 +2714,9 @@ pub async fn calendar_api(
         let collection_str = params.collection.as_deref().unwrap_or("");
         let path_str = params.path.as_deref().unwrap_or("");
 
+        let nodefault = params.nodefault.as_deref() == Some("1");
         let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        apply_default_filter(&mut parsed, &state.default_filter, nodefault);
 
         // Normalize absolute path → volume-relative + implicit volume filter
         let path_volume_id = if !path_str.is_empty() {
@@ -2822,6 +2848,7 @@ pub struct MapParams {
     pub stacks: Option<String>,
     pub limit: Option<u32>,
     pub person: Option<String>,
+    pub nodefault: Option<String>,
 }
 
 /// GET /api/map — map markers for geotagged assets.
@@ -2845,7 +2872,9 @@ pub async fn map_api(
         let person_str = params.person.as_deref().unwrap_or("");
         let limit = params.limit.unwrap_or(10_000);
 
+        let nodefault = params.nodefault.as_deref() == Some("1");
         let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        apply_default_filter(&mut parsed, &state.default_filter, nodefault);
 
         // Normalize absolute path → volume-relative + implicit volume filter
         let path_volume_id = if !path_str.is_empty() {
@@ -2992,6 +3021,7 @@ pub struct FacetParams {
     pub path: Option<String>,
     pub stacks: Option<String>,
     pub person: Option<String>,
+    pub nodefault: Option<String>,
 }
 
 /// GET /api/facets — facet counts for the browse sidebar.
@@ -3014,7 +3044,9 @@ pub async fn facets_api(
         let path_str = params.path.as_deref().unwrap_or("");
         let person_str = params.person.as_deref().unwrap_or("");
 
+        let nodefault = params.nodefault.as_deref() == Some("1");
         let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        apply_default_filter(&mut parsed, &state.default_filter, nodefault);
 
         // Normalize absolute path → volume-relative + implicit volume filter
         let path_volume_id = if !path_str.is_empty() {
@@ -4770,15 +4802,18 @@ fn stroll_page_inner(
     };
 
     // If query filter is active, resolve matching asset IDs
-    let filter_ids: Option<std::collections::HashSet<String>> = if let Some(q) = query {
-        if !q.trim().is_empty() {
-            let engine = state.query_engine();
-            let results = engine.search(q)
-                .map_err(|e| format!("{e:#}"))?;
-            Some(results.into_iter().map(|r| r.asset_id).collect())
-        } else {
-            None
-        }
+    // Resolve filter: combine explicit query with default filter from config
+    let effective_query = match (query, &state.default_filter) {
+        (Some(q), Some(df)) if !q.trim().is_empty() => Some(format!("{} {}", q, df)),
+        (Some(q), _) if !q.trim().is_empty() => Some(q.to_string()),
+        (_, Some(df)) if !df.is_empty() => Some(df.clone()),
+        _ => None,
+    };
+    let filter_ids: Option<std::collections::HashSet<String>> = if let Some(ref eq) = effective_query {
+        let engine = state.query_engine();
+        let results = engine.search(eq)
+            .map_err(|e| format!("{e:#}"))?;
+        Some(results.into_iter().map(|r| r.asset_id).collect())
     } else {
         None
     };
@@ -4969,6 +5004,8 @@ fn stroll_page_inner(
         collection: String::new(),
         path: String::new(),
         person: String::new(),
+        default_filter: state.default_filter.clone().unwrap_or_default(),
+        default_filter_active: state.default_filter.is_some(),
     })
 }
 
@@ -5547,7 +5584,7 @@ pub async fn export_zip(
             let path_str = filters.path.as_deref().unwrap_or("");
             let person_str = filters.person.as_deref().unwrap_or("");
 
-            let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
+        let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
 
             // Path normalization
             let path_volume_id = if !path_str.is_empty() {
