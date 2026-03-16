@@ -45,4 +45,4 @@ Technical documentation for integrators and contributors.
 
 ---
 
-**Version**: v4.0.0 | **Source**: [GitHub](https://github.com/thoherr/simple-digital-asset-manager) | **License**: Apache-2.0
+**Version**: v4.0.1 | **Source**: [GitHub](https://github.com/thoherr/simple-digital-asset-manager) | **License**: Apache-2.0

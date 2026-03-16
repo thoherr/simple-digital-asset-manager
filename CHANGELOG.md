@@ -2,6 +2,19 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.0.1 (2026-03-17)
+
+### New Features
+- **Default browse filter** — new `[browse] default_filter` option in `maki.toml` applies a persistent search filter to all browse, search, stroll, analytics, and map views. Uses standard search syntax (e.g. `"-tag:rest"`, `"rating:1+"`). A toggle in the web UI filter bar lets you temporarily disable it. Not applied to operational commands like `export` or `describe`.
+
+### Bug Fixes
+- **`--mode tags` used wrong prompt** — tags mode was using the config's describe prompt instead of the JSON tags prompt, causing models to return prose instead of structured tags. Now always uses the correct tags-specific prompt.
+- **Prose VLM responses no longer fail** — when a model returns prose instead of JSON tags, the response is saved as a description with a helpful note, instead of reporting an error.
+
+### Documentation
+- **New manual chapter**: *Organizing and Culling* — covers rating vs. curation, tag-based and rating-based culling workflows, the default filter feature, and practical workflow examples.
+- **Configuration reference** updated with `[browse]` section documentation.
+
 ## v4.0.0 (2026-03-16)
 
 ### Breaking Changes
