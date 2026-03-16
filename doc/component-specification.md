@@ -177,7 +177,7 @@ recipes:
 
 **Tables** mirror the data model: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `stacks`, `collections`, `collection_assets`, `faces`, `people`, `embeddings` (with `--features ai`).
 
-This is a **derived cache**, not the source of truth. Running `dam rebuild-catalog` regenerates it from sidecar files, `collections.yaml`, `stacks.yaml`, `faces.yaml`, `people.yaml`, and embedding binary files. This means:
+This is a **derived cache**, not the source of truth. Running `maki rebuild-catalog` regenerates it from sidecar files, `collections.yaml`, `stacks.yaml`, `faces.yaml`, `people.yaml`, and embedding binary files. This means:
 - No data loss if the SQLite file is deleted.
 - Sidecars can be edited manually or by external tools.
 - The catalog can include denormalized fields for fast queries (e.g. extracted EXIF date, camera model).
@@ -345,7 +345,7 @@ This is a **derived cache**, not the source of truth. Running `dam rebuild-catal
 
 ### 11. Config Module
 
-**Responsibility**: parse and provide catalog configuration from `dam.toml`.
+**Responsibility**: parse and provide catalog configuration from `maki.toml`.
 
 **Module**: `src/config.rs` — `CatalogConfig` struct with sub-structs `PreviewConfig`, `ServeConfig`, `ImportConfig`, `DedupConfig`.
 
@@ -478,44 +478,44 @@ After each write, the file is re-hashed and the recipe's `content_hash` is updat
 
 **Subcommands**:
 ```
-dam init                                          # initialize a new catalog
-dam volume add <label> <path>                     # register a volume
-dam volume list                                   # list volumes and status
-dam import <paths...> [--volume V] [--include G] [--skip G]  # import files
-dam search <query> [--format F] [-q]              # search assets (label:Red filter)
-dam show <asset-id>                               # show asset details
-dam tag <asset-id> [--remove] <tags...>           # add/remove tags
-dam edit <id> [--name N] [--description T] [--rating R] [--label C] [--role ROLE --variant HASH] [--clear-*]  # edit metadata
-dam delete <ids...> [--apply] [--remove-files]    # remove assets from catalog
-dam contact-sheet <query> <output> [--columns N] [--thumb-size N] [--title T] [--metadata]  # generate thumbnail grid image
-dam group <variant-hashes...>                     # group variants into one asset
-dam split <asset-id> <variant-hashes...>          # split variants into new assets
-dam relocate <id> <vol> [--remove-source] [--dry-run]  # copy/move asset
-dam verify [PATHS...] [--volume V] [--asset ID] [--include G] [--skip G] [--max-age N] [--force]  # check file integrity
-dam sync <PATHS...> [--volume V] [--apply] [--remove-stale]  # reconcile catalog with disk
-dam refresh [PATHS...] [--volume V] [--asset ID] [--dry-run] [--media]  # re-read metadata from changed sidecars
-dam update-location <id> --from <old> --to <new> [--volume V]  # update path after manual move
-dam cleanup [--volume V] [--list] [--apply]       # remove stale locations, orphaned assets, and previews
-dam duplicates [--same-volume] [--cross-volume] [--volume V] [--filter-format F] [--path P] [--format FMT]  # find duplicates
-dam dedup [--volume V] [--prefer S] [--filter-format F] [--path P] [--min-copies N] [--apply]  # remove same-volume duplicates
-dam generate-previews [PATHS...] [--asset ID] [--volume V] [--include G] [--skip G] [--force]  # generate thumbnails
-dam stats [--types] [--volumes] [--tags] [--verified] [--all] [--limit N]  # catalog statistics
-dam auto-group [QUERY] [--apply]                  # group assets by filename stem
-dam embed [--query Q] [--asset ID] [--volume V] [--model M] [--force]  # generate embeddings (ai feature)
-dam faces detect|cluster|people|name|merge|delete-person|unassign|download  # face recognition (ai feature)
-dam fix-roles [PATHS...] [--volume V] [--asset ID] [--apply]  # fix variant roles in RAW+non-RAW groups
-dam saved-search save|list|run|delete             # manage saved searches (alias: ss, save supports --favorite)
-dam collection create|list|show|add|remove|delete # manage collections (alias: col)
-dam rebuild-catalog                               # rebuild SQLite from sidecars
-dam describe [--query Q] [--asset ID] [--volume V] [--mode M] [--apply]  # VLM image descriptions/tags
-dam serve [--port P] [--bind ADDR] [--log]         # start web UI server (--log for request logging)
+maki init                                          # initialize a new catalog
+maki volume add <label> <path>                     # register a volume
+maki volume list                                   # list volumes and status
+maki import <paths...> [--volume V] [--include G] [--skip G]  # import files
+maki search <query> [--format F] [-q]              # search assets (label:Red filter)
+maki show <asset-id>                               # show asset details
+maki tag <asset-id> [--remove] <tags...>           # add/remove tags
+maki edit <id> [--name N] [--description T] [--rating R] [--label C] [--role ROLE --variant HASH] [--clear-*]  # edit metadata
+maki delete <ids...> [--apply] [--remove-files]    # remove assets from catalog
+maki contact-sheet <query> <output> [--columns N] [--thumb-size N] [--title T] [--metadata]  # generate thumbnail grid image
+maki group <variant-hashes...>                     # group variants into one asset
+maki split <asset-id> <variant-hashes...>          # split variants into new assets
+maki relocate <id> <vol> [--remove-source] [--dry-run]  # copy/move asset
+maki verify [PATHS...] [--volume V] [--asset ID] [--include G] [--skip G] [--max-age N] [--force]  # check file integrity
+maki sync <PATHS...> [--volume V] [--apply] [--remove-stale]  # reconcile catalog with disk
+maki refresh [PATHS...] [--volume V] [--asset ID] [--dry-run] [--media]  # re-read metadata from changed sidecars
+maki update-location <id> --from <old> --to <new> [--volume V]  # update path after manual move
+maki cleanup [--volume V] [--list] [--apply]       # remove stale locations, orphaned assets, and previews
+maki duplicates [--same-volume] [--cross-volume] [--volume V] [--filter-format F] [--path P] [--format FMT]  # find duplicates
+maki dedup [--volume V] [--prefer S] [--filter-format F] [--path P] [--min-copies N] [--apply]  # remove same-volume duplicates
+maki generate-previews [PATHS...] [--asset ID] [--volume V] [--include G] [--skip G] [--force]  # generate thumbnails
+maki stats [--types] [--volumes] [--tags] [--verified] [--all] [--limit N]  # catalog statistics
+maki auto-group [QUERY] [--apply]                  # group assets by filename stem
+maki embed [--query Q] [--asset ID] [--volume V] [--model M] [--force]  # generate embeddings (ai feature)
+maki faces detect|cluster|people|name|merge|delete-person|unassign|download  # face recognition (ai feature)
+maki fix-roles [PATHS...] [--volume V] [--asset ID] [--apply]  # fix variant roles in RAW+non-RAW groups
+maki saved-search save|list|run|delete             # manage saved searches (alias: ss, save supports --favorite)
+maki collection create|list|show|add|remove|delete # manage collections (alias: col)
+maki rebuild-catalog                               # rebuild SQLite from sidecars
+maki describe [--query Q] [--asset ID] [--volume V] [--mode M] [--apply]  # VLM image descriptions/tags
+maki serve [--port P] [--bind ADDR] [--log]         # start web UI server (--log for request logging)
 ```
 
 ## Catalog Directory Structure
 
 ```
-<catalog_root>/                       # e.g. ~/dam/ or wherever `dam init` was run
-  dam.toml                            # catalog configuration (default volume, preferences)
+<catalog_root>/                       # e.g. ~/maki/ or wherever `maki init` was run
+  maki.toml                            # catalog configuration (default volume, preferences)
   catalog.db                          # SQLite index (derived, rebuildable)
   searches.toml                       # saved search definitions
   collections.yaml                    # collection membership (persists across rebuild-catalog)

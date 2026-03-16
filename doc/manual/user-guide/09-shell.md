@@ -1,6 +1,6 @@
 # Interactive Shell
 
-dam includes an interactive shell that keeps catalog state alive between commands, giving near-instant response times and enabling multi-step workflows with named variables, session defaults, tab completion, and script files. Instead of paying the startup cost of locating the catalog, loading configuration, and opening SQLite on every invocation, the shell does this once and reuses it for the entire session.
+maki includes an interactive shell that keeps catalog state alive between commands, giving near-instant response times and enabling multi-step workflows with named variables, session defaults, tab completion, and script files. Instead of paying the startup cost of locating the catalog, loading configuration, and opening SQLite on every invocation, the shell does this once and reuses it for the entire session.
 
 This chapter covers interactive use, variables, scripting, and practical workflows. For one-shot CLI scripting with bash or Python, see [Scripting](08-scripting.md).
 
@@ -13,24 +13,24 @@ This chapter covers interactive use, variables, scripting, and practical workflo
 Launch the shell from within a catalog directory:
 
 ```bash
-dam shell
+maki shell
 ```
 
 Output:
 
 ```
-dam shell v3.2.2 — type 'help' or 'quit' to exit
+maki shell v3.2.2 — type 'help' or 'quit' to exit
 photos>
 ```
 
-The prompt shows the catalog name (the directory basename). Type any dam command without the `dam` prefix.
+The prompt shows the catalog name (the directory basename). Type any maki command without the `maki` prefix.
 
 ### Run a script file
 
-Execute a `.dam` script file and exit:
+Execute a `.maki` script file and exit:
 
 ```bash
-dam shell post-import.dam
+maki shell post-import.maki
 ```
 
 ### Run a single command
@@ -38,7 +38,7 @@ dam shell post-import.dam
 Run one command and exit, useful in shell scripts or aliases:
 
 ```bash
-dam shell -c 'search "rating:5 tag:landscape"'
+maki shell -c 'search "rating:5 tag:landscape"'
 ```
 
 The `-c` mode shares the same parsing and variable support as interactive mode, but exits after processing the command string.
@@ -47,7 +47,7 @@ The `-c` mode shares the same parsing and variable support as interactive mode, 
 
 ## Basic Usage
 
-Inside the shell, type any dam subcommand directly. There is no need to type `dam` before each command:
+Inside the shell, type any maki subcommand directly. There is no need to type `maki` before each command:
 
 ```
 photos> stats
@@ -69,7 +69,7 @@ photos> stats
 
 ### History
 
-The shell saves command history to `.dam/shell_history` inside your catalog directory. Use the up/down arrow keys to recall previous commands. History persists across sessions.
+The shell saves command history to `.maki/shell_history` inside your catalog directory. Use the up/down arrow keys to recall previous commands. History persists across sessions.
 
 ### Keyboard shortcuts
 
@@ -231,12 +231,12 @@ Completion data is loaded from the catalog when the shell starts. Use `reload` t
 
 ## Script Files
 
-A `.dam` script file is a sequence of commands, one per line. Scripts support the same syntax as interactive mode: variables, comments, blank lines, and `source`.
+A `.maki` script file is a sequence of commands, one per line. Scripts support the same syntax as interactive mode: variables, comments, blank lines, and `source`.
 
 ### Basic script format
 
 ```bash
-# post-import.dam -- run after each shoot day
+# post-import.maki -- run after each shoot day
 import /Volumes/Cards/DCIM --log
 auto-group
 generate-previews --log
@@ -248,7 +248,7 @@ stats
 Execute it:
 
 ```bash
-dam shell post-import.dam
+maki shell post-import.maki
 ```
 
 ### Variables in scripts
@@ -256,7 +256,7 @@ dam shell post-import.dam
 Variables work across lines, making multi-step workflows clean:
 
 ```bash
-# curate-and-export.dam
+# curate-and-export.maki
 $new = search "imported:today type:image"
 auto-group $new
 generate-previews $new --log
@@ -271,13 +271,13 @@ stats
 By default, scripts continue after errors. Use `--strict` to stop on the first failure:
 
 ```bash
-dam shell --strict critical-workflow.dam
+maki shell --strict critical-workflow.maki
 ```
 
 In `--strict` mode, the shell exits with code 1 on any error. Without `--strict`, errors are printed with file and line number but execution continues:
 
 ```
-critical-workflow.dam:3: Error: volume "Offline" is not mounted
+critical-workflow.maki:3: Error: volume "Offline" is not mounted
 ```
 
 ### The `source` command
@@ -285,13 +285,13 @@ critical-workflow.dam:3: Error: volume "Offline" is not mounted
 Use `source` inside the shell (or another script) to run a script file inline, sharing the current session state:
 
 ```
-photos> source post-import.dam
+photos> source post-import.maki
 ```
 
 Variables defined in the sourced script are available after it finishes. Paths are resolved relative to the catalog root directory, or you can use absolute paths:
 
 ```
-photos> source /path/to/shared/cleanup.dam
+photos> source /path/to/shared/cleanup.maki
 ```
 
 ---
@@ -300,14 +300,14 @@ photos> source /path/to/shared/cleanup.dam
 
 ### `reload`
 
-Re-reads `dam.toml` configuration, refreshes tab completion data (tags and volumes), and clears all variables and session defaults:
+Re-reads `maki.toml` configuration, refreshes tab completion data (tags and volumes), and clears all variables and session defaults:
 
 ```
 photos> reload
   Reloaded config, cleared variables and session defaults.
 ```
 
-Use this after making external changes -- editing `dam.toml`, importing from another terminal, or adding volumes.
+Use this after making external changes -- editing `maki.toml`, importing from another terminal, or adding volumes.
 
 ### `help`
 
@@ -354,7 +354,7 @@ photos> search "type:image" camera:"NIKON Z 9" rating:4+
 
 This produces three tokens: `type:image` (grouping quotes stripped), `camera:"NIKON Z 9"` (mid-token quotes preserved), and `rating:4+`.
 
-**Tip:** If you are used to the standard CLI where you type `dam search 'text:"query"'`, inside the shell you can drop the outer quotes entirely and just type `search text:"query"`.
+**Tip:** If you are used to the standard CLI where you type `maki search 'text:"query"'`, inside the shell you can drop the outer quotes entirely and just type `search text:"query"`.
 
 ---
 
@@ -375,7 +375,7 @@ Only `~` at the start of a token is expanded — `~` appearing elsewhere (e.g. i
 
 ## Built-in Commands
 
-Most commands in the shell are dam subcommands run directly. A few commands are **built-ins** handled specially by the shell:
+Most commands in the shell are maki subcommands run directly. A few commands are **built-ins** handled specially by the shell:
 
 | Command | Purpose |
 |---------|---------|
@@ -428,10 +428,10 @@ photos> export $portraits /tmp/june-portraits
 
 ### Post-import script
 
-Save this as `post-import.dam` and run after every import:
+Save this as `post-import.maki` and run after every import:
 
 ```bash
-# post-import.dam
+# post-import.maki
 $new = search "imported:today"
 auto-group $new
 generate-previews $new --log
@@ -443,14 +443,14 @@ stats
 Run it:
 
 ```bash
-dam shell post-import.dam
+maki shell post-import.maki
 ```
 
 Or source it during an interactive session:
 
 ```
 photos> import /Volumes/Cards/DCIM --log
-photos> source post-import.dam
+photos> source post-import.maki
 ```
 
 ### Audit workflow
@@ -489,13 +489,13 @@ Use `-c` mode for cron jobs or shell aliases:
 
 ```bash
 # Daily stats check
-dam shell -c 'stats'
+maki shell -c 'stats'
 
 # Export today's picks
-dam shell -c '$picks = search "imported:today rating:4+"; export $picks /tmp/daily'
+maki shell -c '$picks = search "imported:today rating:4+"; export $picks /tmp/daily'
 
 # Verify with logging
-dam shell -c 'set --log; verify'
+maki shell -c 'set --log; verify'
 ```
 
 ---
@@ -535,10 +535,10 @@ photos [picks=38 untagged=142]> tag --add "review" $untagged
 **Scripts are composable.** A master script can `source` other scripts, building complex workflows from reusable pieces:
 
 ```bash
-# nightly.dam
-source post-import.dam
-source cleanup.dam
-source verify.dam
+# nightly.maki
+source post-import.maki
+source cleanup.maki
+source verify.maki
 ```
 
 **Ctrl-C is safe.** It cancels the current input line but does not exit the shell or lose your variables. Use Ctrl-D or `quit` to exit.
@@ -547,8 +547,8 @@ source verify.dam
 
 ## Related Topics
 
-- [Scripting](08-scripting.md) -- bash and Python scripting with `dam --json` and `jq`
+- [Scripting](08-scripting.md) -- bash and Python scripting with `maki --json` and `jq`
 - [Browsing & Searching](05-browse-and-search.md) -- search syntax and output format options
 - [CLI Conventions](../reference/00-cli-conventions.md) -- global flags, exit codes, and output conventions
 - [Search Filters Reference](../reference/06-search-filters.md) -- all available search filters
-- [Configuration Reference](../reference/08-configuration.md) -- `dam.toml` settings including `[import]` and `[serve]` sections
+- [Configuration Reference](../reference/08-configuration.md) -- `maki.toml` settings including `[import]` and `[serve]` sections

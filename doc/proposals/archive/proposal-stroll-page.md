@@ -408,7 +408,7 @@ These approaches are complementary, not mutually exclusive. A phased implementat
 
 2. **Animation style**: Should the transition between centers be a smooth morph (satellite grows to center size while moving to center position) or a quick fade? Morph looks better but is more complex. Start with a fade/crossfade, upgrade later.
 
-3. **Embedding coverage**: Not all assets have embeddings. When strolling lands on an asset without an embedding, the page could: (a) show a message "No visual connections — generate embeddings with `dam embed`", (b) fall back to tag/date-based connections, or (c) offer to generate the embedding on-demand (like the detail page's "smart preview" button). Option (c) is nicest but requires the AI model.
+3. **Embedding coverage**: Not all assets have embeddings. When strolling lands on an asset without an embedding, the page could: (a) show a message "No visual connections — generate embeddings with `maki embed`", (b) fall back to tag/date-based connections, or (c) offer to generate the embedding on-demand (like the detail page's "smart preview" button). Option (c) is nicest but requires the AI model.
 
 4. **Performance**: Loading neighbors is fast (<50ms with the in-memory index). The bottleneck is loading 10-12 preview images. Use lazy loading (`loading="lazy"`) and/or progressive reveal (show placeholders, swap in images as they load).
 

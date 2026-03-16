@@ -6,28 +6,28 @@ The six core maintenance commands form a cycle:
 
 ```mermaid
 flowchart LR
-    V["dam verify\n(detect corruption)"]
-    S["dam sync\n(reconcile moved/\nmodified files)"]
-    SM["dam sync-metadata\n(bidirectional\nXMP sync)"]
-    R["dam refresh\n(re-read changed\nrecipes)"]
-    C["dam cleanup\n(remove stale\nrecords)"]
+    V["maki verify\n(detect corruption)"]
+    S["maki sync\n(reconcile moved/\nmodified files)"]
+    SM["maki sync-metadata\n(bidirectional\nXMP sync)"]
+    R["maki refresh\n(re-read changed\nrecipes)"]
+    C["maki cleanup\n(remove stale\nrecords)"]
 
     V --> S --> SM --> R --> C --> V
 ```
 
-`dam sync-metadata` replaces the separate `writeback` + `refresh` steps for most workflows — it handles both directions in a single command and detects conflicts.
+`maki sync-metadata` replaces the separate `writeback` + `refresh` steps for most workflows — it handles both directions in a single command and detects conflicts.
 
 Each command is safe by default -- destructive operations require an explicit `--apply` flag, and most commands support `--dry-run` or report-only mode.
 
 
 ## Verification
 
-`dam verify` re-hashes every file on disk and compares the result to the content hash stored in the catalog. This detects silent corruption, bit rot, and accidental modifications.
+`maki verify` re-hashes every file on disk and compares the result to the content hash stored in the catalog. This detects silent corruption, bit rot, and accidental modifications.
 
 ### Verify everything
 
 ```bash
-dam verify
+maki verify
 ```
 
 This walks all file locations on all online volumes. Offline volumes are skipped automatically.
@@ -41,7 +41,7 @@ Verify complete: 1847 verified, 2 modified, 0 FAILED, 3 skipped
 ### Verify specific files or directories
 
 ```bash
-dam verify /Volumes/PhotosDrive/Capture/2026-02-01
+maki verify /Volumes/PhotosDrive/Capture/2026-02-01
 ```
 
 Only files under the given path are checked.
@@ -49,7 +49,7 @@ Only files under the given path are checked.
 ### Limit to a volume
 
 ```bash
-dam verify --volume "Photos 2024"
+maki verify --volume "Photos 2024"
 ```
 
 Useful when you reconnect a drive and want to spot-check it before trusting its contents.
@@ -57,7 +57,7 @@ Useful when you reconnect a drive and want to spot-check it before trusting its 
 ### Verify a single asset
 
 ```bash
-dam verify --asset a1b2c3d4
+maki verify --asset a1b2c3d4
 ```
 
 Asset IDs can be abbreviated to a unique prefix.
@@ -66,47 +66,47 @@ Asset IDs can be abbreviated to a unique prefix.
 
 ```bash
 # Only verify RAW files
-dam verify --include raw
+maki verify --include raw
 
 # Skip audio files
-dam verify --skip audio
+maki verify --skip audio
 ```
 
 ### Two verification modes
 
-**Catalog mode** (no paths): `dam verify` walks all file locations known to the catalog on online volumes. This checks whether your cataloged files are intact.
+**Catalog mode** (no paths): `maki verify` walks all file locations known to the catalog on online volumes. This checks whether your cataloged files are intact.
 
-**Path mode** (with paths): `dam verify /some/path` scans files on disk and looks them up in the catalog. This also detects files that are not in the catalog at all.
+**Path mode** (with paths): `maki verify /some/path` scans files on disk and looks them up in the catalog. This also detects files that are not in the catalog at all.
 
 ### What the results mean
 
 - **verified** -- file hash matches the catalog. The `verified_at` timestamp is updated.
-- **modified** -- a recipe file (`.xmp`, `.cos`, etc.) was changed externally. dam updates the stored hash and reports it as "modified" rather than "FAILED". This is expected when CaptureOne or Lightroom edits a sidecar.
+- **modified** -- a recipe file (`.xmp`, `.cos`, etc.) was changed externally. maki updates the stored hash and reports it as "modified" rather than "FAILED". This is expected when CaptureOne or Lightroom edits a sidecar.
 - **FAILED** -- a media file's hash does not match. This indicates corruption, accidental overwrite, or a file that was replaced. Investigate immediately.
 - **MISSING** -- a file referenced in the catalog no longer exists on disk (catalog mode only). The file's location record exists but the file is gone from an online volume.
-- **UNTRACKED** -- a file was found on disk but is not in the catalog (path mode only). The file's content hash does not match any known variant or recipe. Run `dam import` to bring it into the catalog, or ignore it if it is not a media file.
+- **UNTRACKED** -- a file was found on disk but is not in the catalog (path mode only). The file's content hash does not match any known variant or recipe. Run `maki import` to bring it into the catalog, or ignore it if it is not a media file.
 - **skipped** -- the file is on an offline volume, or the path could not be read.
 
-If any files fail verification (FAILED status), dam exits with code 1. Scripts can check `$?` to detect problems:
+If any files fail verification (FAILED status), maki exits with code 1. Scripts can check `$?` to detect problems:
 
 ```bash
-dam verify --volume "Archive" || echo "Integrity check failed!"
+maki verify --volume "Archive" || echo "Integrity check failed!"
 ```
 
 ### Monitoring flags
 
 ```bash
 # Per-file progress to stderr
-dam verify --log
+maki verify --log
 
 # Machine-readable output
-dam verify --json
+maki verify --json
 
 # Show elapsed time
-dam verify --time
+maki verify --time
 
 # Combine them
-dam verify --volume "Photos 2024" --log --time
+maki verify --volume "Photos 2024" --log --time
 ```
 
 ### Checking verification age
@@ -115,10 +115,10 @@ Use the `stale:N` search filter to find assets that have not been verified recen
 
 ```bash
 # Assets not verified in the last 30 days
-dam search "stale:30"
+maki search "stale:30"
 
 # Assets never verified
-dam search "stale:0"
+maki search "stale:0"
 ```
 
 See [Browsing & Searching](05-browse-and-search.md) for more on search filters.
@@ -126,27 +126,27 @@ See [Browsing & Searching](05-browse-and-search.md) for more on search filters.
 
 ## Sync
 
-`dam sync` reconciles the catalog with what is actually on disk. Run it after moving, renaming, or deleting files with external tools (Finder, `mv`, CaptureOne's "move to folder", etc.).
+`maki sync` reconciles the catalog with what is actually on disk. Run it after moving, renaming, or deleting files with external tools (Finder, `mv`, CaptureOne's "move to folder", etc.).
 
 Unlike `verify` (which only checks hashes), `sync` scans the filesystem for structural changes: files that moved, new files that appeared, and files that disappeared.
 
 ### Report mode (safe default)
 
 ```bash
-dam sync /Volumes/PhotosDrive/Photos/
+maki sync /Volumes/PhotosDrive/Photos/
 ```
 
 Without `--apply`, sync scans the directory and reports what it finds, but changes nothing:
 
 ```
 Sync complete: 1200 unchanged, 3 moved, 2 new, 1 modified, 4 missing
-  Tip: run 'dam import' to import new files.
+  Tip: run 'maki import' to import new files.
 ```
 
 ### Apply changes
 
 ```bash
-dam sync /Volumes/PhotosDrive/Photos/ --apply
+maki sync /Volumes/PhotosDrive/Photos/ --apply
 ```
 
 With `--apply`, sync updates the catalog and sidecar files:
@@ -154,12 +154,12 @@ With `--apply`, sync updates the catalog and sidecar files:
 - **Moved files**: The catalog path is updated to the new location (same content hash found at a different path, old path gone).
 - **Modified recipes**: Recipe hash is updated, and if it is an XMP file, metadata is re-extracted.
 - **Missing files**: Reported but not removed (use `--remove-stale`).
-- **New files**: Reported but not imported. Run `dam import` separately.
+- **New files**: Reported but not imported. Run `maki import` separately.
 
 ### Removing stale records
 
 ```bash
-dam sync /Volumes/PhotosDrive/Photos/ --apply --remove-stale
+maki sync /Volumes/PhotosDrive/Photos/ --apply --remove-stale
 ```
 
 `--remove-stale` (which requires `--apply`) removes catalog location records for files that are confirmed missing. Use this when you intentionally deleted files and want the catalog to reflect that.
@@ -167,7 +167,7 @@ dam sync /Volumes/PhotosDrive/Photos/ --apply --remove-stale
 ### Scoping to a volume
 
 ```bash
-dam sync /Volumes/PhotosDrive/ --volume "Photos 2024"
+maki sync /Volumes/PhotosDrive/ --volume "Photos 2024"
 ```
 
 Explicitly sets the volume context when auto-detection picks the wrong one.
@@ -178,14 +178,14 @@ Explicitly sets the volume context when auto-detection picks the wrong one.
 |--------|---------|----------------------|
 | unchanged | Hash matches at expected path | None |
 | moved | Known hash found at new path, old path gone | Path updated in catalog |
-| new | Unknown hash, not in catalog | Reported (run `dam import`) |
+| new | Unknown hash, not in catalog | Reported (run `maki import`) |
 | modified | Same path, different hash (recipe files) | Hash updated, XMP re-extracted |
 | missing | Catalog location exists but file is gone | Reported, or removed with `--remove-stale` |
 
 ### Monitoring flags
 
 ```bash
-dam sync /Volumes/PhotosDrive/ --apply --log --time --json
+maki sync /Volumes/PhotosDrive/ --apply --log --time --json
 ```
 
 `--log` shows per-file status, `--time` shows elapsed time, `--json` outputs structured results.
@@ -193,25 +193,25 @@ dam sync /Volumes/PhotosDrive/ --apply --log --time --json
 
 ## Refresh
 
-`dam refresh` re-reads metadata from recipe and media files without scanning the full filesystem. It is lighter than `sync` -- it only checks files the catalog already knows about, comparing their on-disk hash to the stored hash.
+`maki refresh` re-reads metadata from recipe and media files without scanning the full filesystem. It is lighter than `sync` -- it only checks files the catalog already knows about, comparing their on-disk hash to the stored hash.
 
 This is the right tool after editing in CaptureOne, Lightroom, or any other tool that modifies XMP sidecars.
 
 ### Refresh all recipes
 
 ```bash
-dam refresh
+maki refresh
 ```
 
 Checks every recipe file location on all online volumes. For each recipe whose hash has changed:
 
 - **XMP recipes** (`.xmp`): re-extracts keywords, rating, description, and color label, then updates the catalog and sidecar YAML.
-- **Non-XMP recipes** (`.cos`, `.pp3`, `.dop`, etc.): hash updated, but no metadata extraction (these formats are opaque to dam).
+- **Non-XMP recipes** (`.cos`, `.pp3`, `.dop`, etc.): hash updated, but no metadata extraction (these formats are opaque to maki).
 
 ### Refresh specific paths
 
 ```bash
-dam refresh /Volumes/PhotosDrive/Capture/2026-02-01/
+maki refresh /Volumes/PhotosDrive/Capture/2026-02-01/
 ```
 
 Only checks recipe files under the given path.
@@ -220,16 +220,16 @@ Only checks recipe files under the given path.
 
 ```bash
 # All recipes on a specific volume
-dam refresh --volume "Photos 2024"
+maki refresh --volume "Photos 2024"
 
 # Only recipes for a specific asset
-dam refresh --asset a1b2c3d4
+maki refresh --asset a1b2c3d4
 ```
 
 ### Re-extract embedded XMP from media files
 
 ```bash
-dam refresh --media
+maki refresh --media
 ```
 
 The `--media` flag also scans JPEG and TIFF variant files, re-extracting embedded XMP metadata. This is useful in two scenarios:
@@ -240,13 +240,13 @@ The `--media` flag also scans JPEG and TIFF variant files, re-extracting embedde
 ### Dry run
 
 ```bash
-dam refresh --dry-run
+maki refresh --dry-run
 ```
 
 Shows what would change without applying anything. Combine with `--log` for detailed output:
 
 ```bash
-dam refresh --dry-run --log
+maki refresh --dry-run --log
 ```
 
 Sample output:
@@ -261,18 +261,18 @@ Dry run — Refresh complete: 2 refreshed, 1 unchanged, 0 missing, 0 skipped (of
 ### Monitoring flags
 
 ```bash
-dam refresh --log --time --json
+maki refresh --log --time --json
 ```
 
 
 ## Write Back
 
-`dam writeback` replays pending metadata writes to XMP recipe files. When you edit metadata (rating, label, tags, description) while a volume is offline, the XMP write-back is skipped and the recipe is marked with a `pending_writeback` flag. The edits are safe in the YAML sidecar and SQLite catalog, but the `.xmp` files on disk still have old values. This command pushes those pending changes to XMP when the volume comes back online.
+`maki writeback` replays pending metadata writes to XMP recipe files. When you edit metadata (rating, label, tags, description) while a volume is offline, the XMP write-back is skipped and the recipe is marked with a `pending_writeback` flag. The edits are safe in the YAML sidecar and SQLite catalog, but the `.xmp` files on disk still have old values. This command pushes those pending changes to XMP when the volume comes back online.
 
 ### Process pending write-backs
 
 ```bash
-dam writeback
+maki writeback
 ```
 
 Without flags, only recipes with `pending_writeback=1` are processed. Each recipe's XMP file is updated with the current asset metadata (rating, label, tags, description), then re-hashed and the pending flag is cleared.
@@ -280,7 +280,7 @@ Without flags, only recipes with `pending_writeback=1` are processed. Each recip
 ### Write back all XMP recipes
 
 ```bash
-dam writeback --all
+maki writeback --all
 ```
 
 The `--all` flag writes current metadata to every XMP recipe, not just pending ones. Useful for an initial sync or to force-push all DAM metadata to XMP files.
@@ -289,26 +289,26 @@ The `--all` flag writes current metadata to every XMP recipe, not just pending o
 
 ```bash
 # Only write back to recipes on a specific volume
-dam writeback --volume "Photos 2024"
+maki writeback --volume "Photos 2024"
 
 # Only write back for a specific asset
-dam writeback --asset a1b2c3d4
+maki writeback --asset a1b2c3d4
 ```
 
 ### Dry run
 
 ```bash
-dam writeback --dry-run
+maki writeback --dry-run
 ```
 
 Shows what would be written without modifying any files. Combine with `--log` for detailed output.
 
 ### How pending tracking works
 
-When any metadata edit (CLI `dam edit`, `dam tag`, web UI stars/labels/tags/description) triggers XMP write-back, each recipe is checked:
+When any metadata edit (CLI `maki edit`, `maki tag`, web UI stars/labels/tags/description) triggers XMP write-back, each recipe is checked:
 
 - **Volume online, file exists**: XMP is written, `pending_writeback` stays 0.
-- **Volume offline or file missing**: `pending_writeback` is set to 1. The flag persists until `dam writeback` clears it.
+- **Volume offline or file missing**: `pending_writeback` is set to 1. The flag persists until `maki writeback` clears it.
 
 The flag records the *intent* to write back, not *what* changed. When writeback runs, it reads the current asset metadata and writes all four fields (rating, label, tags, description) to the XMP file.
 
@@ -316,10 +316,10 @@ The flag records the *intent* to write back, not *what* changed. When writeback 
 
 ```bash
 # 1. Push DAM edits to XMP (DAM wins for fields edited while offline)
-dam writeback --volume "Archive 2025"
+maki writeback --volume "Archive 2025"
 
 # 2. Pull any CaptureOne/Lightroom edits from XMP
-dam refresh --volume "Archive 2025"
+maki refresh --volume "Archive 2025"
 ```
 
 Order matters: writeback first ensures DAM edits land in the XMP files. Then refresh picks up anything the external tool changed independently.
@@ -327,18 +327,18 @@ Order matters: writeback first ensures DAM edits land in the XMP files. Then ref
 ### Monitoring flags
 
 ```bash
-dam writeback --log --time --json
+maki writeback --log --time --json
 ```
 
 
 ## Sync Metadata
 
-`dam sync-metadata` performs bidirectional XMP metadata sync in a single command — combining the inbound (refresh) and outbound (writeback) steps with conflict detection.
+`maki sync-metadata` performs bidirectional XMP metadata sync in a single command — combining the inbound (refresh) and outbound (writeback) steps with conflict detection.
 
 ### Basic usage
 
 ```bash
-dam sync-metadata
+maki sync-metadata
 ```
 
 This runs three phases:
@@ -350,14 +350,14 @@ This runs three phases:
 ### Scope to a volume or asset
 
 ```bash
-dam sync-metadata --volume "Photos 2024"
-dam sync-metadata --asset a1b2c3d4
+maki sync-metadata --volume "Photos 2024"
+maki sync-metadata --asset a1b2c3d4
 ```
 
 ### Include embedded XMP
 
 ```bash
-dam sync-metadata --media
+maki sync-metadata --media
 ```
 
 The `--media` flag adds a third phase that re-extracts embedded XMP from JPEG/TIFF variant files — useful after external tools modify embedded metadata.
@@ -365,7 +365,7 @@ The `--media` flag adds a third phase that re-extracts embedded XMP from JPEG/TI
 ### Dry run
 
 ```bash
-dam sync-metadata --dry-run --log
+maki sync-metadata --dry-run --log
 ```
 
 Shows what would change without modifying any files.
@@ -378,12 +378,12 @@ Shows what would change without modifying any files.
 
 ## Cleanup
 
-`dam cleanup` scans all file locations and recipes across online volumes, checking whether the referenced files still exist on disk. It removes stale records, locationless variants, and orphaned derived files in eight passes.
+`maki cleanup` scans all file locations and recipes across online volumes, checking whether the referenced files still exist on disk. It removes stale records, locationless variants, and orphaned derived files in eight passes.
 
 ### Report mode (safe default)
 
 ```bash
-dam cleanup
+maki cleanup
 ```
 
 Without `--apply`, cleanup reports what it finds:
@@ -396,7 +396,7 @@ Cleanup complete: 1500 checked, 12 stale, 3 orphaned assets, 5 orphaned previews
 ### Apply cleanup
 
 ```bash
-dam cleanup --apply
+maki cleanup --apply
 ```
 
 The eight passes:
@@ -413,7 +413,7 @@ The eight passes:
 ### Limit to a specific volume
 
 ```bash
-dam cleanup --volume "Photos 2024" --apply
+maki cleanup --volume "Photos 2024" --apply
 ```
 
 Only scans file locations on the specified volume. Useful after removing a drive's contents intentionally.
@@ -421,8 +421,8 @@ Only scans file locations on the specified volume. Useful after removing a drive
 ### Limit to a specific path
 
 ```bash
-dam cleanup --path "Capture/2026-02" --apply
-dam cleanup --volume "Photos" --path "Archive/Old" --apply --log
+maki cleanup --path "Capture/2026-02" --apply
+maki cleanup --volume "Photos" --path "Archive/Old" --apply --log
 ```
 
 Scopes stale-location scanning to files under a path prefix. Absolute paths are auto-detected to extract the volume and relative prefix.
@@ -430,30 +430,30 @@ Scopes stale-location scanning to files under a path prefix. Absolute paths are 
 ### List stale entries
 
 ```bash
-dam cleanup --list
+maki cleanup --list
 ```
 
 Prints stale entries to stderr (similar to `--log`, but only shows stale entries rather than every file checked).
 
 ### Offline volumes
 
-Offline volumes are skipped automatically with a note. dam never removes records for files on an offline volume -- it cannot know whether the file is truly gone or just disconnected.
+Offline volumes are skipped automatically with a note. maki never removes records for files on an offline volume -- it cannot know whether the file is truly gone or just disconnected.
 
 ### Monitoring flags
 
 ```bash
-dam cleanup --apply --log --time --json
+maki cleanup --apply --log --time --json
 ```
 
 
 ## Relocating Assets
 
-`dam relocate` copies (or moves) all of an asset's files -- variants and recipes -- to another volume. Use this to migrate assets between drives, create backups on a second volume, or consolidate scattered files.
+`maki relocate` copies (or moves) all of an asset's files -- variants and recipes -- to another volume. Use this to migrate assets between drives, create backups on a second volume, or consolidate scattered files.
 
 ### Copy to another volume
 
 ```bash
-dam relocate a1b2c3d4 "Archive Drive"
+maki relocate a1b2c3d4 "Archive Drive"
 ```
 
 This copies all files for the asset to the target volume, preserving their relative paths. The asset now has files on both volumes. After the copy, each file is verified via SHA-256 to ensure integrity.
@@ -461,7 +461,7 @@ This copies all files for the asset to the target volume, preserving their relat
 ### Move (copy + delete source)
 
 ```bash
-dam relocate a1b2c3d4 "Archive Drive" --remove-source
+maki relocate a1b2c3d4 "Archive Drive" --remove-source
 ```
 
 With `--remove-source`, the source files are deleted after successful copy and verification. The asset's locations are updated to point to the new volume only.
@@ -469,7 +469,7 @@ With `--remove-source`, the source files are deleted after successful copy and v
 ### Dry run
 
 ```bash
-dam relocate a1b2c3d4 "Archive Drive" --dry-run
+maki relocate a1b2c3d4 "Archive Drive" --dry-run
 ```
 
 Shows what would be copied or moved without making any changes:
@@ -483,12 +483,12 @@ Dry run — no changes made:
 
 ## Updating File Locations
 
-`dam update-location` fixes the catalog after you manually moved a single file on disk. Unlike `sync` (which scans a directory), this command targets one specific file.
+`maki update-location` fixes the catalog after you manually moved a single file on disk. Unlike `sync` (which scans a directory), this command targets one specific file.
 
 ### Basic usage
 
 ```bash
-dam update-location a1b2c3d4 \
+maki update-location a1b2c3d4 \
     --from Capture/2026-02-01/DSC_001.nef \
     --to /Volumes/PhotosDrive/Archive/2026/DSC_001.nef
 ```
@@ -498,15 +498,15 @@ dam update-location a1b2c3d4 \
 
 ### How it works
 
-1. dam resolves the asset by ID (or unique prefix).
+1. maki resolves the asset by ID (or unique prefix).
 2. The volume is auto-detected from `--to` by matching against registered volume mount points. You can override with `--volume`.
-3. dam hashes the file at `--to` and compares it to the stored content hash. If they do not match, the command fails (safety check -- you may have pointed to the wrong file).
+3. maki hashes the file at `--to` and compares it to the stored content hash. If they do not match, the command fails (safety check -- you may have pointed to the wrong file).
 4. The catalog and sidecar YAML are updated with the new path.
 
 ### Specifying the volume explicitly
 
 ```bash
-dam update-location a1b2c3d4 \
+maki update-location a1b2c3d4 \
     --from Capture/old/DSC_001.nef \
     --to /Volumes/NewDrive/Capture/new/DSC_001.nef \
     --volume "New Drive"
@@ -517,10 +517,10 @@ This also handles recipe file locations, not just variant files.
 
 ## Rebuilding the Catalog
 
-`dam rebuild-catalog` wipes the SQLite database and reconstructs it from the YAML sidecar files, which are the source of truth.
+`maki rebuild-catalog` wipes the SQLite database and reconstructs it from the YAML sidecar files, which are the source of truth.
 
 ```bash
-dam rebuild-catalog
+maki rebuild-catalog
 ```
 
 Sample output:
@@ -557,7 +557,7 @@ This is a safe operation -- only the derived cache (SQLite) is rebuilt. No files
 
 ## Fix Dates
 
-`dam fix-dates` corrects asset dates that were set incorrectly during import. This commonly happens when files lack EXIF metadata (e.g., old JPEGs without DateTimeOriginal) — the import timestamp was used instead of the capture date.
+`maki fix-dates` corrects asset dates that were set incorrectly during import. This commonly happens when files lack EXIF metadata (e.g., old JPEGs without DateTimeOriginal) — the import timestamp was used instead of the capture date.
 
 ### How it works
 
@@ -572,7 +572,7 @@ The oldest date across all variants becomes the corrected `created_at`.
 ### Report mode (safe default)
 
 ```bash
-dam fix-dates
+maki fix-dates
 ```
 
 Shows what would be changed:
@@ -587,7 +587,7 @@ Fix-dates: 5000 checked, 3200 fixed, 800 already correct, 1000 skipped (volume o
 ### Apply fixes
 
 ```bash
-dam fix-dates --apply --log
+maki fix-dates --apply --log
 ```
 
 Updates both the SQLite catalog and sidecar YAML files. Also backfills EXIF dates into variant metadata so future runs work without needing the volume online.
@@ -600,21 +600,21 @@ Updates both the SQLite catalog and sidecar YAML files. Also backfills EXIF date
 
 ```bash
 # Fix dates for assets on a specific volume
-dam fix-dates --volume "Photos 2024" --apply --log
+maki fix-dates --volume "Photos 2024" --apply --log
 
 # Fix a single asset
-dam fix-dates --asset a1b2c3d4 --apply
+maki fix-dates --asset a1b2c3d4 --apply
 ```
 
 
 ## Fix Roles
 
-`dam fix-roles` corrects variant roles in assets that have both RAW and non-RAW variants. In these groups, the RAW variant should be the Original and non-RAW variants should be Exports. If roles are incorrect (e.g., both marked as Original), this command fixes them.
+`maki fix-roles` corrects variant roles in assets that have both RAW and non-RAW variants. In these groups, the RAW variant should be the Original and non-RAW variants should be Exports. If roles are incorrect (e.g., both marked as Original), this command fixes them.
 
 ### Report mode (safe default)
 
 ```bash
-dam fix-roles
+maki fix-roles
 ```
 
 Shows what would be changed:
@@ -627,7 +627,7 @@ Dry run — Fix-roles: 150 checked, 3 fixed (5 variant(s)), 147 already correct
 ### Apply fixes
 
 ```bash
-dam fix-roles --apply
+maki fix-roles --apply
 ```
 
 Updates both the SQLite catalog and sidecar YAML files.
@@ -636,10 +636,10 @@ Updates both the SQLite catalog and sidecar YAML files.
 
 ```bash
 # Only check assets on a specific volume
-dam fix-roles --volume "Photos 2024" --apply
+maki fix-roles --volume "Photos 2024" --apply
 
 # Fix a single asset
-dam fix-roles --asset a1b2c3d4 --apply
+maki fix-roles --asset a1b2c3d4 --apply
 ```
 
 
@@ -649,58 +649,58 @@ A practical schedule for keeping your catalog healthy:
 
 ### 1. Periodic integrity checks
 
-Run `dam verify` on a regular schedule -- weekly for active volumes, monthly for archives:
+Run `maki verify` on a regular schedule -- weekly for active volumes, monthly for archives:
 
 ```bash
 # Verify the active working drive
-dam verify --volume "Work SSD"
+maki verify --volume "Work SSD"
 
 # Find assets that haven't been verified in 90 days
-dam search "stale:90"
+maki search "stale:90"
 ```
 
 ### 2. After editing in external tools
 
-When you finish a session in CaptureOne, Lightroom, or another tool that edits XMP sidecars, run `dam refresh` to pick up the changes:
+When you finish a session in CaptureOne, Lightroom, or another tool that edits XMP sidecars, run `maki refresh` to pick up the changes:
 
 ```bash
-dam refresh --volume "Work SSD" --log
+maki refresh --volume "Work SSD" --log
 ```
 
 If the external tool also modified embedded metadata in JPEG/TIFF exports:
 
 ```bash
-dam refresh --media --volume "Work SSD"
+maki refresh --media --volume "Work SSD"
 ```
 
 ### 3. After moving or reorganizing files
 
-If you moved files on disk (renamed directories, reorganized folder structure), run `dam sync` to reconcile:
+If you moved files on disk (renamed directories, reorganized folder structure), run `maki sync` to reconcile:
 
 ```bash
 # First, see what changed
-dam sync /Volumes/PhotosDrive/Photos/
+maki sync /Volumes/PhotosDrive/Photos/
 
 # Then apply
-dam sync /Volumes/PhotosDrive/Photos/ --apply
+maki sync /Volumes/PhotosDrive/Photos/ --apply
 ```
 
 If new files appeared (e.g., CaptureOne exported new TIFFs), import them:
 
 ```bash
-dam import /Volumes/PhotosDrive/Photos/Exports/
+maki import /Volumes/PhotosDrive/Photos/Exports/
 ```
 
 ### 4. Periodic cleanup
 
-Run `dam cleanup` periodically to remove stale records for files that no longer exist:
+Run `maki cleanup` periodically to remove stale records for files that no longer exist:
 
 ```bash
 # See what would be cleaned up
-dam cleanup --list
+maki cleanup --list
 
 # Apply
-dam cleanup --apply
+maki cleanup --apply
 ```
 
 ### 5. Nuclear option: rebuild
@@ -708,7 +708,7 @@ dam cleanup --apply
 If the catalog seems fundamentally out of sync -- searches return wrong results, show displays stale data -- rebuild from the sidecar files:
 
 ```bash
-dam rebuild-catalog
+maki rebuild-catalog
 ```
 
 This is safe and fast. The sidecar YAML files are the source of truth; the SQLite database is just a derived cache.
@@ -719,22 +719,22 @@ A typical maintenance session after reconnecting an archive drive:
 
 ```bash
 # 1. Check file integrity
-dam verify --volume "Archive 2025" --time
+maki verify --volume "Archive 2025" --time
 
 # 2. Push any DAM edits made while the drive was offline
-dam writeback --volume "Archive 2025"
+maki writeback --volume "Archive 2025"
 
 # 3. Pick up any recipe changes made while the drive was connected elsewhere
-dam refresh --volume "Archive 2025"
+maki refresh --volume "Archive 2025"
 
 # 4. Reconcile any moved/renamed files
-dam sync /Volumes/Archive2025/ --apply
+maki sync /Volumes/Archive2025/ --apply
 
 # 5. Clean up any stale records
-dam cleanup --volume "Archive 2025" --apply
+maki cleanup --volume "Archive 2025" --apply
 
 # 6. Confirm everything looks good
-dam stats --volumes
+maki stats --volumes
 ```
 
 ---

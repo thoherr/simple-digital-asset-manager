@@ -1,8 +1,8 @@
 # Scripting
 
-dam's CLI is designed for composability with shell scripts and external programs. Every command supports `--json` for structured output, `-q` for piping asset IDs, and stderr/stdout separation so human messages never pollute machine-readable output.
+maki's CLI is designed for composability with shell scripts and external programs. Every command supports `--json` for structured output, `-q` for piping asset IDs, and stderr/stdout separation so human messages never pollute machine-readable output.
 
-This chapter covers practical scripting patterns using bash and Python. For interactive multi-step workflows with variables and tab completion, see the [Interactive Shell](09-shell.md) chapter — `dam shell` provides a REPL that eliminates much of the piping and quoting complexity shown here.
+This chapter covers practical scripting patterns using bash and Python. For interactive multi-step workflows with variables and tab completion, see the [Interactive Shell](09-shell.md) chapter — `maki shell` provides a REPL that eliminates much of the piping and quoting complexity shown here.
 
 ---
 
@@ -13,7 +13,7 @@ This chapter covers practical scripting patterns using bash and Python. For inte
 Tag all assets from a specific session directory:
 
 ```bash
-dam search -q "path:Capture/2026-02-15" | xargs -I{} dam tag {} session/february
+maki search -q "path:Capture/2026-02-15" | xargs -I{} maki tag {} session/february
 ```
 
 ### Conditional Edits
@@ -21,16 +21,16 @@ dam search -q "path:Capture/2026-02-15" | xargs -I{} dam tag {} session/february
 Set a color label on all unrated images:
 
 ```bash
-for id in $(dam search -q "type:image rating:0"); do
-    dam edit "$id" --label Yellow
+for id in $(maki search -q "type:image rating:0"); do
+    maki edit "$id" --label Yellow
 done
 ```
 
 Rate all videos from a specific camera:
 
 ```bash
-for id in $(dam search -q 'type:video camera:"NIKON Z 9"'); do
-    dam edit "$id" --rating 3
+for id in $(maki search -q 'type:video camera:"NIKON Z 9"'); do
+    maki edit "$id" --rating 3
 done
 ```
 
@@ -45,13 +45,13 @@ set -euo pipefail
 SESSION="/Volumes/Photos/Capture/2026-02-28"
 
 echo "Importing..."
-dam import --smart --auto-group "$SESSION" --log --time
+maki import --smart --auto-group "$SESSION" --log --time
 
 echo "Fixing roles..."
-dam fix-roles --apply --log
+maki fix-roles --apply --log
 
 echo "Done."
-dam stats
+maki stats
 ```
 
 ### Exporting for Delivery
@@ -59,19 +59,19 @@ dam stats
 Export rated picks to a client folder with sidecars:
 
 ```bash
-dam export "rating:4+ collection:ClientProject" /tmp/delivery/ --include-sidecars --log
+maki export "rating:4+ collection:ClientProject" /tmp/delivery/ --include-sidecars --log
 ```
 
 Mirror directory structure to a USB drive:
 
 ```bash
-dam export "tag:portfolio" /Volumes/USB/export/ --layout mirror
+maki export "tag:portfolio" /Volumes/USB/export/ --layout mirror
 ```
 
 Dry-run first to check what would be exported:
 
 ```bash
-dam export "collection:Print" /tmp/test/ --dry-run --json | jq '{files: .files_exported, size: .total_bytes}'
+maki export "collection:Print" /tmp/test/ --dry-run --json | jq '{files: .files_exported, size: .total_bytes}'
 ```
 
 ### Reporting with jq
@@ -79,20 +79,20 @@ dam export "collection:Print" /tmp/test/ --dry-run --json | jq '{files: .files_e
 Generate a tab-separated report of all 5-star assets with their tags:
 
 ```bash
-dam search "rating:5" --json \
+maki search "rating:5" --json \
   | jq -r '.[] | [.original_filename, .created_at, (.tags // [] | join(", "))] | @tsv'
 ```
 
 List volumes and their online status:
 
 ```bash
-dam volume list --json | jq -r '.[] | "\(.label)\t\(if .is_online then "online" else "offline" end)\t\(.path // "—")"'
+maki volume list --json | jq -r '.[] | "\(.label)\t\(if .is_online then "online" else "offline" end)\t\(.path // "—")"'
 ```
 
 Count assets per format:
 
 ```bash
-dam stats --types --json | jq -r '.types.variant_formats[] | "\(.format)\t\(.count)"'
+maki stats --types --json | jq -r '.types.variant_formats[] | "\(.format)\t\(.count)"'
 ```
 
 ### Building Collections from Filters
@@ -100,10 +100,10 @@ dam stats --types --json | jq -r '.types.variant_formats[] | "\(.format)\t\(.cou
 Create a "Best of 2026" collection from highly-rated images:
 
 ```bash
-dam col create "Best of 2026"
-dam search -q "rating:4+ dateFrom:2026-01-01 dateUntil:2026-12-31" \
-  | xargs dam col add "Best of 2026"
-echo "Added $(dam col show 'Best of 2026' -q | wc -l | tr -d ' ') assets"
+maki col create "Best of 2026"
+maki search -q "rating:4+ dateFrom:2026-01-01 dateUntil:2026-12-31" \
+  | xargs maki col add "Best of 2026"
+echo "Added $(maki col show 'Best of 2026' -q | wc -l | tr -d ' ') assets"
 ```
 
 ### Verification and Health Checks
@@ -114,8 +114,8 @@ Weekly integrity check with notification:
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOG="/tmp/dam-verify-$(date +%Y%m%d).log"
-if dam verify --log 2>"$LOG"; then
+LOG="/tmp/maki-verify-$(date +%Y%m%d).log"
+if maki verify --log 2>"$LOG"; then
     echo "Verification passed" >> "$LOG"
 else
     echo "VERIFICATION FAILURES DETECTED" >> "$LOG"
@@ -126,7 +126,7 @@ fi
 Find assets at risk (only one copy):
 
 ```bash
-dam search -q "copies:1" | wc -l
+maki search -q "copies:1" | wc -l
 ```
 
 ### Sync After External Edits
@@ -135,24 +135,24 @@ After editing files in CaptureOne or Lightroom:
 
 ```bash
 # Detect what changed
-dam sync /Volumes/Photos
+maki sync /Volumes/Photos
 
 # Apply catalog updates
-dam sync /Volumes/Photos --apply --log
+maki sync /Volumes/Photos --apply --log
 
 # Re-read modified XMP metadata
-dam refresh /Volumes/Photos --log
+maki refresh /Volumes/Photos --log
 ```
 
 ---
 
 ## Python Scripting
 
-Python scripts can call `dam` as a subprocess and parse the `--json` output. This is useful for more complex logic that would be unwieldy in bash.
+Python scripts can call `maki` as a subprocess and parse the `--json` output. This is useful for more complex logic that would be unwieldy in bash.
 
 ### Helper Functions
 
-A minimal helper for calling dam from Python:
+A minimal helper for calling maki from Python:
 
 ```python
 import json
@@ -160,17 +160,17 @@ import subprocess
 import sys
 
 def dam_json(*args):
-    """Run a dam command with --json and return parsed output."""
-    cmd = ["dam", "--json"] + list(args)
+    """Run a maki command with --json and return parsed output."""
+    cmd = ["maki", "--json"] + list(args)
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"Error: dam {' '.join(args)}: {result.stderr.strip()}", file=sys.stderr)
+        print(f"Error: maki {' '.join(args)}: {result.stderr.strip()}", file=sys.stderr)
         return None
     return json.loads(result.stdout)
 
 def dam_ids(*args):
-    """Run a dam search with -q and return a list of asset IDs."""
-    cmd = ["dam", "search", "-q"] + list(args)
+    """Run a maki search with -q and return a list of asset IDs."""
+    cmd = ["maki", "search", "-q"] + list(args)
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         return []
@@ -217,7 +217,7 @@ with open("ratings.csv") as f:
         asset_id = row["asset_id"]
         rating = row["rating"]
         result = subprocess.run(
-            ["dam", "edit", asset_id, "--rating", rating],
+            ["maki", "edit", asset_id, "--rating", rating],
             capture_output=True, text=True
         )
         if result.returncode == 0:
@@ -234,7 +234,7 @@ The repository includes a complete Python script at `scripts/fix-orphaned-xmp.py
 
 **Problem**: XMP sidecar files that ended up in a different directory than their parent RAW file (e.g., XMP stayed in `Capture/` while the RAW was moved to `Selects/`). During import, these became standalone assets of type "other" instead of being attached as recipes.
 
-**Solution**: The script uses dam's CLI to find orphaned XMPs, locates matching RAW files by filename stem, and moves the XMP files to the correct directory. It follows the standard two-phase pattern: make file changes, then let dam reconcile.
+**Solution**: The script uses maki's CLI to find orphaned XMPs, locates matching RAW files by filename stem, and moves the XMP files to the correct directory. It follows the standard two-phase pattern: make file changes, then let maki reconcile.
 
 ```bash
 # Dry run — see what would be moved
@@ -244,16 +244,16 @@ python3 scripts/fix-orphaned-xmp.py --path 2026-02
 python3 scripts/fix-orphaned-xmp.py --path 2026-02 --apply
 
 # Reconcile catalog with file moves
-dam sync /Volumes/Photos --apply
-dam fix-recipes --apply
+maki sync /Volumes/Photos --apply
+maki fix-recipes --apply
 ```
 
 Key patterns demonstrated in the script:
 
-- **`dam search -q "type:other format:xmp"`** — find assets matching specific criteria
-- **`dam show <id> --json`** — get full asset details including file locations
-- **`dam volume list --json`** — enumerate volumes and their mount points
-- **Dry-run by default** — `--apply` flag opts in to changes (following dam's convention)
+- **`maki search -q "type:other format:xmp"`** — find assets matching specific criteria
+- **`maki show <id> --json`** — get full asset details including file locations
+- **`maki volume list --json`** — enumerate volumes and their mount points
+- **Dry-run by default** — `--apply` flag opts in to changes (following maki's convention)
 - **Path scoping** — `--path` parameter limits the search to a subset of the catalog
 
 ---
@@ -263,17 +263,17 @@ Key patterns demonstrated in the script:
 **Avoid quoting pitfalls.** When search queries contain inner quotes (e.g., `tag:"Fools Theater"`), use single quotes for the outer shell argument:
 
 ```bash
-dam search -q 'tag:"Fools Theater"'
+maki search -q 'tag:"Fools Theater"'
 ```
 
 **Use `--json` for reliable parsing.** Human-readable output is designed for readability, not stability. Field positions, formatting, and labels may change between versions. JSON output is versioned and stable.
 
-**Stderr is for humans, stdout is for machines.** Progress messages, warnings, and `--log` output go to stderr. When piping dam's output, only structured results appear on stdout.
+**Stderr is for humans, stdout is for machines.** Progress messages, warnings, and `--log` output go to stderr. When piping maki's output, only structured results appear on stdout.
 
-**Check exit codes.** dam returns 0 on success and 1 on failure. Commands like `verify` return 1 if any mismatches are found, making them suitable for CI/cron health checks:
+**Check exit codes.** maki returns 0 on success and 1 on failure. Commands like `verify` return 1 if any mismatches are found, making them suitable for CI/cron health checks:
 
 ```bash
-dam verify --volume "Photos" || echo "Integrity check failed!"
+maki verify --volume "Photos" || echo "Integrity check failed!"
 ```
 
 **Dry-run first.** Most destructive commands (sync, cleanup, auto-group, fix-roles) default to report-only mode. Always review the dry-run output before adding `--apply`.
@@ -282,7 +282,7 @@ dam verify --volume "Photos" || echo "Integrity check failed!"
 
 ## Related Topics
 
-- [Interactive Shell](09-shell.md) -- `dam shell` REPL with variables, tab completion, script files, and session management
+- [Interactive Shell](09-shell.md) -- `maki shell` REPL with variables, tab completion, script files, and session management
 - [CLI Conventions](../reference/00-cli-conventions.md) -- global flags, exit codes, and basic scripting patterns
 - [Browsing & Searching](05-browse-and-search.md) -- search syntax and output format options
 - [Format Templates Reference](../reference/07-format-templates.md) -- custom output templates for `--format`

@@ -10,14 +10,14 @@ Current version: **v3.2.7** (2026-03-16)
 
 ### Watch Mode
 
-Auto-import and sync on filesystem changes. After a CaptureOne session, new files appear in the catalog without manual `dam import`.
+Auto-import and sync on filesystem changes. After a CaptureOne session, new files appear in the catalog without manual `maki import`.
 
 **Scope:**
-- `dam watch [PATHS...] [--volume <label>]` — monitors directories for new/changed files
+- `maki watch [PATHS...] [--volume <label>]` — monitors directories for new/changed files
 - Poll-based initially (simple, cross-platform); fsevents/inotify optional later
 - Triggers import for new files, refresh for changed recipes
-- Configurable via `[watch]` section in `dam.toml` (poll interval, exclude patterns)
-- Runs as foreground process (like `dam serve`), logs activity to stderr
+- Configurable via `[watch]` section in `maki.toml` (poll interval, exclude patterns)
+- Runs as foreground process (like `maki serve`), logs activity to stderr
 
 **Complexity:** Medium. Core import/refresh logic exists; needs a polling loop and file-change detection.
 
@@ -40,7 +40,7 @@ SigLIP embedding generation on CPU is slow for large catalogs. GPU backends make
 Write metadata changes back into JPEG/TIFF files directly, not just XMP sidecars. Some workflows and stock photo submissions require embedded metadata.
 
 **Scope:**
-- `dam writeback --embed` writes rating, tags, description, label into file's embedded metadata
+- `maki writeback --embed` writes rating, tags, description, label into file's embedded metadata
 - IPTC keywords, caption/description, urgency (mapped from rating)
 - EXIF UserComment for description (optional)
 - Preserves existing embedded metadata; only updates DAM-managed fields
@@ -79,11 +79,11 @@ Implemented in v3.2.1. Shell `export` is a built-in with variable expansion, til
 Named preset configurations for different import scenarios (studio shoot, travel, phone backup).
 
 **Scope:**
-- `[import.profiles.<name>]` sections in `dam.toml`
+- `[import.profiles.<name>]` sections in `maki.toml`
 - Each profile: auto_tags, exclude patterns, target volume, smart_previews, embeddings
-- `dam import --profile studio <PATHS...>` selects a profile
+- `maki import --profile studio <PATHS...>` selects a profile
 - Profiles inherit from `[import]` defaults, override specific fields
-- `dam import --list-profiles` shows available profiles
+- `maki import --list-profiles` shows available profiles
 
 **Complexity:** Low. Config parsing and merge logic only.
 
@@ -92,9 +92,9 @@ Named preset configurations for different import scenarios (studio shoot, travel
 Allow browsing the catalog from other devices on the LAN (iPad, phone, second computer).
 
 **Scope:**
-- `dam serve --bind 0.0.0.0` already works for LAN access
+- `maki serve --bind 0.0.0.0` already works for LAN access
 - Add `--read-only` mode: disables all write endpoints (rating, tags, labels, delete, etc.)
-- Optional: basic auth (`[serve] username/password` in `dam.toml`)
+- Optional: basic auth (`[serve] username/password` in `maki.toml`)
 - Responsive CSS improvements for mobile viewports (browse grid already adapts)
 
 **Complexity:** Low-Medium. Most infrastructure exists; needs endpoint guards and auth middleware.
@@ -104,8 +104,8 @@ Allow browsing the catalog from other devices on the LAN (iPad, phone, second co
 Surface drive health and verification staleness proactively.
 
 **Scope:**
-- Extend `dam stats --verified` with per-volume staleness warnings
-- `dam verify --report` generates a health summary (oldest unverified, % coverage, estimated time)
+- Extend `maki stats --verified` with per-volume staleness warnings
+- `maki verify --report` generates a health summary (oldest unverified, % coverage, estimated time)
 - Optional: track volume mount/unmount history for "last seen" timestamps
 - Web UI: volume health indicators on backup page
 
@@ -121,8 +121,8 @@ Track metadata changes with timestamps for audit trail and undo capability.
 
 **Scope:**
 - `asset_history` table: asset_id, field, old_value, new_value, timestamp, source (cli/web/sync)
-- `dam history <asset-id>` shows change log
-- `dam undo <asset-id>` reverts last change (or last N)
+- `maki history <asset-id>` shows change log
+- `maki undo <asset-id>` reverts last change (or last N)
 - Web UI: history panel on detail page
 
 **Complexity:** High. Requires change tracking in every write path (edit, tag, rating, label, import, refresh, sync-metadata).

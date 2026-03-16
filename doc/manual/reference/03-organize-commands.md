@@ -4,19 +4,19 @@ Commands for curating static collections, managing saved searches (smart albums)
 
 ---
 
-## dam collection create
+## maki collection create
 
 ### NAME
 
-dam-collection-create -- create a new collection
+maki-collection-create -- create a new collection
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] collection create <NAME> [--description <TEXT>]
+maki [GLOBAL FLAGS] collection create <NAME> [--description <TEXT>]
 ```
 
-Alias: `dam col create`
+Alias: `maki col create`
 
 ### DESCRIPTION
 
@@ -41,42 +41,42 @@ Collection names must be unique. Attempting to create a collection with an exist
 Create a simple collection:
 
 ```bash
-dam collection create "Best of 2026"
+maki collection create "Best of 2026"
 ```
 
 Create a collection with a description:
 
 ```bash
-dam col create "Wedding Portfolio" --description "Final selects for client delivery"
+maki col create "Wedding Portfolio" --description "Final selects for client delivery"
 ```
 
 Create with JSON output:
 
 ```bash
-dam col create "Travel" --json
+maki col create "Travel" --json
 ```
 
 ### SEE ALSO
 
-[collection add](#dam-collection-add) -- add assets to a collection.
-[collection show](#dam-collection-show) -- view collection contents.
-[search](04-retrieve-commands.md#dam-search) -- `collection:` filter for searching within a collection.
+[collection add](#maki-collection-add) -- add assets to a collection.
+[collection show](#maki-collection-show) -- view collection contents.
+[search](04-retrieve-commands.md#maki-search) -- `collection:` filter for searching within a collection.
 
 ---
 
-## dam collection list
+## maki collection list
 
 ### NAME
 
-dam-collection-list -- list all collections
+maki-collection-list -- list all collections
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] collection list
+maki [GLOBAL FLAGS] collection list
 ```
 
-Alias: `dam col list`
+Alias: `maki col list`
 
 ### DESCRIPTION
 
@@ -97,45 +97,45 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 List all collections:
 
 ```bash
-dam collection list
+maki collection list
 ```
 
 List collections as JSON and extract names:
 
 ```bash
-dam col list --json | jq '.[].name'
+maki col list --json | jq '.[].name'
 ```
 
 Count total collections:
 
 ```bash
-dam col list --json | jq 'length'
+maki col list --json | jq 'length'
 ```
 
 ### SEE ALSO
 
-[collection create](#dam-collection-create) -- create a new collection.
-[collection show](#dam-collection-show) -- view a specific collection's contents.
+[collection create](#maki-collection-create) -- create a new collection.
+[collection show](#maki-collection-show) -- view a specific collection's contents.
 
 ---
 
-## dam collection show
+## maki collection show
 
 ### NAME
 
-dam-collection-show -- show the contents of a collection
+maki-collection-show -- show the contents of a collection
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] collection show <NAME> [--format <FMT>]
+maki [GLOBAL FLAGS] collection show <NAME> [--format <FMT>]
 ```
 
-Alias: `dam col show`
+Alias: `maki col show`
 
 ### DESCRIPTION
 
-Displays the assets belonging to a collection. Output format can be customized using the same format presets and template syntax as `dam search`.
+Displays the assets belonging to a collection. Output format can be customized using the same format presets and template syntax as `maki search`.
 
 ### ARGUMENTS
 
@@ -152,54 +152,54 @@ Displays the assets belonging to a collection. Output format can be customized u
 Show a collection's contents:
 
 ```bash
-dam collection show "Best of 2026"
+maki collection show "Best of 2026"
 ```
 
 Get just the asset IDs for piping:
 
 ```bash
-dam col show "Wedding Portfolio" --format ids
+maki col show "Wedding Portfolio" --format ids
 ```
 
 Show full details including tags:
 
 ```bash
-dam col show "Travel" --format full
+maki col show "Travel" --format full
 ```
 
 Export collection as JSON:
 
 ```bash
-dam col show "Favorites" --format json | jq '.[].id'
+maki col show "Favorites" --format json | jq '.[].id'
 ```
 
 ### SEE ALSO
 
-[collection add](#dam-collection-add) -- add assets to the collection.
-[collection remove](#dam-collection-remove) -- remove assets from the collection.
-[search](04-retrieve-commands.md#dam-search) -- `collection:` filter for searching within collections.
+[collection add](#maki-collection-add) -- add assets to the collection.
+[collection remove](#maki-collection-remove) -- remove assets from the collection.
+[search](04-retrieve-commands.md#maki-search) -- `collection:` filter for searching within collections.
 
 ---
 
-## dam collection add
+## maki collection add
 
 ### NAME
 
-dam-collection-add -- add assets to a collection
+maki-collection-add -- add assets to a collection
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] collection add <NAME> <ASSET_IDS...>
+maki [GLOBAL FLAGS] collection add <NAME> <ASSET_IDS...>
 ```
 
-Alias: `dam col add`
+Alias: `maki col add`
 
 ### DESCRIPTION
 
 Adds one or more assets to an existing collection. Asset IDs that are already in the collection are silently ignored (no duplicates are created).
 
-Supports stdin piping for integration with `dam search -q` and shell scripting.
+Supports stdin piping for integration with `maki search -q` and shell scripting.
 
 ### ARGUMENTS
 
@@ -218,48 +218,48 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 Add specific assets to a collection:
 
 ```bash
-dam collection add "Favorites" a1b2c3d4-... e5f67890-...
+maki collection add "Favorites" a1b2c3d4-... e5f67890-...
 ```
 
 Pipe search results into a collection:
 
 ```bash
-dam search -q "rating:5 tag:travel" | xargs dam col add "Travel Best"
+maki search -q "rating:5 tag:travel" | xargs maki col add "Travel Best"
 ```
 
 Add all 5-star landscape photos to a collection:
 
 ```bash
-dam search -q "rating:5 tag:landscape" | xargs dam col add "Portfolio"
+maki search -q "rating:5 tag:landscape" | xargs maki col add "Portfolio"
 ```
 
 Add assets from a saved search:
 
 ```bash
-dam ss run "Recent Imports" --format ids | xargs dam col add "Review Queue"
+maki ss run "Recent Imports" --format ids | xargs maki col add "Review Queue"
 ```
 
 ### SEE ALSO
 
-[collection remove](#dam-collection-remove) -- remove assets from a collection.
-[collection show](#dam-collection-show) -- view collection contents.
-[search](04-retrieve-commands.md#dam-search) -- find assets to add.
+[collection remove](#maki-collection-remove) -- remove assets from a collection.
+[collection show](#maki-collection-show) -- view collection contents.
+[search](04-retrieve-commands.md#maki-search) -- find assets to add.
 
 ---
 
-## dam collection remove
+## maki collection remove
 
 ### NAME
 
-dam-collection-remove -- remove assets from a collection
+maki-collection-remove -- remove assets from a collection
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] collection remove <NAME> <ASSET_IDS...>
+maki [GLOBAL FLAGS] collection remove <NAME> <ASSET_IDS...>
 ```
 
-Alias: `dam col remove`
+Alias: `maki col remove`
 
 ### DESCRIPTION
 
@@ -282,41 +282,41 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 Remove a single asset from a collection:
 
 ```bash
-dam collection remove "Favorites" a1b2c3d4-e5f6-7890-abcd-ef1234567890
+maki collection remove "Favorites" a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
 Remove multiple assets:
 
 ```bash
-dam col remove "Review Queue" a1b2c3d4-... e5f67890-...
+maki col remove "Review Queue" a1b2c3d4-... e5f67890-...
 ```
 
 Remove all assets with a certain label from a collection:
 
 ```bash
-dam search -q "collection:Portfolio label:Red" --format ids | xargs dam col remove "Portfolio"
+maki search -q "collection:Portfolio label:Red" --format ids | xargs maki col remove "Portfolio"
 ```
 
 ### SEE ALSO
 
-[collection add](#dam-collection-add) -- add assets to a collection.
-[collection delete](#dam-collection-delete) -- delete the entire collection.
+[collection add](#maki-collection-add) -- add assets to a collection.
+[collection delete](#maki-collection-delete) -- delete the entire collection.
 
 ---
 
-## dam collection delete
+## maki collection delete
 
 ### NAME
 
-dam-collection-delete -- delete a collection
+maki-collection-delete -- delete a collection
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] collection delete <NAME>
+maki [GLOBAL FLAGS] collection delete <NAME>
 ```
 
-Alias: `dam col delete`
+Alias: `maki col delete`
 
 ### DESCRIPTION
 
@@ -336,41 +336,41 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 Delete a collection:
 
 ```bash
-dam collection delete "Old Review Queue"
+maki collection delete "Old Review Queue"
 ```
 
 Delete using the alias:
 
 ```bash
-dam col delete "Temporary"
+maki col delete "Temporary"
 ```
 
 Delete with JSON confirmation:
 
 ```bash
-dam col delete "Drafts" --json
+maki col delete "Drafts" --json
 ```
 
 ### SEE ALSO
 
-[collection create](#dam-collection-create) -- create a new collection.
-[collection list](#dam-collection-list) -- list all collections.
+[collection create](#maki-collection-create) -- create a new collection.
+[collection list](#maki-collection-list) -- list all collections.
 
 ---
 
-## dam saved-search save
+## maki saved-search save
 
 ### NAME
 
-dam-saved-search-save -- save a search query with a name
+maki-saved-search-save -- save a search query with a name
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] saved-search save <NAME> <QUERY> [--sort <SORT>]
+maki [GLOBAL FLAGS] saved-search save <NAME> <QUERY> [--sort <SORT>]
 ```
 
-Alias: `dam ss save`
+Alias: `maki ss save`
 
 ### DESCRIPTION
 
@@ -378,7 +378,7 @@ Saves a search query under a name for later re-use. Saved searches are stored in
 
 If a saved search with the same name already exists, it is replaced.
 
-Saved searches appear as clickable chips in the web UI browse page and can be executed from the CLI with `dam saved-search run`.
+Saved searches appear as clickable chips in the web UI browse page and can be executed from the CLI with `maki saved-search run`.
 
 ### ARGUMENTS
 
@@ -386,7 +386,7 @@ Saved searches appear as clickable chips in the web UI browse page and can be ex
 : A name for the saved search.
 
 **QUERY** (required)
-: The search query string, using the same syntax as `dam search`.
+: The search query string, using the same syntax as `maki search`.
 
 ### OPTIONS
 
@@ -400,49 +400,49 @@ Saved searches appear as clickable chips in the web UI browse page and can be ex
 Save a search for highly-rated landscapes:
 
 ```bash
-dam saved-search save "Best Landscapes" "tag:landscape rating:4+"
+maki saved-search save "Best Landscapes" "tag:landscape rating:4+"
 ```
 
 Save with a custom sort order:
 
 ```bash
-dam ss save "Recent Videos" "type:video" --sort date_desc
+maki ss save "Recent Videos" "type:video" --sort date_desc
 ```
 
 Save a search using quoted filter values:
 
 ```bash
-dam ss save "Canon Portraits" 'camera:"Canon EOS R5" tag:portrait'
+maki ss save "Canon Portraits" 'camera:"Canon EOS R5" tag:portrait'
 ```
 
 Save a path-scoped search:
 
 ```bash
-dam ss save "February Shoot" "path:Capture/2026-02"
+maki ss save "February Shoot" "path:Capture/2026-02"
 ```
 
 ### SEE ALSO
 
-[saved-search run](#dam-saved-search-run) -- execute a saved search.
-[saved-search list](#dam-saved-search-list) -- list all saved searches.
-[saved-search delete](#dam-saved-search-delete) -- delete a saved search.
-[search](04-retrieve-commands.md#dam-search) -- query syntax reference.
+[saved-search run](#maki-saved-search-run) -- execute a saved search.
+[saved-search list](#maki-saved-search-list) -- list all saved searches.
+[saved-search delete](#maki-saved-search-delete) -- delete a saved search.
+[search](04-retrieve-commands.md#maki-search) -- query syntax reference.
 
 ---
 
-## dam saved-search list
+## maki saved-search list
 
 ### NAME
 
-dam-saved-search-list -- list all saved searches
+maki-saved-search-list -- list all saved searches
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] saved-search list
+maki [GLOBAL FLAGS] saved-search list
 ```
 
-Alias: `dam ss list`
+Alias: `maki ss list`
 
 ### DESCRIPTION
 
@@ -463,41 +463,41 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 List all saved searches:
 
 ```bash
-dam saved-search list
+maki saved-search list
 ```
 
 List as JSON:
 
 ```bash
-dam ss list --json
+maki ss list --json
 ```
 
 Count saved searches:
 
 ```bash
-dam ss list --json | jq 'length'
+maki ss list --json | jq 'length'
 ```
 
 ### SEE ALSO
 
-[saved-search save](#dam-saved-search-save) -- create or update a saved search.
-[saved-search run](#dam-saved-search-run) -- execute a saved search.
+[saved-search save](#maki-saved-search-save) -- create or update a saved search.
+[saved-search run](#maki-saved-search-run) -- execute a saved search.
 
 ---
 
-## dam saved-search run
+## maki saved-search run
 
 ### NAME
 
-dam-saved-search-run -- execute a saved search and display results
+maki-saved-search-run -- execute a saved search and display results
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] saved-search run <NAME> [--format <FMT>]
+maki [GLOBAL FLAGS] saved-search run <NAME> [--format <FMT>]
 ```
 
-Alias: `dam ss run`
+Alias: `maki ss run`
 
 ### DESCRIPTION
 
@@ -520,47 +520,47 @@ The sort order saved with the search is applied. Output format can be overridden
 Run a saved search:
 
 ```bash
-dam saved-search run "Best Landscapes"
+maki saved-search run "Best Landscapes"
 ```
 
 Run and get just IDs for piping:
 
 ```bash
-dam ss run "Recent Videos" --format ids
+maki ss run "Recent Videos" --format ids
 ```
 
 Run a saved search and add results to a collection:
 
 ```bash
-dam ss run "Best Landscapes" --format ids | xargs dam col add "Portfolio"
+maki ss run "Best Landscapes" --format ids | xargs maki col add "Portfolio"
 ```
 
 Run with JSON output:
 
 ```bash
-dam ss run "Canon Portraits" --format json | jq '.[].id'
+maki ss run "Canon Portraits" --format json | jq '.[].id'
 ```
 
 ### SEE ALSO
 
-[saved-search save](#dam-saved-search-save) -- create or update a saved search.
-[collection add](03-organize-commands.md#dam-collection-add) -- add search results to a collection.
+[saved-search save](#maki-saved-search-save) -- create or update a saved search.
+[collection add](03-organize-commands.md#maki-collection-add) -- add search results to a collection.
 
 ---
 
-## dam saved-search delete
+## maki saved-search delete
 
 ### NAME
 
-dam-saved-search-delete -- delete a saved search
+maki-saved-search-delete -- delete a saved search
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] saved-search delete <NAME>
+maki [GLOBAL FLAGS] saved-search delete <NAME>
 ```
 
-Alias: `dam ss delete`
+Alias: `maki ss delete`
 
 ### DESCRIPTION
 
@@ -580,41 +580,41 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 Delete a saved search:
 
 ```bash
-dam saved-search delete "Old Query"
+maki saved-search delete "Old Query"
 ```
 
 Delete using the alias:
 
 ```bash
-dam ss delete "Temporary Search"
+maki ss delete "Temporary Search"
 ```
 
 Delete with JSON confirmation:
 
 ```bash
-dam ss delete "Drafts" --json
+maki ss delete "Drafts" --json
 ```
 
 ### SEE ALSO
 
-[saved-search save](#dam-saved-search-save) -- create a new saved search.
-[saved-search list](#dam-saved-search-list) -- list all saved searches.
+[saved-search save](#maki-saved-search-save) -- create a new saved search.
+[saved-search list](#maki-saved-search-list) -- list all saved searches.
 
 ---
 
-## dam stack create
+## maki stack create
 
 ### NAME
 
-dam-stack-create -- create a new stack from the given assets
+maki-stack-create -- create a new stack from the given assets
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] stack create <ASSET_IDS...>
+maki [GLOBAL FLAGS] stack create <ASSET_IDS...>
 ```
 
-Alias: `dam st create`
+Alias: `maki st create`
 
 ### DESCRIPTION
 
@@ -640,36 +640,36 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 Create a stack from three burst shots (first becomes pick):
 
 ```bash
-dam stack create a1b2c3d4-... e5f67890-... f1a2b3c4-...
+maki stack create a1b2c3d4-... e5f67890-... f1a2b3c4-...
 ```
 
 Create using the alias with JSON output:
 
 ```bash
-dam st create a1b2c3d4-... e5f67890-... --json
+maki st create a1b2c3d4-... e5f67890-... --json
 ```
 
 ### SEE ALSO
 
-[stack add](#dam-stack-add) -- add assets to an existing stack.
-[stack pick](#dam-stack-pick) -- change which asset is the pick.
-[stack dissolve](#dam-stack-dissolve) -- dissolve a stack entirely.
+[stack add](#maki-stack-add) -- add assets to an existing stack.
+[stack pick](#maki-stack-pick) -- change which asset is the pick.
+[stack dissolve](#maki-stack-dissolve) -- dissolve a stack entirely.
 
 ---
 
-## dam stack add
+## maki stack add
 
 ### NAME
 
-dam-stack-add -- add assets to an existing stack
+maki-stack-add -- add assets to an existing stack
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] stack add <REFERENCE> <ASSET_IDS...>
+maki [GLOBAL FLAGS] stack add <REFERENCE> <ASSET_IDS...>
 ```
 
-Alias: `dam st add`
+Alias: `maki st add`
 
 ### DESCRIPTION
 
@@ -696,35 +696,35 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 Add an asset to the stack containing a1b2c3d4:
 
 ```bash
-dam stack add a1b2c3d4-... new-asset-id-...
+maki stack add a1b2c3d4-... new-asset-id-...
 ```
 
 Add multiple assets:
 
 ```bash
-dam st add a1b2c3d4-... b2c3d4e5-... c3d4e5f6-...
+maki st add a1b2c3d4-... b2c3d4e5-... c3d4e5f6-...
 ```
 
 ### SEE ALSO
 
-[stack create](#dam-stack-create) -- create a new stack.
-[stack remove](#dam-stack-remove) -- remove assets from a stack.
+[stack create](#maki-stack-create) -- create a new stack.
+[stack remove](#maki-stack-remove) -- remove assets from a stack.
 
 ---
 
-## dam stack remove
+## maki stack remove
 
 ### NAME
 
-dam-stack-remove -- remove assets from their stack
+maki-stack-remove -- remove assets from their stack
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] stack remove <ASSET_IDS...>
+maki [GLOBAL FLAGS] stack remove <ASSET_IDS...>
 ```
 
-Alias: `dam st remove`
+Alias: `maki st remove`
 
 ### DESCRIPTION
 
@@ -748,35 +748,35 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 Remove a single asset from its stack:
 
 ```bash
-dam stack remove a1b2c3d4-e5f6-7890-abcd-ef1234567890
+maki stack remove a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
 Remove multiple assets:
 
 ```bash
-dam st remove a1b2c3d4-... e5f67890-...
+maki st remove a1b2c3d4-... e5f67890-...
 ```
 
 ### SEE ALSO
 
-[stack add](#dam-stack-add) -- add assets to a stack.
-[stack dissolve](#dam-stack-dissolve) -- dissolve an entire stack at once.
+[stack add](#maki-stack-add) -- add assets to a stack.
+[stack dissolve](#maki-stack-dissolve) -- dissolve an entire stack at once.
 
 ---
 
-## dam stack pick
+## maki stack pick
 
 ### NAME
 
-dam-stack-pick -- set the pick (top) of a stack
+maki-stack-pick -- set the pick (top) of a stack
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] stack pick <ASSET_ID>
+maki [GLOBAL FLAGS] stack pick <ASSET_ID>
 ```
 
-Alias: `dam st pick`
+Alias: `maki st pick`
 
 ### DESCRIPTION
 
@@ -798,35 +798,35 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 Set a specific asset as the stack pick:
 
 ```bash
-dam stack pick a1b2c3d4-e5f6-7890-abcd-ef1234567890
+maki stack pick a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
 Set pick using the alias:
 
 ```bash
-dam st pick a1b2c3d4-...
+maki st pick a1b2c3d4-...
 ```
 
 ### SEE ALSO
 
-[stack show](#dam-stack-show) -- view current stack members and pick.
-[stack create](#dam-stack-create) -- the first asset in create becomes the initial pick.
+[stack show](#maki-stack-show) -- view current stack members and pick.
+[stack create](#maki-stack-create) -- the first asset in create becomes the initial pick.
 
 ---
 
-## dam stack dissolve
+## maki stack dissolve
 
 ### NAME
 
-dam-stack-dissolve -- dissolve an entire stack
+maki-stack-dissolve -- dissolve an entire stack
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] stack dissolve <ASSET_ID>
+maki [GLOBAL FLAGS] stack dissolve <ASSET_ID>
 ```
 
-Alias: `dam st dissolve`
+Alias: `maki st dissolve`
 
 ### DESCRIPTION
 
@@ -848,35 +848,35 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 Dissolve a stack:
 
 ```bash
-dam stack dissolve a1b2c3d4-e5f6-7890-abcd-ef1234567890
+maki stack dissolve a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
 Dissolve using the alias:
 
 ```bash
-dam st dissolve a1b2c3d4-...
+maki st dissolve a1b2c3d4-...
 ```
 
 ### SEE ALSO
 
-[stack remove](#dam-stack-remove) -- remove individual assets instead of dissolving the whole stack.
-[stack list](#dam-stack-list) -- list all stacks.
+[stack remove](#maki-stack-remove) -- remove individual assets instead of dissolving the whole stack.
+[stack list](#maki-stack-list) -- list all stacks.
 
 ---
 
-## dam stack list
+## maki stack list
 
 ### NAME
 
-dam-stack-list -- list all stacks
+maki-stack-list -- list all stacks
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] stack list
+maki [GLOBAL FLAGS] stack list
 ```
 
-Alias: `dam st list`
+Alias: `maki st list`
 
 ### DESCRIPTION
 
@@ -897,39 +897,39 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 List all stacks:
 
 ```bash
-dam stack list
+maki stack list
 ```
 
 List as JSON and count stacks:
 
 ```bash
-dam st list --json | jq 'length'
+maki st list --json | jq 'length'
 ```
 
 ### SEE ALSO
 
-[stack show](#dam-stack-show) -- view members of a specific stack.
-[stack create](#dam-stack-create) -- create a new stack.
+[stack show](#maki-stack-show) -- view members of a specific stack.
+[stack create](#maki-stack-create) -- create a new stack.
 
 ---
 
-## dam stack show
+## maki stack show
 
 ### NAME
 
-dam-stack-show -- show members of a stack
+maki-stack-show -- show members of a stack
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] stack show <ASSET_ID> [--format <FMT>]
+maki [GLOBAL FLAGS] stack show <ASSET_ID> [--format <FMT>]
 ```
 
-Alias: `dam st show`
+Alias: `maki st show`
 
 ### DESCRIPTION
 
-Displays the ordered member list of the stack containing the given asset. The pick (position 0) is shown first. Output format can be customized using the same format presets and template syntax as `dam search`.
+Displays the ordered member list of the stack containing the given asset. The pick (position 0) is shown first. Output format can be customized using the same format presets and template syntax as `maki search`.
 
 ### ARGUMENTS
 
@@ -946,41 +946,41 @@ Displays the ordered member list of the stack containing the given asset. The pi
 Show members of a stack:
 
 ```bash
-dam stack show a1b2c3d4-...
+maki stack show a1b2c3d4-...
 ```
 
 Get just the member IDs:
 
 ```bash
-dam st show a1b2c3d4-... --format ids
+maki st show a1b2c3d4-... --format ids
 ```
 
 Show as JSON:
 
 ```bash
-dam st show a1b2c3d4-... --json
+maki st show a1b2c3d4-... --json
 ```
 
 ### SEE ALSO
 
-[stack pick](#dam-stack-pick) -- change the pick.
-[stack list](#dam-stack-list) -- list all stacks.
-[search](04-retrieve-commands.md#dam-search) -- `stacked:true` filter finds all stacked assets.
+[stack pick](#maki-stack-pick) -- change the pick.
+[stack list](#maki-stack-list) -- list all stacks.
+[search](04-retrieve-commands.md#maki-search) -- `stacked:true` filter finds all stacked assets.
 
 ---
 
 ---
 
-## dam faces detect
+## maki faces detect
 
 ### NAME
 
-dam-faces-detect -- detect faces in asset images
+maki-faces-detect -- detect faces in asset images
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] faces detect [--query <Q>] [--asset <id>] [--volume <label>] [--apply]
+maki [GLOBAL FLAGS] faces detect [--query <Q>] [--asset <id>] [--volume <label>] [--apply]
 ```
 
 ### DESCRIPTION
@@ -989,7 +989,7 @@ Detects faces in asset preview images using the YuNet ONNX model. For each detec
 
 Without `--apply`, runs in report-only mode showing how many faces would be detected. With `--apply`, stores face records in the catalog and generates crop thumbnails.
 
-Requires at least one scope filter (`--query`, `--asset`, or `--volume`) to prevent accidental full-catalog processing. Models must be downloaded first with `dam faces download`.
+Requires at least one scope filter (`--query`, `--asset`, or `--volume`) to prevent accidental full-catalog processing. Models must be downloaded first with `maki faces download`.
 
 ### OPTIONS
 
@@ -1012,45 +1012,45 @@ Requires at least one scope filter (`--query`, `--asset`, or `--volume`) to prev
 Detect faces in all images (dry run):
 
 ```bash
-dam faces detect --query "type:image"
+maki faces detect --query "type:image"
 ```
 
 Detect and store faces for a single asset:
 
 ```bash
-dam faces detect --asset a1b2c3d4 --apply
+maki faces detect --asset a1b2c3d4 --apply
 ```
 
 Detect faces on a specific volume with logging:
 
 ```bash
-dam faces detect --volume "Photos" --apply --log
+maki faces detect --volume "Photos" --apply --log
 ```
 
 ### SEE ALSO
 
-[faces cluster](#dam-faces-cluster) -- group detected faces into people.
-[faces download](#dam-faces-download) -- download required models.
+[faces cluster](#maki-faces-cluster) -- group detected faces into people.
+[faces download](#maki-faces-download) -- download required models.
 
 ---
 
-## dam faces cluster
+## maki faces cluster
 
 ### NAME
 
-dam-faces-cluster -- group similar faces into people
+maki-faces-cluster -- group similar faces into people
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] faces cluster [--query <Q>] [--asset <id>] [--volume <label>] [--threshold <F>] [--apply]
+maki [GLOBAL FLAGS] faces cluster [--query <Q>] [--asset <id>] [--volume <label>] [--threshold <F>] [--apply]
 ```
 
 ### DESCRIPTION
 
 Groups similar face embeddings into unnamed person groups using greedy single-linkage clustering. Faces that have already been assigned to a person are skipped.
 
-The threshold controls how similar two faces must be to be grouped together (0.0–1.0, higher = stricter). Default is 0.5, configurable via `[ai] face_cluster_threshold` in `dam.toml`.
+The threshold controls how similar two faces must be to be grouped together (0.0–1.0, higher = stricter). Default is 0.5, configurable via `[ai] face_cluster_threshold` in `maki.toml`.
 
 Without `--apply`, shows a dry-run report of cluster sizes. With `--apply`, creates person records and assigns faces.
 
@@ -1080,38 +1080,38 @@ Scope filters (`--query`, `--asset`, `--volume`) limit which faces are considere
 Preview clustering results:
 
 ```bash
-dam faces cluster
+maki faces cluster
 ```
 
 Apply clustering with a stricter threshold:
 
 ```bash
-dam faces cluster --threshold 0.6 --apply
+maki faces cluster --threshold 0.6 --apply
 ```
 
 Cluster only faces from a specific shoot:
 
 ```bash
-dam faces cluster --query "path:Capture/2026-03" --apply
+maki faces cluster --query "path:Capture/2026-03" --apply
 ```
 
 ### SEE ALSO
 
-[faces detect](#dam-faces-detect) -- detect faces first.
-[faces name](#dam-faces-name) -- name the resulting person groups.
+[faces detect](#maki-faces-detect) -- detect faces first.
+[faces name](#maki-faces-name) -- name the resulting person groups.
 
 ---
 
-## dam faces people
+## maki faces people
 
 ### NAME
 
-dam-faces-people -- list all people
+maki-faces-people -- list all people
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] faces people
+maki [GLOBAL FLAGS] faces people
 ```
 
 ### DESCRIPTION
@@ -1121,31 +1121,31 @@ Lists all people in the catalog with their names (if assigned) and face counts.
 ### EXAMPLES
 
 ```bash
-dam faces people
-dam faces people --json
+maki faces people
+maki faces people --json
 ```
 
 ### SEE ALSO
 
-[faces name](#dam-faces-name) -- name a person.
+[faces name](#maki-faces-name) -- name a person.
 
 ---
 
-## dam faces name
+## maki faces name
 
 ### NAME
 
-dam-faces-name -- name a person
+maki-faces-name -- name a person
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] faces name <PERSON_ID> <NAME>
+maki [GLOBAL FLAGS] faces name <PERSON_ID> <NAME>
 ```
 
 ### DESCRIPTION
 
-Assigns a human-readable name to a person. Person IDs are shown by `dam faces people`.
+Assigns a human-readable name to a person. Person IDs are shown by `maki faces people`.
 
 ### ARGUMENTS
 
@@ -1158,21 +1158,21 @@ Assigns a human-readable name to a person. Person IDs are shown by `dam faces pe
 ### EXAMPLES
 
 ```bash
-dam faces name 550e8400-... "Alice"
+maki faces name 550e8400-... "Alice"
 ```
 
 ---
 
-## dam faces merge
+## maki faces merge
 
 ### NAME
 
-dam-faces-merge -- merge two people
+maki-faces-merge -- merge two people
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] faces merge <TARGET_ID> <SOURCE_ID>
+maki [GLOBAL FLAGS] faces merge <TARGET_ID> <SOURCE_ID>
 ```
 
 ### DESCRIPTION
@@ -1190,21 +1190,21 @@ Moves all faces from the source person to the target person, then deletes the so
 ### EXAMPLES
 
 ```bash
-dam faces merge 550e8400-... 661f9511-...
+maki faces merge 550e8400-... 661f9511-...
 ```
 
 ---
 
-## dam faces delete-person
+## maki faces delete-person
 
 ### NAME
 
-dam-faces-delete-person -- delete a person
+maki-faces-delete-person -- delete a person
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] faces delete-person <PERSON_ID>
+maki [GLOBAL FLAGS] faces delete-person <PERSON_ID>
 ```
 
 ### DESCRIPTION
@@ -1219,21 +1219,21 @@ Deletes a person record. All faces assigned to this person become unassigned (th
 ### EXAMPLES
 
 ```bash
-dam faces delete-person 550e8400-...
+maki faces delete-person 550e8400-...
 ```
 
 ---
 
-## dam faces unassign
+## maki faces unassign
 
 ### NAME
 
-dam-faces-unassign -- remove a face from its person
+maki-faces-unassign -- remove a face from its person
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] faces unassign <FACE_ID>
+maki [GLOBAL FLAGS] faces unassign <FACE_ID>
 ```
 
 ### DESCRIPTION
@@ -1248,21 +1248,21 @@ Removes the person assignment from a single face. The face record is preserved; 
 ### EXAMPLES
 
 ```bash
-dam faces unassign a1b2c3d4-...
+maki faces unassign a1b2c3d4-...
 ```
 
 ---
 
-## dam faces export
+## maki faces export
 
 ### NAME
 
-dam-faces-export -- export faces and people to YAML and binary files
+maki-faces-export -- export faces and people to YAML and binary files
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] faces export
+maki [GLOBAL FLAGS] faces export
 ```
 
 ### DESCRIPTION
@@ -1282,42 +1282,42 @@ Going forward, all face/people write operations automatically persist to both SQ
 Export all face data:
 
 ```bash
-dam faces export
+maki faces export
 ```
 
 Export with JSON output:
 
 ```bash
-dam faces export --json
+maki faces export --json
 ```
 
 ### SEE ALSO
 
-[faces detect](#dam-faces-detect) -- detect faces in images.
-[rebuild-catalog](05-maintain-commands.md#dam-rebuild-catalog) -- rebuilds catalog from files.
+[faces detect](#maki-faces-detect) -- detect faces in images.
+[rebuild-catalog](05-maintain-commands.md#maki-rebuild-catalog) -- rebuilds catalog from files.
 
 ---
 
-## dam faces download
+## maki faces download
 
 ### NAME
 
-dam-faces-download -- download face detection models
+maki-faces-download -- download face detection models
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] faces download
+maki [GLOBAL FLAGS] faces download
 ```
 
 ### DESCRIPTION
 
-Downloads the YuNet face detection model and ArcFace face recognition model from HuggingFace. Models are cached in the model directory (default `~/.cache/dam/models`, configurable via `[ai] model_dir` in `dam.toml`).
+Downloads the YuNet face detection model and ArcFace face recognition model from HuggingFace. Models are cached in the model directory (default `~/.cache/maki/models`, configurable via `[ai] model_dir` in `maki.toml`).
 
 ### EXAMPLES
 
 ```bash
-dam faces download
+maki faces download
 ```
 
 ---

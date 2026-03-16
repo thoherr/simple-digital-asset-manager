@@ -1,6 +1,6 @@
-# dam User Manual
+# maki User Manual
 
-**dam** is a command-line digital asset manager built in Rust, designed for photographers and media professionals who manage large collections across multiple storage devices.
+**maki** is a command-line digital asset manager built in Rust, designed for photographers and media professionals who manage large collections across multiple storage devices.
 
 This manual is organized into three sections:
 
@@ -30,9 +30,9 @@ Man-page style documentation for every command, filter, and configuration option
 - [Maintain Commands](reference/05-maintain-commands.md) — `verify`, `sync`, `refresh`, `sync-metadata`, `writeback`, `cleanup`, `dedup`, `relocate`, `update-location`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `migrate`
 - [Search Filters](reference/06-search-filters.md) — Complete filter syntax reference
 - [Format Templates](reference/07-format-templates.md) — Output format presets, custom templates, placeholders
-- [Configuration](reference/08-configuration.md) — `dam.toml` reference
+- [Configuration](reference/08-configuration.md) — `maki.toml` reference
 - [Data Model](reference/09-data-model.md) — Asset, Variant, Recipe, Volume, and FileLocation entities
-- [VLM Model Guide](reference/10-vlm-models.md) — Vision-language models for `dam describe`: tested models, backends, hardware guide
+- [VLM Model Guide](reference/10-vlm-models.md) — Vision-language models for `maki describe`: tested models, backends, hardware guide
 
 ## Developer Guide
 

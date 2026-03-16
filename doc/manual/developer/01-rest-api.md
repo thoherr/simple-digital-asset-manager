@@ -1,6 +1,6 @@
 # REST API Reference
 
-The `dam serve` command starts an Axum-based web server (default `127.0.0.1:8080`) that exposes both HTML page routes and JSON/HTML-partial API endpoints. All endpoints use `spawn_blocking` for SQLite access and open a fresh catalog connection per request via `Catalog::open_fast()`.
+The `maki serve` command starts an Axum-based web server (default `127.0.0.1:8080`) that exposes both HTML page routes and JSON/HTML-partial API endpoints. All endpoints use `spawn_blocking` for SQLite access and open a fresh catalog connection per request via `Catalog::open_fast()`.
 
 Base URL: `http://127.0.0.1:8080` (configurable via `--bind` and `--port`)
 
@@ -951,7 +951,7 @@ Downloads matching assets as a ZIP archive. Provide either explicit asset IDs (f
 
 When `asset_ids` is non-empty, `filters` is ignored. When `asset_ids` is empty, the server resolves matching assets from the filters using the same search pipeline as the browse page. If both are empty/null, all catalog assets are exported.
 
-**Response**: `application/zip` with `Content-Disposition: attachment; filename="dam-export-N-assets.zip"`.
+**Response**: `application/zip` with `Content-Disposition: attachment; filename="maki-export-N-assets.zip"`.
 
 The ZIP uses `Stored` compression (no deflation) since media files are already compressed.
 

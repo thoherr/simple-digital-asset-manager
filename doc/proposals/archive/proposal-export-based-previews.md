@@ -17,7 +17,7 @@ CaptureOne's adjustments (stored in `.cos` session files and partially in `.xmp`
 ## Current Behavior
 
 1. During import, a preview is generated for each variant individually (keyed by content hash)
-2. The web UI and `dam show` display the preview of the **first variant** (primary/original)
+2. The web UI and `maki show` display the preview of the **first variant** (primary/original)
 3. For a RAW+JPEG asset, the RAW preview (dcraw rendering) is shown, even though a processed JPEG export exists
 4. The `generate-previews` command iterates variants and generates per-variant previews, but the display logic doesn't prefer one over another
 
@@ -43,7 +43,7 @@ When an asset has an Export variant (e.g., a CaptureOne-processed JPEG/TIFF), it
 
 2. **Web UI browse grid** (`src/web/routes.rs`): Same logic — the browse card thumbnail should show the best available preview.
 
-3. **`dam show` output** (`src/main.rs`): Currently shows the primary variant's preview path. Show the best-available preview instead.
+3. **`maki show` output** (`src/main.rs`): Currently shows the primary variant's preview path. Show the best-available preview instead.
 
 This is a **display-only change** — all per-variant previews continue to exist. We're just choosing which one to show as the asset's representative image.
 
@@ -54,7 +54,7 @@ This is a **display-only change** — all per-variant previews continue to exist
 Add a mode to `generate-previews` that upgrades asset previews when a better source variant exists:
 
 ```
-dam generate-previews --upgrade
+maki generate-previews --upgrade
 ```
 
 This would:

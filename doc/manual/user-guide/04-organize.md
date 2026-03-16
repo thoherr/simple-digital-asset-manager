@@ -1,6 +1,6 @@
 # Organizing Assets
 
-Once your files are [imported](03-ingest.md), dam provides several tools for
+Once your files are [imported](03-ingest.md), maki provides several tools for
 organizing them: tags, metadata editing, variant grouping, static collections,
 and saved searches. All changes are persisted in both the SQLite catalog and
 YAML sidecar files. When `.xmp` recipe files are present, edits to ratings,
@@ -21,8 +21,8 @@ Tags can contain `/` as a hierarchy separator, allowing you to organize
 keywords into a tree structure:
 
 ```
-dam tag a1b2c3d4 animals/birds/eagles
-dam tag a1b2c3d4 location/europe/germany
+maki tag a1b2c3d4 animals/birds/eagles
+maki tag a1b2c3d4 location/europe/germany
 ```
 
 Parent tag searches match all descendants -- searching for `tag:animals` will
@@ -31,7 +31,7 @@ searches.
 
 Hierarchical tags interoperate with Lightroom's `lr:hierarchicalSubject` XMP
 field. When importing XMP files that contain `lr:hierarchicalSubject` entries,
-dam reads the hierarchy and stores the full path as a tag. Write-back preserves
+maki reads the hierarchy and stores the full path as a tag. Write-back preserves
 the hierarchy in the XMP file.
 
 The tags page in the web UI displays hierarchical tags as a collapsible tree
@@ -42,7 +42,7 @@ The tags page in the web UI displays hierarchical tags as a collapsible tree
 Pass one or more tag names after the asset ID:
 
 ```
-dam tag a1b2c3d4 landscape nature golden-hour
+maki tag a1b2c3d4 landscape nature golden-hour
 ```
 
 This adds three tags to the asset. If a tag already exists on the asset, it is
@@ -53,7 +53,7 @@ silently skipped.
 Use the `--remove` flag:
 
 ```
-dam tag a1b2c3d4 --remove unwanted blurry
+maki tag a1b2c3d4 --remove unwanted blurry
 ```
 
 Tags that are not present on the asset are silently ignored.
@@ -63,7 +63,7 @@ Tags that are not present on the asset are silently ignored.
 When an asset has `.xmp` recipe files on disk, tag changes are written back
 immediately. Added tags are inserted into the `dc:subject` / `rdf:Bag` block;
 removed tags are deleted from it. Tags that were added independently in
-CaptureOne or Lightroom (not managed by dam) are preserved -- dam operates on
+CaptureOne or Lightroom (not managed by maki) are preserved -- maki operates on
 deltas, not full replacement.
 
 If the volume containing the `.xmp` file is offline, the write-back is skipped
@@ -85,23 +85,23 @@ Clicking a tag name navigates to the browse page filtered to that tag.
 
 ## Editing Metadata
 
-The `dam edit` command sets or clears first-class metadata fields on an asset.
+The `maki edit` command sets or clears first-class metadata fields on an asset.
 At least one flag is required.
 
 ### Setting fields
 
 ```
-dam edit a1b2c3d4 --name "Sunset at Beach"
-dam edit a1b2c3d4 --description "A beautiful sunset over the Pacific coast"
-dam edit a1b2c3d4 --rating 5
-dam edit a1b2c3d4 --label Red
-dam edit a1b2c3d4 --date "2024-12-25"
+maki edit a1b2c3d4 --name "Sunset at Beach"
+maki edit a1b2c3d4 --description "A beautiful sunset over the Pacific coast"
+maki edit a1b2c3d4 --rating 5
+maki edit a1b2c3d4 --label Red
+maki edit a1b2c3d4 --date "2024-12-25"
 ```
 
 Multiple flags can be combined in a single invocation:
 
 ```
-dam edit a1b2c3d4 --name "Sunset at Beach" --rating 5 --label Orange
+maki edit a1b2c3d4 --name "Sunset at Beach" --rating 5 --label Orange
 ```
 
 ### Clearing fields
@@ -109,19 +109,19 @@ dam edit a1b2c3d4 --name "Sunset at Beach" --rating 5 --label Orange
 Each field has a corresponding `--clear-*` flag:
 
 ```
-dam edit a1b2c3d4 --clear-name
-dam edit a1b2c3d4 --clear-description
-dam edit a1b2c3d4 --clear-rating
-dam edit a1b2c3d4 --clear-label
-dam edit a1b2c3d4 --clear-date
+maki edit a1b2c3d4 --clear-name
+maki edit a1b2c3d4 --clear-description
+maki edit a1b2c3d4 --clear-rating
+maki edit a1b2c3d4 --clear-label
+maki edit a1b2c3d4 --clear-date
 ```
 
 An empty description string is normalized to a clear operation -- these two
 commands are equivalent:
 
 ```
-dam edit a1b2c3d4 --description ""
-dam edit a1b2c3d4 --clear-description
+maki edit a1b2c3d4 --description ""
+maki edit a1b2c3d4 --clear-description
 ```
 
 ### Color labels
@@ -131,8 +131,8 @@ The label field accepts one of seven colors: **Red**, **Orange**, **Yellow**,
 in canonical title-case:
 
 ```
-dam edit a1b2c3d4 --label red      # stored as "Red"
-dam edit a1b2c3d4 --label YELLOW   # stored as "Yellow"
+maki edit a1b2c3d4 --label red      # stored as "Red"
+maki edit a1b2c3d4 --label YELLOW   # stored as "Yellow"
 ```
 
 This is a superset of Lightroom's 5-color palette, matching CaptureOne's 7
@@ -144,34 +144,34 @@ Changes to **rating**, **description**, and **color label** are automatically
 written back to any `.xmp` recipe files attached to the asset. This enables
 round-trip editing with external tools:
 
-1. Rate an image in dam (`dam edit ... --rating 4`).
+1. Rate an image in maki (`maki edit ... --rating 4`).
 2. Open CaptureOne -- the rating is already reflected in the XMP sidecar.
 3. Change the rating in CaptureOne.
-4. Run `dam refresh` to pick up the change.
+4. Run `maki refresh` to pick up the change.
 
 ### Structured output
 
 Use the global `--json` flag for machine-readable output:
 
 ```
-dam --json edit a1b2c3d4 --rating 5
+maki --json edit a1b2c3d4 --rating 5
 ```
 
 ---
 
 ## Manual Grouping
 
-The `dam group` command merges multiple variants (identified by their content
+The `maki group` command merges multiple variants (identified by their content
 hashes) into a single asset. This is useful when related files were imported
 separately and ended up as distinct assets.
 
 ### Basic usage
 
 ```
-dam group abc123def456 789fed321cba
+maki group abc123def456 789fed321cba
 ```
 
-You can pass any number of content hashes. dam identifies the assets that own
+You can pass any number of content hashes. maki identifies the assets that own
 those variants and merges them.
 
 ### Merge rules
@@ -186,20 +186,20 @@ those variants and merges them.
 
 ### Finding content hashes
 
-Use `dam show` to display an asset's variants and their content hashes:
+Use `maki show` to display an asset's variants and their content hashes:
 
 ```
-dam show a1b2c3d4
+maki show a1b2c3d4
 ```
 
-Or use `dam search --format '{id}\t{name}'` to locate the assets first, then
-inspect them with `dam show`.
+Or use `maki search --format '{id}\t{name}'` to locate the assets first, then
+inspect them with `maki show`.
 
 ---
 
 ## Auto-Grouping
 
-The `dam auto-group` command finds assets that belong together by matching
+The `maki auto-group` command finds assets that belong together by matching
 their filename stems across the catalog. This handles the common case where a
 RAW original and its processed exports end up as separate assets -- for
 example, when CaptureOne exports land in a different directory from the
@@ -210,7 +210,7 @@ originals.
 Without `--apply`, auto-group runs in report-only mode. Nothing is modified:
 
 ```
-dam auto-group
+maki auto-group
 ```
 
 Output shows which groups would be formed, how many donors would be merged, and
@@ -219,7 +219,7 @@ how many variants would be moved.
 ### Applying changes
 
 ```
-dam auto-group --apply
+maki auto-group --apply
 ```
 
 ### Scoping to a search query
@@ -227,8 +227,8 @@ dam auto-group --apply
 Pass a search query to limit the scope:
 
 ```
-dam auto-group "tag:landscape" --apply
-dam auto-group "path:Capture/2024" --apply
+maki auto-group "tag:landscape" --apply
+maki auto-group "path:Capture/2024" --apply
 ```
 
 ### The matching algorithm
@@ -272,8 +272,8 @@ grouping.
 ### Output options
 
 ```
-dam auto-group --json            # structured JSON result
-dam auto-group --log --apply     # per-group progress on stderr
+maki auto-group --json            # structured JSON result
+maki auto-group --log --apply     # per-group progress on stderr
 ```
 
 ### Web UI
@@ -290,10 +290,10 @@ The inverse of grouping: extract one or more variants from an asset into new sta
 
 ```
 # View variants of an asset
-dam show abc12345
+maki show abc12345
 
 # Extract the JPEG variant into its own asset
-dam split abc12345 sha256:def456...
+maki split abc12345 sha256:def456...
 ```
 
 Each extracted variant becomes a new asset with:
@@ -314,37 +314,37 @@ in a traditional photo manager. They are backed by both SQLite (for fast
 queries) and a `collections.yaml` file at the catalog root (which survives
 `rebuild-catalog`).
 
-The alias `dam col` can be used in place of `dam collection` for brevity.
+The alias `maki col` can be used in place of `maki collection` for brevity.
 
 ### Creating a collection
 
 ```
-dam collection create "Best of 2024" --description "Top picks from the year"
+maki collection create "Best of 2024" --description "Top picks from the year"
 ```
 
 ### Listing collections
 
 ```
-dam collection list
+maki collection list
 ```
 
 ### Viewing collection contents
 
 ```
-dam collection show "Best of 2024"
-dam collection show "Best of 2024" --format full
+maki collection show "Best of 2024"
+maki collection show "Best of 2024" --format full
 ```
 
 ### Adding assets
 
 ```
-dam collection add "Best of 2024" a1b2c3d4 e5f6a7b8
+maki collection add "Best of 2024" a1b2c3d4 e5f6a7b8
 ```
 
 You can pipe asset IDs from a search:
 
 ```
-dam search -q "rating:5 tag:landscape" | xargs dam col add "Best of 2024"
+maki search -q "rating:5 tag:landscape" | xargs maki col add "Best of 2024"
 ```
 
 This is a powerful pattern -- combine any search filter to build a collection
@@ -353,13 +353,13 @@ in a single command.
 ### Removing assets
 
 ```
-dam collection remove "Best of 2024" a1b2c3d4
+maki collection remove "Best of 2024" a1b2c3d4
 ```
 
 ### Deleting a collection
 
 ```
-dam collection delete "Best of 2024"
+maki collection delete "Best of 2024"
 ```
 
 This removes the collection definition and all membership records. The assets
@@ -370,7 +370,7 @@ themselves are not affected.
 Use the `collection:` filter in any search:
 
 ```
-dam search "collection:\"Best of 2024\" rating:4+"
+maki search "collection:\"Best of 2024\" rating:4+"
 ```
 
 Note the quoted value for collection names with spaces.
@@ -400,14 +400,14 @@ position 0 is the **pick** -- the representative image shown when the stack is
 collapsed in the browse grid. Stacks auto-dissolve when they have one or fewer
 members.
 
-The alias `dam st` can be used in place of `dam stack` for brevity.
+The alias `maki st` can be used in place of `maki stack` for brevity.
 
 ### Creating a stack
 
 Pass two or more asset IDs to create a new stack:
 
 ```
-dam stack create a1b2c3d4 e5f6a7b8 c9d0e1f2
+maki stack create a1b2c3d4 e5f6a7b8 c9d0e1f2
 ```
 
 The first asset becomes the pick (position 0). The remaining assets are ordered
@@ -416,7 +416,7 @@ by their position in the argument list.
 ### Adding assets to a stack
 
 ```
-dam stack add <stack-id> f3a4b5c6
+maki stack add <stack-id> f3a4b5c6
 ```
 
 The new asset is appended to the end of the stack.
@@ -426,7 +426,7 @@ The new asset is appended to the end of the stack.
 Promote any member to the pick position:
 
 ```
-dam stack pick <stack-id> e5f6a7b8
+maki stack pick <stack-id> e5f6a7b8
 ```
 
 The previous pick moves to position 1; all other positions shift accordingly.
@@ -434,7 +434,7 @@ The previous pick moves to position 1; all other positions shift accordingly.
 ### Removing assets from a stack
 
 ```
-dam stack remove <stack-id> c9d0e1f2
+maki stack remove <stack-id> c9d0e1f2
 ```
 
 If the stack has one or fewer members after removal, it auto-dissolves.
@@ -444,13 +444,13 @@ If the stack has one or fewer members after removal, it auto-dissolves.
 Dissolve a stack entirely, returning all members to standalone assets:
 
 ```
-dam stack dissolve <stack-id>
+maki stack dissolve <stack-id>
 ```
 
 ### Listing stacks
 
 ```
-dam stack list
+maki stack list
 ```
 
 Shows all stacks with their member counts.
@@ -458,7 +458,7 @@ Shows all stacks with their member counts.
 ### Showing stack details
 
 ```
-dam stack show <stack-id>
+maki stack show <stack-id>
 ```
 
 Displays the stack's members in position order, with the pick marked.
@@ -468,8 +468,8 @@ Displays the stack's members in position order, with the pick marked.
 Use the `stacked:` filter in any search:
 
 ```
-dam search "stacked:true"      # assets that are in a stack
-dam search "stacked:false"     # standalone assets
+maki search "stacked:true"      # assets that are in a stack
+maki search "stacked:false"     # standalone assets
 ```
 
 ### Structured output
@@ -477,8 +477,8 @@ dam search "stacked:false"     # standalone assets
 All stack commands support `--json`:
 
 ```
-dam --json stack list
-dam --json stack show <stack-id>
+maki --json stack list
+maki --json stack show <stack-id>
 ```
 
 ### Web UI
@@ -494,12 +494,12 @@ Saved searches are named queries stored in `searches.toml` at the catalog root.
 Unlike collections, they are dynamic -- running a saved search always reflects
 the current state of the catalog.
 
-The alias `dam ss` can be used in place of `dam saved-search`.
+The alias `maki ss` can be used in place of `maki saved-search`.
 
 ### Saving a search
 
 ```
-dam saved-search save "Landscapes" "tag:landscape rating:3+" --sort date_desc
+maki saved-search save "Landscapes" "tag:landscape rating:3+" --sort date_desc
 ```
 
 This stores the query string and sort order under the name "Landscapes".
@@ -507,21 +507,21 @@ This stores the query string and sort order under the name "Landscapes".
 ### Listing saved searches
 
 ```
-dam saved-search list
+maki saved-search list
 ```
 
 ### Running a saved search
 
 ```
-dam saved-search run "Landscapes"
-dam saved-search run "Landscapes" --format full
-dam saved-search run "Landscapes" --format json
+maki saved-search run "Landscapes"
+maki saved-search run "Landscapes" --format full
+maki saved-search run "Landscapes" --format json
 ```
 
 ### Deleting a saved search
 
 ```
-dam saved-search delete "Landscapes"
+maki saved-search delete "Landscapes"
 ```
 
 ### Practical examples
@@ -529,18 +529,18 @@ dam saved-search delete "Landscapes"
 Save commonly used filters for quick access:
 
 ```
-dam ss save "Unrated"     "rating:0"
-dam ss save "Five Stars"  "rating:5"
-dam ss save "Red Label"   "label:Red"
-dam ss save "Recent"      "path:Capture/2024" --sort date_desc
-dam ss save "Orphans"     "orphan:true"
-dam ss save "Theater"     "tag:\"Fools Theater\""
+maki ss save "Unrated"     "rating:0"
+maki ss save "Five Stars"  "rating:5"
+maki ss save "Red Label"   "label:Red"
+maki ss save "Recent"      "path:Capture/2024" --sort date_desc
+maki ss save "Orphans"     "orphan:true"
+maki ss save "Theater"     "tag:\"Fools Theater\""
 ```
 
 Combine saved searches with other commands:
 
 ```
-dam ss run "Five Stars" --format ids | xargs dam col add "Portfolio"
+maki ss run "Five Stars" --format ids | xargs maki col add "Portfolio"
 ```
 
 ### Web UI
@@ -557,14 +557,14 @@ dam ss run "Five Stars" --format ids | xargs dam col add "Portfolio"
 
 > Requires `cargo build --features ai`.
 
-dam can detect faces in your images, group them into people, and let you search by person. This is an AI-powered feature that uses YuNet for face detection and ArcFace for face recognition.
+maki can detect faces in your images, group them into people, and let you search by person. This is an AI-powered feature that uses YuNet for face detection and ArcFace for face recognition.
 
 ### Setup
 
 Download the required models first:
 
 ```
-dam faces download
+maki faces download
 ```
 
 This downloads the YuNet face detection model (~230 KB) and ArcFace recognition model (~28 MB) to the model cache directory.
@@ -574,7 +574,7 @@ This downloads the YuNet face detection model (~230 KB) and ArcFace recognition 
 Run face detection on your catalog:
 
 ```
-dam faces detect --query "type:image" --apply
+maki faces detect --query "type:image" --apply
 ```
 
 This finds faces in each image's preview, stores bounding boxes and embeddings, and generates face crop thumbnails. Use `--log` for per-asset progress.
@@ -582,9 +582,9 @@ This finds faces in each image's preview, stores bounding boxes and embeddings, 
 You can scope detection to a specific shoot or volume:
 
 ```
-dam faces detect --query "path:Capture/2026-03" --apply
-dam faces detect --volume "Photos" --apply
-dam faces detect --asset a1b2c3d4 --apply
+maki faces detect --query "path:Capture/2026-03" --apply
+maki faces detect --volume "Photos" --apply
+maki faces detect --asset a1b2c3d4 --apply
 ```
 
 ### Clustering faces into people
@@ -592,7 +592,7 @@ dam faces detect --asset a1b2c3d4 --apply
 After detection, cluster similar faces into groups:
 
 ```
-dam faces cluster --apply
+maki faces cluster --apply
 ```
 
 This uses greedy single-linkage clustering to group faces that look similar enough (default threshold 0.5). Each group becomes an unnamed person.
@@ -600,8 +600,8 @@ This uses greedy single-linkage clustering to group faces that look similar enou
 Adjust the threshold for stricter or looser grouping:
 
 ```
-dam faces cluster --threshold 0.6 --apply    # stricter (fewer false matches)
-dam faces cluster --threshold 0.4 --apply    # looser (more grouped together)
+maki faces cluster --threshold 0.6 --apply    # stricter (fewer false matches)
+maki faces cluster --threshold 0.4 --apply    # looser (more grouped together)
 ```
 
 ### Naming people
@@ -609,9 +609,9 @@ dam faces cluster --threshold 0.4 --apply    # looser (more grouped together)
 List the discovered people and name them:
 
 ```
-dam faces people
-dam faces name 550e8400-... "Alice"
-dam faces name 661f9511-... "Bob"
+maki faces people
+maki faces name 550e8400-... "Alice"
+maki faces name 661f9511-... "Bob"
 ```
 
 ### Managing people
@@ -619,19 +619,19 @@ dam faces name 661f9511-... "Bob"
 Merge duplicate person groups:
 
 ```
-dam faces merge 550e8400-... 661f9511-...    # merge source into target
+maki faces merge 550e8400-... 661f9511-...    # merge source into target
 ```
 
 Remove a face from a person (misidentification):
 
 ```
-dam faces unassign face-uuid-...
+maki faces unassign face-uuid-...
 ```
 
 Delete a person entirely (faces become unassigned):
 
 ```
-dam faces delete-person 550e8400-...
+maki faces delete-person 550e8400-...
 ```
 
 ### Searching by face and person
@@ -639,11 +639,11 @@ dam faces delete-person 550e8400-...
 Use the `faces:` and `person:` search filters:
 
 ```
-dam search "faces:any"                # assets with detected faces
-dam search "faces:none type:image"    # images without faces
-dam search "faces:2+"                # group photos (2+ faces)
-dam search "person:Alice"            # assets containing Alice
-dam search "person:Alice rating:4+"  # Alice's best photos
+maki search "faces:any"                # assets with detected faces
+maki search "faces:none type:image"    # images without faces
+maki search "faces:2+"                # group photos (2+ faces)
+maki search "person:Alice"            # assets containing Alice
+maki search "person:Alice rating:4+"  # Alice's best photos
 ```
 
 ### Web UI
@@ -658,7 +658,7 @@ The web UI provides a complete face management experience:
 
 ### Configuration
 
-In `dam.toml`:
+In `maki.toml`:
 
 ```toml
 [ai]
@@ -674,13 +674,13 @@ A typical organizing workflow after import might look like this:
 
 1. **Auto-group** to merge related variants:
    ```
-   dam auto-group --apply --log
+   maki auto-group --apply --log
    ```
 
 2. **Tag** a batch of assets from the CLI:
    ```
-   dam search -q "path:Capture/2024-08-15" | \
-     xargs -I{} dam tag {} vacation beach
+   maki search -q "path:Capture/2024-08-15" | \
+     xargs -I{} maki tag {} vacation beach
    ```
 
 3. **Rate and label** standouts in the web UI using keyboard shortcuts
@@ -688,12 +688,12 @@ A typical organizing workflow after import might look like this:
 
 4. **Build a collection** from your top picks:
    ```
-   dam search -q "rating:5 tag:vacation" | xargs dam col add "Summer 2024"
+   maki search -q "rating:5 tag:vacation" | xargs maki col add "Summer 2024"
    ```
 
 5. **Save a smart search** for ongoing curation:
    ```
-   dam ss save "Vacation Selects" "tag:vacation rating:4+" --sort date_desc
+   maki ss save "Vacation Selects" "tag:vacation rating:4+" --sort date_desc
    ```
 
 ---

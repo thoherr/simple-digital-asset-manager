@@ -1,6 +1,6 @@
 # Data Model
 
-This page documents every entity in the dam data model, their fields, relationships, and storage mechanisms.
+This page documents every entity in the maki data model, their fields, relationships, and storage mechanisms.
 
 ---
 
@@ -200,7 +200,7 @@ A pointer to where a Variant physically lives on disk. A single Variant can have
 | `content_hash` | String | Foreign key to the parent Variant. |
 | `volume_id` | UUID | Foreign key to the Volume where the file resides. |
 | `relative_path` | String | Path relative to the volume's mount point (e.g. `Capture/2026-02-22/DSC_4521.NEF`). |
-| `verified_at` | Option\<DateTime\<Utc\>\> | Timestamp of the last successful integrity check via `dam verify`. `None` if never verified. |
+| `verified_at` | Option\<DateTime\<Utc\>\> | Timestamp of the last successful integrity check via `maki verify`. `None` if never verified. |
 
 ### Recipe
 
@@ -231,7 +231,7 @@ A processing sidecar file attached to a Variant. Unlike Variants, Recipes are id
 
 ### Volume
 
-A registered storage device. Volumes give dam a stable reference to storage that may come and go (external drives, network shares).
+A registered storage device. Volumes give maki a stable reference to storage that may come and go (external drives, network shares).
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -278,14 +278,14 @@ A named query (smart album) stored in `searches.toml`. Re-evaluated every time i
 | Field | Type | Description |
 |-------|------|-------------|
 | `name` | String | Unique identifier. |
-| `query` | String | Search filter string in the same syntax as `dam search` (e.g. `type:image tag:landscape rating:4+`). |
+| `query` | String | Search filter string in the same syntax as `maki search` (e.g. `type:image tag:landscape rating:4+`). |
 | `sort` | Option\<String\> | Sort order (e.g. `date_desc`, `name_asc`). Omitted means default (`date_desc`). |
 
 ### Embedding
 
 > Only present when built with `--features ai`.
 
-A stored image embedding vector for an asset, used by `dam auto-tag` for classification, `--similar` for visual similarity search, and `dam embed` for batch generation.
+A stored image embedding vector for an asset, used by `maki auto-tag` for classification, `--similar` for visual similarity search, and `maki embed` for batch generation.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -297,7 +297,7 @@ Storage overhead: ~3 KB per asset. For 100,000 assets: ~300 MB in SQLite.
 
 **In-memory index**: For fast similarity search, the web server loads all embeddings into an `EmbeddingIndex` — a contiguous `Vec<f32>` buffer — on first query. Search uses dot product (SigLIP embeddings are L2-normalized) with a min-heap for top-K selection. At 100k assets, search completes in <10ms. The index is updated in-place when new embeddings are stored.
 
-**Opportunistic storage**: Embeddings are stored not only by `dam auto-tag` and `dam embed`, but also opportunistically by the web UI "Suggest tags" and batch "Auto-tag" endpoints. This means using AI features in the web UI gradually builds up the similarity search index.
+**Opportunistic storage**: Embeddings are stored not only by `maki auto-tag` and `maki embed`, but also opportunistically by the web UI "Suggest tags" and batch "Auto-tag" endpoints. This means using AI features in the web UI gradually builds up the similarity search index.
 
 ### Face
 
@@ -348,7 +348,7 @@ Each Variant carries a `role` that describes its purpose within the asset group.
 | **Export** | A derivative output produced by an editing tool. | Resized JPEG, web TIFF, final deliverable |
 | **Sidecar** | A non-media sidecar file imported as a variant. | Embedded metadata files |
 
-When assets are merged via `dam group` or `dam auto-group`, donor variants with the `original` role are automatically re-roled to `alternate` to avoid having multiple originals in one asset.
+When assets are merged via `maki group` or `maki auto-group`, donor variants with the `original` role are automatically re-roled to `alternate` to avoid having multiple originals in one asset.
 
 ---
 
@@ -368,7 +368,7 @@ The `best_variant_hash` denormalized column caches this computation so the brows
 
 ## Storage
 
-dam uses a dual-storage architecture. Neither tier alone is sufficient; together they provide both robustness and performance.
+maki uses a dual-storage architecture. Neither tier alone is sufficient; together they provide both robustness and performance.
 
 ### YAML Sidecar Files (source of truth)
 
@@ -385,7 +385,7 @@ catalog/
 
 ### SQLite Catalog (derived cache)
 
-A single `catalog.db` file providing fast indexed queries. Contains denormalized columns for efficient browse-grid rendering. The catalog is always rebuildable from the YAML sidecars via `dam rebuild-catalog` -- it is a performance optimization, not a source of truth.
+A single `catalog.db` file providing fast indexed queries. Contains denormalized columns for efficient browse-grid rendering. The catalog is always rebuildable from the YAML sidecars via `maki rebuild-catalog` -- it is a performance optimization, not a source of truth.
 
 **Tables**: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `collections`, `collection_assets`, `stacks`, `embeddings`, `faces`, `people` (last three with `--features ai`)
 
@@ -405,19 +405,19 @@ A single `catalog.db` file providing fast indexed queries. Contains denormalized
 | `searches.toml` | TOML | Saved search definitions (name, query, sort) |
 | `collections.yaml` | YAML | Collection definitions with ordered asset ID lists |
 | `stacks.yaml` | YAML | Stack definitions with ordered asset ID lists |
-| `dam.toml` | TOML | User configuration (preview settings, serve settings, import settings) |
+| `maki.toml` | TOML | User configuration (preview settings, serve settings, import settings) |
 | `previews/<prefix>/<hash>.jpg` | JPEG | Preview thumbnails keyed by variant content hash |
 | `faces/<prefix>/<face_id>.jpg` | JPEG | Face crop thumbnails (150×150, with `--features ai`) |
 
 ### Content-Addressable Identity
 
-Every file imported into dam is hashed with SHA-256. This hash is the file's identity:
+Every file imported into maki is hashed with SHA-256. This hash is the file's identity:
 
 - **Deduplication**: Importing the same file twice (even from different paths or drives) recognizes it as the same content and adds the new location to the existing Variant.
-- **Integrity verification**: `dam verify` re-hashes files and compares against stored hashes to detect corruption or bit rot.
-- **Transparent relocation**: Moving a file to a different drive does not change its identity. `dam relocate` and `dam update-location` update the catalog path.
+- **Integrity verification**: `maki verify` re-hashes files and compares against stored hashes to detect corruption or bit rot.
+- **Transparent relocation**: Moving a file to a different drive does not change its identity. `maki relocate` and `maki update-location` update the catalog path.
 
-Originals (RAW files, camera JPEGs) are immutable -- their hash is stable forever. Recipe files are the exception: they are modified by external tools, so dam tracks them by location and updates their stored hash when changes are detected.
+Originals (RAW files, camera JPEGs) are immutable -- their hash is stable forever. Recipe files are the exception: they are modified by external tools, so maki tracks them by location and updates their stored hash when changes are detected.
 
 ---
 

@@ -1,6 +1,6 @@
 # Proposal: VLM Integration for Image Descriptions
 
-**Status: Fully implemented.** v2.4.2: CLI + web UI (Phases 1–3). v2.5.0: auto-describe during import, text-to-image semantic search (Phase 4). v2.5.3: concurrent VLM requests. See [User Guide](../../manual/user-guide/03-ingest.md) and [Command Reference](../../manual/reference/02-ingest-commands.md#dam-describe).
+**Status: Fully implemented.** v2.4.2: CLI + web UI (Phases 1–3). v2.5.0: auto-describe during import, text-to-image semantic search (Phase 4). v2.5.3: concurrent VLM requests. See [User Guide](../../manual/user-guide/03-ingest.md) and [Command Reference](../../manual/reference/02-ingest-commands.md#maki-describe).
 
 Natural language image descriptions via local vision-language models. Complements the existing SigLIP zero-shot classification (fixed tag vocabulary, fast, low memory) with open-ended understanding (scene descriptions, context, relationships, mood).
 
@@ -104,7 +104,7 @@ Tested with Ollama on Apple Silicon (M-series). Focus on models that handle phot
 ## CLI Interface
 
 ```
-dam describe [--query <Q>] [--asset <id>] [--volume <label>]
+maki describe [--query <Q>] [--asset <id>] [--volume <label>]
              [--model <name>] [--endpoint <url>]
              [--prompt <text>] [--max-tokens <N>]
              [--mode describe|tags|both]
@@ -135,25 +135,25 @@ dam describe [--query <Q>] [--asset <id>] [--volume <label>]
 
 ```bash
 # Describe all undescribed assets (report only)
-dam describe --query "description:none"
+maki describe --query "description:none"
 
 # Apply descriptions to a specific volume
-dam describe --volume "2024 Archive" --apply
+maki describe --volume "2024 Archive" --apply
 
 # Use a faster model for bulk processing
-dam describe --query "date:2024-06" --model moondream --apply
+maki describe --query "date:2024-06" --model moondream --apply
 
 # Generate tag suggestions from VLM (complementary to SigLIP)
-dam describe --asset abc123 --mode tags
+maki describe --asset abc123 --mode tags
 
 # Use a remote server
-dam describe --endpoint http://gpu-server:11434 --model qwen2.5vl:7b --apply
+maki describe --endpoint http://gpu-server:11434 --model qwen2.5vl:7b --apply
 
 # Custom prompt for architectural photography
-dam describe --prompt "Describe the architectural style, materials, and notable features of this building." --query "tag:architecture" --apply
+maki describe --prompt "Describe the architectural style, materials, and notable features of this building." --query "tag:architecture" --apply
 
 # Dry run with JSON output
-dam describe --query "rating:4+" --dry-run --json
+maki describe --query "rating:4+" --dry-run --json
 ```
 
 ---
@@ -182,7 +182,7 @@ Runs both modes as two separate VLM calls per asset — one for description, one
 
 ---
 
-## Configuration (`dam.toml`)
+## Configuration (`maki.toml`)
 
 ```toml
 [vlm]
@@ -386,7 +386,7 @@ Follows the existing `auto_tag()` pattern:
 
 ### Feature Gate
 
-**No feature gate needed.** The VLM client is just HTTP calls — no heavy dependencies. The feature is opt-in by configuration (`[vlm]` section in `dam.toml`) and the server being available. Buttons in the web UI are hidden when no endpoint is configured.
+**No feature gate needed.** The VLM client is just HTTP calls — no heavy dependencies. The feature is opt-in by configuration (`[vlm]` section in `maki.toml`) and the server being available. Buttons in the web UI are hidden when no endpoint is configured.
 
 This is a key advantage over the SigLIP integration which requires the `ai` feature flag for ONNX Runtime.
 
@@ -398,11 +398,11 @@ This is a key advantage over the SigLIP integration which requires the `ai` feat
 
 - `src/vlm.rs`: HTTP client, prompt templates, response parsing
 - `VlmConfig` in `src/config.rs`
-- `dam describe` command with `--mode describe` only
+- `maki describe` command with `--mode describe` only
 - Batch processing with `--apply`, `--force`, `--dry-run`
 - `--json`, `--log`, `--time` output flags
 - Fallback from OpenAI API to native Ollama API
-- Connectivity check (`dam describe --check`)
+- Connectivity check (`maki describe --check`)
 
 ### Phase 2: Tag Suggestions Mode — *Implemented v2.4.2*
 
@@ -423,7 +423,7 @@ This is a key advantage over the SigLIP integration which requires the `ai` feat
 ### Phase 4: Advanced Features
 
 - ~~Description-based semantic search~~ → Implemented in v2.5.0 as `text:` search filter (SigLIP text encoder)
-- ~~Auto-describe during import~~ → Implemented in v2.5.0 as `dam import --describe` and `[import] descriptions = true`
+- ~~Auto-describe during import~~ → Implemented in v2.5.0 as `maki import --describe` and `[import] descriptions = true`
 - Concurrent requests (`concurrency > 1`) for servers with batching (open)
 - Comparison mode: show multiple model outputs side-by-side for prompt tuning (open)
 
@@ -439,7 +439,7 @@ This is a key advantage over the SigLIP integration which requires the `ai` feat
 | Empty response | Skip, report as error. Don't clear existing description. |
 | Very long response | Truncate at `max_tokens`. Warn if response was cut off. |
 | Non-image asset | Skip (audio, video, documents). Report as skipped. |
-| No preview available | Skip. Suggest running `dam generate-previews` first. |
+| No preview available | Skip. Suggest running `maki generate-previews` first. |
 | Existing description | Skip unless `--force`. Report as skipped. |
 | Hallucinated content | Can't prevent, but low temperature (0.3) and specific prompts reduce it. User reviews in report-only mode before `--apply`. |
 | Rate limiting | `concurrency: 1` by default. Sequential processing is safe. |

@@ -8,7 +8,7 @@ A typical CaptureOne session workflow looks like this:
 
 1. **Import to CaptureOne** — RAW files land in the session's `Capture/` folder
 2. **Initial cull & tag** — Photographer adds session keywords, basic ratings in CaptureOne
-3. **Import to DAM** — `dam import` from `Capture/`, picking up XMP keywords and ratings
+3. **Import to DAM** — `maki import` from `Capture/`, picking up XMP keywords and ratings
 4. **Refine in CaptureOne** — Ratings adjusted, keywords refined, COS adjustments saved
 5. **Select** — Chosen images moved to `Selects/` folder within the CaptureOne session
 6. **Process & export** — Final edits applied, exports generated
@@ -31,8 +31,8 @@ What already works well for this workflow:
 - **Multi-location tracking** — An asset can exist on multiple volumes simultaneously
 - **Content-addressed integrity** — SHA-256 hashes detect corruption and enable deduplication
 - **File type group filtering** — `--include captureone` / `--skip captureone` controls recipe import
-- **External change recovery** — `dam sync` detects moved/modified/missing files, `dam cleanup` removes stale records
-- **CLI metadata editing** — `dam edit` for name, description, rating, color label; `dam tag` for tags
+- **External change recovery** — `maki sync` detects moved/modified/missing files, `maki cleanup` removes stale records
+- **CLI metadata editing** — `maki edit` for name, description, rating, color label; `maki tag` for tags
 - **Web UI inline editing** — Star rating, tags, description, and color label editable on asset detail page
 - **Batch operations** — Multi-select with checkbox, batch tag/untag, batch rating, batch color label via fixed toolbar (v0.4.3–v0.4.4)
 - **Color labels** — First-class 7-color label support (Red, Orange, Yellow, Green, Blue, Pink, Purple) with XMP `xmp:Label` extraction, CLI editing, web UI color dot picker, browse filtering, and XMP write-back (v0.4.4)
@@ -41,11 +41,11 @@ What already works well for this workflow:
 
 ### ~~1. External File Movement Goes Undetected~~ — **RESOLVED**
 
-Addressed by `dam sync` (detects moved/new/missing files), `dam cleanup` (removes stale records and orphans), `dam update-location` (manual path correction), and search filters (`missing:true`, `orphan:true`, `stale:N`, `volume:none`).
+Addressed by `maki sync` (detects moved/new/missing files), `maki cleanup` (removes stale records and orphans), `maki update-location` (manual path correction), and search filters (`missing:true`, `orphan:true`, `stale:N`, `volume:none`).
 
 ### ~~2. No Metadata Sync After External Edits~~ — **RESOLVED**
 
-XMP write-back (v0.4.1–v0.4.3) enables DAM→CaptureOne sync for rating, tags, and description. `dam refresh` provides lightweight CaptureOne→DAM sync by re-reading metadata from changed sidecar/recipe files without a full re-import. Together with `dam sync --apply` (which detects moved/modified/missing files), bidirectional metadata sync is complete.
+XMP write-back (v0.4.1–v0.4.3) enables DAM→CaptureOne sync for rating, tags, and description. `maki refresh` provides lightweight CaptureOne→DAM sync by re-reading metadata from changed sidecar/recipe files without a full re-import. Together with `maki sync --apply` (which detects moved/modified/missing files), bidirectional metadata sync is complete.
 
 ### ~~3. No Batch Operations in Web UI~~ — **RESOLVED**
 
@@ -53,15 +53,15 @@ Addressed by multi-select checkboxes on browse cards, a fixed bottom toolbar wit
 
 ### ~~4. Limited Metadata Editing~~ — **RESOLVED**
 
-Name, description, rating, and color label are editable via CLI (`dam edit`). All fields are editable inline in the web UI (stars for rating, color dots for label, pencil-icon toggle for name and description). Changes are written back to XMP sidecar files on disk.
+Name, description, rating, and color label are editable via CLI (`maki edit`). All fields are editable inline in the web UI (stars for rating, color dots for label, pencil-icon toggle for name and description). Changes are written back to XMP sidecar files on disk.
 
 ### ~~5. No Saved Searches or Collections~~ — **RESOLVED**
 
-Addressed by `dam saved-search` (alias `ss`) for saved searches (smart albums) stored in `searches.toml`, and `dam collection` (alias `col`) for static collections backed by SQLite + `collections.yaml`. Web UI includes clickable saved search chips on the browse page and a `/collections` page. Search filter `collection:<name>` restricts results to collection members. Implemented in v0.6.0.
+Addressed by `maki saved-search` (alias `ss`) for saved searches (smart albums) stored in `searches.toml`, and `maki collection` (alias `col`) for static collections backed by SQLite + `collections.yaml`. Web UI includes clickable saved search chips on the browse page and a `/collections` page. Search filter `collection:<name>` restricts results to collection members. Implemented in v0.6.0.
 
 ### ~~6. No Dry-Run Import~~ — **RESOLVED**
 
-Addressed by `dam import --dry-run` which previews what an import would do (new assets, location additions, recipe updates) without writing to catalog, sidecar, or disk. Files are still hashed for duplicate detection. Supports `--json` and `--log`. Implemented in v0.5.1.
+Addressed by `maki import --dry-run` which previews what an import would do (new assets, location additions, recipe updates) without writing to catalog, sidecar, or disk. Files are still hashed for duplicate detection. Supports `--json` and `--log`. Implemented in v0.5.1.
 
 ---
 
@@ -71,16 +71,16 @@ Addressed by `dam import --dry-run` which previews what an import would do (new 
 
 All features in this phase are implemented.
 
-#### 1.1 `dam sync` Command — **IMPLEMENTED** (v0.3.1)
+#### 1.1 `maki sync` Command — **IMPLEMENTED** (v0.3.1)
 
-Implemented as `dam sync <PATHS...> [--volume <label>] [--apply] [--remove-stale]`. Report-only by default (safe); `--apply` writes changes. `--remove-stale` (requires `--apply`) removes catalog locations for missing files. Detects unchanged, moved, new, modified, and missing files. New files are not auto-imported — user runs `dam import` separately.
+Implemented as `maki sync <PATHS...> [--volume <label>] [--apply] [--remove-stale]`. Report-only by default (safe); `--apply` writes changes. `--remove-stale` (requires `--apply`) removes catalog locations for missing files. Detects unchanged, moved, new, modified, and missing files. New files are not auto-imported — user runs `maki import` separately.
 
-#### 1.2 `dam cleanup` Command — **done** (v0.3.1, extended v0.3.4)
+#### 1.2 `maki cleanup` Command — **done** (v0.3.1, extended v0.3.4)
 
 Remove stale location records, orphaned assets, and orphaned preview files:
 
 ```
-dam cleanup [--volume <label>] [--list] [--apply]
+maki cleanup [--volume <label>] [--list] [--apply]
 ```
 
 - Report-only by default (safe); `--apply` writes changes
@@ -98,26 +98,26 @@ New search filters to find assets needing attention:
 - `stale:N` — Assets with at least one location not verified in N days (or never verified)
 - `volume:none` — Assets with no locations on any online volume
 
-#### 1.4 `dam update-location` Command — **done**
+#### 1.4 `maki update-location` Command — **done**
 
 Manually update a file's location when you know where it moved:
 
 ```
-dam update-location <asset-id> --from <old-path> --to <new-path> [--volume <label>]
+maki update-location <asset-id> --from <old-path> --to <new-path> [--volume <label>]
 ```
 
-Implemented as `dam update-location <asset-id> --from <old-path> --to <new-path> [--volume <label>]`. `--to` must be an absolute path; `--from` can be absolute or volume-relative. Auto-detects volume from `--to` path. Verifies content hash at new location matches catalog record. Updates both SQLite and sidecar YAML. Handles variant file locations and recipe file locations.
+Implemented as `maki update-location <asset-id> --from <old-path> --to <new-path> [--volume <label>]`. `--to` must be an absolute path; `--from` can be absolute or volume-relative. Auto-detects volume from `--to` path. Verifies content hash at new location matches catalog record. Updates both SQLite and sidecar YAML. Handles variant file locations and recipe file locations.
 
 ---
 
 ### Phase 2: Metadata Sync & Re-import Improvements — **COMPLETE**
 
-#### 2.1 `dam refresh` Command — **IMPLEMENTED** (v0.4.5)
+#### 2.1 `maki refresh` Command — **IMPLEMENTED** (v0.4.5)
 
 Re-read metadata from sidecar files (XMP, COS) without a full import:
 
 ```
-dam refresh [PATHS...] [--volume <label>] [--asset <id>] [--dry-run]
+maki refresh [PATHS...] [--volume <label>] [--asset <id>] [--dry-run]
 ```
 
 - Finds all recipe/sidecar files for matching assets
@@ -131,7 +131,7 @@ This is lighter than `sync` — it only touches metadata, not file locations.
 #### 2.2 Dry-Run Mode for Import — **IMPLEMENTED** (v0.5.1)
 
 ```
-dam import --dry-run <PATHS...>
+maki import --dry-run <PATHS...>
 ```
 
 Preview what an import would do:
@@ -142,9 +142,9 @@ Preview what an import would do:
 
 No files written, no catalog changes. Files are still hashed for duplicate detection. Supports `--json` (includes `dry_run: true` field) and `--log` for per-file details.
 
-#### 2.3 `dam edit` Command — **IMPLEMENTED** (v0.3.1, extended v0.4.4)
+#### 2.3 `maki edit` Command — **IMPLEMENTED** (v0.3.1, extended v0.4.4)
 
-Implemented as `dam edit <asset-id> [--name <name>] [--description <text>] [--rating <1-5>] [--label <color>] [--clear-name] [--clear-description] [--clear-rating] [--clear-label]`. Supports `--json`. Rating, description, and color label changes trigger XMP write-back.
+Implemented as `maki edit <asset-id> [--name <name>] [--description <text>] [--rating <1-5>] [--label <color>] [--clear-name] [--clear-description] [--clear-rating] [--clear-label]`. Supports `--json`. Rating, description, and color label changes trigger XMP write-back.
 
 ---
 
@@ -181,8 +181,8 @@ Rating and label shortcuts operate on the focused card when no batch selection i
 
 #### 3.4 Saved Searches & Collections — **IMPLEMENTED** (v0.6.0)
 
-- **Saved searches** (`dam saved-search` / `dam ss`): Named queries stored in `searches.toml` at the catalog root. CLI: `save`, `list`, `run`, `delete` subcommands. Web UI: clickable chips on the browse page load saved searches into filter dropdowns; save button captures current search state; chips show rename (…) and delete (×) buttons on hover. API: `GET/POST /api/saved-searches`, `DELETE /api/saved-searches/{name}`.
-- **Collections** (`dam collection` / `dam col`): Manually curated asset ID lists backed by SQLite tables + `collections.yaml` for persistence across `rebuild-catalog`. CLI: `create`, `list`, `show`, `add`, `remove`, `delete` subcommands. Stdin piping: `dam search -q "rating:5" | xargs dam col add "Best"`. Search filter: `collection:<name>`. Web UI: `/collections` page, collection membership chips with × remove buttons on asset detail, collection filter dropdown in browse filter row (v0.6.2, composable with all other filters), context-sensitive batch toolbar ("+ Collection" / "− Collection" synced from filter dropdown). API: `GET/POST /api/collections`, `POST/DELETE /api/batch/collection`.
+- **Saved searches** (`maki saved-search` / `maki ss`): Named queries stored in `searches.toml` at the catalog root. CLI: `save`, `list`, `run`, `delete` subcommands. Web UI: clickable chips on the browse page load saved searches into filter dropdowns; save button captures current search state; chips show rename (…) and delete (×) buttons on hover. API: `GET/POST /api/saved-searches`, `DELETE /api/saved-searches/{name}`.
+- **Collections** (`maki collection` / `maki col`): Manually curated asset ID lists backed by SQLite tables + `collections.yaml` for persistence across `rebuild-catalog`. CLI: `create`, `list`, `show`, `add`, `remove`, `delete` subcommands. Stdin piping: `maki search -q "rating:5" | xargs maki col add "Best"`. Search filter: `collection:<name>`. Web UI: `/collections` page, collection membership chips with × remove buttons on asset detail, collection filter dropdown in browse filter row (v0.6.2, composable with all other filters), context-sensitive batch toolbar ("+ Collection" / "− Collection" synced from filter dropdown). API: `GET/POST /api/collections`, `POST/DELETE /api/batch/collection`.
 - **Quoted filter values**: Search parser supports double-quoted values for multi-word filters (`tag:"Fools Theater"`, `collection:"My Favorites"`).
 
 ---
@@ -199,7 +199,7 @@ Rating (v0.4.1), tags (v0.4.2), description (v0.4.3), and color label (v0.4.4) a
 
 #### ~~4.4 Collections~~ — **IMPLEMENTED** (v0.6.0)
 
-Implemented as `dam collection` (alias `col`) with SQLite-backed storage and YAML persistence. See Phase 3.4 above for details.
+Implemented as `maki collection` (alias `col`) with SQLite-backed storage and YAML persistence. See Phase 3.4 above for details.
 
 ---
 
@@ -207,11 +207,11 @@ Implemented as `dam collection` (alias `col`) with SQLite-backed storage and YAM
 
 | Feature | Status | Version |
 |---------|--------|---------|
-| `dam sync` | Done | v0.3.1 |
-| `dam cleanup` | Done | v0.3.1, v0.3.4 |
+| `maki sync` | Done | v0.3.1 |
+| `maki cleanup` | Done | v0.3.1, v0.3.4 |
 | Search location health filters | Done | v0.3.3 |
-| `dam update-location` | Done | v0.3.x |
-| `dam edit` (CLI) | Done | v0.3.1 |
+| `maki update-location` | Done | v0.3.x |
+| `maki edit` (CLI) | Done | v0.3.1 |
 | XMP write-back (rating) | Done | v0.4.1 |
 | XMP write-back (tags) | Done | v0.4.2 |
 | XMP write-back (description) | Done | v0.4.3 |
@@ -219,8 +219,8 @@ Implemented as `dam collection` (alias `col`) with SQLite-backed storage and YAM
 | Multi-select & batch operations | Done | v0.4.3–v0.4.4 |
 | Color labels (CLI, web UI, XMP) | Done | v0.4.4 |
 | XMP write-back (color label) | Done | v0.4.4 |
-| `dam refresh` | Done | v0.4.5 |
-| `dam import --dry-run` | Done | v0.5.1 |
+| `maki refresh` | Done | v0.4.5 |
+| `maki import --dry-run` | Done | v0.5.1 |
 | Web UI name editing | Done | v0.5.1 |
 | Keyboard navigation | Done | v0.4.5 |
 | Saved searches | Done | v0.6.0 |

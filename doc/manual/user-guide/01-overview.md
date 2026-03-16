@@ -1,10 +1,10 @@
 # Overview & Concepts
 
-This chapter introduces the data model, architecture, and workflow of **dam** -- a CLI digital asset manager designed for photographers and media professionals managing large collections (terabytes of images, videos, and processing files) across multiple storage devices.
+This chapter introduces the data model, architecture, and workflow of **maki** -- a CLI digital asset manager designed for photographers and media professionals managing large collections (terabytes of images, videos, and processing files) across multiple storage devices.
 
 ## Data Model
 
-dam organizes your files into six core entities.
+maki organizes your files into six core entities.
 
 ### Entity Relationships
 
@@ -86,7 +86,7 @@ Variants carry a **role** that describes their purpose:
 
 ### FileLocation
 
-A pointer to where a Variant physically lives on disk: a `volume_id` plus a `relative_path` within that volume. A single Variant can have multiple FileLocations -- copies on different drives, backups on a NAS -- and dam tracks them all. Each location also stores a `verified_at` timestamp from the last integrity check.
+A pointer to where a Variant physically lives on disk: a `volume_id` plus a `relative_path` within that volume. A single Variant can have multiple FileLocations -- copies on different drives, backups on a NAS -- and maki tracks them all. Each location also stores a `verified_at` timestamp from the last integrity check.
 
 ### Recipe
 
@@ -94,7 +94,7 @@ A processing sidecar file (`.xmp`, `.cos`, `.cot`, `.cop`, `.pp3`, `.dop`, `.on1
 
 ### Volume
 
-A registered storage device: local disk, external drive, or network share. Each Volume has a human-readable label and a mount point. dam detects online/offline status at runtime, so you can browse and search assets on unmounted drives using cached metadata and preview thumbnails.
+A registered storage device: local disk, external drive, or network share. Each Volume has a human-readable label and a mount point. maki detects online/offline status at runtime, so you can browse and search assets on unmounted drives using cached metadata and preview thumbnails.
 
 ### Stack
 
@@ -102,17 +102,17 @@ A lightweight anonymous group of assets -- burst shots, exposure brackets, or si
 
 ## Content-Addressable Storage
 
-Every file imported into dam is hashed with SHA-256. This hash becomes the file's identity:
+Every file imported into maki is hashed with SHA-256. This hash becomes the file's identity:
 
 - **Deduplication**: Importing the same file twice (even from different paths or drives) recognizes it as the same content and adds the new location to the existing Variant rather than creating a duplicate.
 - **Integrity verification**: The `verify` command re-hashes files on disk and compares against stored hashes to detect corruption or bit rot.
 - **Transparent relocation**: Moving a file to a different drive does not change its identity. The `relocate` and `update-location` commands update the catalog to reflect the new path.
 
-Originals (RAW files, camera JPEGs) are immutable -- their content never changes, so their hash is stable forever. Recipe files are the exception: they are modified by external tools, so dam tracks them by location and updates their stored hash when changes are detected.
+Originals (RAW files, camera JPEGs) are immutable -- their content never changes, so their hash is stable forever. Recipe files are the exception: they are modified by external tools, so maki tracks them by location and updates their stored hash when changes are detected.
 
 ## Two-Tier Storage
 
-dam uses a dual-storage architecture. Neither tier alone is sufficient; together they provide both robustness and performance.
+maki uses a dual-storage architecture. Neither tier alone is sufficient; together they provide both robustness and performance.
 
 **YAML sidecar files** (source of truth): One `.yml` file per Asset, stored in the catalog's `assets/` directory. Contains the complete Asset record: metadata, all Variants, all Recipes, all FileLocations. Human-readable, diffable, and version-control friendly. If the SQLite database is ever lost or corrupted, running `rebuild-catalog` reconstructs it entirely from these files.
 
@@ -122,10 +122,10 @@ This design means you never lose data from a database corruption event. The YAML
 
 ## Multi-Volume Support
 
-Real-world photo libraries span multiple storage devices: a fast internal SSD for current projects, external drives for archives, a NAS for backups. dam handles this natively:
+Real-world photo libraries span multiple storage devices: a fast internal SSD for current projects, external drives for archives, a NAS for backups. maki handles this natively:
 
-- **Register volumes** with `dam volume add` -- give each drive a label and mount point.
-- **Import from any volume** -- dam auto-detects which registered volume a file path belongs to and stores a volume-relative path.
+- **Register volumes** with `maki volume add` -- give each drive a label and mount point.
+- **Import from any volume** -- maki auto-detects which registered volume a file path belongs to and stores a volume-relative path.
 - **Offline browsing** -- when a drive is unmounted, its assets remain searchable and browsable via cached metadata and preview thumbnails in the local catalog.
 - **Cross-volume operations** -- `relocate` copies or moves assets between volumes, `verify` checks file integrity across all online volumes, and `cleanup` detects missing files on online volumes.
 
@@ -133,7 +133,7 @@ See [Setup](02-setup.md) for volume registration and [Maintenance](07-maintenanc
 
 ## Variant Grouping
 
-During import, dam automatically groups related files into a single Asset using **stem-based matching**: files that share the same filename stem in the same directory are grouped together.
+During import, maki automatically groups related files into a single Asset using **stem-based matching**: files that share the same filename stem in the same directory are grouped together.
 
 For example, importing a directory containing:
 
@@ -151,17 +151,17 @@ See [Ingesting Assets](03-ingest.md) for import details and [Organizing Assets](
 
 ## Bidirectional XMP Sync
 
-dam maintains two-way synchronization with `.xmp` sidecar files, enabling a round-trip workflow with tools like CaptureOne and Lightroom.
+maki maintains two-way synchronization with `.xmp` sidecar files, enabling a round-trip workflow with tools like CaptureOne and Lightroom.
 
 ```mermaid
 sequenceDiagram
     participant CO as CaptureOne
     participant XMP as .xmp file on disk
-    participant DAM as dam
+    participant DAM as maki
 
     Note over CO, DAM: Import: DAM reads XMP
     CO ->> XMP: Write ratings, keywords, labels
-    DAM ->> XMP: Read (dam import / dam refresh)
+    DAM ->> XMP: Read (maki import / maki refresh)
     XMP -->> DAM: xmp:Rating, dc:subject,<br/>xmp:Label, dc:description
     DAM ->> DAM: Promote to Asset fields<br/>(rating, tags, color_label, description)
 
@@ -172,22 +172,22 @@ sequenceDiagram
 
     Note over CO, DAM: External edit: re-read XMP
     CO ->> XMP: User changes keywords in CaptureOne
-    DAM ->> XMP: Read (dam refresh / dam sync)
+    DAM ->> XMP: Read (maki refresh / maki sync)
     XMP -->> DAM: Merge updated metadata
     DAM ->> DAM: Update Asset fields + catalog
 ```
 
-**DAM to disk**: When you change a rating, tag, description, or color label via the CLI (`dam edit`, `dam tag`) or the web UI, dam writes the change back to any associated `.xmp` files on disk, then re-hashes them and updates the stored recipe hash.
+**DAM to disk**: When you change a rating, tag, description, or color label via the CLI (`maki edit`, `maki tag`) or the web UI, maki writes the change back to any associated `.xmp` files on disk, then re-hashes them and updates the stored recipe hash.
 
-**Disk to DAM**: When CaptureOne or another tool modifies an `.xmp` file, running `dam refresh` or `dam sync` detects the changed hash, re-extracts the XMP metadata, and updates the Asset in both the catalog and sidecar YAML.
+**Disk to DAM**: When CaptureOne or another tool modifies an `.xmp` file, running `maki refresh` or `maki sync` detects the changed hash, re-extracts the XMP metadata, and updates the Asset in both the catalog and sidecar YAML.
 
-Tags added independently in CaptureOne are preserved during write-back -- dam uses operation-level deltas (add/remove specific tags) rather than overwriting the entire tag list.
+Tags added independently in CaptureOne are preserved during write-back -- maki uses operation-level deltas (add/remove specific tags) rather than overwriting the entire tag list.
 
 See [Ingesting Assets](03-ingest.md) for XMP extraction during import and [Maintenance](07-maintenance.md) for the `refresh` and `sync` commands.
 
 ## Architecture
 
-dam is structured in three layers.
+maki is structured in three layers.
 
 ```mermaid
 block-beta
@@ -226,9 +226,9 @@ block-beta
 
 ### Interface Layer
 
-**CLI** (clap): Subcommand-based interface (`dam import`, `dam search`, `dam serve`, etc.). Supports `--json` for machine-readable output, `--log` for per-file progress, `--format` for custom output templates.
+**CLI** (clap): Subcommand-based interface (`maki import`, `maki search`, `maki serve`, etc.). Supports `--json` for machine-readable output, `--log` for per-file progress, `--format` for custom output templates.
 
-**Web UI** (axum + htmx + askama): Browser-based interface started with `dam serve`. Provides a browse grid with filters, inline editing, batch operations, and keyboard navigation. Uses htmx for partial page updates without a JavaScript framework.
+**Web UI** (axum + htmx + askama): Browser-based interface started with `maki serve`. Provides a browse grid with filters, inline editing, batch operations, and keyboard navigation. Uses htmx for partial page updates without a JavaScript framework.
 
 ### Core Library
 
@@ -241,7 +241,7 @@ block-beta
 | **Query Engine** | SQLite search, metadata editing (tags, rating, label), auto-grouping |
 | **Preview Generator** | Thumbnail creation via `image` crate, `dcraw`/LibRaw (RAW), `ffmpeg` (video) |
 
-Additional modules handle EXIF extraction, XMP reading/writing, configuration parsing (`dam.toml`), output formatting, and collection/saved-search management.
+Additional modules handle EXIF extraction, XMP reading/writing, configuration parsing (`maki.toml`), output formatting, and collection/saved-search management.
 
 ### Storage Layer
 
@@ -253,13 +253,13 @@ Additional modules handle EXIF extraction, XMP reading/writing, configuration pa
 - `searches.toml` -- saved searches
 - `collections.yaml` -- static album definitions
 - `stacks.yaml` -- stack definitions (member order and pick)
-- `dam.toml` -- configuration
+- `maki.toml` -- configuration
 
-**Media Volumes** (may be offline): The actual asset files on external drives, NAS, or local directories. dam never moves or modifies original media files unless explicitly asked (via `relocate --remove-source`).
+**Media Volumes** (may be offline): The actual asset files on external drives, NAS, or local directories. maki never moves or modifies original media files unless explicitly asked (via `relocate --remove-source`).
 
 ## Preview Generation
 
-dam generates preview thumbnails (800px JPEG by default) for each variant during import, enabling offline browsing even when media volumes are unmounted. Different file types use different strategies:
+maki generates preview thumbnails (800px JPEG by default) for each variant during import, enabling offline browsing even when media volumes are unmounted. Different file types use different strategies:
 
 | File type | Strategy |
 |-----------|----------|
@@ -272,11 +272,11 @@ Preview failure never blocks import. If an external tool is missing, an info car
 
 The display logic prefers Export > Processed > Original variant previews, with standard image formats preferred over RAW within the same role. This means your best-quality deliverable is shown in the browse grid, not the camera original.
 
-Preview settings (max edge size, format, quality) are configurable in `dam.toml`. See [Setup](02-setup.md) for configuration details and [Ingesting Assets](03-ingest.md) for the `generate-previews` command.
+Preview settings (max edge size, format, quality) are configurable in `maki.toml`. See [Setup](02-setup.md) for configuration details and [Ingesting Assets](03-ingest.md) for the `generate-previews` command.
 
 ## Collections, Stacks, and Saved Searches
 
-dam provides three ways to organize assets into groups:
+maki provides three ways to organize assets into groups:
 
 **Collections** (static albums): Manually curated lists of asset IDs. You explicitly add and remove assets. Backed by both SQLite (for fast queries) and a `collections.yaml` file (for persistence across catalog rebuilds). Use these for curated sets like "Portfolio" or "Client Deliverables".
 
@@ -288,7 +288,7 @@ All three are accessible from the CLI and the web UI. See [Organizing Assets](04
 
 ## The Round-Trip Workflow
 
-A typical dam workflow follows this cycle:
+A typical maki workflow follows this cycle:
 
 ```mermaid
 flowchart LR
@@ -306,7 +306,7 @@ flowchart LR
 ```
 
 1. **Init** -- Create a catalog directory and register your storage volumes. See [Setup](02-setup.md).
-2. **Import** -- Point dam at directories of files. It hashes everything, extracts EXIF/XMP metadata, groups related files into Assets, generates preview thumbnails, and builds the catalog. See [Ingesting Assets](03-ingest.md).
+2. **Import** -- Point maki at directories of files. It hashes everything, extracts EXIF/XMP metadata, groups related files into Assets, generates preview thumbnails, and builds the catalog. See [Ingesting Assets](03-ingest.md).
 3. **Browse** -- Search and filter your catalog by tags, rating, color label, camera, date, format, volume, path, collection, or free text. Use the CLI for scripting or the web UI for visual browsing. See [Browsing & Searching](05-browse-and-search.md) and [Web UI](06-web-ui.md).
 4. **Organize** -- Add tags, set ratings and color labels, write descriptions, group variants, build collections, and save searches. Changes write back to XMP files for interoperability. See [Organizing Assets](04-organize.md).
 5. **Maintain** -- Verify file integrity against stored hashes, sync the catalog with disk after external tools move or rename files, refresh metadata from modified XMP sidecars, and clean up stale location records. See [Maintenance](07-maintenance.md).

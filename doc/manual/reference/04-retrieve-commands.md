@@ -4,16 +4,16 @@ Commands for finding assets, inspecting details, and browsing the catalog.
 
 ---
 
-## dam search
+## maki search
 
 ### NAME
 
-dam-search -- search for assets using filters and free-text keywords
+maki-search -- search for assets using filters and free-text keywords
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] search <QUERY> [--format <FMT>] [-q]
+maki [GLOBAL FLAGS] search <QUERY> [--format <FMT>] [-q]
 ```
 
 ### DESCRIPTION
@@ -88,89 +88,89 @@ The result count header (e.g., "Found 42 assets") is suppressed when an explicit
 Search by tag and minimum rating:
 
 ```bash
-dam search "tag:landscape rating:4+"
+maki search "tag:landscape rating:4+"
 ```
 
 Find all videos:
 
 ```bash
-dam search "type:video"
+maki search "type:video"
 ```
 
 Search with camera and aperture filters:
 
 ```bash
-dam search 'camera:"Canon EOS R5" f:1.4-2.8'
+maki search 'camera:"Canon EOS R5" f:1.4-2.8'
 ```
 
 Get IDs for scripting:
 
 ```bash
-dam search -q "tag:travel label:Green"
+maki search -q "tag:travel label:Green"
 ```
 
 Custom format template:
 
 ```bash
-dam search "rating:5" --format '{id}\t{name}\t{label}'
+maki search "rating:5" --format '{id}\t{name}\t{label}'
 ```
 
 Search within a path and pipe to a collection:
 
 ```bash
-dam search -q "path:Capture/2026-02-22 rating:4+" | xargs dam col add "Feb Selects"
+maki search -q "path:Capture/2026-02-22 rating:4+" | xargs maki col add "Feb Selects"
 ```
 
 Find assets with files missing on disk:
 
 ```bash
-dam search "missing:true"
+maki search "missing:true"
 ```
 
 Find assets with no backup (only one copy):
 
 ```bash
-dam search "copies:1"
+maki search "copies:1"
 ```
 
 Find highly-rated assets with at least two copies:
 
 ```bash
-dam search "copies:2+ rating:4+"
+maki search "copies:2+ rating:4+"
 ```
 
 Find orphaned assets (no file locations):
 
 ```bash
-dam search "orphan:true"
+maki search "orphan:true"
 ```
 
 Find visually similar assets (requires ai feature + embeddings):
 
 ```bash
-dam search "similar:72a0bb4b"
-dam search "similar:72a0bb4b:50"
-dam search "similar:72a0bb4b rating:4+ tag:landscape"
+maki search "similar:72a0bb4b"
+maki search "similar:72a0bb4b:50"
+maki search "similar:72a0bb4b rating:4+ tag:landscape"
 ```
 
 ### SEE ALSO
 
-[show](#dam-show) -- display full details for a specific asset.
-[saved-search](03-organize-commands.md#dam-saved-search-save) -- save and re-run searches.
+[show](#maki-show) -- display full details for a specific asset.
+[saved-search](03-organize-commands.md#maki-saved-search-save) -- save and re-run searches.
 [CLI Conventions](00-cli-conventions.md) -- output conventions, scripting patterns.
 
 ---
 
-## dam show
+## maki show
 
 ### NAME
 
-dam-show -- display full details for an asset
+maki-show -- display full details for an asset
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] show <ASSET_ID>
+maki [GLOBAL FLAGS] show <ASSET_ID>
 ```
 
 ### DESCRIPTION
@@ -201,45 +201,45 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 Show an asset by full ID:
 
 ```bash
-dam show a1b2c3d4-e5f6-7890-abcd-ef1234567890
+maki show a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
 Show an asset by prefix:
 
 ```bash
-dam show a1b2c
+maki show a1b2c
 ```
 
 Show as JSON and extract variant filenames:
 
 ```bash
-dam show a1b2c --json | jq '.variants[].original_filename'
+maki show a1b2c --json | jq '.variants[].original_filename'
 ```
 
 Show as JSON and list file locations:
 
 ```bash
-dam show a1b2c --json | jq '.variants[].file_locations[]'
+maki show a1b2c --json | jq '.variants[].file_locations[]'
 ```
 
 ### SEE ALSO
 
-[search](#dam-search) -- find assets to inspect.
-[edit](02-ingest-commands.md#dam-edit) -- modify the fields shown here.
-[tag](02-ingest-commands.md#dam-tag) -- add or remove tags.
+[search](#maki-search) -- find assets to inspect.
+[edit](02-ingest-commands.md#maki-edit) -- modify the fields shown here.
+[tag](02-ingest-commands.md#maki-tag) -- add or remove tags.
 
 ---
 
-## dam preview
+## maki preview
 
 ### NAME
 
-`dam preview` -- display an asset's preview image in the terminal
+`maki preview` -- display an asset's preview image in the terminal
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] preview <ASSET_ID> [--open]
+maki [GLOBAL FLAGS] preview <ASSET_ID> [--open]
 ```
 
 ### DESCRIPTION
@@ -259,12 +259,12 @@ Also available as a shell built-in: `preview <id>`, `preview $var`, `preview _ -
 
 Display a preview in the terminal:
 ```
-dam preview a1b2c3d4
+maki preview a1b2c3d4
 ```
 
 Open in the default viewer:
 ```
-dam preview a1b2c --open
+maki preview a1b2c --open
 ```
 
 In the shell with variable expansion:
@@ -275,21 +275,21 @@ photos [picks=12]> preview $picks
 
 ### SEE ALSO
 
-[show](#dam-show) -- display full asset metadata.
-[search](#dam-search) -- find assets to preview.
+[show](#maki-show) -- display full asset metadata.
+[search](#maki-search) -- find assets to preview.
 
 ---
 
-## dam export
+## maki export
 
 ### NAME
 
-dam-export -- copy files matching a search query to a directory or ZIP archive
+maki-export -- copy files matching a search query to a directory or ZIP archive
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] export <QUERY> <TARGET> [OPTIONS]
+maki [GLOBAL FLAGS] export <QUERY> <TARGET> [OPTIONS]
 ```
 
 ### DESCRIPTION
@@ -308,7 +308,7 @@ Files are copied with SHA-256 integrity verification. Existing files at the targ
 ### ARGUMENTS
 
 **QUERY** (required)
-: Search query string (same syntax as `dam search`).
+: Search query string (same syntax as `maki search`).
 
 **TARGET** (required)
 : Target directory path (or ZIP file path with `--zip`). Created automatically if it does not exist (except in `--dry-run` mode).
@@ -343,70 +343,70 @@ Files are copied with SHA-256 integrity verification. Existing files at the targ
 Export best-of picks to a delivery folder:
 
 ```bash
-dam export "rating:5 tag:portfolio" /tmp/delivery/
+maki export "rating:5 tag:portfolio" /tmp/delivery/
 ```
 
 Export with directory structure preserved:
 
 ```bash
-dam export "collection:Print" /Volumes/USB/export --layout mirror
+maki export "collection:Print" /Volumes/USB/export --layout mirror
 ```
 
 Include sidecars for another workstation:
 
 ```bash
-dam export "tag:client" /tmp/handoff/ --include-sidecars
+maki export "tag:client" /tmp/handoff/ --include-sidecars
 ```
 
 Create symlinks instead of copies:
 
 ```bash
-dam export "type:image rating:4+" ~/links/ --symlink
+maki export "type:image rating:4+" ~/links/ --symlink
 ```
 
 Export all variants (RAW + processed):
 
 ```bash
-dam export "tag:portfolio" /tmp/all/ --all-variants
+maki export "tag:portfolio" /tmp/all/ --all-variants
 ```
 
 Export as a ZIP archive:
 
 ```bash
-dam export "tag:client" ~/Desktop/delivery --zip
+maki export "tag:client" ~/Desktop/delivery --zip
 ```
 
 Dry run to see what would be exported:
 
 ```bash
-dam export "collection:Best" /tmp/test/ --dry-run
+maki export "collection:Best" /tmp/test/ --dry-run
 ```
 
 JSON output for scripting:
 
 ```bash
-dam --json export "rating:5" /tmp/out/ | jq '.files_exported'
+maki --json export "rating:5" /tmp/out/ | jq '.files_exported'
 ```
 
 ### SEE ALSO
 
-[search](#dam-search) -- find assets to export.
-[contact-sheet](#dam-contact-sheet) -- generate a PDF contact sheet from search results.
-[relocate](05-maintain-commands.md#dam-relocate) -- move/copy asset files between volumes with catalog updates.
+[search](#maki-search) -- find assets to export.
+[contact-sheet](#maki-contact-sheet) -- generate a PDF contact sheet from search results.
+[relocate](05-maintain-commands.md#maki-relocate) -- move/copy asset files between volumes with catalog updates.
 [CLI Conventions](00-cli-conventions.md) -- global flags, scripting patterns.
 
 ---
 
-## dam contact-sheet
+## maki contact-sheet
 
 ### NAME
 
-dam-contact-sheet -- generate a PDF contact sheet from search results
+maki-contact-sheet -- generate a PDF contact sheet from search results
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] contact-sheet <QUERY> <OUTPUT> [OPTIONS]
+maki [GLOBAL FLAGS] contact-sheet <QUERY> <OUTPUT> [OPTIONS]
 ```
 
 ### DESCRIPTION
@@ -424,7 +424,7 @@ Color labels can be rendered as colored borders around cells, small dots next to
 ### ARGUMENTS
 
 **QUERY** (required)
-: Search query (same syntax as `dam search`).
+: Search query (same syntax as `maki search`).
 
 **OUTPUT** (required)
 : Output PDF file path.
@@ -481,45 +481,45 @@ Color labels can be rendered as colored borders around cells, small dots next to
 Basic contact sheet of all 5-star images:
 
 ```bash
-dam contact-sheet "rating:5" stars.pdf
+maki contact-sheet "rating:5" stars.pdf
 ```
 
 Dense layout on A3 landscape with title:
 
 ```bash
-dam contact-sheet "tag:landscape" landscapes.pdf --layout dense --paper a3 --landscape --title "Landscapes 2026"
+maki contact-sheet "tag:landscape" landscapes.pdf --layout dense --paper a3 --landscape --title "Landscapes 2026"
 ```
 
 Group by date with copyright:
 
 ```bash
-dam contact-sheet "" all.pdf --group-by date --copyright "© 2026 Thomas Herrmann"
+maki contact-sheet "" all.pdf --group-by date --copyright "© 2026 Thomas Herrmann"
 ```
 
 Dry run to check page count:
 
 ```bash
-dam contact-sheet "format:nef" raw.pdf --dry-run
+maki contact-sheet "format:nef" raw.pdf --dry-run
 ```
 
 ### SEE ALSO
 
-[search](#dam-search) -- find assets matching a query.
-[export](#dam-export) -- copy files to a directory.
-[generate-previews](05-maintain-commands.md#dam-generate-previews) -- generate or upgrade previews.
+[search](#maki-search) -- find assets matching a query.
+[export](#maki-export) -- copy files to a directory.
+[generate-previews](05-maintain-commands.md#maki-generate-previews) -- generate or upgrade previews.
 
 ---
 
-## dam duplicates
+## maki duplicates
 
 ### NAME
 
-dam-duplicates -- find files with identical content at multiple locations
+maki-duplicates -- find files with identical content at multiple locations
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] duplicates [--format <FMT>] [--same-volume] [--cross-volume] [--volume <LABEL>] [--filter-format <FMT>] [--path <PREFIX>]
+maki [GLOBAL FLAGS] duplicates [--format <FMT>] [--same-volume] [--cross-volume] [--volume <LABEL>] [--filter-format <FMT>] [--path <PREFIX>]
 ```
 
 ### DESCRIPTION
@@ -543,7 +543,7 @@ None.
 ### OPTIONS
 
 **--format \<FMT\>**
-: Output format. Same presets as `dam search`: `ids`, `short` (default), `full`, `json`. Custom templates support all search placeholders plus `{locations}` and `{volumes}` (distinct volume count). Location strings include the volume purpose in brackets (e.g., `Photos[working]:Capture/photo.jpg`).
+: Output format. Same presets as `maki search`: `ids`, `short` (default), `full`, `json`. Custom templates support all search placeholders plus `{locations}` and `{volumes}` (distinct volume count). Location strings include the volume purpose in brackets (e.g., `Photos[working]:Capture/photo.jpg`).
 
 **--same-volume**
 : Show only same-volume duplicates. Mutually exclusive with `--cross-volume`.
@@ -567,69 +567,69 @@ None.
 Find all duplicates:
 
 ```bash
-dam duplicates
+maki duplicates
 ```
 
 Find likely unwanted same-volume duplicates:
 
 ```bash
-dam duplicates --same-volume
+maki duplicates --same-volume
 ```
 
 Show cross-volume copies (backup verification):
 
 ```bash
-dam duplicates --cross-volume
+maki duplicates --cross-volume
 ```
 
 Filter to duplicates involving a specific volume:
 
 ```bash
-dam duplicates --volume "Backup Drive"
+maki duplicates --volume "Backup Drive"
 ```
 
 Show full details with verification timestamps:
 
 ```bash
-dam duplicates --format full
+maki duplicates --format full
 ```
 
 List duplicates as JSON:
 
 ```bash
-dam duplicates --json | jq '.[].locations'
+maki duplicates --json | jq '.[].locations'
 ```
 
 Cross-volume copies as JSON for a specific volume:
 
 ```bash
-dam duplicates --cross-volume --volume Photos --json
+maki duplicates --cross-volume --volume Photos --json
 ```
 
 Custom format showing hash and locations:
 
 ```bash
-dam duplicates --format '{hash}\t{filename}\t{volumes} volumes\t{locations}'
+maki duplicates --format '{hash}\t{filename}\t{volumes} volumes\t{locations}'
 ```
 
 ### SEE ALSO
 
-[verify](05-maintain-commands.md#dam-verify) -- verify file integrity on disk.
-[cleanup](05-maintain-commands.md#dam-cleanup) -- remove stale location records.
-[search](#dam-search) -- use `copies:` filter for location-count-based queries.
+[verify](05-maintain-commands.md#maki-verify) -- verify file integrity on disk.
+[cleanup](05-maintain-commands.md#maki-cleanup) -- remove stale location records.
+[search](#maki-search) -- use `copies:` filter for location-count-based queries.
 
 ---
 
-## dam stats
+## maki stats
 
 ### NAME
 
-dam-stats -- show catalog statistics
+maki-stats -- show catalog statistics
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] stats [OPTIONS]
+maki [GLOBAL FLAGS] stats [OPTIONS]
 ```
 
 ### DESCRIPTION
@@ -669,51 +669,51 @@ None.
 Quick overview:
 
 ```bash
-dam stats
+maki stats
 ```
 
 Full statistics:
 
 ```bash
-dam stats --all
+maki stats --all
 ```
 
 Show only tag frequencies:
 
 ```bash
-dam stats --tags --limit 50
+maki stats --tags --limit 50
 ```
 
 Show volume details as JSON:
 
 ```bash
-dam stats --volumes --json | jq '.volumes[] | {label, assets, size}'
+maki stats --volumes --json | jq '.volumes[] | {label, assets, size}'
 ```
 
 Show verification health:
 
 ```bash
-dam stats --verified
+maki stats --verified
 ```
 
 ### SEE ALSO
 
-[search](#dam-search) -- find specific assets matching criteria.
-[verify](05-maintain-commands.md#dam-verify) -- run verification checks.
-[volume list](01-setup-commands.md#dam-volume-list) -- list volumes with online/offline status.
+[search](#maki-search) -- find specific assets matching criteria.
+[verify](05-maintain-commands.md#maki-verify) -- run verification checks.
+[volume list](01-setup-commands.md#maki-volume-list) -- list volumes with online/offline status.
 
 ---
 
-## dam backup-status
+## maki backup-status
 
 ### NAME
 
-dam-backup-status -- check backup coverage and find under-backed-up assets
+maki-backup-status -- check backup coverage and find under-backed-up assets
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] backup-status [QUERY] [OPTIONS]
+maki [GLOBAL FLAGS] backup-status [QUERY] [OPTIONS]
 ```
 
 ### DESCRIPTION
@@ -728,14 +728,14 @@ In **overview mode** (default), displays aggregate statistics about backup cover
 - **At-risk summary**: count of assets with fewer than `--min-copies` locations, with hints for listing them.
 - **Volume gaps**: per-volume count of missing assets (assets in scope but not on that volume).
 
-In **at-risk listing mode** (`--at-risk`, `-q`, or `--format`), outputs a list of under-backed-up assets using the same output formats as `dam search`. When `--volume` is specified, lists assets missing from that specific volume instead of those with fewer than `--min-copies` locations overall.
+In **at-risk listing mode** (`--at-risk`, `-q`, or `--format`), outputs a list of under-backed-up assets using the same output formats as `maki search`. When `--volume` is specified, lists assets missing from that specific volume instead of those with fewer than `--min-copies` locations overall.
 
-An optional positional `QUERY` argument scopes the analysis to matching assets (same syntax as `dam search`).
+An optional positional `QUERY` argument scopes the analysis to matching assets (same syntax as `maki search`).
 
 ### ARGUMENTS
 
 **QUERY** (optional)
-: Search query to scope the asset universe. Same syntax as `dam search`. When omitted, all catalog assets are analyzed.
+: Search query to scope the asset universe. Same syntax as `maki search`. When omitted, all catalog assets are analyzed.
 
 ### OPTIONS
 
@@ -749,7 +749,7 @@ An optional positional `QUERY` argument scopes the analysis to matching assets (
 : In overview mode, adds a detailed volume coverage section for this volume. In at-risk listing mode, lists assets missing from this specific volume.
 
 **--format \<FMT\>**
-: Output format for at-risk listings. Same presets as `dam search`: `ids`, `short`, `full`, `json`, or a custom template.
+: Output format for at-risk listings. Same presets as `maki search`: `ids`, `short`, `full`, `json`, or a custom template.
 
 **-q** / **--quiet**
 : Shorthand for `--format=ids`. Prints one asset ID per line, ideal for piping to other commands.
@@ -761,71 +761,71 @@ An optional positional `QUERY` argument scopes the analysis to matching assets (
 Quick overview of backup coverage:
 
 ```bash
-dam backup-status
+maki backup-status
 ```
 
 Scope to highly-rated images:
 
 ```bash
-dam backup-status "rating:3+ type:image"
+maki backup-status "rating:3+ type:image"
 ```
 
 Require 3 copies and check coverage:
 
 ```bash
-dam backup-status --min-copies 3
+maki backup-status --min-copies 3
 ```
 
 List at-risk asset IDs for scripting:
 
 ```bash
-dam backup-status --at-risk -q
+maki backup-status --at-risk -q
 ```
 
 Find assets missing from a specific volume:
 
 ```bash
-dam backup-status --volume "Master Media" --at-risk -q
+maki backup-status --volume "Master Media" --at-risk -q
 ```
 
 Pipe at-risk assets to relocate:
 
 ```bash
-dam backup-status --volume "Master Media" --at-risk -q "rating:3+" \
-  | xargs -I{} dam relocate {} "Master Media"
+maki backup-status --volume "Master Media" --at-risk -q "rating:3+" \
+  | xargs -I{} maki relocate {} "Master Media"
 ```
 
 Add at-risk assets to a collection for review:
 
 ```bash
-dam backup-status --at-risk -q | xargs dam collection add "Needs Backup"
+maki backup-status --at-risk -q | xargs maki collection add "Needs Backup"
 ```
 
 JSON output for scripting:
 
 ```bash
-dam --json backup-status | jq '.at_risk_count'
+maki --json backup-status | jq '.at_risk_count'
 ```
 
 ### SEE ALSO
 
-[search](#dam-search) -- use `copies:` filter for location-count-based queries.
-[duplicates](#dam-duplicates) -- find duplicate files across volumes.
-[stats](#dam-stats) -- general catalog statistics.
-[verify](05-maintain-commands.md#dam-verify) -- verify file integrity.
+[search](#maki-search) -- use `copies:` filter for location-count-based queries.
+[duplicates](#maki-duplicates) -- find duplicate files across volumes.
+[stats](#maki-stats) -- general catalog statistics.
+[verify](05-maintain-commands.md#maki-verify) -- verify file integrity.
 
 ---
 
-## dam serve
+## maki serve
 
 ### NAME
 
-dam-serve -- start the web UI server
+maki-serve -- start the web UI server
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] serve [--port <PORT>] [--bind <ADDR>]
+maki [GLOBAL FLAGS] serve [--port <PORT>] [--bind <ADDR>]
 ```
 
 ### DESCRIPTION
@@ -845,7 +845,7 @@ Starts a local web server that provides a browser-based interface for browsing, 
 - **Drag-and-drop**: Drag browse cards onto the collection dropdown to add to a collection. Drag stack members on the detail page to reorder.
 - **Per-stack expand/collapse**: Click the stack badge (⊞ N) on a browse card to expand/collapse just that stack, independent of the global toggle.
 
-The server defaults to `127.0.0.1:8080`. These can be overridden by CLI flags or the `[serve]` section in `dam.toml`. CLI flags take precedence over configuration.
+The server defaults to `127.0.0.1:8080`. These can be overridden by CLI flags or the `[serve]` section in `maki.toml`. CLI flags take precedence over configuration.
 
 SQLite connections are opened per-request. Previews are served as static files. Static assets (htmx.min.js, style.css) are embedded at compile time.
 
@@ -856,10 +856,10 @@ None.
 ### OPTIONS
 
 **--port \<PORT\>**
-: Port to listen on. Default: 8080, or the value from `dam.toml` `[serve]` section.
+: Port to listen on. Default: 8080, or the value from `maki.toml` `[serve]` section.
 
 **--bind \<ADDR\>**
-: Address to bind to. Default: `127.0.0.1`, or the value from `dam.toml` `[serve]` section.
+: Address to bind to. Default: `127.0.0.1`, or the value from `maki.toml` `[serve]` section.
 
 `--log` (global flag) enables per-request logging to stderr in the format `METHOD /path -> STATUS (duration)`.
 
@@ -868,61 +868,61 @@ None.
 Start the web UI with defaults:
 
 ```bash
-dam serve
+maki serve
 # Listening on http://127.0.0.1:8080
 ```
 
 Start on a custom port:
 
 ```bash
-dam serve --port 9090
+maki serve --port 9090
 ```
 
 Bind to all interfaces (for LAN access):
 
 ```bash
-dam serve --bind 0.0.0.0 --port 8080
+maki serve --bind 0.0.0.0 --port 8080
 ```
 
 Start with request logging:
 
 ```bash
-dam serve --log
+maki serve --log
 ```
 
 Start with all diagnostics:
 
 ```bash
-dam serve --log --time
+maki serve --log --time
 ```
 
 ### SEE ALSO
 
-[search](#dam-search) -- CLI equivalent of the web UI browse page.
-[show](#dam-show) -- CLI equivalent of the web UI asset detail page.
-[CLI Conventions](00-cli-conventions.md) -- `dam.toml` configuration reference.
+[search](#maki-search) -- CLI equivalent of the web UI browse page.
+[show](#maki-show) -- CLI equivalent of the web UI asset detail page.
+[CLI Conventions](00-cli-conventions.md) -- `maki.toml` configuration reference.
 
 ---
 
-## dam shell
+## maki shell
 
 ### NAME
 
-dam-shell -- interactive asset management shell
+maki-shell -- interactive asset management shell
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] shell [SCRIPT]
-dam [GLOBAL FLAGS] shell -c <COMMAND>
-dam [GLOBAL FLAGS] shell [--strict] [SCRIPT | -c <COMMAND>]
+maki [GLOBAL FLAGS] shell [SCRIPT]
+maki [GLOBAL FLAGS] shell -c <COMMAND>
+maki [GLOBAL FLAGS] shell [--strict] [SCRIPT | -c <COMMAND>]
 ```
 
 ### DESCRIPTION
 
-Starts an interactive shell that keeps catalog state cached across commands. Commands are entered without the `dam` prefix. The shell provides:
+Starts an interactive shell that keeps catalog state cached across commands. Commands are entered without the `maki` prefix. The shell provides:
 
-- **Readline editing** with persistent history (stored in `.dam/shell_history`) and tab completion for subcommand names, `--flags`, `$variables`, `tag:` names, and `volume:` labels.
+- **Readline editing** with persistent history (stored in `.maki/shell_history`) and tab completion for subcommand names, `--flags`, `$variables`, `tag:` names, and `volume:` labels.
 - **Named variables** (`$name`) that store asset ID sets from command results, enabling multi-step workflows.
 - **Implicit last result** (`_`) that expands to the asset IDs produced by the most recent command.
 - **Session defaults** (`set --flag`) that inject flags into every command for the remainder of the session.
@@ -994,7 +994,7 @@ The shell uses a two-rule quoting model:
 Interactive session with variables:
 
 ```
-$ dam shell
+$ maki shell
 photos> $picks = search "rating:5 date:2024"
   42 assets → $picks
 photos [picks=42]> tag --add portfolio $picks
@@ -1005,13 +1005,13 @@ photos [picks=42]> quit
 Run a script file:
 
 ```bash
-dam shell workflow.dam
+maki shell workflow.maki
 ```
 
 One-liner with `-c`:
 
 ```bash
-dam shell -c 'search "tag:landscape rating:4+" --format ids'
+maki shell -c 'search "tag:landscape rating:4+" --format ids'
 ```
 
 Session defaults:
@@ -1028,18 +1028,18 @@ photos> unset --log
 Source a file into the current session:
 
 ```
-photos> source post-import.dam
+photos> source post-import.maki
 ```
 
 Strict mode for CI scripts:
 
 ```bash
-dam shell --strict batch-updates.dam
+maki shell --strict batch-updates.maki
 ```
 
 ### SEE ALSO
 
-[search](#dam-search) -- primary command for finding assets inside the shell.
+[search](#maki-search) -- primary command for finding assets inside the shell.
 [CLI Conventions](00-cli-conventions.md) -- global flags (`--json`, `--log`, `--debug`, `--time`) usable as session defaults.
 
 ---

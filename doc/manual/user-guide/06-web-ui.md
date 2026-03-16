@@ -1,14 +1,14 @@
 # Web UI
 
-dam includes a browser-based interface for browsing, searching, and editing your catalog. It runs as a local web server and provides a responsive grid view of your assets, inline metadata editing, batch operations, and keyboard-driven navigation. All changes made in the web UI are written to both the SQLite catalog and YAML sidecar files, and any editable fields (rating, tags, description, color label) are automatically synced back to XMP recipe files on disk.
+maki includes a browser-based interface for browsing, searching, and editing your catalog. It runs as a local web server and provides a responsive grid view of your assets, inline metadata editing, batch operations, and keyboard-driven navigation. All changes made in the web UI are written to both the SQLite catalog and YAML sidecar files, and any editable fields (rating, tags, description, color label) are automatically synced back to XMP recipe files on disk.
 
 
 ## Starting the Web UI
 
-Launch the server with `dam serve`:
+Launch the server with `maki serve`:
 
 ```bash
-dam serve
+maki serve
 ```
 
 Output:
@@ -24,7 +24,7 @@ Open that URL in your browser to start browsing. The server runs in the foregrou
 Use `--port` and `--bind` to change the listening address:
 
 ```bash
-dam serve --port 9090 --bind 0.0.0.0
+maki serve --port 9090 --bind 0.0.0.0
 ```
 
 Binding to `0.0.0.0` makes the UI accessible from other devices on your local network (use with caution on untrusted networks).
@@ -34,7 +34,7 @@ Binding to `0.0.0.0` makes the UI accessible from other devices on your local ne
 Add the `--log` flag to print each HTTP request to stderr:
 
 ```bash
-dam serve --log
+maki serve --log
 ```
 
 Output on stderr:
@@ -47,9 +47,9 @@ GET /previews/ab/ab3f...jpg -> 200 (2ms)
 
 This is useful for debugging slow requests or understanding access patterns.
 
-### Configuration via dam.toml
+### Configuration via maki.toml
 
-You can set default values for port and bind address in the `[serve]` section of `dam.toml`:
+You can set default values for port and bind address in the `[serve]` section of `maki.toml`:
 
 ```toml
 [serve]
@@ -57,7 +57,7 @@ port = 9090
 bind = "127.0.0.1"
 ```
 
-Command-line flags always override `dam.toml` settings. See the [Configuration Reference](../reference/08-configuration.md) for details.
+Command-line flags always override `maki.toml` settings. See the [Configuration Reference](../reference/08-configuration.md) for details.
 
 
 ## Dark Mode
@@ -183,7 +183,7 @@ When results span multiple pages, pagination controls appear both above and belo
 - First page, previous page, numbered page links, next page, last page
 - A "Page X of Y" indicator
 
-Page numbers with ellipsis keep the controls compact for large result sets. The number of results per page defaults to 60 and can be configured via `[serve] per_page` in `dam.toml` or the `--per-page` CLI flag.
+Page numbers with ellipsis keep the controls compact for large result sets. The number of results per page defaults to 60 and can be configured via `[serve] per_page` in `maki.toml` or the `--per-page` CLI flag.
 
 Use **Shift+Left/Right arrow** keys to quickly turn pages from the keyboard. The results grid fades during loading to provide visual feedback while the new page loads. In the lightbox, regular arrow keys at page boundaries automatically navigate to the next/previous page with a loading spinner overlay.
 
@@ -197,7 +197,7 @@ Below the search bar, a row of saved search chips provides quick access to your 
 - **Rename**: hover over a chip to reveal the rename button. Click it and enter a new name.
 - **Delete**: hover over a chip to reveal the delete button. Click it and confirm.
 
-Saved searches are stored in `searches.toml` at the catalog root and work identically to CLI saved searches (see [Organizing Assets](04-organize.md) for the `dam saved-search` command).
+Saved searches are stored in `searches.toml` at the catalog root and work identically to CLI saved searches (see [Organizing Assets](04-organize.md) for the `maki saved-search` command).
 
 ### How page updates work
 
@@ -315,7 +315,7 @@ With a smart preview loaded, you can zoom and pan:
 - **Drag**: pan the image when zoomed in (cursor changes to grab/grabbing)
 - **Keyboard**: `,` fit to screen, `.` 100% zoom, `+` zoom in, `-` zoom out
 
-Smart previews can be generated via `dam import --smart`, `[import] smart_previews = true` in config, the "Generate smart preview" button on the detail page, or on-demand via `[preview] generate_on_demand = true`.
+Smart previews can be generated via `maki import --smart`, `[import] smart_previews = true` in config, the "Generate smart preview" button on the detail page, or on-demand via `[preview] generate_on_demand = true`.
 
 ### Keyboard shortcuts
 
@@ -390,7 +390,7 @@ The right side contains the asset's metadata, all editable inline:
 
 **Name** -- displayed as a heading. Click the pencil icon to switch to an inline text input with Save and Cancel buttons. Saving an empty name clears it, and the display falls back to the original filename in muted italic. The name is stored on the asset.
 
-**Description** -- click the pencil icon to switch to a textarea with Save and Cancel buttons. Saving an empty description clears it. Changes are written back to XMP recipe files on disk. When a VLM server is available, a "Describe" button appears next to the heading. Click it to generate a description using the configured vision-language model — the button shows "Generating..." while waiting for the VLM response, then updates the description in-place. When multiple VLM models are configured via `[vlm] models` in `dam.toml`, a model selector dropdown appears next to the Describe button, letting you choose which model to use per request (e.g., a fast model like Moondream for routine descriptions and a larger model like Qwen3-VL for difficult images).
+**Description** -- click the pencil icon to switch to a textarea with Save and Cancel buttons. Saving an empty description clears it. Changes are written back to XMP recipe files on disk. When a VLM server is available, a "Describe" button appears next to the heading. Click it to generate a description using the configured vision-language model — the button shows "Generating..." while waiting for the VLM response, then updates the description in-place. When multiple VLM models are configured via `[vlm] models` in `maki.toml`, a model selector dropdown appears next to the Describe button, letting you choose which model to use per request (e.g., a fast model like Moondream for routine descriptions and a larger model like Qwen3-VL for difficult images).
 
 **Rating** -- five clickable stars. Click a star to set that rating. Click the same star again to clear the rating. Changes are written back to XMP recipe files on disk.
 
@@ -430,7 +430,7 @@ For locations on online volumes, two action buttons appear next to each path:
 
 ### Recipes
 
-An expandable section lists attached recipe files (XMP sidecars, CaptureOne settings, etc.) with columns for recipe type, software, and file path. Recipes with pending write-back changes (edits made while the volume was offline) show an orange sync indicator. When any recipe has pending changes, a "Write back to XMP" button appears at the top of the section — clicking it replays the queued edits to the recipe files on disk (equivalent to `dam writeback --asset`).
+An expandable section lists attached recipe files (XMP sidecars, CaptureOne settings, etc.) with columns for recipe type, software, and file path. Recipes with pending write-back changes (edits made while the volume was offline) show an orange sync indicator. When any recipe has pending changes, a "Write back to XMP" button appears at the top of the section — clicking it replays the queued edits to the recipe files on disk (equivalent to `maki writeback --asset`).
 
 ### Source metadata
 
@@ -630,7 +630,7 @@ Navigate to `/collections` or click "Collections" in the navigation bar.
 - **Collection cards**: each collection is shown as a card with its name, asset count, and description (if set). Click a card to browse its assets on the main browse page.
 - **"+ New Collection" button**: prompts for a name and optional description, then creates the collection immediately. The page reloads to show the new card.
 
-Collections created here are the same as those created via the CLI `dam collection create` command. See [Organizing Assets](04-organize.md) for full details on managing collections.
+Collections created here are the same as those created via the CLI `maki collection create` command. See [Organizing Assets](04-organize.md) for full details on managing collections.
 
 
 ## Stats Page
@@ -646,7 +646,7 @@ The stats page displays:
 - **Tags**: summary of unique tags, tagged assets, and untagged assets, plus a weighted tag cloud of the most-used tags
 - **Verification health**: overall coverage bar, plus a per-volume breakdown of verification status
 
-This is the web equivalent of `dam stats --all` on the command line. See [Browsing & Searching](05-browse-and-search.md) for the CLI stats command.
+This is the web equivalent of `maki stats --all` on the command line. See [Browsing & Searching](05-browse-and-search.md) for the CLI stats command.
 
 
 ## People Page
@@ -663,7 +663,7 @@ The people page displays:
 - **Delete**: click the delete button on a person card to remove the person (faces become unassigned).
 - **Cluster button**: runs face auto-clustering from the UI, grouping unassigned faces into new person groups.
 
-Faces are detected via `dam faces detect` on the CLI, the "Detect faces" button on the asset detail page, or the batch "Detect faces" button on the browse toolbar. After detection, use clustering (CLI or web UI) to group faces into people, then name them.
+Faces are detected via `maki faces detect` on the CLI, the "Detect faces" button on the asset detail page, or the batch "Detect faces" button on the browse toolbar. After detection, use clustering (CLI or web UI) to group faces into people, then name them.
 
 ### Asset detail faces section
 
@@ -682,7 +682,7 @@ On the asset detail page, a "Faces" section appears when faces have been detecte
 
 ## Stroll Page
 
-> Requires `--features ai` compilation and image embeddings (generated via `dam embed` or `dam import --embed`).
+> Requires `--features ai` compilation and image embeddings (generated via `maki embed` or `maki import --embed`).
 
 The stroll page provides a visual similarity exploration experience. Instead of browsing a flat grid, you start with a center image and see its most visually similar neighbors arranged in a radial layout around it. Click any neighbor to make it the new center, and the neighbors update -- letting you "stroll" through your collection by visual similarity.
 
@@ -697,7 +697,7 @@ The center image is displayed prominently in the middle of the page. Surrounding
 Three mode buttons in the control panel determine how neighbors are selected:
 
 - **Nearest** (default): shows the top N most similar assets by embedding distance. Results are deterministic -- the same center always produces the same neighbors.
-- **Discover**: picks N random assets from a wider candidate pool (configurable via `[serve] stroll_discover_pool` in `dam.toml`, default 80). Each visit produces a different set of neighbors, encouraging serendipitous exploration. Useful for breaking out of tight visual clusters.
+- **Discover**: picks N random assets from a wider candidate pool (configurable via `[serve] stroll_discover_pool` in `maki.toml`, default 80). Each visit produces a different set of neighbors, encouraging serendipitous exploration. Useful for breaking out of tight visual clusters.
 - **Explore**: skips past the K nearest neighbors to find more distant visual connections. A skip slider (0--200) appears in Explore mode, letting you control how far to reach. Higher skip values surface increasingly surprising matches.
 
 ### "Other shoots" filter
@@ -706,7 +706,7 @@ A checkbox toggle labeled "Other shoots" excludes assets from the same directory
 
 ### Neighbor count
 
-A slider control (5--25, default 12, configurable via `[serve] stroll_neighbors` and `stroll_neighbors_max` in `dam.toml`) lets you adjust how many neighbor thumbnails are shown around the center image. Fewer neighbors give a cleaner view; more neighbors let you see a wider range of similar assets.
+A slider control (5--25, default 12, configurable via `[serve] stroll_neighbors` and `stroll_neighbors_max` in `maki.toml`) lets you adjust how many neighbor thumbnails are shown around the center image. Fewer neighbors give a cleaner view; more neighbors let you see a wider range of similar assets.
 
 ### Filter bar
 
@@ -714,7 +714,7 @@ The stroll page includes the same collapsible filter bar as the browse page. Whe
 
 ### Fan-Out slider (transitive neighbors)
 
-A fan-out slider in the bottom-left corner (range 0--10, configurable via `[serve] stroll_fanout` and `stroll_fanout_max` in `dam.toml`) controls level-2 neighbor exploration. When fan-out is greater than 0 and you hover over or arrow-key to a satellite thumbnail, smaller thumbnails fan out from it showing that satellite's own nearest visual neighbors (excluding assets already visible on the page). The L2 thumbnails are arranged in a direction-dependent arc -- the fan-out radius adapts based on each satellite's position, and satellites with L2 neighbors are pulled slightly toward the center to keep the layout balanced. L2 neighbor thumbnails show name, rating, and color label consistently with L1 satellites. Click any level-2 thumbnail to navigate to it as the new center. Results are cached per satellite, so moving focus back to a previously explored neighbor re-displays its fan instantly without another query.
+A fan-out slider in the bottom-left corner (range 0--10, configurable via `[serve] stroll_fanout` and `stroll_fanout_max` in `maki.toml`) controls level-2 neighbor exploration. When fan-out is greater than 0 and you hover over or arrow-key to a satellite thumbnail, smaller thumbnails fan out from it showing that satellite's own nearest visual neighbors (excluding assets already visible on the page). The L2 thumbnails are arranged in a direction-dependent arc -- the fan-out radius adapts based on each satellite's position, and satellites with L2 neighbors are pulled slightly toward the center to keep the layout balanced. L2 neighbor thumbnails show name, rating, and color label consistently with L1 satellites. Click any level-2 thumbnail to navigate to it as the new center. Results are cached per satellite, so moving focus back to a previously explored neighbor re-displays its fan instantly without another query.
 
 ### Keyboard shortcuts
 
@@ -758,7 +758,7 @@ The backup status page displays:
 - **Coverage by purpose**: table showing each volume purpose (working, archive, backup) with the number of volumes, asset count, and a coverage bar
 - **Volume gaps**: table listing volumes with missing assets, showing the volume label, purpose, and missing count
 
-This is the web equivalent of `dam backup-status` on the command line. See [Maintenance](07-maintenance.md) for the CLI backup-status command.
+This is the web equivalent of `maki backup-status` on the command line. See [Maintenance](07-maintenance.md) for the CLI backup-status command.
 
 ---
 

@@ -1,6 +1,6 @@
 # Ingesting Assets
 
-Importing is how files enter the dam catalog. Unlike traditional asset managers that copy files into a managed library folder, dam catalogs files **in place** on your existing volumes. The import process hashes each file (SHA-256), extracts metadata, generates previews, and records everything in the catalog -- but your originals stay exactly where they are.
+Importing is how files enter the maki catalog. Unlike traditional asset managers that copy files into a managed library folder, maki catalogs files **in place** on your existing volumes. The import process hashes each file (SHA-256), extracts metadata, generates previews, and records everything in the catalog -- but your originals stay exactly where they are.
 
 ## Import Pipeline
 
@@ -32,19 +32,19 @@ flowchart TD
 Import a directory of photos:
 
 ```
-dam import /Volumes/PhotosDrive/Photos/2026-02-20/
+maki import /Volumes/PhotosDrive/Photos/2026-02-20/
 ```
 
 Import specific files:
 
 ```
-dam import /Volumes/PhotosDrive/DSC_0042.nef /Volumes/PhotosDrive/DSC_0043.nef
+maki import /Volumes/PhotosDrive/DSC_0042.nef /Volumes/PhotosDrive/DSC_0043.nef
 ```
 
-The path you provide must reside on a [registered volume](02-setup.md). dam resolves the volume automatically from the file path. If auto-detection picks the wrong volume (for example, when mount points are nested), specify it explicitly:
+The path you provide must reside on a [registered volume](02-setup.md). maki resolves the volume automatically from the file path. If auto-detection picks the wrong volume (for example, when mount points are nested), specify it explicitly:
 
 ```
-dam import --volume "Photos 2024" /path/to/files
+maki import --volume "Photos 2024" /path/to/files
 ```
 
 ### Preview Before Committing
@@ -52,7 +52,7 @@ dam import --volume "Photos 2024" /path/to/files
 Use `--dry-run` to see what would happen without writing anything to the catalog:
 
 ```
-dam import --dry-run /Volumes/PhotosDrive/Photos/2026-02-20/
+maki import --dry-run /Volumes/PhotosDrive/Photos/2026-02-20/
 ```
 
 Files are still hashed during a dry run (so duplicate detection works), but no assets, variants, recipes, or previews are created. The output shows the same counters as a real import:
@@ -74,7 +74,7 @@ Import does not copy or move your files. The catalog stores references to files 
 
 ## Auto-Grouping
 
-When dam imports a directory, it groups files by **filename stem** -- the filename without its extension. Files sharing the same stem in the same directory become a single Asset with multiple Variants.
+When maki imports a directory, it groups files by **filename stem** -- the filename without its extension. Files sharing the same stem in the same directory become a single Asset with multiple Variants.
 
 ### How It Works
 
@@ -86,7 +86,7 @@ DSC_0042.jpg
 DSC_0042.xmp
 ```
 
-dam creates **one Asset** with:
+maki creates **one Asset** with:
 
 | File | Role | Record Type |
 |---|---|---|
@@ -110,7 +110,7 @@ Z91_8561.jpg          # JPEG export
 After import:
 
 ```
-dam show <asset-id>
+maki show <asset-id>
 ```
 
 ```
@@ -139,7 +139,7 @@ Standard auto-grouping only matches files within the same directory. But photo t
 Without `--auto-group`, importing both directories creates separate assets for the RAW and exports. The `--auto-group` flag runs a post-import grouping step scoped to the "neighborhood" of the imported files:
 
 ```
-dam import --auto-group /Volumes/Photos/2026-02-22/Capture /Volumes/Photos/2026-02-22/Output
+maki import --auto-group /Volumes/Photos/2026-02-22/Capture /Volumes/Photos/2026-02-22/Output
 ```
 
 ```
@@ -147,7 +147,7 @@ Import complete: 3 imported, 1 recipe(s) attached, 3 preview(s) generated
 Auto-group: 1 stem group(s), 2 donor(s) merged, 2 variant(s) moved
 ```
 
-**How the neighborhood is determined**: For each imported file's directory (e.g., `2026-02-22/Capture/`), dam goes up one level to find the "session root" (`2026-02-22/`). It then searches the catalog for all assets under those session roots on the same volume. Only those assets participate in grouping.
+**How the neighborhood is determined**: For each imported file's directory (e.g., `2026-02-22/Capture/`), maki goes up one level to find the "session root" (`2026-02-22/`). It then searches the catalog for all assets under those session roots on the same volume. Only those assets participate in grouping.
 
 This scoping prevents false positives from restarting camera counters -- `DSC_0001` from a January shoot won't be grouped with `DSC_0001` from a June shoot because they live under different session roots.
 
@@ -155,10 +155,10 @@ This scoping prevents false positives from restarting camera counters -- `DSC_00
 
 ```
 # First import: RAW originals only
-dam import /Volumes/Photos/2026-02-22/Capture
+maki import /Volumes/Photos/2026-02-22/Capture
 
 # Later: CaptureOne exports are ready
-dam import --auto-group /Volumes/Photos/2026-02-22/Output
+maki import --auto-group /Volumes/Photos/2026-02-22/Output
 ```
 
 The second import detects the existing RAW assets in the sibling `Capture/` directory and groups the exports with them.
@@ -166,12 +166,12 @@ The second import detects the existing RAW assets in the sibling `Capture/` dire
 Combine with `--dry-run` to preview what would be grouped without making changes:
 
 ```
-dam import --auto-group --dry-run /Volumes/Photos/2026-02-22/Capture /Volumes/Photos/2026-02-22/Output
+maki import --auto-group --dry-run /Volumes/Photos/2026-02-22/Capture /Volumes/Photos/2026-02-22/Output
 ```
 
 ## Recipe Handling
 
-Processing sidecars are files created by RAW processors and image editors to store non-destructive edit settings. dam recognizes the following recipe formats:
+Processing sidecars are files created by RAW processors and image editors to store non-destructive edit settings. maki recognizes the following recipe formats:
 
 | Extension | Tool |
 |---|---|
@@ -185,7 +185,7 @@ Processing sidecars are files created by RAW processors and image editors to sto
 
 Recipes are attached to the **primary variant** of the matching asset (matched by filename stem in the same directory). They are identified by **location** (volume + path), not by content hash. This is an important distinction:
 
-- If you edit settings in CaptureOne and re-import, dam updates the existing recipe record rather than creating a duplicate.
+- If you edit settings in CaptureOne and re-import, maki updates the existing recipe record rather than creating a duplicate.
 - The recipe's content hash is updated to reflect the new file contents.
 
 ### Standalone Recipe Resolution
@@ -194,28 +194,28 @@ You can import recipe files after their media files:
 
 ```
 # First import: RAW files
-dam import /Volumes/PhotosDrive/Shoot/
+maki import /Volumes/PhotosDrive/Shoot/
 
 # Later: CaptureOne creates XMP sidecars
-dam import /Volumes/PhotosDrive/Shoot/*.xmp
+maki import /Volumes/PhotosDrive/Shoot/*.xmp
 ```
 
-dam finds the parent variant by matching the filename stem and directory, then attaches the recipe to it.
+maki finds the parent variant by matching the filename stem and directory, then attaches the recipe to it.
 
 ### Enabling Non-Default Recipe Groups
 
 By default, only `.xmp` recipe files are imported. CaptureOne, RawTherapee, DxO, and ON1 sidecars require opting in:
 
 ```
-dam import --include captureone /Volumes/PhotosDrive/Shoot/
-dam import --include captureone --include rawtherapee /Volumes/PhotosDrive/Shoot/
+maki import --include captureone /Volumes/PhotosDrive/Shoot/
+maki import --include captureone --include rawtherapee /Volumes/PhotosDrive/Shoot/
 ```
 
 See [Import Options](#import-options) below for the full list of type groups.
 
 ## Metadata Extraction
 
-dam extracts metadata from three sources during import, each contributing different information about the asset.
+maki extracts metadata from three sources during import, each contributing different information about the asset.
 
 ### EXIF Data
 
@@ -234,7 +234,7 @@ EXIF data is stored in the variant's `source_metadata` and used to populate the 
 
 When an `.xmp` file is attached as a recipe, its contents are parsed and merged into the asset:
 
-| XMP Field | dam Field | Notes |
+| XMP Field | maki Field | Notes |
 |---|---|---|
 | `dc:subject` | Tags | Merged with existing tags (union) |
 | `dc:description` | Description | Set if not already present |
@@ -245,7 +245,7 @@ When an `.xmp` file is attached as a recipe, its contents are parsed and merged 
 
 ### Embedded XMP
 
-JPEG and TIFF files can contain XMP metadata embedded in their binary structure (APP1 marker for JPEG, IFD tag 700 for TIFF). dam extracts the same fields as from sidecar XMP. This captures keywords, ratings, and labels from tools like CaptureOne and Lightroom that embed XMP directly in exported files.
+JPEG and TIFF files can contain XMP metadata embedded in their binary structure (APP1 marker for JPEG, IFD tag 700 for TIFF). maki extracts the same fields as from sidecar XMP. This captures keywords, ratings, and labels from tools like CaptureOne and Lightroom that embed XMP directly in exported files.
 
 Other file formats (RAW, video, audio, etc.) are skipped for embedded XMP extraction -- zero I/O overhead.
 
@@ -267,7 +267,7 @@ For description, rating, and color label, the first source that provides a value
 
 ## Preview Generation
 
-dam generates preview thumbnails during import so you can browse assets without accessing the original files.
+maki generates preview thumbnails during import so you can browse assets without accessing the original files.
 
 ### By File Type
 
@@ -278,7 +278,7 @@ dam generates preview thumbnails during import so you can browse assets without 
 | Video (MP4, MOV, MKV, etc.) | `ffmpeg` frame extraction | 800px JPEG thumbnail |
 | Audio, documents, unknown | Info card renderer | 800x600 JPEG with file metadata |
 
-The maximum edge size (default 800px) and output format (JPEG or WebP) are configurable in `dam.toml`:
+The maximum edge size (default 800px) and output format (JPEG or WebP) are configurable in `maki.toml`:
 
 ```toml
 [preview]
@@ -289,7 +289,7 @@ quality = 85
 
 ### Info Cards
 
-When a file has no visual preview (audio files, documents) or when external tools (`dcraw`, `ffmpeg`) are not installed, dam generates an **info card** -- an 800x600 JPEG displaying the file's metadata:
+When a file has no visual preview (audio files, documents) or when external tools (`dcraw`, `ffmpeg`) are not installed, maki generates an **info card** -- an 800x600 JPEG displaying the file's metadata:
 
 - Filename and format
 - File size
@@ -309,13 +309,13 @@ previews/
 
 The first two characters of the content hash serve as a subdirectory prefix to avoid having too many files in a single directory.
 
-**Preview generation never blocks import.** If `dcraw` is missing, a RAW file still imports successfully -- it just gets an info card instead of a rendered preview. You can regenerate previews later with `dam generate-previews`.
+**Preview generation never blocks import.** If `dcraw` is missing, a RAW file still imports successfully -- it just gets an info card instead of a rendered preview. You can regenerate previews later with `maki generate-previews`.
 
 ## Import Options
 
 ### File Type Groups
 
-dam organizes recognized file extensions into groups. Some are enabled by default; others require opting in.
+maki organizes recognized file extensions into groups. Some are enabled by default; others require opting in.
 
 | Group | Extensions | Default |
 |---|---|---|
@@ -333,12 +333,12 @@ Enable additional groups with `--include`, disable default groups with `--skip`:
 
 ```
 # Import photos plus CaptureOne sidecars, but skip audio files
-dam import --include captureone --skip audio /Volumes/PhotosDrive/Shoot/
+maki import --include captureone --skip audio /Volumes/PhotosDrive/Shoot/
 ```
 
 ### Exclude Patterns
 
-Configure glob patterns in `dam.toml` to permanently exclude files by name:
+Configure glob patterns in `maki.toml` to permanently exclude files by name:
 
 ```toml
 [import]
@@ -373,7 +373,7 @@ Auto-tags are merged with any tags extracted from XMP metadata (deduplicated).
 
 ## Duplicate Handling
 
-dam uses content hashing (SHA-256) to detect duplicates at the file level.
+maki uses content hashing (SHA-256) to detect duplicates at the file level.
 
 ### Three Outcomes
 
@@ -389,20 +389,20 @@ When importing a file, one of three things happens:
 
 ```
 # Import from primary drive
-dam import /Volumes/Photos/Shoot-2026-02-20/
+maki import /Volumes/Photos/Shoot-2026-02-20/
 
 # Later, import the same files from a backup
-dam import /Volumes/Backup/Shoot-2026-02-20/
+maki import /Volumes/Backup/Shoot-2026-02-20/
 ```
 
 The second import adds backup locations to the existing variants. Each variant now has two file locations (one per volume), but the catalog contains only one copy of each asset.
 
 ### Finding Duplicates
 
-Use `dam duplicates` to find files with identical content across locations:
+Use `maki duplicates` to find files with identical content across locations:
 
 ```
-dam duplicates
+maki duplicates
 ```
 
 ```
@@ -421,35 +421,35 @@ After importing, you can use AI to automatically suggest tags for your images:
 
 ```
 # First time: download the default SigLIP model (~207 MB)
-dam auto-tag --download
+maki auto-tag --download
 
 # Preview suggested tags (report-only)
-dam auto-tag --query "type:image"
+maki auto-tag --query "type:image"
 
 # Apply suggested tags
-dam auto-tag --query "type:image" --apply
+maki auto-tag --query "type:image" --apply
 ```
 
 The command uses SigLIP vision-language models for zero-shot classification against ~100 built-in photography categories (landscape, portrait, architecture, animals, etc.). Tags above the confidence threshold (default 0.1) are suggested. Use `--threshold` to adjust sensitivity.
 
-Two models are available: the default ViT-B/16-256 (~207 MB) and the larger ViT-L/16-256 (~670 MB) for higher accuracy. Switch with `--model` or set `[ai] model` in `dam.toml`:
+Two models are available: the default ViT-B/16-256 (~207 MB) and the larger ViT-L/16-256 (~670 MB) for higher accuracy. Switch with `--model` or set `[ai] model` in `maki.toml`:
 
 ```
 # Download and use the larger model
-dam auto-tag --download --model siglip-vit-l16-256
-dam auto-tag --query "type:image" --model siglip-vit-l16-256 --apply
+maki auto-tag --download --model siglip-vit-l16-256
+maki auto-tag --query "type:image" --model siglip-vit-l16-256 --apply
 ```
 
 You can provide a custom label vocabulary:
 
 ```
-dam auto-tag --labels my-labels.txt --query "*" --apply
+maki auto-tag --labels my-labels.txt --query "*" --apply
 ```
 
 Image embeddings are stored per model in the catalog, enabling visual similarity search:
 
 ```
-dam auto-tag --similar <asset-id>
+maki auto-tag --similar <asset-id>
 ```
 
 ### Embedding Generation During Import
@@ -457,25 +457,25 @@ dam auto-tag --similar <asset-id>
 To generate embeddings automatically during import (so "Find similar" works immediately), use the `--embed` flag:
 
 ```
-dam import --embed /Volumes/PhotosDrive/Photos/2026-02-20/
+maki import --embed /Volumes/PhotosDrive/Photos/2026-02-20/
 ```
 
-Or enable it permanently in `dam.toml`:
+Or enable it permanently in `maki.toml`:
 
 ```toml
 [import]
 embeddings = true
 ```
 
-This runs embedding generation as a post-import phase using the preview image for each imported asset. If the AI model is not downloaded, the embedding phase is silently skipped. You can also batch-generate embeddings for existing assets with `dam embed --query "*"`.
+This runs embedding generation as a post-import phase using the preview image for each imported asset. If the AI model is not downloaded, the embedding phase is silently skipped. You can also batch-generate embeddings for existing assets with `maki embed --query "*"`.
 
-See the [auto-tag reference](../reference/02-ingest-commands.md#dam-auto-tag) for all options and the [configuration reference](../reference/08-configuration.md#ai-section) for `[ai]` settings in `dam.toml`.
+See the [auto-tag reference](../reference/02-ingest-commands.md#maki-auto-tag) for all options and the [configuration reference](../reference/08-configuration.md#ai-section) for `[ai]` settings in `maki.toml`.
 
 ## VLM Image Descriptions
 
-While SigLIP auto-tagging classifies images against a fixed vocabulary (~100 labels), vision-language models (VLMs) generate free-form text descriptions that capture scene context, spatial relationships, lighting, and mood. The `dam describe` command sends preview images to a VLM server and stores the generated text as the asset's description.
+While SigLIP auto-tagging classifies images against a fixed vocabulary (~100 labels), vision-language models (VLMs) generate free-form text descriptions that capture scene context, spatial relationships, lighting, and mood. The `maki describe` command sends preview images to a VLM server and stores the generated text as the asset's description.
 
-Unlike auto-tagging, this feature requires **no special build flags** -- it works with any dam binary because it communicates with an external server via HTTP.
+Unlike auto-tagging, this feature requires **no special build flags** -- it works with any maki binary because it communicates with an external server via HTTP.
 
 ### Setting Up a Local VLM Server
 
@@ -515,7 +515,7 @@ ollama pull qwen2.5vl:7b
 **4. Verify the setup:**
 
 ```bash
-dam describe --check
+maki describe --check
 # Connected to http://localhost:11434. 2 model(s) available: qwen2.5vl:3b, moondream:latest
 ```
 
@@ -580,34 +580,34 @@ model = "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo"
 
 Requires `TOGETHER_API_KEY`.
 
-> **Note on authentication:** dam currently sends requests without authentication headers. For cloud APIs that require bearer tokens, you may need a local proxy that adds the header, or use a server like Ollama as a gateway. Native API key support may be added in a future version.
+> **Note on authentication:** maki currently sends requests without authentication headers. For cloud APIs that require bearer tokens, you may need a local proxy that adds the header, or use a server like Ollama as a gateway. Native API key support may be added in a future version.
 
 ### Generating Descriptions
 
 ```bash
 # Preview descriptions without saving (report-only)
-dam describe --query "description:none type:image" --log
+maki describe --query "description:none type:image" --log
 
 # Apply descriptions to undescribed assets on a volume
-dam describe --volume "Photos 2024" --apply --log
+maki describe --volume "Photos 2024" --apply --log
 
 # Describe a single asset
-dam describe --asset a1b2c3d4 --apply
+maki describe --asset a1b2c3d4 --apply
 
 # Overwrite existing descriptions with a better model
-dam describe --query "rating:5" --model qwen2.5vl:7b --force --apply
+maki describe --query "rating:5" --model qwen2.5vl:7b --force --apply
 
 # Use a custom prompt for specific content
-dam describe --prompt "List the key subjects and artistic techniques." --query "tag:art" --apply
+maki describe --prompt "List the key subjects and artistic techniques." --query "tag:art" --apply
 
 # Generate tags instead of descriptions
-dam describe --mode tags --query "tag:untagged" --apply
+maki describe --mode tags --query "tag:untagged" --apply
 
 # Generate both descriptions and tags (two VLM calls per asset)
-dam describe --mode both --asset a1b2c3d4 --apply
+maki describe --mode both --asset a1b2c3d4 --apply
 
 # Dry run to see what would be processed
-dam describe --query "date:2024-06" --dry-run
+maki describe --query "date:2024-06" --dry-run
 ```
 
 Three modes are available: `--mode describe` (default) generates descriptions, `--mode tags` generates tag suggestions, and `--mode both` runs both — making two separate VLM calls per asset so each uses its optimal prompt. Tags are deduplicated and merged with existing asset tags.
@@ -616,7 +616,7 @@ The report-only default (no `--apply`) lets you review generated descriptions an
 
 ### Configuration
 
-Persistent settings go in `dam.toml`:
+Persistent settings go in `maki.toml`:
 
 ```toml
 [vlm]
@@ -636,7 +636,7 @@ model = "moondream"
 models = ["moondream", "qwen3-vl:4b"]
 ```
 
-A dropdown appears next to the Describe button when two or more models are configured. CLI flags (`--endpoint`, `--model`, `--prompt`, `--max-tokens`, `--timeout`, `--temperature`, `--mode`) override `dam.toml` for one-off runs.
+A dropdown appears next to the Describe button when two or more models are configured. CLI flags (`--endpoint`, `--model`, `--prompt`, `--max-tokens`, `--timeout`, `--temperature`, `--mode`) override `maki.toml` for one-off runs.
 
 ### SigLIP vs VLM: When to Use Which
 
@@ -650,7 +650,7 @@ A dropdown appears next to the Describe button when two or more models are confi
 
 The two approaches are complementary. Use SigLIP for fast categorical tagging across large batches, and VLM for rich descriptions when quality matters more than speed.
 
-See the [describe reference](../reference/02-ingest-commands.md#dam-describe) for all options and the [configuration reference](../reference/08-configuration.md#vlm-section) for `[vlm]` settings.
+See the [describe reference](../reference/02-ingest-commands.md#maki-describe) for all options and the [configuration reference](../reference/08-configuration.md#vlm-section) for `[vlm]` settings.
 
 ---
 

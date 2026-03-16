@@ -1,8 +1,8 @@
 # VLM Model Guide
 
-This document covers vision-language models (VLMs) compatible with `dam describe`. It lists tested models, hardware requirements, quality notes, and setup instructions for each inference backend.
+This document covers vision-language models (VLMs) compatible with `maki describe`. It lists tested models, hardware requirements, quality notes, and setup instructions for each inference backend.
 
-dam tries the **Ollama native API** (`/api/generate`) first, falling back to the **OpenAI-compatible** `/v1/chat/completions` endpoint. Both use base64-encoded images. Any server that implements either API works — Ollama, llama.cpp, vLLM, LM Studio, SGLang, or cloud providers.
+maki tries the **Ollama native API** (`/api/generate`) first, falling back to the **OpenAI-compatible** `/v1/chat/completions` endpoint. Both use base64-encoded images. Any server that implements either API works — Ollama, llama.cpp, vLLM, LM Studio, SGLang, or cloud providers.
 
 ---
 
@@ -10,10 +10,10 @@ dam tries the **Ollama native API** (`/api/generate`) first, falling back to the
 
 1. Install [Ollama](https://ollama.com) (or another backend — see [Backends](#backends) below).
 2. Pull a model: `ollama pull qwen2.5vl:3b`
-3. Test connectivity: `dam describe --check`
-4. Describe assets: `dam describe "description:none" --apply --log`
+3. Test connectivity: `maki describe --check`
+4. Describe assets: `maki describe "description:none" --apply --log`
 
-To switch models, either set `[vlm] model` in `dam.toml` or pass `--model` on the command line.
+To switch models, either set `[vlm] model` in `maki.toml` or pass `--model` on the command line.
 
 ---
 
@@ -72,11 +72,11 @@ The simplest setup. Ollama manages model downloads, quantization, and serves an 
 ollama pull qwen2.5vl:3b
 
 # The server starts automatically; default endpoint is http://localhost:11434
-dam describe --check
+maki describe --check
 ```
 
 ```toml
-# dam.toml
+# maki.toml
 [vlm]
 endpoint = "http://localhost:11434"
 model = "qwen2.5vl:3b"
@@ -105,7 +105,7 @@ llama-server \
 ```
 
 ```toml
-# dam.toml
+# maki.toml
 [vlm]
 endpoint = "http://localhost:8080"
 model = "Qwen3.5-9B"
@@ -132,7 +132,7 @@ vllm serve Qwen/Qwen3.5-9B --host 0.0.0.0 --port 8000
 ```
 
 ```toml
-# dam.toml
+# maki.toml
 [vlm]
 endpoint = "http://localhost:8000"
 model = "Qwen/Qwen3.5-9B"
@@ -152,7 +152,7 @@ Desktop application with a GUI for model management and a built-in server.
 **Install:** https://lmstudio.ai
 
 ```toml
-# dam.toml
+# maki.toml
 [vlm]
 endpoint = "http://localhost:1234"
 model = "qwen2.5-vl-3b"   # Use the model name shown in LM Studio
@@ -160,10 +160,10 @@ model = "qwen2.5-vl-3b"   # Use the model name shown in LM Studio
 
 ### Cloud APIs
 
-Any OpenAI-compatible cloud API works. Note that cloud APIs charge per request and dam does not set authentication headers — use a local proxy if your endpoint requires an API key.
+Any OpenAI-compatible cloud API works. Note that cloud APIs charge per request and maki does not set authentication headers — use a local proxy if your endpoint requires an API key.
 
 ```toml
-# dam.toml — example with a self-hosted proxy that adds auth
+# maki.toml — example with a self-hosted proxy that adds auth
 [vlm]
 endpoint = "https://api.openai.com"
 model = "gpt-4o"
@@ -233,7 +233,7 @@ Based on describing the same set of 50 photographs (landscapes, portraits, archi
 
 Some models (Qwen3-VL, Qwen3.5) support "extended thinking" — they wrap internal chain-of-thought reasoning in `<think>...</think>` tags before producing the actual answer. This can consume most of the `max_tokens` budget with reasoning text, leaving little room for the description itself.
 
-dam handles this automatically:
+maki handles this automatically:
 
 - Sends `think: false` to disable extended thinking (works with Ollama's native API)
 - Strips any `<think>...</think>` tags from the response as a fallback
@@ -245,29 +245,29 @@ No configuration is needed — thinking models work out of the box. If you see e
 
 ## Tips
 
-**Start small, upgrade later.** Run `dam describe` with Moondream for a quick first pass, then re-describe the best assets with a larger model using `--force`:
+**Start small, upgrade later.** Run `maki describe` with Moondream for a quick first pass, then re-describe the best assets with a larger model using `--force`:
 
 ```bash
-dam describe "description:none" --model moondream --apply --log
-dam describe "rating:4+" --model qwen3-vl:8b --apply --force --log
+maki describe "description:none" --model moondream --apply --log
+maki describe "rating:4+" --model qwen3-vl:8b --apply --force --log
 ```
 
 **Use `--mode tags` for discovery.** VLM-suggested tags can surface patterns you haven't tagged manually:
 
 ```bash
-dam describe --mode tags "date:2024-06" --apply --log
+maki describe --mode tags "date:2024-06" --apply --log
 ```
 
 **Lower temperature for batch consistency.** When describing hundreds of images, `--temperature 0` gives more uniform output:
 
 ```bash
-dam describe "type:image" --temperature 0 --apply --log
+maki describe "type:image" --temperature 0 --apply --log
 ```
 
 **Increase timeout for first load.** Ollama loads the model into memory on first request, which can take 30--60 seconds for larger models:
 
 ```bash
-dam describe --model qwen3-vl:8b --timeout 300 --asset a1b2c3d4
+maki describe --model qwen3-vl:8b --timeout 300 --asset a1b2c3d4
 ```
 
 **Use per-model config for multi-model workflows.** If you switch between models frequently, set per-model overrides so each model gets its optimal settings automatically:
@@ -287,12 +287,12 @@ max_tokens = 200
 temperature = 0.1
 ```
 
-Now `dam describe --model qwen3-vl:8b` automatically uses the longer timeout and larger context window, while `dam describe --model moondream:latest` uses lower temperature and fewer tokens. See [Configuration Reference — per-model config](08-configuration.md#per-model-configuration) for full details.
+Now `maki describe --model qwen3-vl:8b` automatically uses the longer timeout and larger context window, while `maki describe --model moondream:latest` uses lower temperature and fewer tokens. See [Configuration Reference — per-model config](08-configuration.md#per-model-configuration) for full details.
 
-**Tune sampling parameters per model.** Some models benefit from non-default sampling. Use `--num-ctx`, `--top-p`, `--top-k`, and `--repeat-penalty` on the CLI, or set them in `dam.toml` (globally or per-model). A value of zero means "not set — use server default":
+**Tune sampling parameters per model.** Some models benefit from non-default sampling. Use `--num-ctx`, `--top-p`, `--top-k`, and `--repeat-penalty` on the CLI, or set them in `maki.toml` (globally or per-model). A value of zero means "not set — use server default":
 
 ```bash
-dam describe "rating:5" --model qwen3-vl:8b --num-ctx 8192 --top-p 0.9 --apply --log
+maki describe "rating:5" --model qwen3-vl:8b --num-ctx 8192 --top-p 0.9 --apply --log
 ```
 
 **Use concurrency with capable servers.** If your server handles parallel requests (vLLM, GPU Ollama with `OLLAMA_NUM_PARALLEL`):
@@ -307,5 +307,5 @@ concurrency = 4
 ## See Also
 
 - [Configuration Reference — \[vlm\] section](08-configuration.md#vlm-section) — all configuration options
-- [dam describe](02-ingest-commands.md#dam-describe) — command reference
+- [maki describe](02-ingest-commands.md#maki-describe) — command reference
 - [Ingesting Assets](../user-guide/03-ingest.md) — auto-describe during import

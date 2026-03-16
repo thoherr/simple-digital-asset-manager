@@ -70,7 +70,7 @@ Die Basis-Vorlage (`base.html`) definiert das Layout:
 <head>
     <!-- FOUC-Prevention: Theme vor CSS laden -->
     <script>
-        var t = localStorage.getItem('dam-theme');
+        var t = localStorage.getItem('maki-theme');
         if (t) document.documentElement.setAttribute('data-theme', t);
     </script>
     <link rel="stylesheet" href="/static/style.css">
@@ -215,7 +215,7 @@ Der Toggle-Button im Header speichert die Wahl in `localStorage` und setzt das `
 btn.addEventListener('click', function() {
     var next = getEffective() === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('dam-theme', next);
+    localStorage.setItem('maki-theme', next);
 });
 ```
 
@@ -336,9 +336,9 @@ Browse (5 ausgewählt)
     │
     ├── Asset-Detail öffnen
     │       │
-    │       ├── sessionStorage: dam-browse-selection = [id1,...,id5]
-    │       ├── sessionStorage: dam-browse-focus = id3
-    │       ├── sessionStorage: dam-browse-url = /?q=sunset&page=2
+    │       ├── sessionStorage: maki-browse-selection = [id1,...,id5]
+    │       ├── sessionStorage: maki-browse-focus = id3
+    │       ├── sessionStorage: maki-browse-url = /?q=sunset&page=2
     │       │
     │       └── Zurück-Button / Escape
     │               │
@@ -350,14 +350,14 @@ Browse (5 ausgewählt)
 ```javascript
 // Vor dem Verlassen: State speichern
 window.addEventListener('pagehide', function() {
-    sessionStorage.setItem('dam-browse-selection',
+    sessionStorage.setItem('maki-browse-selection',
         JSON.stringify(Array.from(selected)));
 });
 
 // Beim Zurückkehren (bfcache): State wiederherstellen
 window.addEventListener('pageshow', function(e) {
     if (e.persisted) {
-        var saved = sessionStorage.getItem('dam-browse-selection');
+        var saved = sessionStorage.getItem('maki-browse-selection');
         if (saved) {
             selected = new Set(JSON.parse(saved));
             updateToolbar();

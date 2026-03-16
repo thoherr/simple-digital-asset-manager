@@ -4,16 +4,16 @@ Commands for importing files, applying metadata, and merging asset variants.
 
 ---
 
-## dam import
+## maki import
 
 ### NAME
 
-dam-import -- import files into the catalog
+maki-import -- import files into the catalog
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] import [OPTIONS] <PATHS...>
+maki [GLOBAL FLAGS] import [OPTIONS] <PATHS...>
 ```
 
 ### DESCRIPTION
@@ -51,22 +51,22 @@ The volume is auto-detected from the first path by matching against registered v
 : Skip file type groups that would normally be imported. Can be specified multiple times. Example groups: `audio`, `xmp`.
 
 **--add-tag \<TAG\>**
-: Add a tag to every imported asset. Can be specified multiple times. Merged with `[import] auto_tags` from `dam.toml` and XMP-extracted tags, deduplicated.
+: Add a tag to every imported asset. Can be specified multiple times. Merged with `[import] auto_tags` from `maki.toml` and XMP-extracted tags, deduplicated.
 
 **--smart**
-: Generate smart previews (high-resolution, 2560px) alongside regular thumbnails during import. Smart previews enable zoom and pan in the web UI. Can be enabled permanently via `[import] smart_previews = true` in `dam.toml`. Smart preview dimensions are controlled by `[preview] smart_max_edge`.
+: Generate smart previews (high-resolution, 2560px) alongside regular thumbnails during import. Smart previews enable zoom and pan in the web UI. Can be enabled permanently via `[import] smart_previews = true` in `maki.toml`. Smart preview dimensions are controlled by `[preview] smart_max_edge`.
 
 **--embed** *(feature-gated: requires `--features ai`)*
-: Generate SigLIP image embeddings for visual similarity search during import. Embeddings enable `dam auto-tag --similar` and the web UI "Find similar" button. Runs as a post-import phase using preview images (smart preview preferred, then regular preview). Silently skips if the AI model is not downloaded -- run `dam auto-tag --download` first. Can be enabled permanently via `[import] embeddings = true` in `dam.toml`. Non-image assets are skipped. Uses the model configured in `[ai] model`.
+: Generate SigLIP image embeddings for visual similarity search during import. Embeddings enable `maki auto-tag --similar` and the web UI "Find similar" button. Runs as a post-import phase using preview images (smart preview preferred, then regular preview). Silently skips if the AI model is not downloaded -- run `maki auto-tag --download` first. Can be enabled permanently via `[import] embeddings = true` in `maki.toml`. Non-image assets are skipped. Uses the model configured in `[ai] model`.
 
 **--describe**
-: Generate VLM descriptions for newly imported assets as a post-import phase. Requires a running Ollama instance (or compatible VLM endpoint configured in `[vlm]`). Runs after the embed phase if both are enabled. Uses the VLM model, prompt, and parameters from `[vlm]` config (including per-model overrides). Concurrency is controlled by `[vlm] concurrency`. Can be enabled permanently via `[import] descriptions = true` in `dam.toml`. Non-image assets are skipped.
+: Generate VLM descriptions for newly imported assets as a post-import phase. Requires a running Ollama instance (or compatible VLM endpoint configured in `[vlm]`). Runs after the embed phase if both are enabled. Uses the VLM model, prompt, and parameters from `[vlm]` config (including per-model overrides). Concurrency is controlled by `[vlm] concurrency`. Can be enabled permanently via `[import] descriptions = true` in `maki.toml`. Non-image assets are skipped.
 
 **--dry-run**
 : Show what would be imported without writing to catalog, sidecar, or disk. Files are still hashed to detect duplicates. Reports the same counters as a real import (imported, skipped, locations added, recipes attached/updated).
 
 **--auto-group**
-: After importing, automatically group newly imported assets with nearby catalog assets by filename stem. "Nearby" means assets on the same volume whose files are under sibling directories of the imported files (one level up from each import directory). This handles the common CaptureOne/Lightroom pattern where RAW originals live in `Capture/` and exports in `Output/` under a shared session folder. Uses the same fuzzy prefix matching as `dam auto-group`. When combined with `--dry-run`, the auto-group phase also runs in dry-run mode.
+: After importing, automatically group newly imported assets with nearby catalog assets by filename stem. "Nearby" means assets on the same volume whose files are under sibling directories of the imported files (one level up from each import directory). This handles the common CaptureOne/Lightroom pattern where RAW originals live in `Capture/` and exports in `Output/` under a shared session folder. Uses the same fuzzy prefix matching as `maki auto-group`. When combined with `--dry-run`, the auto-group phase also runs in dry-run mode.
 
 `--json` outputs an `ImportResult` object with `imported`, `skipped`, `locations_added`, `recipes_attached`, `recipes_updated` counters and a `dry_run` boolean. When `--auto-group` produces matches, an `auto_group` key is added with the full `AutoGroupResult`. When `--embed` generates embeddings, `embeddings_generated` and `embeddings_skipped` keys are added. When `--describe` generates descriptions, `descriptions_generated` and `descriptions_skipped` keys are added.
 
@@ -75,83 +75,83 @@ The volume is auto-detected from the first path by matching against registered v
 Import a directory of photos:
 
 ```bash
-dam import /Volumes/Photos/Capture/2026-02-22
+maki import /Volumes/Photos/Capture/2026-02-22
 ```
 
 Import with explicit volume and progress logging:
 
 ```bash
-dam import --volume "Archive" /Volumes/NAS/Photos/2025 --log --time
+maki import --volume "Archive" /Volumes/NAS/Photos/2025 --log --time
 ```
 
 Preview what would be imported without making changes:
 
 ```bash
-dam import --dry-run /Volumes/SD-Card/DCIM
+maki import --dry-run /Volumes/SD-Card/DCIM
 ```
 
 Import only image files, skipping audio and XMP sidecars:
 
 ```bash
-dam import --skip audio --skip xmp /Volumes/Photos/Mixed
+maki import --skip audio --skip xmp /Volumes/Photos/Mixed
 ```
 
 Import with smart previews for high-resolution browsing:
 
 ```bash
-dam import --smart /Volumes/Photos/Capture/2026-02-22
+maki import --smart /Volumes/Photos/Capture/2026-02-22
 ```
 
 Import with embedding generation for visual similarity search (requires `--features ai`):
 
 ```bash
-dam import --embed /Volumes/Photos/Capture/2026-02-22
+maki import --embed /Volumes/Photos/Capture/2026-02-22
 ```
 
 Import with both smart previews and embeddings:
 
 ```bash
-dam import --smart --embed /Volumes/Photos/Capture/2026-02-22
+maki import --smart --embed /Volumes/Photos/Capture/2026-02-22
 ```
 
 Tag assets during import:
 
 ```bash
-dam import --add-tag landscape --add-tag "2026" /Volumes/Photos/Landscapes
+maki import --add-tag landscape --add-tag "2026" /Volumes/Photos/Landscapes
 ```
 
 Import a CaptureOne session and auto-group RAW+exports:
 
 ```bash
-dam import --auto-group /Volumes/Photos/2026-02-22/Capture /Volumes/Photos/2026-02-22/Output
+maki import --auto-group /Volumes/Photos/2026-02-22/Capture /Volumes/Photos/2026-02-22/Output
 ```
 
 Import with JSON output for scripting:
 
 ```bash
-dam import /Volumes/Photos/NewShoot --json | jq '.imported'
+maki import /Volumes/Photos/NewShoot --json | jq '.imported'
 ```
 
 ### SEE ALSO
 
-[tag](#dam-tag) -- add or remove tags after import.
-[edit](#dam-edit) -- set name, description, rating, or label.
-[auto-group](#dam-auto-group) -- group related assets by filename stem.
-[generate-previews](05-maintain-commands.md#dam-generate-previews) -- regenerate or upgrade previews.
+[tag](#maki-tag) -- add or remove tags after import.
+[edit](#maki-edit) -- set name, description, rating, or label.
+[auto-group](#maki-auto-group) -- group related assets by filename stem.
+[generate-previews](05-maintain-commands.md#maki-generate-previews) -- regenerate or upgrade previews.
 [CLI Conventions](00-cli-conventions.md) -- `--log`, `--json`, `--time` behavior.
 
 ---
 
-## dam delete
+## maki delete
 
 ### NAME
 
-dam-delete -- remove assets from the catalog
+maki-delete -- remove assets from the catalog
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] delete [OPTIONS] [ASSET_IDS...]
+maki [GLOBAL FLAGS] delete [OPTIONS] [ASSET_IDS...]
 ```
 
 ### DESCRIPTION
@@ -173,10 +173,10 @@ With `--remove-files` (which requires `--apply`), physical media files and recip
 
 Asset IDs support unique prefix matching (see [CLI Conventions](00-cli-conventions.md#asset-id-matching)).
 
-When no asset IDs are given on the command line, IDs are read from stdin (one per line). This enables piping from `dam search -q`:
+When no asset IDs are given on the command line, IDs are read from stdin (one per line). This enables piping from `maki search -q`:
 
 ```bash
-dam search -q "orphan:true" | dam delete --apply
+maki search -q "orphan:true" | maki delete --apply
 ```
 
 ### ARGUMENTS
@@ -201,70 +201,70 @@ dam search -q "orphan:true" | dam delete --apply
 Preview what would be deleted (report-only):
 
 ```bash
-dam delete a1b2c3d4
+maki delete a1b2c3d4
 ```
 
 Delete an asset:
 
 ```bash
-dam delete --apply a1b2c3d4
+maki delete --apply a1b2c3d4
 ```
 
 Delete multiple assets at once:
 
 ```bash
-dam delete --apply a1b2c3d4 e5f6a7b8
+maki delete --apply a1b2c3d4 e5f6a7b8
 ```
 
 Delete an asset and its files from disk:
 
 ```bash
-dam delete --apply --remove-files a1b2c3d4
+maki delete --apply --remove-files a1b2c3d4
 ```
 
 Delete all orphaned assets (no file locations):
 
 ```bash
-dam search -q "orphan:true" | dam delete --apply
+maki search -q "orphan:true" | maki delete --apply
 ```
 
 Delete with JSON output for scripting:
 
 ```bash
-dam delete --apply a1b2c3d4 --json | jq '.deleted'
+maki delete --apply a1b2c3d4 --json | jq '.deleted'
 ```
 
 Use a short ID prefix:
 
 ```bash
-dam delete --apply a1b2
+maki delete --apply a1b2
 ```
 
 ### SEE ALSO
 
-[cleanup](05-maintain-commands.md#dam-cleanup) -- remove stale location records and orphaned assets automatically.
-[search](04-retrieve-commands.md#dam-search) -- find assets to delete (`orphan:true`, `missing:true`).
-[show](04-retrieve-commands.md#dam-show) -- inspect an asset before deleting it.
+[cleanup](05-maintain-commands.md#maki-cleanup) -- remove stale location records and orphaned assets automatically.
+[search](04-retrieve-commands.md#maki-search) -- find assets to delete (`orphan:true`, `missing:true`).
+[show](04-retrieve-commands.md#maki-show) -- inspect an asset before deleting it.
 
 ---
 
-## dam tag
+## maki tag
 
 ### NAME
 
-dam-tag -- add or remove tags on an asset
+maki-tag -- add or remove tags on an asset
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] tag <ASSET_ID> [--remove] <TAGS...>
+maki [GLOBAL FLAGS] tag <ASSET_ID> [--remove] <TAGS...>
 ```
 
 ### DESCRIPTION
 
 Adds or removes tags on an asset. Tags are free-form text strings stored on the asset record. They are persisted in both the YAML sidecar file and the SQLite catalog.
 
-When tags are changed, dam automatically writes the changes back to any `.xmp` recipe files associated with the asset. Tag write-back uses operation-level deltas: added tags are inserted into the XMP `dc:subject` / `rdf:Bag` block, and removed tags are deleted -- tags added independently in external tools like CaptureOne are preserved.
+When tags are changed, maki automatically writes the changes back to any `.xmp` recipe files associated with the asset. Tag write-back uses operation-level deltas: added tags are inserted into the XMP `dc:subject` / `rdf:Bag` block, and removed tags are deleted -- tags added independently in external tools like CaptureOne are preserved.
 
 Tags are deduplicated: adding a tag that already exists is a no-op.
 
@@ -290,47 +290,47 @@ Asset IDs support unique prefix matching (see [CLI Conventions](00-cli-conventio
 Add tags to an asset:
 
 ```bash
-dam tag a1b2c3d4 landscape mountains "golden hour"
+maki tag a1b2c3d4 landscape mountains "golden hour"
 ```
 
 Remove a tag:
 
 ```bash
-dam tag a1b2c3d4 --remove landscape
+maki tag a1b2c3d4 --remove landscape
 ```
 
 Add a multi-word tag:
 
 ```bash
-dam tag a1b2c "Fools Theater"
+maki tag a1b2c "Fools Theater"
 ```
 
 Tag assets in bulk via search:
 
 ```bash
-for id in $(dam search -q "path:Capture/2026-02-22"); do
-  dam tag "$id" "February 2026"
+for id in $(maki search -q "path:Capture/2026-02-22"); do
+  maki tag "$id" "February 2026"
 done
 ```
 
 ### SEE ALSO
 
-[edit](#dam-edit) -- set asset name, description, rating, or label.
-[search](04-retrieve-commands.md#dam-search) -- `tag:` filter for finding tagged assets.
-[stats](04-retrieve-commands.md#dam-stats) -- `--tags` shows tag usage frequencies.
+[edit](#maki-edit) -- set asset name, description, rating, or label.
+[search](04-retrieve-commands.md#maki-search) -- `tag:` filter for finding tagged assets.
+[stats](04-retrieve-commands.md#maki-stats) -- `--tags` shows tag usage frequencies.
 
 ---
 
-## dam edit
+## maki edit
 
 ### NAME
 
-dam-edit -- edit asset metadata (name, description, rating, color label, date, variant role)
+maki-edit -- edit asset metadata (name, description, rating, color label, date, variant role)
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] edit <ASSET_ID> [OPTIONS]
+maki [GLOBAL FLAGS] edit <ASSET_ID> [OPTIONS]
 ```
 
 ### DESCRIPTION
@@ -394,7 +394,7 @@ Asset IDs support unique prefix matching (see [CLI Conventions](00-cli-conventio
 : Change a variant's role. Must be used with `--variant`. Accepts: original, alternate, processed, export, sidecar.
 
 **--variant \<HASH\>**
-: The content hash of the variant whose role should be changed. Must be used with `--role`. Use `dam show <id>` to find variant hashes.
+: The content hash of the variant whose role should be changed. Must be used with `--role`. Use `maki show <id>` to find variant hashes.
 
 `--json` outputs an `EditResult` with the fields that were changed and their new values.
 
@@ -403,65 +403,65 @@ Asset IDs support unique prefix matching (see [CLI Conventions](00-cli-conventio
 Set a rating and description:
 
 ```bash
-dam edit a1b2c3d4 --rating 5 --description "Best shot from the wedding ceremony"
+maki edit a1b2c3d4 --rating 5 --description "Best shot from the wedding ceremony"
 ```
 
 Set a color label:
 
 ```bash
-dam edit a1b2c --label Red
+maki edit a1b2c --label Red
 ```
 
 Give an asset a display name:
 
 ```bash
-dam edit a1b2c3d4 --name "Sunset over Lake Constance"
+maki edit a1b2c3d4 --name "Sunset over Lake Constance"
 ```
 
 Clear the rating and label:
 
 ```bash
-dam edit a1b2c3d4 --clear-rating --clear-label
+maki edit a1b2c3d4 --clear-rating --clear-label
 ```
 
 Correct an asset's date:
 
 ```bash
-dam edit a1b2c3d4 --date "2024-12-25"
+maki edit a1b2c3d4 --date "2024-12-25"
 ```
 
 Clear the description (two equivalent forms):
 
 ```bash
-dam edit a1b2c3d4 --clear-description
-dam edit a1b2c3d4 --description ""
+maki edit a1b2c3d4 --clear-description
+maki edit a1b2c3d4 --description ""
 ```
 
 Change a variant's role from alternate to export:
 
 ```bash
-dam edit a1b2c3d4 --role export --variant sha256:abcdef1234567890...
+maki edit a1b2c3d4 --role export --variant sha256:abcdef1234567890...
 ```
 
 ### SEE ALSO
 
-[tag](#dam-tag) -- add or remove tags.
-[show](04-retrieve-commands.md#dam-show) -- display full asset details including edited fields.
-[search](04-retrieve-commands.md#dam-search) -- `rating:`, `label:` filters for finding assets.
-[fix-roles](05-maintain-commands.md#dam-fix-roles) -- batch re-role non-RAW variants in RAW+non-RAW groups.
+[tag](#maki-tag) -- add or remove tags.
+[show](04-retrieve-commands.md#maki-show) -- display full asset details including edited fields.
+[search](04-retrieve-commands.md#maki-search) -- `rating:`, `label:` filters for finding assets.
+[fix-roles](05-maintain-commands.md#maki-fix-roles) -- batch re-role non-RAW variants in RAW+non-RAW groups.
 
 ---
 
-## dam group
+## maki group
 
 ### NAME
 
-dam-group -- merge variants into a single asset
+maki-group -- merge variants into a single asset
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] group <VARIANT_HASHES...>
+maki [GLOBAL FLAGS] group <VARIANT_HASHES...>
 ```
 
 ### DESCRIPTION
@@ -488,47 +488,47 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 Group a RAW file and its export:
 
 ```bash
-dam group abc123def456... 789012fed345...
+maki group abc123def456... 789012fed345...
 ```
 
 Find variant hashes from asset details and group them:
 
 ```bash
-dam show a1b2c --json | jq -r '.variants[].content_hash'
+maki show a1b2c --json | jq -r '.variants[].content_hash'
 # Use the hashes from two different assets:
-dam group <hash1> <hash2>
+maki group <hash1> <hash2>
 ```
 
 Group three variants (RAW, processed TIFF, final JPEG):
 
 ```bash
-dam group abc123... def456... 789abc...
+maki group abc123... def456... 789abc...
 ```
 
 ### SEE ALSO
 
-[split](#dam-split) -- the inverse operation: extract variants into standalone assets.
-[auto-group](#dam-auto-group) -- automatically group assets by filename stem.
-[show](04-retrieve-commands.md#dam-show) -- display variant hashes for an asset.
-[fix-roles](05-maintain-commands.md#dam-fix-roles) -- fix variant roles after grouping.
+[split](#maki-split) -- the inverse operation: extract variants into standalone assets.
+[auto-group](#maki-auto-group) -- automatically group assets by filename stem.
+[show](04-retrieve-commands.md#maki-show) -- display variant hashes for an asset.
+[fix-roles](05-maintain-commands.md#maki-fix-roles) -- fix variant roles after grouping.
 
 ---
 
-## dam split
+## maki split
 
 ### NAME
 
-dam-split -- extract variants from an asset into new standalone assets
+maki-split -- extract variants from an asset into new standalone assets
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] split <ASSET_ID> <VARIANT_HASHES...>
+maki [GLOBAL FLAGS] split <ASSET_ID> <VARIANT_HASHES...>
 ```
 
 ### DESCRIPTION
 
-Splits one or more variants out of an existing asset, creating a new standalone asset for each extracted variant. This is the inverse of `dam group`.
+Splits one or more variants out of an existing asset, creating a new standalone asset for each extracted variant. This is the inverse of `maki group`.
 
 Each extracted variant:
 
@@ -556,45 +556,45 @@ Standard global flags (`--json`, `--log`, `--time`).
 Show variants of an asset:
 
 ```bash
-dam show abc12345
+maki show abc12345
 ```
 
 Extract a specific variant into its own asset:
 
 ```bash
-dam split abc12345 sha256:def456...
+maki split abc12345 sha256:def456...
 ```
 
 Extract multiple variants (each becomes a separate asset):
 
 ```bash
-dam split abc12345 sha256:aaa... sha256:bbb...
+maki split abc12345 sha256:aaa... sha256:bbb...
 ```
 
 JSON output for scripting:
 
 ```bash
-dam --json split abc12345 sha256:def456...
+maki --json split abc12345 sha256:def456...
 ```
 
 ### SEE ALSO
 
-[group](#dam-group) -- the inverse operation: merge variants into a single asset.
-[auto-group](#dam-auto-group) -- automatically group assets by filename stem.
-[show](04-retrieve-commands.md#dam-show) -- display variant hashes for an asset.
+[group](#maki-group) -- the inverse operation: merge variants into a single asset.
+[auto-group](#maki-auto-group) -- automatically group assets by filename stem.
+[show](04-retrieve-commands.md#maki-show) -- display variant hashes for an asset.
 
 ---
 
-## dam auto-group
+## maki auto-group
 
 ### NAME
 
-dam-auto-group -- automatically group assets by filename stem
+maki-auto-group -- automatically group assets by filename stem
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] auto-group [QUERY] [--apply]
+maki [GLOBAL FLAGS] auto-group [QUERY] [--apply]
 ```
 
 ### DESCRIPTION
@@ -617,7 +617,7 @@ An optional search query scopes which assets are considered. Only assets matchin
 ### ARGUMENTS
 
 **QUERY** (optional)
-: A search query (same syntax as `dam search`) to limit which assets participate in grouping.
+: A search query (same syntax as `maki search`) to limit which assets participate in grouping.
 
 ### OPTIONS
 
@@ -633,59 +633,59 @@ An optional search query scopes which assets are considered. Only assets matchin
 Preview what auto-group would merge across the entire catalog:
 
 ```bash
-dam auto-group
+maki auto-group
 ```
 
 Auto-group only assets from a specific import path:
 
 ```bash
-dam auto-group "path:Capture/2026-02-22"
+maki auto-group "path:Capture/2026-02-22"
 ```
 
 Apply grouping after reviewing the dry-run report:
 
 ```bash
-dam auto-group --apply
+maki auto-group --apply
 ```
 
 Auto-group assets with a specific tag:
 
 ```bash
-dam auto-group "tag:wedding" --apply --log
+maki auto-group "tag:wedding" --apply --log
 ```
 
 Auto-group with JSON output for scripting:
 
 ```bash
-dam auto-group --apply --json | jq '{merged: .total_donors_merged, moved: .total_variants_moved}'
+maki auto-group --apply --json | jq '{merged: .total_donors_merged, moved: .total_variants_moved}'
 ```
 
 ### SEE ALSO
 
-[group](#dam-group) -- manually group specific variants by content hash.
-[fix-roles](05-maintain-commands.md#dam-fix-roles) -- fix variant roles after grouping.
-[search](04-retrieve-commands.md#dam-search) -- query syntax for scoping auto-group.
+[group](#maki-group) -- manually group specific variants by content hash.
+[fix-roles](05-maintain-commands.md#maki-fix-roles) -- fix variant roles after grouping.
+[search](04-retrieve-commands.md#maki-search) -- query syntax for scoping auto-group.
 
 ---
 
-## dam auto-tag
+## maki auto-tag
 
 > **Feature-gated**: requires building with `--features ai`. Not available in default builds. Build with `--features ai-gpu` for CoreML GPU acceleration on macOS (see `[ai] execution_provider` in [Configuration](08-configuration.md#ai-section)).
 
 ### NAME
 
-dam-auto-tag -- suggest or apply tags to images using AI (SigLIP zero-shot classification, multi-model)
+maki-auto-tag -- suggest or apply tags to images using AI (SigLIP zero-shot classification, multi-model)
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] auto-tag [QUERY] [OPTIONS]
-dam [GLOBAL FLAGS] auto-tag [OPTIONS] --asset <ID>
-dam [GLOBAL FLAGS] auto-tag [OPTIONS] --volume <LABEL>
-dam [GLOBAL FLAGS] auto-tag --download [--model <ID>]
-dam [GLOBAL FLAGS] auto-tag --remove-model [--model <ID>]
-dam [GLOBAL FLAGS] auto-tag --list-models
-dam [GLOBAL FLAGS] auto-tag --similar <ASSET_ID>
+maki [GLOBAL FLAGS] auto-tag [QUERY] [OPTIONS]
+maki [GLOBAL FLAGS] auto-tag [OPTIONS] --asset <ID>
+maki [GLOBAL FLAGS] auto-tag [OPTIONS] --volume <LABEL>
+maki [GLOBAL FLAGS] auto-tag --download [--model <ID>]
+maki [GLOBAL FLAGS] auto-tag --remove-model [--model <ID>]
+maki [GLOBAL FLAGS] auto-tag --list-models
+maki [GLOBAL FLAGS] auto-tag --similar <ASSET_ID>
 ```
 
 ### DESCRIPTION
@@ -699,7 +699,7 @@ Two models are available:
 | `siglip-vit-b16-256` | SigLIP ViT-B/16-256 | 768-dim | ~207 MB | Default, good balance |
 | `siglip-vit-l16-256` | SigLIP ViT-L/16-256 | 1024-dim | ~670 MB | Higher accuracy |
 
-Select with `--model <id>` or set `[ai] model` in `dam.toml`. The default is `siglip-vit-b16-256`.
+Select with `--model <id>` or set `[ai] model` in `maki.toml`. The default is `siglip-vit-b16-256`.
 
 By default runs in **report-only mode** -- shows suggested tags without applying them. Use `--apply` to write suggested tags to assets.
 
@@ -709,16 +709,16 @@ Model files are downloaded from HuggingFace on first use. Use `--download` to pr
 
 **Image selection**: For each asset, the command looks for the best available image in this order: smart preview (2560px) → regular preview (800px) → original file on an online volume. Non-image assets (video, audio, documents) are skipped.
 
-**Embedding storage**: Image embeddings are stored in the SQLite catalog (`embeddings` table) per model. Switching models does not corrupt existing embeddings; each model's embeddings are stored separately. The `--similar` flag uses stored embeddings from the active model to find visually similar assets via an in-memory index (dot product on L2-normalized vectors). Embeddings are also stored opportunistically by the web UI "Suggest tags" and batch "Auto-tag" endpoints. Use `dam embed` to batch-generate embeddings without tagging.
+**Embedding storage**: Image embeddings are stored in the SQLite catalog (`embeddings` table) per model. Switching models does not corrupt existing embeddings; each model's embeddings are stored separately. The `--similar` flag uses stored embeddings from the active model to find visually similar assets via an in-memory index (dot product on L2-normalized vectors). Embeddings are also stored opportunistically by the web UI "Suggest tags" and batch "Auto-tag" endpoints. Use `maki embed` to batch-generate embeddings without tagging.
 
 **Default labels**: ~100 photography categories are built in (landscape, portrait, architecture, animals, food, etc.). Override with a custom labels file via `--labels`.
 
-**Prompt template**: Each label is wrapped with a prompt template (default: `"a photograph of {}"`) before text encoding. Configurable via `[ai] prompt` in `dam.toml`.
+**Prompt template**: Each label is wrapped with a prompt template (default: `"a photograph of {}"`) before text encoding. Configurable via `[ai] prompt` in `maki.toml`.
 
 ### OPTIONS
 
 **\<QUERY\>** (positional, optional)
-: Filter which assets to process using the same search syntax as `dam search`.
+: Filter which assets to process using the same search syntax as `maki search`.
 
 **--asset \<ID\>**
 : Process a single asset by ID (supports prefix matching).
@@ -727,7 +727,7 @@ Model files are downloaded from HuggingFace on first use. Use `--download` to pr
 : Process only assets on a specific volume.
 
 **--model \<ID\>**
-: Select which SigLIP model to use. Available: `siglip-vit-b16-256` (default), `siglip-vit-l16-256`. Overrides `[ai] model` in `dam.toml`. Also applies to `--download` and `--remove-model`.
+: Select which SigLIP model to use. Available: `siglip-vit-b16-256` (default), `siglip-vit-l16-256`. Overrides `[ai] model` in `maki.toml`. Also applies to `--download` and `--remove-model`.
 
 **--threshold \<FLOAT\>**
 : Minimum confidence score to suggest a tag (default: 0.1). Range: 0.0 to 1.0. Higher values produce fewer but more confident suggestions.
@@ -748,10 +748,10 @@ Model files are downloaded from HuggingFace on first use. Use `--download` to pr
 : Show model download status and file sizes. Returns early.
 
 **--list-labels**
-: Print the active label list (one per line) and exit. Shows the built-in defaults, or the labels from `--labels` / `[ai] labels` config if set. Works without a catalog when using defaults. Pipe to a file to create a custom labels blueprint: `dam auto-tag --list-labels > my-labels.txt`. Supports `--json` (outputs a JSON array).
+: Print the active label list (one per line) and exit. Shows the built-in defaults, or the labels from `--labels` / `[ai] labels` config if set. Works without a catalog when using defaults. Pipe to a file to create a custom labels blueprint: `maki auto-tag --list-labels > my-labels.txt`. Supports `--json` (outputs a JSON array).
 
 **--similar \<ASSET_ID\>**
-: Find the 20 most visually similar assets to the given asset, using stored embeddings. If the target asset has no stored embedding, it is encoded on-the-fly. Other assets must have been previously processed by `auto-tag` or `dam embed`.
+: Find the 20 most visually similar assets to the given asset, using stored embeddings. If the target asset has no stored embedding, it is encoded on-the-fly. Other assets must have been previously processed by `auto-tag` or `maki embed`.
 
 `--json` outputs an `AutoTagResult` with `assets_processed`, `assets_skipped`, `tags_suggested`, `tags_applied`, `errors`, `dry_run`, and per-asset `suggestions`.
 
@@ -762,100 +762,100 @@ Model files are downloaded from HuggingFace on first use. Use `--download` to pr
 Download the default model (first-time setup):
 
 ```bash
-dam auto-tag --download
+maki auto-tag --download
 ```
 
 Download the larger model for higher accuracy:
 
 ```bash
-dam auto-tag --download --model siglip-vit-l16-256
+maki auto-tag --download --model siglip-vit-l16-256
 ```
 
 Preview suggested tags for all images (report-only):
 
 ```bash
-dam auto-tag --query "*"
+maki auto-tag --query "*"
 ```
 
 Auto-tag a specific asset and apply the tags:
 
 ```bash
-dam auto-tag --asset a1b2c3d4 --apply
+maki auto-tag --asset a1b2c3d4 --apply
 ```
 
 Auto-tag images matching a search query with a higher threshold:
 
 ```bash
-dam auto-tag --query "type:image rating:4+" --threshold 0.4 --apply
+maki auto-tag --query "type:image rating:4+" --threshold 0.4 --apply
 ```
 
 Use the larger model for a specific query:
 
 ```bash
-dam auto-tag --query "tag:unreviewed" --model siglip-vit-l16-256 --apply
+maki auto-tag --query "tag:unreviewed" --model siglip-vit-l16-256 --apply
 ```
 
 Use a custom labels file:
 
 ```bash
-dam auto-tag --labels my-labels.txt --query "*" --apply
+maki auto-tag --labels my-labels.txt --query "*" --apply
 ```
 
 Find visually similar images:
 
 ```bash
-dam auto-tag --similar a1b2c3d4
+maki auto-tag --similar a1b2c3d4
 ```
 
 Export default labels as a blueprint for customization:
 
 ```bash
-dam auto-tag --list-labels > my-labels.txt
+maki auto-tag --list-labels > my-labels.txt
 # Edit the file, then use it:
-dam auto-tag --labels my-labels.txt --apply
+maki auto-tag --labels my-labels.txt --apply
 ```
 
 Show model status:
 
 ```bash
-dam auto-tag --list-models
+maki auto-tag --list-models
 ```
 
 Auto-tag with JSON output for scripting:
 
 ```bash
-dam auto-tag --query "tag:unreviewed" --json | jq '.suggestions[] | {asset: .asset_id, tags: [.suggested_tags[].tag]}'
+maki auto-tag --query "tag:unreviewed" --json | jq '.suggestions[] | {asset: .asset_id, tags: [.suggested_tags[].tag]}'
 ```
 
 ### SEE ALSO
 
-[embed](#dam-embed) -- batch-generate embeddings for similarity search.
-[tag](#dam-tag) -- manually add or remove tags.
-[search](04-retrieve-commands.md#dam-search) -- `tag:` filter for finding tagged assets.
+[embed](#maki-embed) -- batch-generate embeddings for similarity search.
+[tag](#maki-tag) -- manually add or remove tags.
+[search](04-retrieve-commands.md#maki-search) -- `tag:` filter for finding tagged assets.
 [Configuration](08-configuration.md#ai-section) -- `[ai]` section for default threshold, labels, and prompt template.
 
 ---
 
-## dam embed
+## maki embed
 
 > **Feature-gated**: requires building with `--features ai`. Not available in default builds. Build with `--features ai-gpu` for CoreML GPU acceleration on macOS (see `[ai] execution_provider` in [Configuration](08-configuration.md#ai-section)).
 
 ### NAME
 
-dam-embed -- batch-generate image embeddings for visual similarity search
+maki-embed -- batch-generate image embeddings for visual similarity search
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] embed [QUERY] [OPTIONS]
-dam [GLOBAL FLAGS] embed --asset <ID> [OPTIONS]
-dam [GLOBAL FLAGS] embed --volume <LABEL> [OPTIONS]
-dam [GLOBAL FLAGS] embed --export
+maki [GLOBAL FLAGS] embed [QUERY] [OPTIONS]
+maki [GLOBAL FLAGS] embed --asset <ID> [OPTIONS]
+maki [GLOBAL FLAGS] embed --volume <LABEL> [OPTIONS]
+maki [GLOBAL FLAGS] embed --export
 ```
 
 ### DESCRIPTION
 
-Pre-computes image embeddings for visual similarity search (`dam auto-tag --similar` and the web UI "Find similar" button) without applying any tags. This is useful for building up the similarity search index across your catalog.
+Pre-computes image embeddings for visual similarity search (`maki auto-tag --similar` and the web UI "Find similar" button) without applying any tags. This is useful for building up the similarity search index across your catalog.
 
 For each matching asset, the command finds the best available image (smart preview → regular preview → original file on an online volume), encodes it with SigLIP, and stores the embedding in the SQLite catalog's `embeddings` table and as a binary file under `embeddings/<model>/<prefix>/<asset_id>.bin`.
 
@@ -868,7 +868,7 @@ By default, assets that already have a stored embedding for the active model are
 ### OPTIONS
 
 **\<QUERY\>** (positional, optional)
-: Filter which assets to process using the same search syntax as `dam search`.
+: Filter which assets to process using the same search syntax as `maki search`.
 
 **--asset \<ID\>**
 : Process a single asset by ID (supports prefix matching).
@@ -877,7 +877,7 @@ By default, assets that already have a stored embedding for the active model are
 : Process only assets on a specific volume.
 
 **--model \<ID\>**
-: Select which SigLIP model to use. Available: `siglip-vit-b16-256` (default), `siglip-vit-l16-256`. Overrides `[ai] model` in `dam.toml`.
+: Select which SigLIP model to use. Available: `siglip-vit-b16-256` (default), `siglip-vit-l16-256`. Overrides `[ai] model` in `maki.toml`.
 
 **--force**
 : Re-generate embeddings even if they already exist for the active model.
@@ -894,62 +894,62 @@ By default, assets that already have a stored embedding for the active model are
 Generate embeddings for all assets:
 
 ```bash
-dam embed --query "*"
+maki embed --query "*"
 ```
 
 Generate embeddings for a single asset:
 
 ```bash
-dam embed --asset a1b2c3d4
+maki embed --asset a1b2c3d4
 ```
 
 Generate embeddings for a specific volume:
 
 ```bash
-dam embed --volume "Photos 2024"
+maki embed --volume "Photos 2024"
 ```
 
 Force re-generation with a different model:
 
 ```bash
-dam embed --query "*" --model siglip-vit-l16-256 --force
+maki embed --query "*" --model siglip-vit-l16-256 --force
 ```
 
 Generate embeddings for untagged images only:
 
 ```bash
-dam embed --query "tag:none type:image"
+maki embed --query "tag:none type:image"
 ```
 
 Check progress with JSON output:
 
 ```bash
-dam embed --query "*" --json | jq '{embedded, skipped}'
+maki embed --query "*" --json | jq '{embedded, skipped}'
 ```
 
 Export all embeddings to binary files (one-time migration):
 
 ```bash
-dam embed --export
+maki embed --export
 ```
 
 ### SEE ALSO
 
-[auto-tag](#dam-auto-tag) -- AI tag suggestion and visual similarity search.
+[auto-tag](#maki-auto-tag) -- AI tag suggestion and visual similarity search.
 [Configuration](08-configuration.md#ai-section) -- `[ai]` section for model and model directory settings.
 
 ---
 
-## dam describe
+## maki describe
 
 ### NAME
 
-dam-describe -- generate image descriptions using a vision-language model (VLM)
+maki-describe -- generate image descriptions using a vision-language model (VLM)
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] describe [QUERY] [OPTIONS]
+maki [GLOBAL FLAGS] describe [QUERY] [OPTIONS]
 ```
 
 ### DESCRIPTION
@@ -975,7 +975,7 @@ For each asset, the command:
 ### OPTIONS
 
 **\<QUERY\>** (positional, optional)
-: Search query to scope which assets are described. Same syntax as `dam search`.
+: Search query to scope which assets are described. Same syntax as `maki search`.
 
 **--asset \<ID\>**
 : Process a single asset (ID or unique prefix).
@@ -984,25 +984,25 @@ For each asset, the command:
 : Limit to assets on a specific volume.
 
 **--model \<NAME\>**
-: VLM model name. Default from `[vlm] model` in `dam.toml`, or `qwen2.5vl:3b`.
+: VLM model name. Default from `[vlm] model` in `maki.toml`, or `qwen2.5vl:3b`.
 
 **--endpoint \<URL\>**
-: VLM server base URL. Default from `[vlm] endpoint` in `dam.toml`, or `http://localhost:11434`.
+: VLM server base URL. Default from `[vlm] endpoint` in `maki.toml`, or `http://localhost:11434`.
 
 **--prompt \<TEXT\>**
-: Custom prompt sent to the VLM. Default from `[vlm] prompt` in `dam.toml`, or a built-in photography-focused prompt. In `--mode both`, custom prompts are ignored because each call uses its specialized built-in prompt.
+: Custom prompt sent to the VLM. Default from `[vlm] prompt` in `maki.toml`, or a built-in photography-focused prompt. In `--mode both`, custom prompts are ignored because each call uses its specialized built-in prompt.
 
 **--max-tokens \<N\>**
-: Maximum tokens in the VLM response. Default from `[vlm] max_tokens` in `dam.toml`, or `500`.
+: Maximum tokens in the VLM response. Default from `[vlm] max_tokens` in `maki.toml`, or `500`.
 
 **--timeout \<SECONDS\>**
-: Timeout for each VLM request. Default from `[vlm] timeout` in `dam.toml`, or `300`. Increase for larger models or first-time model loading.
+: Timeout for each VLM request. Default from `[vlm] timeout` in `maki.toml`, or `300`. Increase for larger models or first-time model loading.
 
 **--mode \<MODE\>**
 : Output mode: `describe` (default), `tags`, or `both`. In `both` mode, two VLM calls are made per asset — one for description, one for tags.
 
 **--temperature \<FLOAT\>**
-: Sampling temperature controlling randomness. `0.0` = deterministic (always picks the most likely token), `0.7` = balanced (default), `1.0+` = more creative. Lower values produce more consistent but potentially blander output. Default from `[vlm] temperature` in `dam.toml`, or `0.7`.
+: Sampling temperature controlling randomness. `0.0` = deterministic (always picks the most likely token), `0.7` = balanced (default), `1.0+` = more creative. Lower values produce more consistent but potentially blander output. Default from `[vlm] temperature` in `maki.toml`, or `0.7`.
 
 **--num-ctx \<N\>**
 : Context window size passed to the VLM server (Ollama `num_ctx`). When non-zero, overrides the model's default context length. Useful for models that benefit from a larger context (e.g., `--num-ctx 4096`). Default: `0` (server default).
@@ -1033,96 +1033,96 @@ For each asset, the command:
 Check that Ollama is running and see available models:
 
 ```bash
-dam describe --check
+maki describe --check
 ```
 
 Preview descriptions for undescribed assets (report-only):
 
 ```bash
-dam describe --query "description:none type:image"
+maki describe --query "description:none type:image"
 ```
 
 Generate and apply descriptions to a specific volume:
 
 ```bash
-dam describe --volume "Photos 2024" --apply
+maki describe --volume "Photos 2024" --apply
 ```
 
 Describe a single asset:
 
 ```bash
-dam describe --asset a1b2c3d4 --apply
+maki describe --asset a1b2c3d4 --apply
 ```
 
 Use a faster model for batch processing:
 
 ```bash
-dam describe --query "date:2024-06" --model moondream --apply
+maki describe --query "date:2024-06" --model moondream --apply
 ```
 
 Use a remote server or larger model:
 
 ```bash
-dam describe --endpoint http://gpu-server:11434 --model qwen2.5vl:7b --apply
+maki describe --endpoint http://gpu-server:11434 --model qwen2.5vl:7b --apply
 ```
 
 Generate tags only:
 
 ```bash
-dam describe --mode tags --query "tag:untagged" --apply
+maki describe --mode tags --query "tag:untagged" --apply
 ```
 
 Generate both descriptions and tags in one pass (two VLM calls per asset):
 
 ```bash
-dam describe --mode both --asset a1b2c3d4 --apply
+maki describe --mode both --asset a1b2c3d4 --apply
 ```
 
 Custom prompt for architectural photography:
 
 ```bash
-dam describe --prompt "Describe the architectural style, materials, and features." --query "tag:architecture" --apply
+maki describe --prompt "Describe the architectural style, materials, and features." --query "tag:architecture" --apply
 ```
 
 Deterministic output (temperature 0) for reproducible batch tagging:
 
 ```bash
-dam describe --mode tags --temperature 0 --query "date:2024-06" --apply
+maki describe --mode tags --temperature 0 --query "date:2024-06" --apply
 ```
 
 Increase timeout for a large model's first load:
 
 ```bash
-dam describe --model qwen2.5vl:7b --timeout 300 --asset a1b2c3d4
+maki describe --model qwen2.5vl:7b --timeout 300 --asset a1b2c3d4
 ```
 
 Use a larger context window and nucleus sampling with a specific model:
 
 ```bash
-dam describe --model qwen3-vl:4b --num-ctx 4096 --top-p 0.9 --apply
+maki describe --model qwen3-vl:4b --num-ctx 4096 --top-p 0.9 --apply
 ```
 
 Overwrite existing descriptions with a better model:
 
 ```bash
-dam describe --query "rating:4+" --model qwen2.5vl:7b --force --apply
+maki describe --query "rating:4+" --model qwen2.5vl:7b --force --apply
 ```
 
 Dry run with JSON output:
 
 ```bash
-dam describe --query "rating:4+" --dry-run --json
+maki describe --query "rating:4+" --dry-run --json
 ```
 
 Use a cloud API (OpenAI-compatible endpoint):
 
 ```bash
-dam describe --endpoint https://api.openai.com --model gpt-4o --apply --query "*"
+maki describe --endpoint https://api.openai.com --model gpt-4o --apply --query "*"
 ```
 
 ### SEE ALSO
 
-[edit](#dam-edit) -- manually set or clear an asset's description.
+[edit](#maki-edit) -- manually set or clear an asset's description.
 [VLM Model Guide](10-vlm-models.md) -- tested models, backends, hardware guide, and quality comparison.
 [Configuration](08-configuration.md#vlm-section) -- `[vlm]` section for endpoint, model, and prompt settings.
 [VLM Setup (User Guide)](../user-guide/03-ingest.md#vlm-image-descriptions) -- how to set up a local VLM server.

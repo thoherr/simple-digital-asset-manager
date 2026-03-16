@@ -1,6 +1,6 @@
 # Format Templates Reference
 
-The `--format` flag controls how `dam search` and `dam duplicates` display their results. It accepts preset names or custom template strings with placeholder substitution.
+The `--format` flag controls how `maki search` and `maki duplicates` display their results. It accepts preset names or custom template strings with placeholder substitution.
 
 ---
 
@@ -13,7 +13,7 @@ One full UUID per line, with no header or decoration. Ideal for scripting and pi
 **Shorthand:** `-q` (equivalent to `--format=ids`)
 
 ```
-$ dam search -q "tag:landscape"
+$ maki search -q "tag:landscape"
 a1b2c3d4-5678-9abc-def0-123456789abc
 e5f6a7b8-1234-5678-9abc-def012345678
 ```
@@ -25,7 +25,7 @@ The result count line is suppressed.
 Default compact view. One line per result showing short ID, filename, type, format, and date. A result count is printed at the end.
 
 ```
-$ dam search "sunset"
+$ maki search "sunset"
 a1b2c3d4  IMG_1234.jpg [image] (JPEG) -- 2026-01-15T10:30:00
 e5f6a7b8  DSC_5678.nef [image] (NEF) -- 2026-01-14T16:45:00
 
@@ -39,7 +39,7 @@ This is the default when no `--format` is specified.
 Detailed view including tags and description on each line.
 
 ```
-$ dam search "sunset" --format full
+$ maki search "sunset" --format full
 a1b2c3d4  IMG_1234.jpg [image] (JPEG) -- 2026-01-15T10:30:00 tags:sunset,landscape A golden sunset over the mountains
 e5f6a7b8  DSC_5678.nef [image] (NEF) -- 2026-01-14T16:45:00 tags:sunset,nature
 ```
@@ -49,7 +49,7 @@ e5f6a7b8  DSC_5678.nef [image] (NEF) -- 2026-01-14T16:45:00 tags:sunset,nature
 JSON array containing all result objects. Equivalent to using the global `--json` flag.
 
 ```
-$ dam search "sunset" --format json
+$ maki search "sunset" --format json
 [
   {
     "asset_id": "a1b2c3d4-5678-9abc-def0-123456789abc",
@@ -80,7 +80,7 @@ Build your own output format by passing a string containing `{placeholder}` toke
 
 ## Placeholders (search)
 
-Available in `dam search --format`:
+Available in `maki search --format`:
 
 | Placeholder | Description |
 |-------------|-------------|
@@ -98,7 +98,7 @@ Available in `dam search --format`:
 
 ## Placeholders (duplicates)
 
-Available in `dam duplicates --format`. Includes all search placeholders above, plus:
+Available in `maki duplicates --format`. Includes all search placeholders above, plus:
 
 | Placeholder | Description |
 |-------------|-------------|
@@ -125,7 +125,7 @@ A backslash followed by any other character emits a literal backslash (the backs
 ### Tab-separated values for a spreadsheet
 
 ```bash
-dam search "type:image" --format '{name}\t{format}\t{date}\t{tags}'
+maki search "type:image" --format '{name}\t{format}\t{date}\t{tags}'
 ```
 
 Output:
@@ -138,7 +138,7 @@ DSC_5678.nef	NEF	2026-01-14T16:45:00	sunset,nature
 ### One name per line with rating label
 
 ```bash
-dam search "rating:4+" --format '{name} [{label}]'
+maki search "rating:4+" --format '{name} [{label}]'
 ```
 
 Output:
@@ -151,7 +151,7 @@ Mountain Lake [Blue]
 ### Multi-line detail view
 
 ```bash
-dam search "tag:portfolio" --format '{name}\n  Format: {format}\n  Tags: {tags}\n  {description}\n'
+maki search "tag:portfolio" --format '{name}\n  Format: {format}\n  Tags: {tags}\n  {description}\n'
 ```
 
 Output:
@@ -171,7 +171,7 @@ Mountain Lake
 ### Short IDs with filenames (compact scripting format)
 
 ```bash
-dam search "format:nef" --format '{short_id} {filename}'
+maki search "format:nef" --format '{short_id} {filename}'
 ```
 
 Output:
@@ -184,7 +184,7 @@ e5f6a7b8 DSC_5678.NEF
 ### Hash-based file listing
 
 ```bash
-dam search "type:image" --format '{hash}\t{filename}'
+maki search "type:image" --format '{hash}\t{filename}'
 ```
 
 Output:
@@ -197,7 +197,7 @@ sha256:def789abc012...	DSC_5678.NEF
 ### Duplicate locations as tab-separated
 
 ```bash
-dam duplicates --format '{filename}\t{format}\t{locations}'
+maki duplicates --format '{filename}\t{format}\t{locations}'
 ```
 
 Output:

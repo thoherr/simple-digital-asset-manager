@@ -1,38 +1,38 @@
 # Proposal: Asset Management Shell
 
-**Status: Fully implemented in v3.0.0.** All three phases complete — basic shell with `_` and scripts (Phase 1), named variables and tab completion (Phase 2), session defaults, `source`, `reload`, `-c` mode, and `--strict` (Phase 3). See [User Guide](../../manual/user-guide/09-shell.md) and [Command Reference](../../manual/reference/04-retrieve-commands.md#dam-shell).
+**Status: Fully implemented in v3.0.0.** All three phases complete — basic shell with `_` and scripts (Phase 1), named variables and tab completion (Phase 2), session defaults, `source`, `reload`, `-c` mode, and `--strict` (Phase 3). See [User Guide](../../manual/user-guide/09-shell.md) and [Command Reference](../../manual/reference/04-retrieve-commands.md#maki-shell).
 
 ## Motivation
 
-Every `dam` invocation repeats the same startup work: locate catalog root, load `dam.toml`, open SQLite with pragmas, check schema version, construct services. For interactive workflows — browsing results, editing tags, checking stats — this overhead adds up.
+Every `maki` invocation repeats the same startup work: locate catalog root, load `maki.toml`, open SQLite with pragmas, check schema version, construct services. For interactive workflows — browsing results, editing tags, checking stats — this overhead adds up.
 
-Beyond performance, one-shot CLI invocations can't compose naturally. A shell workflow like `dam search "rating:5" | xargs -I{} dam export {} /tmp/picks` works but is verbose, re-opens the catalog for each asset, and loses type information (IDs become plain strings).
+Beyond performance, one-shot CLI invocations can't compose naturally. A shell workflow like `maki search "rating:5" | xargs -I{} maki export {} /tmp/picks` works but is verbose, re-opens the catalog for each asset, and loses type information (IDs become plain strings).
 
-An asset management shell keeps state alive between commands, gives instant response, and introduces asset-typed variables and script files — turning `dam` from a command-line tool into a composable workflow environment.
+An asset management shell keeps state alive between commands, gives instant response, and introduces asset-typed variables and script files — turning `maki` from a command-line tool into a composable workflow environment.
 
 ## Design
 
 ### Entry Point
 
 ```
-dam shell                         # interactive session
-dam shell workflow.dam            # run a script file
-dam shell -c 'search "rating:5"' # run a single command
+maki shell                         # interactive session
+maki shell workflow.maki            # run a script file
+maki shell -c 'search "rating:5"' # run a single command
 ```
 
-Starts an interactive session in the current catalog. Displays a prompt, accepts any `dam` subcommand without the `dam` prefix:
+Starts an interactive session in the current catalog. Displays a prompt, accepts any `maki` subcommand without the `maki` prefix:
 
 ```
-dam> search "tag:landscape rating:4+"
+maki> search "tag:landscape rating:4+"
   12 assets found
-dam> edit --rating 5 abc12345
-dam> stats
-dam> quit
+maki> edit --rating 5 abc12345
+maki> stats
+maki> quit
 ```
 
 ### Cached State
 
-Modeled after the existing `AppState` from `dam serve`:
+Modeled after the existing `AppState` from `maki serve`:
 
 | State | Lifecycle | Notes |
 |-------|-----------|-------|
@@ -43,7 +43,7 @@ Modeled after the existing `AppState` from `dam serve`:
 | Catalog (SQLite) | Per-command | Fresh `Catalog::open_fast()` each command, same as web server |
 | Variables | Session | Named result sets, cleared on `reload` |
 
-Per-command catalog opens are cheap (~1ms with pragmas) and avoid stale-connection issues. This matches the proven `dam serve` pattern.
+Per-command catalog opens are cheap (~1ms with pragmas) and avoid stale-connection issues. This matches the proven `maki serve` pattern.
 
 ### Command Parsing
 
@@ -53,7 +53,7 @@ Clap supports `try_parse_from(args)` which takes an iterator of strings. The she
 2. Check for shell-specific syntax (variable assignment, `#` comments, blank lines)
 3. Expand variables (`$name` and `_`) to asset ID lists
 4. Shell-split into tokens (handle quotes, escapes)
-5. Prepend `"dam"` as argv[0]
+5. Prepend `"maki"` as argv[0]
 6. Call `Cli::try_parse_from(tokens)`
 7. Execute the command using the cached state
 8. Capture result set (if applicable), update `_`
@@ -66,24 +66,24 @@ Parse errors are displayed without exiting. Commands like `init`, `migrate`, and
 Commands that return asset lists (`search`, `duplicates`, `show`) capture their results as the implicit `_` variable. Named variables store result sets for later use:
 
 ```
-dam> $picks = search "rating:5 date:2024"
+maki> $picks = search "rating:5 date:2024"
   38 assets → $picks
-dam> $untagged = search "tags:none type:image"
+maki> $untagged = search "tags:none type:image"
   142 assets → $untagged
-dam> tag --add "needs-review" $untagged
+maki> tag --add "needs-review" $untagged
   142 assets tagged
-dam> export --target /tmp/best $picks
+maki> export --target /tmp/best $picks
   38 assets exported
 ```
 
 Variables hold asset ID lists. They expand to space-separated IDs when referenced. The implicit `_` always holds the result of the last command that produced asset IDs:
 
 ```
-dam> search "tag:landscape rating:4+"
+maki> search "tag:landscape rating:4+"
   12 assets found
-dam> edit --rating 5 _
+maki> edit --rating 5 _
   12 assets edited
-dam> tag --add "portfolio" _
+maki> tag --add "portfolio" _
   12 assets tagged
 ```
 
@@ -96,10 +96,10 @@ Variable rules:
 
 ### Script Files
 
-A `.dam` script file is a sequence of commands, one per line:
+A `.maki` script file is a sequence of commands, one per line:
 
 ```bash
-# nightly-import.dam — run after each shoot day
+# nightly-import.maki — run after each shoot day
 import /Volumes/Cards/DCIM --log
 auto-group
 generate-previews --log
@@ -111,22 +111,22 @@ stats
 Execute with:
 
 ```
-dam shell nightly-import.dam
-dam shell -c 'search "rating:5"'   # one-liner
+maki shell nightly-import.maki
+maki shell -c 'search "rating:5"'   # one-liner
 ```
 
 Script features:
 - `#` comments and blank lines are ignored
 - Variables work across lines (assign in one, use in another)
 - Exit code: 0 if all commands succeed, 1 on first error (with `--strict`), or continue-on-error by default
-- Scripts can be composed: `source other-script.dam` runs another script inline, sharing the session state
+- Scripts can be composed: `source other-script.maki` runs another script inline, sharing the session state
 
 ### Shell-Only Commands
 
 | Command | Description |
 |---------|-------------|
 | `quit` / `exit` / Ctrl-D | End the session |
-| `reload` | Re-read `dam.toml`, refresh cached config, clear variables |
+| `reload` | Re-read `maki.toml`, refresh cached config, clear variables |
 | `help` | Show available commands (delegates to clap `--help`) |
 | `set <flag>` | Session-wide defaults: `set --log`, `set --debug`, `set --json` |
 | `unset <flag>` | Remove a session default |
@@ -138,7 +138,7 @@ Script features:
 
 Using `rustyline` crate (~4K lines, stable, MIT):
 
-- **Command history** — persisted to `.dam/shell_history` in the catalog directory
+- **Command history** — persisted to `.maki/shell_history` in the catalog directory
 - **Tab completion** — subcommand names, `--flags`, volume labels, tag names, variable names
 - **Line editing** — Emacs-style keybindings (Ctrl-A/E/K/W), Vi mode optional
 - **Multi-line** — not needed; commands are single-line
@@ -162,7 +162,7 @@ The bracket section appears when named variables are defined, showing their coun
 - `--json` works per-command (e.g., `search --json "tag:landscape"`)
 - Session defaults via `set` apply to all subsequent commands
 - `--time` works per-command
-- In script mode (`dam shell script.dam`), output goes to stdout/stderr normally — scripts are pipeable
+- In script mode (`maki shell script.maki`), output goes to stdout/stderr normally — scripts are pipeable
 
 ### Excluded Commands
 
@@ -178,19 +178,19 @@ These are blocked inside the shell with a clear message:
 ### Curate and Export
 
 ```
-dam> $candidates = search "date:2024-06 type:image rating:3+"
+maki> $candidates = search "date:2024-06 type:image rating:3+"
   287 assets → $candidates
-dam> $portraits = search "date:2024-06 tag:portrait rating:4+"
+maki> $portraits = search "date:2024-06 tag:portrait rating:4+"
   42 assets → $portraits
-dam> tag --add "june-selects" $portraits
-dam> export --target /tmp/june-portraits $portraits
+maki> tag --add "june-selects" $portraits
+maki> export --target /tmp/june-portraits $portraits
   42 assets exported
 ```
 
 ### Cleanup After Import
 
 ```bash
-# post-import.dam
+# post-import.maki
 $new = search "imported:today"
 auto-group $new
 generate-previews $new --log
@@ -202,12 +202,12 @@ stats
 ### Audit Mis-grouped Assets
 
 ```
-dam> $scattered = search "scattered:2 variants:3+"
+maki> $scattered = search "scattered:2 variants:3+"
   15 assets → $scattered
-dam> show $scattered
+maki> show $scattered
   ... review each asset ...
-dam> split abc12345 --variants def678,ghi901
-dam> reimport-metadata abc12345
+maki> split abc12345 --variants def678,ghi901
+maki> reimport-metadata abc12345
 ```
 
 ## Implementation
@@ -228,7 +228,7 @@ dam> reimport-metadata abc12345
 - Named variables (`$name = command`)
 - Variable expansion in command arguments
 - `vars`, `unset` commands
-- Persist history to `.dam/shell_history`
+- Persist history to `.maki/shell_history`
 - Tab completion for subcommand names, flags, variable names
 - Tab completion for volume labels and tag names (from catalog queries, cached)
 
@@ -262,7 +262,7 @@ Alternative: `reedline` (Nushell's editor) — better Unicode, heavier (~30K lin
 **Pros:**
 - Near-instant command execution after first startup
 - Named result sets enable multi-step workflows without shell piping gymnastics
-- Script files make repeatable workflows trivial (`post-import.dam`, `nightly-cleanup.dam`)
+- Script files make repeatable workflows trivial (`post-import.maki`, `nightly-cleanup.maki`)
 - Command history and tab completion for efficient interactive use
 - Natural fit for exploratory sessions (search, inspect, edit, repeat)
 - Mirrors the `sqlite3` / `psql` / `python` interactive experience
@@ -270,12 +270,12 @@ Alternative: `reedline` (Nushell's editor) — better Unicode, heavier (~30K lin
 **Cons:**
 - New dependency (rustyline)
 - Commands must be careful about process-level side effects (changing working directory, signal handlers)
-- Catalog changes from external `dam` invocations won't be visible without `reload`
+- Catalog changes from external `maki` invocations won't be visible without `reload`
 - Variable syntax adds a small learning curve (though `$name` is universally familiar)
 
 ## Not In Scope
 
-- **Control flow** (if/else, for/while loops) — users who need this can use bash + `dam --json` + `jq`, or Python. Adding control flow means building a language, which is a different project entirely.
+- **Control flow** (if/else, for/while loops) — users who need this can use bash + `maki --json` + `jq`, or Python. Adding control flow means building a language, which is a different project entirely.
 - **TUI / ncurses interface** — the shell is text-based, not a full terminal UI
 - **Concurrent command execution** — commands run sequentially
 - **Remote shell / network protocol** — local only

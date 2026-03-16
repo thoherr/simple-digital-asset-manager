@@ -8,7 +8,7 @@
 cargo build
 ```
 
-Produces an unoptimized binary at `target/debug/dam` with debug symbols and runtime checks enabled. Fast compilation, suitable for development.
+Produces an unoptimized binary at `target/debug/maki` with debug symbols and runtime checks enabled. Fast compilation, suitable for development.
 
 ### Release Build
 
@@ -16,7 +16,7 @@ Produces an unoptimized binary at `target/debug/dam` with debug symbols and runt
 cargo build --release
 ```
 
-Produces an optimized binary at `target/release/dam`. Significantly faster runtime performance. Use this for production deployment.
+Produces an optimized binary at `target/release/maki`. Significantly faster runtime performance. Use this for production deployment.
 
 ### AI Feature Build
 
@@ -25,7 +25,7 @@ cargo build --features ai
 cargo build --release --features ai
 ```
 
-Enables the `dam auto-tag` command with SigLIP-based zero-shot image classification. Adds ONNX Runtime (`ort`), `ndarray`, and `tokenizers` as dependencies. The ONNX Runtime shared library is downloaded automatically during build. Without `--features ai`, these dependencies are not compiled and the `auto-tag` command is not available.
+Enables the `maki auto-tag` command with SigLIP-based zero-shot image classification. Adds ONNX Runtime (`ort`), `ndarray`, and `tokenizers` as dependencies. The ONNX Runtime shared library is downloaded automatically during build. Without `--features ai`, these dependencies are not compiled and the `auto-tag` command is not available.
 
 ### Requirements
 
@@ -83,7 +83,7 @@ The integration test suite provides helper functions for setting up test catalog
 cargo doc --no-deps --open
 ```
 
-Generates HTML documentation from doc comments and opens it in your browser. The `--no-deps` flag skips building docs for third-party dependencies, which speeds up the build considerably. Output is at `target/doc/dam/`.
+Generates HTML documentation from doc comments and opens it in your browser. The `--no-deps` flag skips building docs for third-party dependencies, which speeds up the build considerably. Output is at `target/doc/maki/`.
 
 ### PDF Manual
 
@@ -91,9 +91,9 @@ Generates HTML documentation from doc comments and opens it in your browser. The
 bash doc/manual/build-pdf.sh
 ```
 
-Generates `doc/manual/dam-manual.pdf` from the 21 Markdown source files. The script concatenates all sections in order, renders mermaid diagrams to PNG, and produces a PDF with table of contents, headers/footers, and syntax-highlighted code blocks. The version number is read from `Cargo.toml`.
+Generates `doc/manual/maki-manual.pdf` from the 21 Markdown source files. The script concatenates all sections in order, renders mermaid diagrams to PNG, and produces a PDF with table of contents, headers/footers, and syntax-highlighted code blocks. The version number is read from `Cargo.toml`.
 
-**Prerequisites** (not required for building or running dam itself):
+**Prerequisites** (not required for building or running maki itself):
 
 - **pandoc** -- Document conversion. `brew install pandoc`
 - **XeLaTeX** -- PDF typesetting with Unicode support. `brew install --cask mactex-no-gui`
@@ -164,7 +164,7 @@ Generates `doc/manual/dam-manual.pdf` from the 21 Markdown source files. The scr
 | `askama` | Compile-time HTML template engine |
 | `tokio` | Async runtime for the web server |
 | `tower-http` | Static file serving middleware (`ServeDir` for previews) |
-| `toml` | Configuration file parsing (`dam.toml`, `searches.toml`) |
+| `toml` | Configuration file parsing (`maki.toml`, `searches.toml`) |
 | `glob-match` | Filename glob matching for import exclusion patterns |
 | `chrono` | Date/time handling with serde support |
 | `anyhow` / `thiserror` | Error handling |
@@ -176,7 +176,7 @@ Generates `doc/manual/dam-manual.pdf` from the 21 Markdown source files. The scr
 
 | Crate | Purpose |
 |-------|---------|
-| `assert_cmd` | CLI binary testing (running `dam` as a subprocess) |
+| `assert_cmd` | CLI binary testing (running `maki` as a subprocess) |
 | `predicates` | Assertion helpers for CLI output matching |
 | `tempfile` | Temporary directories for test isolation |
 
@@ -197,4 +197,4 @@ which dcraw_emu || which dcraw
 which ffmpeg
 ```
 
-Preview generation silently falls back to info cards (metadata display images) when these tools are missing. Use `dam generate-previews --debug` to see external tool invocations and errors.
+Preview generation silently falls back to info cards (metadata display images) when these tools are missing. Use `maki generate-previews --debug` to see external tool invocations and errors.

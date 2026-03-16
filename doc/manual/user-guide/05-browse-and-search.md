@@ -6,36 +6,36 @@ This chapter covers how to find, inspect, and analyze assets in your catalog usi
 
 ## Searching Assets
 
-The `dam search` command is the primary way to find assets. It accepts free-text keywords and structured filters in a single query string.
+The `maki search` command is the primary way to find assets. It accepts free-text keywords and structured filters in a single query string.
 
 **Free-text search** matches against asset names, filenames, descriptions, and source metadata:
 
 ```
-dam search "sunset"
-dam search "beach vacation"
+maki search "sunset"
+maki search "beach vacation"
 ```
 
 **Structured filters** use a `key:value` syntax and can be combined freely with free-text:
 
 ```
-dam search "tag:landscape type:image rating:3+"
-dam search "sunset tag:landscape camera:fuji iso:100-800"
-dam search "format:nef focal:35-70 f:1.4-2.8"
+maki search "tag:landscape type:image rating:3+"
+maki search "sunset tag:landscape camera:fuji iso:100-800"
+maki search "format:nef focal:35-70 f:1.4-2.8"
 ```
 
 Tokens that don't match a known filter prefix are treated as free-text, so you can mix them in any order:
 
 ```
-dam search "type:image sunset rating:4+ golden hour"
+maki search "type:image sunset rating:4+ golden hour"
 ```
 
 **Values with spaces** are supported using double quotes inside the query:
 
 ```
-dam search 'tag:"Fools Theater"'
-dam search 'camera:"Canon EOS R5" lens:"RF 50mm f/1.2"'
-dam search 'collection:"My Favorites"'
-dam search 'path:"Photos/Family Trip"'
+maki search 'tag:"Fools Theater"'
+maki search 'camera:"Canon EOS R5" lens:"RF 50mm f/1.2"'
+maki search 'collection:"My Favorites"'
+maki search 'path:"Photos/Family Trip"'
 ```
 
 Note the outer single quotes to prevent your shell from stripping the inner double quotes.
@@ -43,25 +43,25 @@ Note the outer single quotes to prevent your shell from stripping the inner doub
 **Negation** excludes matching assets by prefixing any filter or free-text term with `-`:
 
 ```
-dam search "-tag:rejected"               # exclude rejected assets
-dam search "landscape -tag:processed"    # landscapes not yet processed
-dam search "-format:xmp -type:other"     # exclude XMP files and "other" types
-dam search "-sunset"                     # exclude free-text match on "sunset"
+maki search "-tag:rejected"               # exclude rejected assets
+maki search "landscape -tag:processed"    # landscapes not yet processed
+maki search "-format:xmp -type:other"     # exclude XMP files and "other" types
+maki search "-sunset"                     # exclude free-text match on "sunset"
 ```
 
 **OR within a filter** matches any of several values using commas:
 
 ```
-dam search "tag:alice,bob"               # tagged alice OR bob (or both)
-dam search "format:nef,cr3"              # NEF or CR3 format
-dam search "type:image,video"            # images or videos
-dam search "label:Red,Orange"            # Red or Orange labeled
+maki search "tag:alice,bob"               # tagged alice OR bob (or both)
+maki search "format:nef,cr3"              # NEF or CR3 format
+maki search "type:image,video"            # images or videos
+maki search "label:Red,Orange"            # Red or Orange labeled
 ```
 
 **Repeated filters = AND**. To require multiple tags, repeat the filter:
 
 ```
-dam search "tag:landscape tag:sunset"    # BOTH landscape AND sunset tags
+maki search "tag:landscape tag:sunset"    # BOTH landscape AND sunset tags
 ```
 
 ---
@@ -112,8 +112,8 @@ For the complete filter reference with detailed syntax and behavior, see [Search
 The `path:` filter restricts results to assets whose file locations start with a given prefix. This is useful for finding everything imported from a particular directory:
 
 ```
-dam search "path:Capture/2026-02-22"
-dam search "path:Events/Wedding"
+maki search "path:Capture/2026-02-22"
+maki search "path:Events/Wedding"
 ```
 
 **Automatic path normalization** in the CLI handles several convenience cases:
@@ -125,8 +125,8 @@ dam search "path:Events/Wedding"
 For example, if you have a volume mounted at `/Volumes/Photos`:
 
 ```
-dam search "path:/Volumes/Photos/Capture/2026"
-# Equivalent to: dam search "path:Capture/2026" on the Photos volume
+maki search "path:/Volumes/Photos/Capture/2026"
+# Equivalent to: maki search "path:Capture/2026" on the Photos volume
 ```
 
 An explicit `volume:` filter in the same query takes precedence over the auto-detected volume.
@@ -142,7 +142,7 @@ Control how search results are displayed with `--format` or `-q`.
 **Default (short)** -- one line per result with a result count:
 
 ```
-$ dam search "sunset"
+$ maki search "sunset"
 a1b2c3d4  IMG_1234.jpg [image] (JPEG) — 2026-01-15T10:30:00
 e5f6a7b8  DSC_5678.nef [image] (NEF) — 2026-01-14T16:45:00
 
@@ -152,7 +152,7 @@ e5f6a7b8  DSC_5678.nef [image] (NEF) — 2026-01-14T16:45:00
 **IDs only** (`--format ids` or `-q`) -- one UUID per line, ideal for scripting:
 
 ```
-$ dam search -q "tag:landscape"
+$ maki search -q "tag:landscape"
 a1b2c3d4-5678-9abc-def0-123456789abc
 e5f6a7b8-1234-5678-9abc-def012345678
 ```
@@ -160,14 +160,14 @@ e5f6a7b8-1234-5678-9abc-def012345678
 **Full** (`--format full`) -- includes tags and description:
 
 ```
-$ dam search "sunset" --format full
+$ maki search "sunset" --format full
 a1b2c3d4  IMG_1234.jpg [image] (JPEG) — 2026-01-15T10:30:00 tags:sunset,landscape A golden sunset over the mountains
 ```
 
 **JSON** (`--format json` or `--json`) -- structured JSON array:
 
 ```
-$ dam search "sunset" --json
+$ maki search "sunset" --json
 [
   {
     "asset_id": "a1b2c3d4-5678-9abc-def0-123456789abc",
@@ -183,9 +183,9 @@ $ dam search "sunset" --json
 Build your own output format using `{placeholder}` syntax:
 
 ```
-dam search "sunset" --format '{id}\t{name}\t{tags}'
-dam search "type:image" --format '{short_id} {filename} [{format}] {label}'
-dam search "rating:5" --format '{name}\n  {description}\n'
+maki search "sunset" --format '{id}\t{name}\t{tags}'
+maki search "type:image" --format '{short_id} {filename} [{format}] {label}'
+maki search "rating:5" --format '{name}\n  {description}\n'
 ```
 
 **Available placeholders:**
@@ -217,7 +217,7 @@ For the complete format reference, see [Format Templates](../reference/07-format
 The web UI provides inline sort toggle buttons (Name, Date, Size) with ascending/descending direction indicators. In the CLI, sort order is available when saving searches:
 
 ```
-dam saved-search save "landscapes" "tag:landscape" --sort name_asc
+maki saved-search save "landscapes" "tag:landscape" --sort name_asc
 ```
 
 Available sort values:
@@ -231,71 +231,71 @@ Available sort values:
 | `size_asc` | Smallest first |
 | `size_desc` | Largest first |
 
-The default sort for `dam search` is `date_desc` (newest first).
+The default sort for `maki search` is `date_desc` (newest first).
 
 ---
 
-## Scripting with dam
+## Scripting with maki
 
-The `-q` flag and format options make `dam` composable with standard Unix tools.
+The `-q` flag and format options make `maki` composable with standard Unix tools.
 
 **Loop over search results:**
 
 ```bash
-for id in $(dam search -q "tag:landscape"); do
-    dam show "$id"
+for id in $(maki search -q "tag:landscape"); do
+    maki show "$id"
 done
 ```
 
 **Pipe results into collection commands:**
 
 ```bash
-dam search -q "rating:5" | xargs dam col add "Best"
+maki search -q "rating:5" | xargs maki col add "Best"
 ```
 
 **Extract specific fields with jq:**
 
 ```bash
-dam search "sunset" --json | jq '.[].asset_id'
-dam search "type:video" --json | jq '.[] | {name: .original_filename, date: .created_at}'
+maki search "sunset" --json | jq '.[].asset_id'
+maki search "type:video" --json | jq '.[] | {name: .original_filename, date: .created_at}'
 ```
 
 **Count results:**
 
 ```bash
-dam search -q "format:nef" | wc -l
+maki search -q "format:nef" | wc -l
 ```
 
 **Tab-separated output for spreadsheets:**
 
 ```bash
-dam search "type:image" --format '{name}\t{format}\t{date}\t{tags}'
+maki search "type:image" --format '{name}\t{format}\t{date}\t{tags}'
 ```
 
-**Combine with other dam commands:**
+**Combine with other maki commands:**
 
 ```bash
 # Tag all 5-star images as "portfolio"
-dam search -q "rating:5 type:image" | xargs -I{} dam tag {} portfolio
+maki search -q "rating:5 type:image" | xargs -I{} maki tag {} portfolio
 
 # Generate previews for a specific path
-dam search -q "path:Capture/2026-02" | xargs -I{} dam generate-previews --asset {}
+maki search -q "path:Capture/2026-02" | xargs -I{} maki generate-previews --asset {}
 ```
 
 ---
 
 ## Showing Asset Details
 
-The `dam show` command displays comprehensive information about a single asset.
+The `maki show` command displays comprehensive information about a single asset.
 
 ```
-dam show a1b2c3d4
+maki show a1b2c3d4
 ```
 
 Asset ID prefix matching is supported -- you only need to type enough characters to uniquely identify the asset:
 
 ```
-dam show a1b2     # Works if "a1b2" is a unique prefix
+maki show a1b2     # Works if "a1b2" is a unique prefix
 ```
 
 ### Output
@@ -334,7 +334,7 @@ Recipes:
 For structured output, use the `--json` flag:
 
 ```
-dam show a1b2c3d4 --json
+maki show a1b2c3d4 --json
 ```
 
 This returns a full `AssetDetails` JSON object with all variants, locations, recipes, and source metadata.
@@ -343,10 +343,10 @@ This returns a full `AssetDetails` JSON object with all variants, locations, rec
 
 ## Finding Duplicates
 
-The `dam duplicates` command identifies files with identical content hashes that exist in multiple locations.
+The `maki duplicates` command identifies files with identical content hashes that exist in multiple locations.
 
 ```
-$ dam duplicates
+$ maki duplicates
 DSC_1234.NEF (NEF, 48.2 MB)
   Hash: abc123def456...
     Photos → Capture/2026-01-15/DSC_1234.NEF
@@ -362,9 +362,9 @@ This is useful for identifying files that have been copied to multiple volumes (
 The `--format` flag supports the same presets as search, plus an additional `{locations}` placeholder for templates:
 
 ```
-dam duplicates --format ids
-dam duplicates --format json
-dam duplicates --format '{filename}\t{format}\t{locations}'
+maki duplicates --format ids
+maki duplicates --format json
+maki duplicates --format '{filename}\t{format}\t{locations}'
 ```
 
 The `{locations}` placeholder expands to a comma-separated list of all locations where the duplicate file exists.
@@ -373,12 +373,12 @@ The `{locations}` placeholder expands to a comma-separated list of all locations
 
 ## Catalog Statistics
 
-The `dam stats` command provides an overview of your catalog's contents and health.
+The `maki stats` command provides an overview of your catalog's contents and health.
 
 ### Overview (Default)
 
 ```
-$ dam stats
+$ maki stats
 Catalog Overview
   Assets:    12,847
   Variants:  18,203
@@ -390,7 +390,7 @@ Catalog Overview
 ### Asset Types and Formats
 
 ```
-$ dam stats --types
+$ maki stats --types
 Catalog Overview
   ...
 
@@ -413,7 +413,7 @@ Recipe Formats
 ### Per-Volume Details
 
 ```
-$ dam stats --volumes
+$ maki stats --volumes
 Catalog Overview
   ...
 
@@ -435,7 +435,7 @@ Volumes
 ### Tag Statistics
 
 ```
-$ dam stats --tags
+$ maki stats --tags
 Tags
   Unique tags:     145
   Tagged assets:   9,876
@@ -451,7 +451,7 @@ Tags
 ### Verification Health
 
 ```
-$ dam stats --verified
+$ maki stats --verified
 Verification
   Total locations:    26,667
   Verified:           26,300
@@ -470,33 +470,33 @@ Verification
 Use `--all` to show every section at once:
 
 ```
-dam stats --all
+maki stats --all
 ```
 
 Control the number of entries in top-N lists (default is 20):
 
 ```
-dam stats --tags --limit 50
+maki stats --tags --limit 50
 ```
 
 For structured output:
 
 ```
-dam stats --all --json
+maki stats --all --json
 ```
 
 ---
 
 ## Exporting Files
 
-The `dam export` command copies files matching a search query to a target directory — useful for client deliveries, sharing, or copying to external media.
+The `maki export` command copies files matching a search query to a target directory — useful for client deliveries, sharing, or copying to external media.
 
 ### Basic Export
 
 Export the best variant of each matching asset:
 
 ```
-dam export "rating:5 tag:portfolio" /tmp/delivery/
+maki export "rating:5 tag:portfolio" /tmp/delivery/
 ```
 
 ### Layout Modes
@@ -504,7 +504,7 @@ dam export "rating:5 tag:portfolio" /tmp/delivery/
 **Flat** (default) — all files in one directory:
 
 ```
-dam export "collection:Selects" /tmp/flat/
+maki export "collection:Selects" /tmp/flat/
 ```
 
 Filename collisions from different assets are resolved by appending a hash suffix (e.g., `DSC_001_a1b2c3d4.jpg`).
@@ -512,7 +512,7 @@ Filename collisions from different assets are resolved by appending a hash suffi
 **Mirror** — preserves source directory structure:
 
 ```
-dam export "tag:landscape" /Volumes/USB/export --layout mirror
+maki export "tag:landscape" /Volumes/USB/export --layout mirror
 ```
 
 When assets span multiple volumes, each volume's files are placed under a `<volume-label>/` prefix.
@@ -522,41 +522,41 @@ When assets span multiple volumes, each volume's files are placed under a `<volu
 Export all variants (not just the best):
 
 ```
-dam export "tag:portfolio" /tmp/all/ --all-variants
+maki export "tag:portfolio" /tmp/all/ --all-variants
 ```
 
 Include sidecars (`.xmp`, `.cos`, etc.):
 
 ```
-dam export "collection:Print" /tmp/handoff/ --include-sidecars
+maki export "collection:Print" /tmp/handoff/ --include-sidecars
 ```
 
 Create symlinks instead of copies:
 
 ```
-dam export "type:image" ~/links/ --symlink
+maki export "type:image" ~/links/ --symlink
 ```
 
 Preview without writing files:
 
 ```
-dam export "rating:4+" /tmp/test/ --dry-run
+maki export "rating:4+" /tmp/test/ --dry-run
 ```
 
 Re-running an export skips files that already exist with matching content. Use `--overwrite` to force re-copy.
 
-For the full command reference, see [export](../reference/04-retrieve-commands.md#dam-export).
+For the full command reference, see [export](../reference/04-retrieve-commands.md#maki-export).
 
 ---
 
 ## Visual Similarity
 
-With the `ai` feature and image embeddings generated (via `dam embed` or `dam import --embed`), you can find visually similar assets:
+With the `ai` feature and image embeddings generated (via `maki embed` or `maki import --embed`), you can find visually similar assets:
 
 ```
-dam search "similar:72a0bb4b"              # top 20 similar assets
-dam search "similar:72a0bb4b:50"           # top 50 similar
-dam search "similar:72a0bb4b rating:4+"    # similar AND 4+ stars
+maki search "similar:72a0bb4b"              # top 20 similar assets
+maki search "similar:72a0bb4b:50"           # top 50 similar
+maki search "similar:72a0bb4b rating:4+"    # similar AND 4+ stars
 ```
 
 The `similar:` filter uses SigLIP image embeddings for fast dot-product similarity search. It composes with all other filters.

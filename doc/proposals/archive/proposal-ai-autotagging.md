@@ -1,6 +1,6 @@
 # Proposal: AI Auto-Tagging — IMPLEMENTED (v2.0.1 CLI, v2.1.0 Web UI)
 
-> **Status**: Core CLI implemented in v2.0.1 using SigLIP ViT-B/16-256 (Option A with ONNX Runtime). Web UI integration added in v2.1.0: "Suggest tags" button on the asset detail page with interactive accept/dismiss chips, and "Auto-tag" batch button in the browse toolbar. The implementation uses a single model tier (`standard` = SigLIP ViT-B/16-256), feature-gated behind `--features ai`. Multi-tier model selection and Ollama integration are deferred to a future version. See `dam auto-tag --help` for CLI usage.
+> **Status**: Core CLI implemented in v2.0.1 using SigLIP ViT-B/16-256 (Option A with ONNX Runtime). Web UI integration added in v2.1.0: "Suggest tags" button on the asset detail page with interactive accept/dismiss chips, and "Auto-tag" batch button in the browse toolbar. The implementation uses a single model tier (`standard` = SigLIP ViT-B/16-256), feature-gated behind `--features ai`. Multi-tier model selection and Ollama integration are deferred to a future version. See `maki auto-tag --help` for CLI usage.
 
 Zero-shot image classification using CLIP/SigLIP embeddings for automated tag suggestions, plus visual similarity search as a bonus feature.
 
@@ -11,18 +11,18 @@ Referenced from [enhancements.md](enhancements.md) item 15 and [roadmap.md](road
 ## CLI Interface
 
 ```
-dam auto-tag [--asset <id>] [--volume <label>] [--query <QUERY>]
+maki auto-tag [--asset <id>] [--volume <label>] [--query <QUERY>]
              [--model mobile|standard|accurate|ollama:<name>]
              [--threshold 0.5] [--labels <file>]
              [--apply] [--json] [--log] [--time]
-dam auto-tag --list-models
-dam auto-tag --download <model>
-dam auto-tag --remove-model <model>
+maki auto-tag --list-models
+maki auto-tag --download <model>
+maki auto-tag --remove-model <model>
 ```
 
 Given a configurable label vocabulary (e.g., `landscape`, `portrait`, `architecture`, `animals/birds`), the model scores each image against every label and suggests tags above the threshold. Report-only by default (`--apply` writes tags).
 
-**Bonus feature**: With embeddings stored per-asset, `dam search --similar <asset-id>` finds visually similar images by cosine distance.
+**Bonus feature**: With embeddings stored per-asset, `maki search --similar <asset-id>` finds visually similar images by cosine distance.
 
 **Web UI**: "Suggest tags" button on the asset detail page. Shows suggested tags with confidence badges. Click to accept.
 
@@ -37,8 +37,8 @@ Ship ONNX Runtime as a linked library. Model files downloaded on first use or bu
 | Aspect | Impact |
 |--------|--------|
 | **New dependency** | `ort` crate (~v1.13+), links against `libonnxruntime` |
-| **Binary size increase** | +50-150 MB for the ONNX Runtime shared library (platform-dependent). The `dam` binary itself grows ~1-2 MB for the Rust wrapper code. With `minimal-build` feature: ~30-60 MB |
-| **Model files on disk** | CLIP ViT-B/32: ~340 MB (vision encoder, FP32) or ~85 MB (INT8 quantized). Text encoder: ~250 MB (FP32) or ~65 MB (INT8). Total: **150-600 MB** depending on precision. Stored in `~/.dam/models/` or catalog `models/` dir |
+| **Binary size increase** | +50-150 MB for the ONNX Runtime shared library (platform-dependent). The `maki` binary itself grows ~1-2 MB for the Rust wrapper code. With `minimal-build` feature: ~30-60 MB |
+| **Model files on disk** | CLIP ViT-B/32: ~340 MB (vision encoder, FP32) or ~85 MB (INT8 quantized). Text encoder: ~250 MB (FP32) or ~65 MB (INT8). Total: **150-600 MB** depending on precision. Stored in `~/.maki/models/` or catalog `models/` dir |
 | **Runtime memory** | ~400-800 MB RSS during inference (model loaded + image tensors + ONNX Runtime overhead). Freed after batch completes |
 | **CPU inference** | ~50-200 ms per image on modern CPU (Apple Silicon / x86-64 with AVX2). ViT-B/32 is the smallest/fastest CLIP variant |
 | **Compile time** | +2-5 minutes (ONNX Runtime build or download during `cargo build`) |
@@ -65,7 +65,7 @@ Shell out to a local vision-language model server (Ollama with Qwen2.5-VL, Gemma
 |--------|--------|
 | **New dependency** | Ollama installed and running (`ollama serve`) |
 | **Binary size increase** | ~0 (HTTP client only, `reqwest` already used or trivial to add) |
-| **Model files** | 1-6 GB per model (managed by Ollama, not by dam) |
+| **Model files** | 1-6 GB per model (managed by Ollama, not by maki) |
 | **Runtime memory** | 2-8 GB depending on model (Moondream 2B: ~2 GB, Qwen 7B: ~6 GB) |
 | **Accuracy** | Higher for descriptions and subjective tags; can discover novel tags. Qwen2.5-VL 7B: 0.33% hallucination rate |
 | **Latency** | 5-36 seconds per image on CPU (Moondream ~5s, Qwen 3B ~24s, Qwen 7B ~36s) |
@@ -214,12 +214,12 @@ The `mobile`, `standard`, and `accurate` tiers use Option A (embedded ONNX). The
 #### Model management
 
 ```
-dam auto-tag --list-models          # show available / downloaded models
-dam auto-tag --download <model>     # pre-download a model
-dam auto-tag --remove-model <model> # delete cached model files
+maki auto-tag --list-models          # show available / downloaded models
+maki auto-tag --download <model>     # pre-download a model
+maki auto-tag --remove-model <model> # delete cached model files
 ```
 
-Models are cached in `~/.dam/models/<model-id>/` (or `[ai] model_dir` from config). Each model directory contains the ONNX file(s) and a `manifest.json` with the expected SHA-256 hashes. On first use, the model is downloaded from HuggingFace with a progress bar. Integrity is verified before loading.
+Models are cached in `~/.maki/models/<model-id>/` (or `[ai] model_dir` from config). Each model directory contains the ONNX file(s) and a `manifest.json` with the expected SHA-256 hashes. On first use, the model is downloaded from HuggingFace with a progress bar. Integrity is verified before loading.
 
 When the user switches models, embeddings stored from a different model are invalidated (the `model` column in the `embeddings` table tracks this). Re-tagging with a new model recomputes embeddings. Similarity search only compares embeddings from the same model.
 
@@ -235,7 +235,7 @@ This model hits the sweet spot:
 - ONNX exports available via [deepghs/siglip_onnx](https://huggingface.co/deepghs/siglip_onnx) and [immich-app](https://huggingface.co/immich-app)
 - Multilingual text encoder (SigLIP 2) -- tag vocabularies can include non-English labels
 
-For users with constrained disk or who want maximum speed, `mobile` (MobileCLIP2-S0) is a compelling alternative at ~50 MB with 71.5% accuracy. For users who already run Ollama, `ollama:qwen2.5vl:3b` provides the highest quality with no additional disk cost to dam.
+For users with constrained disk or who want maximum speed, `mobile` (MobileCLIP2-S0) is a compelling alternative at ~50 MB with 71.5% accuracy. For users who already run Ollama, `ollama:qwen2.5vl:3b` provides the highest quality with no additional disk cost to maki.
 
 The hybrid approach (ONNX for bulk tagging + optional Ollama for on-demand enrichment) gives users the best of both worlds without forcing either dependency.
 
@@ -246,9 +246,9 @@ The hybrid approach (ONNX for bulk tagging + optional Ollama for on-demand enric
 **Why:**
 1. **Self-contained** -- no external dependencies at runtime. "It just works" after model download.
 2. **Fast** -- 50-200 ms/image is practical for batch processing thousands of images.
-3. **Fits the project philosophy** -- dam is a single-binary CLI tool. Adding a Python dependency undermines that.
+3. **Fits the project philosophy** -- maki is a single-binary CLI tool. Adding a Python dependency undermines that.
 4. **Controllable size** -- use Cargo feature flag (`--features ai`) so users who don't want it pay zero cost. The ONNX Runtime library is only linked when the feature is enabled.
-5. **Model download on demand** -- model files (~150 MB quantized) are downloaded on first `dam auto-tag` invocation, not bundled in the binary.
+5. **Model download on demand** -- model files (~150 MB quantized) are downloaded on first `maki auto-tag` invocation, not bundled in the binary.
 
 **Recommended default model**: SigLIP ViT-B/16-256 (`standard` tier). See the [Models](#models) section for the full comparison.
 
@@ -283,7 +283,7 @@ ai = ["ort", "ndarray"]
 | `src/clip.rs` | ~400 | CLIP model loading, image preprocessing (resize/crop/normalize to 224x224, RGB f32 tensor), text tokenization (BPE), inference, cosine similarity |
 | `src/embedding_store.rs` | ~200 | SQLite table `embeddings(variant_hash TEXT PK, embedding BLOB, model TEXT)`. Store/retrieve 512-dim f32 vectors. Cosine distance query for similarity search |
 | `src/auto_tagger.rs` | ~300 | Orchestration: load label vocabulary, encode labels (cached), encode each image, compute similarities, threshold, return suggestions. Callback-based progress |
-| `src/model_manager.rs` | ~200 | Download model files from HuggingFace on first use, verify SHA-256, cache in `~/.dam/models/` or catalog-relative `models/`. Version/integrity tracking |
+| `src/model_manager.rs` | ~200 | Download model files from HuggingFace on first use, verify SHA-256, cache in `~/.maki/models/` or catalog-relative `models/`. Version/integrity tracking |
 | `src/asset_service.rs` | ~150 | New `auto_tag()` method + `AutoTagResult` struct |
 | `src/main.rs` | ~80 | CLI registration + handler for `auto-tag` and `search --similar` |
 | `tests/cli.rs` | ~200 | Integration tests (mocked model or small test model) |
@@ -384,7 +384,7 @@ Recommendation: embed minimal BPE. Label vocabularies are short (50-200 labels),
 model = "standard"              # mobile | standard | accurate | ollama:<name>
 labels = "labels.txt"           # custom label vocabulary file (one per line)
 threshold = 0.1                 # minimum confidence to suggest
-model_dir = "~/.dam/models"     # where to cache downloaded models
+model_dir = "~/.maki/models"     # where to cache downloaded models
 prompt = "a photograph of a {}"  # text encoder prompt template ({} = tag name)
 ```
 
@@ -397,7 +397,7 @@ Default label vocabulary (~100 common photography categories) would be embedded 
 - **No preview available**: fall back to loading the original file via `image` crate (slower but works)
 - **Non-image assets** (video, audio, documents): skip with warning, or extract a frame for video (already done for preview generation via ffmpeg)
 - **Offline volumes**: use existing preview JPEGs (800px or 2560px smart previews) -- no need for originals
-- **Model not downloaded**: prompt user to run `dam auto-tag --download` or auto-download with confirmation
+- **Model not downloaded**: prompt user to run `maki auto-tag --download` or auto-download with confirmation
 - **Label vocabulary empty**: use built-in default (~100 photography categories)
 - **Threshold too low**: warn if suggesting >20 tags per asset (likely noise)
 
@@ -458,18 +458,18 @@ Storage overhead: ~0.5 KB per detected face. For a library with 100,000 photos a
 ### CLI Interface
 
 ```
-dam faces [--asset <id>] [--volume <label>] [--query <QUERY>]
+maki faces [--asset <id>] [--volume <label>] [--query <QUERY>]
           [--cluster] [--apply] [--json] [--log] [--time]
-dam faces label <CLUSTER_ID> <NAME>
-dam faces list [--unnamed]
-dam faces show <NAME>
+maki faces label <CLUSTER_ID> <NAME>
+maki faces list [--unnamed]
+maki faces show <NAME>
 ```
 
-- `dam faces` without `--cluster` detects and embeds faces (stores to DB). Report-only by default.
-- `dam faces --cluster` runs clustering on all unlabeled face embeddings.
-- `dam faces label 42 "Thomas"` names cluster 42. All faces in that cluster are tagged `people/Thomas` using the existing hierarchical tag system.
-- `dam faces list` shows all known people with face counts. `--unnamed` shows unnamed clusters.
-- `dam faces show "Thomas"` lists assets containing Thomas.
+- `maki faces` without `--cluster` detects and embeds faces (stores to DB). Report-only by default.
+- `maki faces --cluster` runs clustering on all unlabeled face embeddings.
+- `maki faces label 42 "Thomas"` names cluster 42. All faces in that cluster are tagged `people/Thomas` using the existing hierarchical tag system.
+- `maki faces list` shows all known people with face counts. `--unnamed` shows unnamed clusters.
+- `maki faces show "Thomas"` lists assets containing Thomas.
 
 ### Web UI
 

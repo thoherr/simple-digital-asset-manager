@@ -39,7 +39,7 @@ Das Projekt hat zwei Test-Ebenen:
 
 **Unit-Tests** (`cargo test --lib`) prüfen einzelne Funktionen und Module: Parst der Suchparser `rating:4+` korrekt? Erzeugt die XMP-Aktualisierung valides XML? Findet die Cosine-Similarity die richtigen Nachbarn?
 
-**Integrationstests** (`cargo test --test cli`) prüfen das Gesamtsystem über die CLI: Import einer Datei, Suche, Tag-Änderung, Verifizierung — alles über `dam`-Befehle, als würde ein Benutzer sie eintippen.
+**Integrationstests** (`cargo test --test cli`) prüfen das Gesamtsystem über die CLI: Import einer Datei, Suche, Tag-Änderung, Verifizierung — alles über `maki`-Befehle, als würde ein Benutzer sie eintippen.
 
 ## Wie Claude Tests schreibt
 
@@ -138,8 +138,8 @@ Für CLI-Tests wird jeder Test in einem temporären Verzeichnis ausgeführt:
 /// Katalog initialisieren und ein Volume registrieren.
 fn init_catalog(dir: &Path) -> PathBuf {
     let canonical = dir.canonicalize().expect("canonicalize tempdir");
-    dam().current_dir(&canonical).arg("init").assert().success();
-    dam()
+    maki().current_dir(&canonical).arg("init").assert().success();
+    maki()
         .current_dir(&canonical)
         .args(["volume", "add", "test-vol",
                canonical.to_str().unwrap()])
@@ -196,7 +196,7 @@ fn import_xmp_applies_metadata() {
                      xmp.as_bytes());
 
     // Import
-    dam().current_dir(&root)
+    maki().current_dir(&root)
         .args(["import", root.join("photos").to_str().unwrap()])
         .assert()
         .success()
@@ -204,12 +204,12 @@ fn import_xmp_applies_metadata() {
             .and(predicate::str::contains("1 recipe")));
 
     // Verify metadata
-    let output = dam().current_dir(&root)
+    let output = maki().current_dir(&root)
         .args(["search", "DSC_100"]).output().unwrap();
     let id = String::from_utf8_lossy(&output.stdout)
         .split_whitespace().next().unwrap().to_string();
 
-    dam().current_dir(&root)
+    maki().current_dir(&root)
         .args(["show", &id])
         .assert()
         .success()
@@ -233,14 +233,14 @@ fn verify_detects_corruption() {
     let file = create_test_file(&root, "corrupt.jpg",
                                  b"original data");
 
-    dam().current_dir(&root)
+    maki().current_dir(&root)
         .args(["import", file.to_str().unwrap()])
         .assert().success();
 
     // Datei nach Import korrumpieren
     std::fs::write(&file, b"corrupted data!!!").unwrap();
 
-    dam().current_dir(&root)
+    maki().current_dir(&root)
         .arg("verify")
         .assert()
         .failure()  // Exit-Code 1!

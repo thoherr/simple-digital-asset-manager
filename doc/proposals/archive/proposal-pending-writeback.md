@@ -2,7 +2,7 @@
 
 > **Status**: Implemented (v2.3.3) — Phase 1 complete
 
-When metadata is edited in the DAM (rating, color label, tags, description) while a volume is offline, the XMP write-back to `.xmp` recipe files is silently skipped. Those edits exist only in the YAML sidecar and SQLite catalog. When the volume comes back online, there is no mechanism to push them to the XMP files — and running `dam refresh` would actually overwrite DAM edits with the stale XMP content.
+When metadata is edited in the DAM (rating, color label, tags, description) while a volume is offline, the XMP write-back to `.xmp` recipe files is silently skipped. Those edits exist only in the YAML sidecar and SQLite catalog. When the volume comes back online, there is no mechanism to push them to the XMP files — and running `maki refresh` would actually overwrite DAM edits with the stale XMP content.
 
 This proposal adds a **pending write-back queue** so DAM edits are never lost, even across offline/online transitions.
 
@@ -22,7 +22,7 @@ This creates a gap in the roundtrip workflow:
 ```
 DAM edit (volume offline)  →  edits saved in YAML/SQLite only
 Volume comes online        →  XMP files still have old values
-dam refresh                →  XMP overwrites DAM edits (data loss!)
+maki refresh                →  XMP overwrites DAM edits (data loss!)
 ```
 
 The problem is especially acute in a CaptureOne workflow: you rate/tag in DAM while the external drive is disconnected, then connect it and want to sync both directions — CaptureOne changes into DAM, and DAM changes into XMP.
@@ -33,7 +33,7 @@ The problem is especially acute in a CaptureOne workflow: you rate/tag in DAM wh
 
 ### Core idea: dirty flag on recipes
 
-Add a `pending_writeback` boolean (or timestamp) to each recipe record. When an XMP write-back is attempted but skipped due to an offline volume or missing file, the recipe is marked dirty. A new `dam writeback` command (or `--writeback` flag on existing commands) replays pending writes when the volume is back online.
+Add a `pending_writeback` boolean (or timestamp) to each recipe record. When an XMP write-back is attempted but skipped due to an offline volume or missing file, the recipe is marked dirty. A new `maki writeback` command (or `--writeback` flag on existing commands) replays pending writes when the volume is back online.
 
 ### Data model
 
@@ -76,10 +76,10 @@ for each XMP recipe:
 
 The flag captures the *intent* to write back. It doesn't record *what* changed — the current asset metadata (rating, label, tags, description) in the YAML sidecar is always the source of truth. The writeback command reads the current values and writes them all.
 
-### New command: `dam writeback`
+### New command: `maki writeback`
 
 ```
-dam writeback [--volume <label>] [--asset <id>] [--all] [--dry-run]
+maki writeback [--volume <label>] [--asset <id>] [--all] [--dry-run]
 ```
 
 - Without flags: processes only recipes with `pending_writeback=1`
@@ -97,26 +97,26 @@ For each pending recipe:
 
 Supports `--json`, `--log`, `--time`.
 
-### Integration with `dam refresh`
+### Integration with `maki refresh`
 
 The recommended workflow for a volume coming back online:
 
 ```bash
 # 1. Push DAM edits to XMP (DAM wins for fields edited while offline)
-dam writeback --volume MyDrive
+maki writeback --volume MyDrive
 
 # 2. Pull CaptureOne edits from XMP (CaptureOne wins for fields it changed)
-dam refresh --volume MyDrive
+maki refresh --volume MyDrive
 ```
 
 Order matters: writeback first ensures DAM edits land in XMP. Then refresh picks up anything CaptureOne changed independently. For fields edited in *both* tools, the last writer wins — which is CaptureOne in this sequence (since refresh runs second). This is usually correct: if you explicitly changed something in CaptureOne after the DAM edit, you probably want the CaptureOne value.
 
-For the opposite priority (DAM always wins), reverse the order or use `dam writeback --volume MyDrive` after refresh.
+For the opposite priority (DAM always wins), reverse the order or use `maki writeback --volume MyDrive` after refresh.
 
 A combined convenience command could be considered:
 
 ```bash
-dam sync-metadata --volume MyDrive   # writeback + refresh in one step
+maki sync-metadata --volume MyDrive   # writeback + refresh in one step
 ```
 
 But this can be a later enhancement — the two-command workflow is explicit and predictable.
@@ -146,7 +146,7 @@ auto_on_mount = true   # future enhancement
 
 **Recipe file modified externally while offline**: Writeback overwrites the XMP file with DAM values. If CaptureOne also edited the same file, those edits are lost for the overlapping fields. The recommended workflow (writeback *then* refresh) handles this: refresh re-reads the file after writeback, but since writeback just wrote it, refresh sees no change. For truly concurrent edits to the *same* field, last-writer-wins is the only sane policy without a full merge engine.
 
-**`dam refresh --media`**: The `--media` flag re-reads embedded XMP from JPEG/TIFF files. This is unaffected by pending writeback since embedded XMP is read-only (DAM doesn't write back to embedded XMP, only to `.xmp` sidecar files).
+**`maki refresh --media`**: The `--media` flag re-reads embedded XMP from JPEG/TIFF files. This is unaffected by pending writeback since embedded XMP is read-only (DAM doesn't write back to embedded XMP, only to `.xmp` sidecar files).
 
 ---
 
@@ -158,14 +158,14 @@ auto_on_mount = true   # future enhancement
 2. **Write-back methods**: Update `write_back_*_to_xmp_inner` in `query.rs` to set `pending_writeback=1` on skip, clear on success
 3. **Catalog methods**: `mark_recipe_pending_writeback(recipe_id)`, `clear_recipe_pending_writeback(recipe_id)`, `list_pending_writeback_recipes(volume_filter)`
 4. **YAML sidecar**: Add `pending_writeback` field to recipe serialization (skip if false for clean output)
-5. **CLI command**: `dam writeback` with `--volume`, `--asset`, `--all`, `--dry-run`, `--json`, `--log`, `--time`
+5. **CLI command**: `maki writeback` with `--volume`, `--asset`, `--all`, `--dry-run`, `--json`, `--log`, `--time`
 6. **Tests**: Unit tests for dirty tracking, integration tests for offline→online writeback cycle
 
 ### Phase 2: Convenience and UI (optional)
 
 7. **Web UI**: Pending writeback indicator in nav bar or volume status
-8. **Combined command**: `dam sync-metadata` (writeback + refresh)
-9. **`dam refresh --writeback-first`**: Auto-run writeback before refresh
+8. **Combined command**: `maki sync-metadata` (writeback + refresh)
+9. **`maki refresh --writeback-first`**: Auto-run writeback before refresh
 
 ---
 
@@ -184,7 +184,7 @@ auto_on_mount = true   # future enhancement
 | Aspect | Current | Proposed |
 |--------|---------|----------|
 | Offline write-back | Silently skipped, lost | Queued via `pending_writeback` flag |
-| Volume comes online | Manual refresh (may overwrite DAM edits) | `dam writeback` then `dam refresh` |
+| Volume comes online | Manual refresh (may overwrite DAM edits) | `maki writeback` then `maki refresh` |
 | Data model | No tracking | Boolean flag on recipe (SQLite + YAML) |
 | Complexity | — | Low (flag + one new command) |
 | Risk of data loss | High (refresh overwrites) | Low (explicit two-step workflow) |

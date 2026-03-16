@@ -1,103 +1,103 @@
 # Setup
 
-This chapter covers building dam from source, initializing a catalog, registering storage volumes, and configuring the system to match your workflow.
+This chapter covers building maki from source, initializing a catalog, registering storage volumes, and configuring the system to match your workflow.
 
 
 ## Installation
 
 ### Building from source
 
-dam is written in Rust. You need a working Rust toolchain (rustc + cargo). Install one via [rustup](https://rustup.rs/) if you have not already.
+maki is written in Rust. You need a working Rust toolchain (rustc + cargo). Install one via [rustup](https://rustup.rs/) if you have not already.
 
 Clone the repository and build a release binary:
 
 ```bash
-git clone https://github.com/your-org/dam.git
-cd dam
+git clone https://github.com/your-org/maki.git
+cd maki
 cargo build --release
 ```
 
-The binary is at `target/release/dam`. Copy or symlink it to a directory on your `PATH`:
+The binary is at `target/release/maki`. Copy or symlink it to a directory on your `PATH`:
 
 ```bash
-cp target/release/dam /usr/local/bin/
+cp target/release/maki /usr/local/bin/
 ```
 
 Verify the installation:
 
 ```bash
-dam --version
+maki --version
 ```
 
 ### Supported platforms
 
-dam builds and runs on **macOS** and **Linux**. Both x86_64 and ARM (Apple Silicon) are supported.
+maki builds and runs on **macOS** and **Linux**. Both x86_64 and ARM (Apple Silicon) are supported.
 
 ### Optional external tools
 
-dam handles standard image formats (JPEG, PNG, TIFF, WebP) natively. Two external tools extend its preview capabilities:
+maki handles standard image formats (JPEG, PNG, TIFF, WebP) natively. Two external tools extend its preview capabilities:
 
 | Tool | Purpose | Install |
 |------|---------|---------|
 | **dcraw** or **dcraw_emu** (LibRaw) | RAW file previews (NEF, ARW, CR2, CR3, etc.) | `brew install dcraw` or `brew install libraw` on macOS; your package manager on Linux |
 | **ffmpeg** | Video thumbnail extraction | `brew install ffmpeg` on macOS; your package manager on Linux |
 
-If these tools are not installed, dam still imports RAW and video files. It generates an info card (a placeholder JPEG showing file metadata) instead of a rendered preview. You can install the tools later and run `dam generate-previews --force` to regenerate real previews.
+If these tools are not installed, maki still imports RAW and video files. It generates an info card (a placeholder JPEG showing file metadata) instead of a rendered preview. You can install the tools later and run `maki generate-previews --force` to regenerate real previews.
 
 
 ## Initializing a Catalog
 
-A catalog is a directory that holds dam's database, configuration, metadata sidecars, and preview images. Create one by navigating to the directory you want as the catalog root and running `dam init`:
+A catalog is a directory that holds maki's database, configuration, metadata sidecars, and preview images. Create one by navigating to the directory you want as the catalog root and running `maki init`:
 
 ```bash
 mkdir ~/Photos
 cd ~/Photos
-dam init
+maki init
 ```
 
 Output:
 
 ```
-Initialized new dam catalog in /Users/you/Photos
+Initialized new maki catalog in /Users/you/Photos
 ```
 
 This creates the following structure:
 
 ```
 ~/Photos/
-  dam.toml          # Configuration file
+  maki.toml          # Configuration file
   catalog.db        # SQLite database (cache/index)
   volumes.yaml      # Registered storage volumes
   metadata/         # YAML sidecar files (source of truth)
   previews/         # Generated preview images
 ```
 
-![Catalog directory structure after dam init](../screenshots/catalog-structure.png)
+![Catalog directory structure after maki init](../screenshots/catalog-structure.png)
 
 ### How catalog detection works
 
-After initialization, you can run dam commands from the catalog root or any subdirectory. dam locates the catalog by walking up from your current working directory, looking for a `dam.toml` file. This means you can organize files in subdirectories and still run commands without specifying the catalog path.
+After initialization, you can run maki commands from the catalog root or any subdirectory. maki locates the catalog by walking up from your current working directory, looking for a `maki.toml` file. This means you can organize files in subdirectories and still run commands without specifying the catalog path.
 
 ```bash
 cd ~/Photos
-dam stats            # works -- dam.toml is here
+maki stats            # works -- maki.toml is here
 
 cd ~/Photos/metadata
-dam stats            # also works -- finds dam.toml in parent
+maki stats            # also works -- finds maki.toml in parent
 
 cd /tmp
-dam stats            # fails -- no dam.toml above /tmp
+maki stats            # fails -- no maki.toml above /tmp
 ```
 
-If no catalog is found, dam prints:
+If no catalog is found, maki prints:
 
 ```
-Error: No dam catalog found. Run `dam init` to create one.
+Error: No maki catalog found. Run `maki init` to create one.
 ```
 
 ### Reinitializing
 
-`dam init` refuses to overwrite an existing catalog. If you need to start fresh, delete the catalog files first (`dam.toml`, `catalog.db`, `metadata/`, `previews/`, `volumes.yaml`) and run `dam init` again.
+`maki init` refuses to overwrite an existing catalog. If you need to start fresh, delete the catalog files first (`maki.toml`, `catalog.db`, `metadata/`, `previews/`, `volumes.yaml`) and run `maki init` again.
 
 
 ## Registering Volumes
@@ -107,7 +107,7 @@ A **volume** represents a storage location -- a local directory, an external dri
 ### Adding a volume
 
 ```bash
-dam volume add "Photos 2024" /Volumes/PhotosDrive
+maki volume add "Photos 2024" /Volumes/PhotosDrive
 ```
 
 Output:
@@ -123,19 +123,19 @@ A few more examples:
 
 ```bash
 # External SSD
-dam volume add "Travel SSD" /Volumes/TravelPhotos
+maki volume add "Travel SSD" /Volumes/TravelPhotos
 
 # Network-attached storage
-dam volume add "NAS Archive" /Volumes/nas/photos
+maki volume add "NAS Archive" /Volumes/nas/photos
 
 # Local directory
-dam volume add "Local Work" /Users/you/Photography
+maki volume add "Local Work" /Users/you/Photography
 ```
 
 ### Listing volumes
 
 ```bash
-dam volume list
+maki volume list
 ```
 
 Output:
@@ -149,12 +149,12 @@ Travel SSD (b2c3d4e5-f6a7-8901-bcde-f12345678901) [offline]
 
 ### Online vs. offline
 
-dam checks whether each volume's mount point directory exists on disk:
+maki checks whether each volume's mount point directory exists on disk:
 
-- **Online**: The directory exists. dam can read files, generate previews, and verify integrity.
-- **Offline**: The directory does not exist (drive disconnected, NAS unreachable). dam still knows about the volume and its assets, but file operations are skipped gracefully.
+- **Online**: The directory exists. maki can read files, generate previews, and verify integrity.
+- **Offline**: The directory does not exist (drive disconnected, NAS unreachable). maki still knows about the volume and its assets, but file operations are skipped gracefully.
 
-This design lets you manage a photo library that spans multiple external drives. You can search, browse, and view cached previews for assets on offline volumes. When you reconnect a drive, dam picks it up automatically.
+This design lets you manage a photo library that spans multiple external drives. You can search, browse, and view cached previews for assets on offline volumes. When you reconnect a drive, maki picks it up automatically.
 
 ### Multiple volumes
 
@@ -178,29 +178,29 @@ Each volume can optionally be assigned a **purpose** that describes its role in 
 | `cloud`     | Cloud-synced folder (Dropbox, iCloud, Google Drive) |
 
 ```bash
-dam volume add "Laptop SSD" /Volumes/MacintoshHD --purpose working
-dam volume add "Archive"    /Volumes/MediaDrive   --purpose archive
-dam volume add "Backup A"   /Volumes/BackupDisk   --purpose backup
-dam volume add "Dropbox"    ~/Dropbox/Photos      --purpose cloud
+maki volume add "Laptop SSD" /Volumes/MacintoshHD --purpose working
+maki volume add "Archive"    /Volumes/MediaDrive   --purpose archive
+maki volume add "Backup A"   /Volumes/BackupDisk   --purpose backup
+maki volume add "Dropbox"    ~/Dropbox/Photos      --purpose cloud
 ```
 
 Purpose metadata drives two features:
 
-- **Duplicate analysis** (`dam duplicates`): Distinguishes unwanted duplicates (same file twice on the same working drive) from wanted redundancy (same file on an archive and a backup).
-- **Backup coverage** (`dam backup-status`): Reports which assets lack copies on archive or backup volumes and flags at-risk assets.
+- **Duplicate analysis** (`maki duplicates`): Distinguishes unwanted duplicates (same file twice on the same working drive) from wanted redundancy (same file on an archive and a backup).
+- **Backup coverage** (`maki backup-status`): Reports which assets lack copies on archive or backup volumes and flags at-risk assets.
 
 You can set or change a purpose at any time:
 
 ```bash
-dam volume set-purpose "Laptop SSD" archive
-dam volume set-purpose "Laptop SSD" none      # clear
+maki volume set-purpose "Laptop SSD" archive
+maki volume set-purpose "Laptop SSD" none      # clear
 ```
 
 Volumes without a purpose are treated as unclassified — they still work for import, search, and all other operations, but are excluded from purpose-based analysis.
 
 ### Symlinks and path resolution
 
-dam resolves symlinks when registering volumes and importing files. All paths stored in the catalog are **physical (canonical) paths**, not the symlink paths you may see in your filesystem.
+maki resolves symlinks when registering volumes and importing files. All paths stored in the catalog are **physical (canonical) paths**, not the symlink paths you may see in your filesystem.
 
 This matters when your directory layout uses symlinks to span multiple disks. For example, if you have:
 
@@ -214,34 +214,34 @@ and you register `/Volumes/Pictures` as a volume, then:
 - Files under `.../masters/2025/` are tracked on the "Pictures" volume as expected.
 - Files under `.../masters/2026/` resolve through the symlink to `/Volumes/Dropbox/masters/2026/`, which is **outside** the Pictures volume mount point. Import will fail with "No registered volume contains path" unless the Dropbox path is also registered as a volume.
 
-**Why dam resolves symlinks:**
+**Why maki resolves symlinks:**
 
-- **Reliable verification.** `dam verify` re-hashes files by their catalog path. If the catalog stored a symlink path and the symlink later changed target, verification would silently check the wrong file — or fail when the link breaks.
+- **Reliable verification.** `maki verify` re-hashes files by their catalog path. If the catalog stored a symlink path and the symlink later changed target, verification would silently check the wrong file — or fail when the link breaks.
 - **Correct offline detection.** A volume is "online" when its mount point exists. A broken symlink inside an online volume would cause confusing partial failures.
-- **Predictable sync behavior.** `dam sync` detects moved and missing files by comparing disk state to catalog paths. Symlink changes would cause false "moved" or "missing" reports for every file under the changed link.
+- **Predictable sync behavior.** `maki sync` detects moved and missing files by comparing disk state to catalog paths. Symlink changes would cause false "moved" or "missing" reports for every file under the changed link.
 - **Unambiguous volume mapping.** Each file belongs to exactly one volume (determined by longest mount-point prefix match on the physical path). Symlinks could cause the same file to appear to belong to two different volumes depending on which path you use.
 
 **The recommended workaround** is to register each physical storage location as its own volume:
 
 ```bash
-dam volume add "Pictures"  /Volumes/Pictures  --purpose archive
-dam volume add "Dropbox"   /Volumes/Dropbox   --purpose cloud
+maki volume add "Pictures"  /Volumes/Pictures  --purpose archive
+maki volume add "Dropbox"   /Volumes/Dropbox   --purpose cloud
 ```
 
-Both volumes work independently. Import auto-detects the correct volume based on the resolved physical path. `backup-status` shows correct copy counts across both. You can still navigate your symlinked directory structure normally — dam simply tracks where files physically reside.
+Both volumes work independently. Import auto-detects the correct volume based on the resolved physical path. `backup-status` shows correct copy counts across both. You can still navigate your symlinked directory structure normally — maki simply tracks where files physically reside.
 
 ### Removing a volume
 
 If a volume is no longer needed (drive decommissioned, cloud service cancelled), you can cleanly remove it:
 
 ```bash
-dam volume remove "Old Drive"          # report what would be removed
-dam volume remove "Old Drive" --apply  # actually remove
+maki volume remove "Old Drive"          # report what would be removed
+maki volume remove "Old Drive" --apply  # actually remove
 ```
 
 This removes all file location and recipe records on that volume from the catalog and sidecar files, deletes any assets that become orphaned (no remaining file locations), and cleans up orphaned preview files. Without `--apply`, it runs in report-only mode so you can review the impact first.
 
-See the [volume remove reference](../reference/01-setup-commands.md#dam-volume-remove) for details.
+See the [volume remove reference](../reference/01-setup-commands.md#maki-volume-remove) for details.
 
 ### Combining volumes
 
@@ -249,24 +249,24 @@ If you initially registered year-based subdirectories as separate volumes (e.g.,
 
 ```bash
 # First register the parent directory as a volume
-dam volume add "Media" /Volumes/Media
+maki volume add "Media" /Volumes/Media
 
 # Preview what combining would do
-dam volume combine "media_2024" "Media"
+maki volume combine "media_2024" "Media"
 # Would combine 'media_2024' into 'Media': 4832 locations, 312 recipes (3210 assets, prefix 'media_2024/')
 
 # Execute the combination
-dam volume combine "media_2024" "Media" --apply
+maki volume combine "media_2024" "Media" --apply
 ```
 
 The source volume's mount point must be a subdirectory of the target's. All file paths are automatically rewritten with the appropriate prefix (e.g., `photo.jpg` becomes `media_2024/photo.jpg`). After combining, the source volume is removed. You can repeat this for each year-volume to consolidate into one.
 
-See the [volume combine reference](../reference/01-setup-commands.md#dam-volume-combine) for details.
+See the [volume combine reference](../reference/01-setup-commands.md#maki-volume-combine) for details.
 
 
-## Configuration (dam.toml)
+## Configuration (maki.toml)
 
-The `dam.toml` file at the catalog root controls dam's behavior. All sections are optional -- an empty file (or one with only comments) uses sensible defaults.
+The `maki.toml` file at the catalog root controls maki's behavior. All sections are optional -- an empty file (or one with only comments) uses sensible defaults.
 
 Here is a complete example showing every available option:
 
@@ -297,7 +297,7 @@ auto_tags = [         # Tags automatically applied to every new asset
 
 ### Section summary
 
-**`default_volume`** -- UUID of the volume to use when `dam import` cannot auto-detect the correct volume from the file path. Useful if you always import from the same drive.
+**`default_volume`** -- UUID of the volume to use when `maki import` cannot auto-detect the correct volume from the file path. Useful if you always import from the same drive.
 
 **`[preview]`** -- Controls preview generation. `max_edge` sets the longest side of generated thumbnails. `format` chooses between JPEG (smaller, lossy) and WebP (lossless via the `image` crate). `quality` only applies to JPEG output.
 

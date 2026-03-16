@@ -1,16 +1,16 @@
-# Configuration Reference (dam.toml)
+# Configuration Reference (maki.toml)
 
-The `dam.toml` file stores catalog-level configuration. It lives at the root of your catalog directory (the same directory that contains the `metadata/`, `previews/`, and `catalog.db` files).
+The `maki.toml` file stores catalog-level configuration. It lives at the root of your catalog directory (the same directory that contains the `metadata/`, `previews/`, and `catalog.db` files).
 
 ---
 
 ## File Location
 
-`dam.toml` is created automatically by `dam init`. dam locates it by searching the current directory and walking up through parent directories until it finds a directory containing `dam.toml`.
+`maki.toml` is created automatically by `maki init`. maki locates it by searching the current directory and walking up through parent directories until it finds a directory containing `maki.toml`.
 
 ```
 my-catalog/
-  dam.toml              <-- configuration file
+  maki.toml              <-- configuration file
   catalog.db
   metadata/
   previews/
@@ -21,7 +21,7 @@ my-catalog/
 All sections and fields are optional. A missing file or an empty file is equivalent to all-defaults. A comment-only file is also valid:
 
 ```toml
-# dam catalog configuration
+# maki catalog configuration
 ```
 
 ---
@@ -33,19 +33,19 @@ All sections and fields are optional. A missing file or an empty file is equival
 - **Type:** UUID string (optional)
 - **Default:** none
 
-Fallback volume for `dam import` when auto-detection from the file path is ambiguous or fails. When set, import uses this volume if it cannot determine the correct volume from the first path argument.
+Fallback volume for `maki import` when auto-detection from the file path is ambiguous or fails. When set, import uses this volume if it cannot determine the correct volume from the first path argument.
 
 ```toml
 default_volume = "550e8400-e29b-41d4-a716-446655440000"
 ```
 
-Find your volume UUIDs with `dam volume list --json`.
+Find your volume UUIDs with `maki volume list --json`.
 
 ---
 
 ## [preview] Section
 
-Controls how preview thumbnails are generated during import and by `dam generate-previews`.
+Controls how preview thumbnails are generated during import and by `maki generate-previews`.
 
 ### max_edge
 
@@ -92,11 +92,11 @@ JPEG compression quality for smart previews. Only applies when the preview forma
 
 When `true`, the web server generates smart previews automatically on first request. The first load takes a few seconds while the preview is generated; subsequent requests are served from disk. A pulsing "HD" badge in the lightbox and detail page provides visual feedback during generation.
 
-When `false`, smart previews must be generated explicitly via `dam import --smart`, the "Generate smart preview" button on the asset detail page, or a future batch command.
+When `false`, smart previews must be generated explicitly via `maki import --smart`, the "Generate smart preview" button on the asset detail page, or a future batch command.
 
 ### Notes
 
-Changing `max_edge` or `format` affects only newly generated previews. Existing previews are not automatically regenerated. Use `dam generate-previews --force` to regenerate all previews with the new settings.
+Changing `max_edge` or `format` affects only newly generated previews. Existing previews are not automatically regenerated. Use `maki generate-previews --force` to regenerate all previews with the new settings.
 
 Smart previews are stored in a separate directory (`smart_previews/`) and do not replace regular thumbnails.
 
@@ -114,7 +114,7 @@ generate_on_demand = true
 
 ## [serve] Section
 
-Controls the built-in web UI server started by `dam serve`.
+Controls the built-in web UI server started by `maki serve`.
 
 ### port
 
@@ -174,10 +174,10 @@ Maximum value for the fan-out slider on the stroll page.
 
 ### CLI Override
 
-The `--port`, `--bind`, and `--per-page` flags on `dam serve` override the values from `dam.toml`:
+The `--port`, `--bind`, and `--per-page` flags on `maki serve` override the values from `maki.toml`:
 
 ```bash
-dam serve --port 9090 --bind 0.0.0.0 --per-page 100
+maki serve --port 9090 --bind 0.0.0.0 --per-page 100
 ```
 
 ```toml
@@ -196,7 +196,7 @@ stroll_discover_pool = 80
 
 ## [import] Section
 
-Controls import behavior for `dam import`.
+Controls import behavior for `maki import`.
 
 ### exclude
 
@@ -237,7 +237,7 @@ auto_tags = ["inbox", "unreviewed"]
 - **Type:** boolean
 - **Default:** `false`
 
-When `true`, import automatically generates smart previews (high-resolution, 2560px) alongside regular thumbnails. Equivalent to passing `--smart` on every `dam import` command. Smart preview dimensions are controlled by `[preview] smart_max_edge`.
+When `true`, import automatically generates smart previews (high-resolution, 2560px) alongside regular thumbnails. Equivalent to passing `--smart` on every `maki import` command. Smart preview dimensions are controlled by `[preview] smart_max_edge`.
 
 ```toml
 [import]
@@ -251,7 +251,7 @@ smart_previews = true
 - **Type:** boolean
 - **Default:** `false`
 
-When `true`, import automatically generates SigLIP image embeddings for visual similarity search alongside previews. Equivalent to passing `--embed` on every `dam import` command. Embeddings enable `dam auto-tag --similar` and the web UI "Find similar" button.
+When `true`, import automatically generates SigLIP image embeddings for visual similarity search alongside previews. Equivalent to passing `--embed` on every `maki import` command. Embeddings enable `maki auto-tag --similar` and the web UI "Find similar" button.
 
 Uses the model configured in `[ai] model`. Silently skips if the model is not downloaded. Non-image assets are skipped.
 
@@ -265,7 +265,7 @@ embeddings = true
 - **Type:** boolean
 - **Default:** `false`
 
-When `true`, import automatically generates VLM descriptions for newly imported assets as a post-import phase. Equivalent to passing `--describe` on every `dam import` command.
+When `true`, import automatically generates VLM descriptions for newly imported assets as a post-import phase. Equivalent to passing `--describe` on every `maki import` command.
 
 Uses the VLM configured in `[vlm]` (endpoint, model, prompt, mode, temperature). Silently skips if the VLM endpoint is not available. Assets that already have descriptions are skipped. Works with all `[vlm] mode` settings (describe, tags, both).
 
@@ -278,7 +278,7 @@ descriptions = true
 
 ## [dedup] Section
 
-Controls dedup behavior for `dam dedup` and the web UI's auto-resolve action.
+Controls dedup behavior for `maki dedup` and the web UI's auto-resolve action.
 
 ### prefer
 
@@ -298,14 +298,14 @@ prefer = "Selects"
 
 ## [verify] Section
 
-Controls incremental verify behavior for `dam verify`.
+Controls incremental verify behavior for `maki verify`.
 
 ### max_age_days
 
 - **Type:** integer (optional)
 - **Default:** none
 
-Default value for the `--max-age` flag. When set, `dam verify` skips files verified within the given number of days. The CLI `--max-age` flag overrides this value. `--force` overrides both.
+Default value for the `--max-age` flag. When set, `maki verify` skips files verified within the given number of days. The CLI `--max-age` flag overrides this value. `--force` overrides both.
 
 ```toml
 [verify]
@@ -316,7 +316,7 @@ max_age_days = 30
 
 ## [contact_sheet] Section
 
-Default settings for `dam contact-sheet`. All fields are optional; CLI flags override these values.
+Default settings for `maki contact-sheet`. All fields are optional; CLI flags override these values.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -340,9 +340,9 @@ copyright = "© 2026 Thomas Herrmann"
 
 ## [ai] Section
 
-> **Feature-gated**: these settings only take effect when dam is built with `--features ai`.
+> **Feature-gated**: these settings only take effect when maki is built with `--features ai`.
 
-Controls AI auto-tagging behavior for `dam auto-tag`.
+Controls AI auto-tagging behavior for `maki auto-tag`.
 
 ### model
 
@@ -369,7 +369,7 @@ Path to a custom labels file (one label per line). When set, overrides the built
 ### model_dir
 
 - **Type:** string (directory path)
-- **Default:** `"~/.dam/models"`
+- **Default:** `"~/.maki/models"`
 
 Where to cache downloaded model files. The `~` prefix is expanded to the user's home directory.
 
@@ -414,7 +414,7 @@ Maximum number of results returned by `text:` semantic search queries. This is t
 [ai]
 threshold = 0.3
 labels = "my-labels.txt"
-model_dir = "~/.dam/models"
+model_dir = "~/.maki/models"
 prompt = "a photograph of {}"
 execution_provider = "auto"
 face_cluster_threshold = 0.5
@@ -426,7 +426,7 @@ text_limit = 50
 
 ## [vlm] Section
 
-Controls the VLM (vision-language model) integration for `dam describe`. Unlike the `[ai]` section, this requires no special build features -- it works with any dam binary because it uses HTTP calls to an external server.
+Controls the VLM (vision-language model) integration for `maki describe`. Unlike the `[ai]` section, this requires no special build features -- it works with any maki binary because it uses HTTP calls to an external server.
 
 ### endpoint
 
@@ -445,7 +445,7 @@ Base URL of the VLM server. Any server implementing the OpenAI-compatible `/v1/c
 - Groq -- `https://api.groq.com/openai` (model: `llama-3.2-90b-vision-preview`)
 - Together AI -- `https://api.together.xyz` (model: `meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo`)
 
-> **Note:** Cloud APIs charge per request. dam does not set authentication headers -- if your endpoint requires an API key, you may need to use a local proxy or set the key via the server's own configuration.
+> **Note:** Cloud APIs charge per request. maki does not set authentication headers -- if your endpoint requires an API key, you may need to use a local proxy or set the key via the server's own configuration.
 
 ### model
 
@@ -493,7 +493,7 @@ prompt = "Describe the architectural style, materials, and notable design featur
 - **Type:** string
 - **Default:** `"describe"`
 
-Default output mode for `dam describe`. One of: `describe` (natural language description), `tags` (JSON tag suggestions), `both` (two separate VLM calls: one for description, one for tags).
+Default output mode for `maki describe`. One of: `describe` (natural language description), `tags` (JSON tag suggestions), `both` (two separate VLM calls: one for description, one for tags).
 
 ### temperature
 
@@ -514,7 +514,7 @@ Maximum time to wait for a VLM response. Larger models on CPU may need higher ti
 - **Type:** unsigned 32-bit integer
 - **Default:** `1`
 
-Number of concurrent VLM requests. When greater than 1, `dam describe`, `dam import --describe`, and web UI batch describe process multiple assets in parallel. Each batch of `concurrency` assets sends VLM HTTP calls concurrently using scoped threads; preparation (skip checks, image lookup) and result application (catalog writes) remain sequential. Set to the number of simultaneous requests your VLM server can handle efficiently — for local Ollama this depends on available VRAM and model size.
+Number of concurrent VLM requests. When greater than 1, `maki describe`, `maki import --describe`, and web UI batch describe process multiple assets in parallel. Each batch of `concurrency` assets sends VLM HTTP calls concurrently using scoped threads; preparation (skip checks, image lookup) and result application (catalog writes) remain sequential. Set to the number of simultaneous requests your VLM server can handle efficiently — for local Ollama this depends on available VRAM and model size.
 
 ### models
 
@@ -529,7 +529,7 @@ model = "moondream"
 models = ["moondream", "qwen3-vl:4b"]
 ```
 
-The CLI `dam describe --model` flag is unaffected by this setting — it accepts any model name regardless of the `models` list.
+The CLI `maki describe --model` flag is unaffected by this setting — it accepts any model name regardless of the `models` list.
 
 ### num_ctx
 
@@ -561,7 +561,7 @@ Repetition penalty applied to tokens that have already appeared. Values above `1
 
 ### Per-Model Configuration
 
-You can override any VLM setting for specific models using `[vlm.model_config."model-name"]` sections. When `dam describe` runs with a given model (via `--model` or `[vlm] model`), any matching per-model section is merged on top of the global `[vlm]` settings. CLI flags always win over both.
+You can override any VLM setting for specific models using `[vlm.model_config."model-name"]` sections. When `maki describe` runs with a given model (via `--model` or `[vlm] model`), any matching per-model section is merged on top of the global `[vlm]` settings. CLI flags always win over both.
 
 This is useful when different models need different timeouts, context sizes, or sampling parameters:
 
@@ -580,13 +580,13 @@ max_tokens = 200
 temperature = 0.1
 ```
 
-When running `dam describe --model qwen3-vl:4b`, the per-model overrides apply: `timeout` becomes 300, `num_ctx` becomes 4096, and `max_image_edge` becomes 384. All other settings fall through from the global `[vlm]` section.
+When running `maki describe --model qwen3-vl:4b`, the per-model overrides apply: `timeout` becomes 300, `num_ctx` becomes 4096, and `max_image_edge` becomes 384. All other settings fall through from the global `[vlm]` section.
 
 Per-model sections support all the same fields as the global `[vlm]` section (except `model`, `models`, and `model_config` itself).
 
 ### CLI Override
 
-The `--endpoint`, `--model`, `--prompt`, `--max-tokens`, `--timeout`, `--temperature`, `--mode`, `--num-ctx`, `--top-p`, `--top-k`, and `--repeat-penalty` flags on `dam describe` override the values from `dam.toml` (including per-model overrides).
+The `--endpoint`, `--model`, `--prompt`, `--max-tokens`, `--timeout`, `--temperature`, `--mode`, `--num-ctx`, `--top-p`, `--top-k`, and `--repeat-penalty` flags on `maki describe` override the values from `maki.toml` (including per-model overrides).
 
 ```toml
 [vlm]
@@ -614,11 +614,11 @@ repeat_penalty = 0.0
 
 ## Full Example
 
-A complete `dam.toml` with all options set and annotated:
+A complete `maki.toml` with all options set and annotated:
 
 ```toml
 # Default volume for import when auto-detection is ambiguous.
-# Find volume UUIDs with: dam volume list --json
+# Find volume UUIDs with: maki volume list --json
 default_volume = "550e8400-e29b-41d4-a716-446655440000"
 
 [preview]
@@ -636,7 +636,7 @@ smart_quality = 85
 generate_on_demand = true
 
 [serve]
-# Web UI port. Override with: dam serve --port 9090
+# Web UI port. Override with: maki serve --port 9090
 port = 8080
 # Bind address. Use "0.0.0.0" to allow network access.
 bind = "127.0.0.1"
@@ -696,7 +696,7 @@ copyright = ""
 model = "siglip-vit-b16-256"
 threshold = 0.3
 # labels = "my-labels.txt"
-model_dir = "~/.dam/models"
+model_dir = "~/.maki/models"
 prompt = "a photograph of {}"
 # GPU acceleration (requires --features ai-gpu).
 # execution_provider = "auto"
@@ -756,7 +756,7 @@ bind = "0.0.0.0"
 
 ## Defaults Summary
 
-When a field is absent from `dam.toml`, these defaults apply:
+When a field is absent from `maki.toml`, these defaults apply:
 
 | Field | Default |
 |-------|---------|
@@ -792,7 +792,7 @@ When a field is absent from `dam.toml`, these defaults apply:
 | `ai.model` | `"siglip-vit-b16-256"` |
 | `ai.threshold` | `0.1` |
 | `ai.labels` | none |
-| `ai.model_dir` | `"~/.dam/models"` |
+| `ai.model_dir` | `"~/.maki/models"` |
 | `ai.prompt` | `"a photograph of {}"` |
 | `ai.execution_provider` | `"auto"` |
 | `ai.face_cluster_threshold` | `0.5` |
@@ -816,6 +816,6 @@ When a field is absent from `dam.toml`, these defaults apply:
 
 ## Related Topics
 
-- [Setup (User Guide)](../user-guide/02-setup.md) -- creating a catalog with `dam init`
+- [Setup (User Guide)](../user-guide/02-setup.md) -- creating a catalog with `maki init`
 - [CLI Conventions](00-cli-conventions.md) -- global flags and catalog discovery
 - [Search Filters Reference](06-search-filters.md) -- search query syntax

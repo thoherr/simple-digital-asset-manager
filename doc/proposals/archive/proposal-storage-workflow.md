@@ -14,7 +14,7 @@ A typical photography workflow creates multiple copies of the same file at diffe
 - Periodic backup from master drive to backup drives
 - Dropbox cloud sync of the working session
 
-The current system already tracks all of these as multiple `file_locations` on a single variant (content-addressed by SHA-256). `dam duplicates` lists them. But there's no way to:
+The current system already tracks all of these as multiple `file_locations` on a single variant (content-addressed by SHA-256). `maki duplicates` lists them. But there's no way to:
 
 1. **Distinguish unwanted duplicates from wanted backups** — a RAW file at two paths on the same laptop is different from the same RAW on the laptop and on a backup drive
 2. **Find backup gaps** — "Which rated assets have no copy on my master drive?"
@@ -70,13 +70,13 @@ pub struct Volume {
 
 ```bash
 # Set purpose when adding a volume
-dam volume add /Volumes/BackupDrive --label "Backup A" --purpose backup
+maki volume add /Volumes/BackupDrive --label "Backup A" --purpose backup
 
 # Update purpose on an existing volume
-dam volume set-purpose "Backup A" backup
+maki volume set-purpose "Backup A" backup
 
 # Show purpose in volume list
-dam volume list
+maki volume list
 # Photos SSD (a1b2c3d4-...) [online] [working]
 #   Path: /Volumes/Photos
 # Master Media (e5f67890-...) [online] [archive]
@@ -93,29 +93,29 @@ Stored in `volumes.yaml` (source of truth) and `volumes` table in SQLite. Schema
 
 ## Part 2: Smart Duplicate Analysis ✅ *Implemented in v1.4.0*
 
-### Enhanced `dam duplicates` Command
+### Enhanced `maki duplicates` Command
 
-Currently `dam duplicates` lists all variants with multiple file_locations. Enhance it with filtering modes:
+Currently `maki duplicates` lists all variants with multiple file_locations. Enhance it with filtering modes:
 
 ```bash
 # Current behavior (unchanged default)
-dam duplicates
+maki duplicates
 
 # Same-volume duplicates — likely unwanted
-dam duplicates --same-volume
+maki duplicates --same-volume
 # Shows only variants with 2+ locations on the SAME volume
 # Example: DSC_001.nef at Capture/DSC_001.nef AND Selects/DSC_001.nef on "Photos SSD"
 
 # Cross-volume duplicates — likely wanted backups
-dam duplicates --cross-volume
+maki duplicates --cross-volume
 # Shows only variants with locations on 2+ DIFFERENT volumes
 
 # Filter by volume
-dam duplicates --volume "Photos SSD"
+maki duplicates --volume "Photos SSD"
 # Shows duplicates involving this specific volume
 
 # Combine with search query
-dam duplicates --same-volume "rating:3+ type:image"
+maki duplicates --same-volume "rating:3+ type:image"
 # Same-volume duplicates, but only for rated images
 ```
 
@@ -160,16 +160,16 @@ The `--json` output includes `same_volume_groups` and `cross_volume_count` field
 
 ## Part 3: Duplicate Cleanup
 
-### `dam dedup` Command
+### `maki dedup` Command
 
 A guided cleanup for same-volume duplicates:
 
 ```bash
 # Report mode (default) — show what would be removed
-dam dedup [--volume <label>] [--prefer <path-pattern>] [--min-copies N]
+maki dedup [--volume <label>] [--prefer <path-pattern>] [--min-copies N]
 
 # Apply mode — remove duplicate files
-dam dedup --apply [--volume <label>] [--prefer <path-pattern>] [--min-copies N]
+maki dedup --apply [--volume <label>] [--prefer <path-pattern>] [--min-copies N]
 ```
 
 **Flags:**
@@ -193,7 +193,7 @@ The heuristic only removes locations within the same volume — cross-volume cop
 
 ```bash
 # See what duplicates exist on the laptop
-dam dedup --volume "Photos SSD"
+maki dedup --volume "Photos SSD"
 # Found 47 same-volume duplicates:
 #   DSC_001.nef: keep Selects/2026-02/DSC_001.nef, remove Capture/2026-02/DSC_001.nef
 #   DSC_002.nef: keep Selects/2026-02/DSC_002.nef, remove Capture/2026-02/DSC_002.nef
@@ -201,10 +201,10 @@ dam dedup --volume "Photos SSD"
 # Total: 47 files, 1.2 GB reclaimable
 
 # Prefer Selects over Capture (explicit)
-dam dedup --volume "Photos SSD" --prefer Selects
+maki dedup --volume "Photos SSD" --prefer Selects
 
 # Apply after reviewing
-dam dedup --volume "Photos SSD" --prefer Selects --apply
+maki dedup --volume "Photos SSD" --prefer Selects --apply
 # Removed 47 duplicate locations (1.2 GB freed)
 ```
 
@@ -219,22 +219,22 @@ dam dedup --volume "Photos SSD" --prefer Selects --apply
 
 ## Part 4: Backup Coverage
 
-### `dam backup-status` Command ✅ *Implemented in v1.4.1*
+### `maki backup-status` Command ✅ *Implemented in v1.4.1*
 
 Answers the question: "Are my important assets safely backed up?"
 
 ```bash
 # Overview
-dam backup-status
+maki backup-status
 
 # Filter to specific assets
-dam backup-status "rating:3+ type:image"
+maki backup-status "rating:3+ type:image"
 
 # Check coverage on a specific volume
-dam backup-status --volume "Master Media"
+maki backup-status --volume "Master Media"
 
 # Require N copies
-dam backup-status --min-copies 2
+maki backup-status --min-copies 2
 ```
 
 **Output:**
@@ -258,8 +258,8 @@ Location distribution:
   3+ locations:           1,996 assets
 
 At-risk assets (1 location, no archive/backup copy):
-  Use 'dam backup-status --at-risk' to list them
-  Use 'dam backup-status --at-risk -q' for asset IDs (pipeable)
+  Use 'maki backup-status --at-risk' to list them
+  Use 'maki backup-status --at-risk -q' for asset IDs (pipeable)
 
 Volume gaps:
   Master Media: missing 340 assets present on working volumes
@@ -278,11 +278,11 @@ Volume gaps:
 
 ```bash
 # Find all rated assets not on the master drive, then relocate them
-dam backup-status --volume "Master Media" --at-risk -q "rating:3+" \
-  | xargs -I{} dam relocate {} "Master Media"
+maki backup-status --volume "Master Media" --at-risk -q "rating:3+" \
+  | xargs -I{} maki relocate {} "Master Media"
 
 # Find at-risk assets and add them to a collection for review
-dam backup-status --at-risk -q | xargs dam collection add "Needs Backup"
+maki backup-status --at-risk -q | xargs maki collection add "Needs Backup"
 ```
 
 ### Search Filter: `copies` ✅ *Implemented in v1.4.0*
@@ -291,13 +291,13 @@ Add a new search filter for location count:
 
 ```bash
 # Assets with exactly 1 file location (single point of failure)
-dam search "copies:1"
+maki search "copies:1"
 
 # Assets with 3 or more locations
-dam search "copies:3+"
+maki search "copies:3+"
 
 # Highly rated assets with insufficient backup
-dam search "rating:4+ copies:1"
+maki search "rating:4+ copies:1"
 ```
 
 Implementation: `copies:N` is a pure SQL filter on a COUNT of `file_locations` grouped by `asset_id` (via variant join). `copies:N+` uses `HAVING COUNT(*) >= N`. This avoids disk I/O, unlike `missing:true`.
@@ -308,7 +308,7 @@ Implementation: `copies:N` is a pure SQL filter on a COUNT of `file_locations` g
 
 ### Volume Purpose Display
 
-- `dam volume list` in the web UI (stats page or dedicated volumes page) shows purpose badges
+- `maki volume list` in the web UI (stats page or dedicated volumes page) shows purpose badges
 - Volume filter dropdown in the browse page shows purpose next to label
 
 ### Duplicates Page Enhancement
@@ -350,14 +350,14 @@ Implementation: `copies:N` is a pure SQL filter on a COUNT of `file_locations` g
 - `src/catalog.rs` — `build_search_where()` adds scalar subquery on location count (self-contained, no outer JOIN needed)
 - `doc/manual/reference/06-search-filters.md` — documented new filter
 
-### Phase 4: `dam dedup` Command ✅ *v1.4.1*
+### Phase 4: `maki dedup` Command ✅ *v1.4.1*
 
 **Files modified:**
 - `src/asset_service.rs` — added `DedupResult`, `DedupStatus`, and `dedup()` method with resolution heuristic (prefer prefix, verified_at, path length, alphabetical) and file deletion
 - `src/main.rs` — added `dedup` subcommand with `--volume`, `--prefer`, `--min-copies`, `--apply` flags
 - `doc/manual/reference/05-maintain-commands.md` — documented command
 
-### Phase 5: `dam backup-status` Command ✅ *v1.4.1*
+### Phase 5: `maki backup-status` Command ✅ *v1.4.1*
 
 **Files modified:**
 - `src/catalog.rs` — added `BackupStatusResult` structs + `backup_status_overview()`, `backup_status_at_risk_ids()`, `backup_status_missing_from_volume()` methods. Counts distinct volumes per asset (not file locations) for backup safety.
@@ -376,8 +376,8 @@ Implementation: `copies:N` is a pure SQL filter on a COUNT of `file_locations` g
 
 This proposal **supersedes** the following items from `enhancements.md`:
 
-- **Item 1: Smart Duplicate Resolution** — fully specified here as `dam dedup` (Part 3)
-- **Item 5/14: Backup Coverage Report** — fully specified here as `dam backup-status` (Part 4)
+- **Item 1: Smart Duplicate Resolution** — fully specified here as `maki dedup` (Part 3)
+- **Item 5/14: Backup Coverage Report** — fully specified here as `maki backup-status` (Part 4)
 
 The `enhancements.md` items were sketches; this proposal provides the complete design with data model, CLI interface, implementation details, and phase plan.
 
@@ -385,43 +385,43 @@ The `enhancements.md` items were sketches; this proposal provides the complete d
 
 ## Example: Full Workflow
 
-Thomas's photography workflow with dam storage management:
+Thomas's photography workflow with maki storage management:
 
 ```bash
 # 1. Setup: label volumes with their purpose
-dam volume add /Volumes/LaptopSSD --label "Laptop" --purpose working
-dam volume add /Volumes/MediaDrive --label "Master Media" --purpose archive
-dam volume add /Volumes/BackupDisk --label "Backup A" --purpose backup
+maki volume add /Volumes/LaptopSSD --label "Laptop" --purpose working
+maki volume add /Volumes/MediaDrive --label "Master Media" --purpose archive
+maki volume add /Volumes/BackupDisk --label "Backup A" --purpose backup
 
 # 2. Import from CaptureOne session (on laptop)
-dam import /Volumes/LaptopSSD/Sessions/2026-02-24/Capture/
+maki import /Volumes/LaptopSSD/Sessions/2026-02-24/Capture/
 
 # 3. After rsync to master drive, import the copies
-dam import /Volumes/MediaDrive/Sessions/2026-02-24/
+maki import /Volumes/MediaDrive/Sessions/2026-02-24/
 # → "0 imported, 47 locations added" — same hashes, new locations tracked
 
 # 4. After culling and moving selects (locally)
-dam sync /Volumes/LaptopSSD/Sessions/2026-02-24/ --apply
+maki sync /Volumes/LaptopSSD/Sessions/2026-02-24/ --apply
 # → Detects moved files (Capture → Selects), updates locations
 
 # 5. Check for accidental local duplicates
-dam dedup --volume "Laptop"
+maki dedup --volume "Laptop"
 # → Shows RAWs that exist in both Capture/ and Selects/ (copied not moved)
 
 # 6. Clean up local duplicates, keep the Selects copy
-dam dedup --volume "Laptop" --prefer Selects --apply
+maki dedup --volume "Laptop" --prefer Selects --apply
 # → Removes 12 duplicate files, frees 450 MB
 
 # 7. After processing and exporting, check backup coverage
-dam backup-status "rating:3+"
+maki backup-status "rating:3+"
 # → "23 rated assets missing from Master Media, 45 missing from Backup A"
 
 # 8. Ensure rated assets reach the master drive
-dam backup-status --volume "Master Media" --at-risk -q "rating:3+" \
-  | xargs -I{} dam relocate {} "Master Media"
+maki backup-status --volume "Master Media" --at-risk -q "rating:3+" \
+  | xargs -I{} maki relocate {} "Master Media"
 
 # 9. Verify everything is safe before cleaning up the laptop
-dam backup-status --min-copies 2 "rating:3+"
+maki backup-status --min-copies 2 "rating:3+"
 # → "All 340 rated assets have 2+ locations ✓"
 ```
 
@@ -434,8 +434,8 @@ dam backup-status --min-copies 2 "rating:3+"
 | Volume purpose | Semantic context for duplicate analysis | Small | ✅ v1.4.0 |
 | Enhanced duplicates | Distinguish unwanted from wanted copies | Small | ✅ v1.4.0 |
 | `copies:N` filter | Find under-backed-up assets in search | Small | ✅ v1.4.0 |
-| `dam dedup` | Clean up same-volume duplicates safely | Medium | ✅ v1.4.1 |
-| `dam backup-status` | At-a-glance backup health overview | Medium | ✅ v1.4.1 |
+| `maki dedup` | Clean up same-volume duplicates safely | Medium | ✅ v1.4.1 |
+| `maki backup-status` | At-a-glance backup health overview | Medium | ✅ v1.4.1 |
 | Web UI integration | Visual backup dashboard | Medium | ✅ v1.4.1 |
 
 All phases shipped: 1–3 in v1.4.0, 4–6 in v1.4.1.

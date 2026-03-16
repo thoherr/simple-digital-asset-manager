@@ -9,10 +9,10 @@ Features completed during the v2.5 release cycle and moved from the active roadm
 Move entire query results to a target volume in one command.
 
 **Done:**
-- `dam relocate --query <QUERY> --target <VOLUME> [--remove-source] [--dry-run]`
-- Stdin piping: `dam search -q "date:2024 volume:Working" | dam relocate --target "Archive 2024"`
+- `maki relocate --query <QUERY> --target <VOLUME> [--remove-source] [--dry-run]`
+- Stdin piping: `maki search -q "date:2024 volume:Working" | maki relocate --target "Archive 2024"`
 - Multiple positional IDs with `--target`
-- Backward compatible with single-asset `dam relocate <ID> <VOL>`
+- Backward compatible with single-asset `maki relocate <ID> <VOL>`
 - Progress reporting with `--log`, batch summary with `--json`
 
 ---
@@ -33,21 +33,21 @@ Reorder stacks, add to collections, and manage groups via drag-and-drop in the b
 Natural language image descriptions via local vision-language models. Phases 1–4 complete (v2.4.2: CLI + web UI; v2.5.0: auto-describe + text search; v2.5.3: concurrent requests). See [proposal](proposal-vlm-integration.md).
 
 **Done:**
-- `dam describe` command with `--mode describe|tags|both`, `--apply`, `--force`, `--dry-run`
+- `maki describe` command with `--mode describe|tags|both`, `--apply`, `--force`, `--dry-run`
 - OpenAI-compatible API with Ollama native fallback
-- Configurable temperature, timeout, model, endpoint, prompt via `[vlm]` in `dam.toml`
+- Configurable temperature, timeout, model, endpoint, prompt via `[vlm]` in `maki.toml`
 - "Describe" button on detail page, batch "Describe" in toolbar
 - VLM startup health check, `vlm_enabled` template flag
 - Truncated JSON recovery, tag deduplication
 - `text:` semantic search filter — natural language image search via SigLIP text encoder
-- `dam import --describe` — auto-describe during import via VLM post-import phase
+- `maki import --describe` — auto-describe during import via VLM post-import phase
 - Concurrent VLM requests via `[vlm] concurrency` setting (v2.5.3)
 
 ---
 
 ## Statistics Dashboard (v2.5.1)
 
-Shooting analytics beyond the current `dam stats` command.
+Shooting analytics beyond the current `maki stats` command.
 
 **Done:**
 - `/analytics` page with shooting frequency, camera/lens usage, rating distribution, format breakdown, monthly import volume, and storage per volume charts

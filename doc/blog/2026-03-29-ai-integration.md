@@ -120,7 +120,7 @@ Für Auto-Tagging ist Sigmoid ideal: Ein Foto kann gleichzeitig "sunset", "ocean
 │                                                      │
 ├──────────────────────────────────────────────────────┤
 │          Model Manager                               │
-│  ~/.cache/dam/models/                                │
+│  ~/.cache/maki/models/                                │
 │  ├── onnx/vision_model_quantized.onnx    (~150 MB)  │
 │  ├── onnx/text_model_quantized.onnx      (~150 MB)  │
 │  └── tokenizer.json                      (~2 MB)    │
@@ -454,12 +454,12 @@ Labels aus Textdatei       →    resolve_labels() + Prompt-Template
 ## Konfiguration
 
 ```toml
-# dam.toml
+# maki.toml
 [ai]
 model = "siglip-vit-b16-256"      # Welches Modell
 threshold = 0.5                    # Mindest-Confidence
 labels = "labels.txt"              # Eigene Label-Liste
-model_dir = "~/.cache/dam/models"  # Modell-Verzeichnis
+model_dir = "~/.cache/maki/models"  # Modell-Verzeichnis
 prompt = "a photo of"              # Prefix für Text-Encoding
 ```
 

@@ -1,6 +1,6 @@
 # Proposal: PDF Contact Sheet Export
 
-**Status: Implemented in v2.4.0.** The `dam contact-sheet` command is fully operational with configurable layouts, paper sizes, metadata fields, color label rendering, section grouping, and copyright text. Configurable via `[contact_sheet]` in `dam.toml`. See [User Guide](../../manual/reference/04-retrieve-commands.md#dam-contact-sheet) and [Configuration Reference](../../manual/reference/08-configuration.md).
+**Status: Implemented in v2.4.0.** The `maki contact-sheet` command is fully operational with configurable layouts, paper sizes, metadata fields, color label rendering, section grouping, and copyright text. Configurable via `[contact_sheet]` in `maki.toml`. See [User Guide](../../manual/reference/04-retrieve-commands.md#maki-contact-sheet) and [Configuration Reference](../../manual/reference/08-configuration.md).
 
 ## Motivation
 
@@ -16,7 +16,7 @@ Photographers regularly need printed or shareable overview sheets of their work:
 
 ## Non-Goals
 
-- Print-quality output from RAW files (use `dam export` + dedicated print software)
+- Print-quality output from RAW files (use `maki export` + dedicated print software)
 - Interactive PDF features (forms, links, JavaScript)
 - Multi-column text layouts or report-style documents
 
@@ -25,14 +25,14 @@ Photographers regularly need printed or shareable overview sheets of their work:
 ## Command Interface
 
 ```
-dam contact-sheet <QUERY> <OUTPUT> [OPTIONS]
+maki contact-sheet <QUERY> <OUTPUT> [OPTIONS]
 ```
 
 ### Positional Arguments
 
 | Argument | Description |
 |---|---|
-| `QUERY` | Search query string (same syntax as `dam search`) |
+| `QUERY` | Search query string (same syntax as `maki search`) |
 | `OUTPUT` | Output file path (`.pdf` extension) |
 
 ### Options
@@ -85,23 +85,23 @@ Column/row overrides take precedence. Thumbnail size is computed from available 
 
 ```bash
 # Standard proof sheet for a shoot
-dam contact-sheet "date:2026-02-14 volume:Working" proof.pdf --title "Studio Session Feb 14"
+maki contact-sheet "date:2026-02-14 volume:Working" proof.pdf --title "Studio Session Feb 14"
 
 # Dense archive index for an entire volume
-dam contact-sheet "volume:Archive2025" archive-index.pdf --layout dense --landscape
+maki contact-sheet "volume:Archive2025" archive-index.pdf --layout dense --landscape
 
 # Large presentation sheet with grouping
-dam contact-sheet "collection:Portfolio" portfolio.pdf --layout large --group-by label --fields name,rating,tags
+maki contact-sheet "collection:Portfolio" portfolio.pdf --layout large --group-by label --fields name,rating,tags
 
 # Client selection sheet — rated images only
-dam contact-sheet "rating:3+ tag:selects" selects.pdf --fields filename,rating --title "Client Selects"
+maki contact-sheet "rating:3+ tag:selects" selects.pdf --fields filename,rating --title "Client Selects"
 
 # Dry run to check page count
-dam contact-sheet "date:2026-02" feb.pdf --dry-run
+maki contact-sheet "date:2026-02" feb.pdf --dry-run
 # → Contact sheet: 347 assets, 18 pages (standard, A4 portrait)
 
 # JSON output for scripting
-dam contact-sheet "tag:portfolio" portfolio.pdf --json
+maki contact-sheet "tag:portfolio" portfolio.pdf --json
 # → {"assets": 42, "pages": 3, "layout": "standard", "paper": "a4", "output": "portfolio.pdf"}
 ```
 
@@ -133,7 +133,7 @@ dam contact-sheet "tag:portfolio" portfolio.pdf --json
 │  └──────┘  └──────┘  └──────┘  └──────┘   │
 │                                             │
 ├─────────────────────────────────────────────┤
-│  [dam • query text]            [date] [N/M] │  ← footer (6mm)
+│  [maki • query text]            [date] [N/M] │  ← footer (6mm)
 └─────────────────────────────────────────────┘
 ```
 
@@ -162,7 +162,7 @@ Section headers consume one row's vertical space. If a header would be the last 
 
 - **Header** (first page): Title text (left-aligned, bold), query string (right-aligned, small, gray)
 - **Header** (subsequent pages): Title (left), page number (right)
-- **Footer** (all pages): `dam` branding + generation date (left), `Page N of M` (right)
+- **Footer** (all pages): `maki` branding + generation date (left), `Page N of M` (right)
 
 ---
 
@@ -291,7 +291,7 @@ Optimization: only load `VariantDetails` if the requested `--fields` include met
 
 ## Configuration
 
-Optional defaults in `dam.toml`:
+Optional defaults in `maki.toml`:
 
 ```toml
 [contact_sheet]
@@ -330,11 +330,11 @@ Not in scope for the initial implementation, but a natural follow-up:
 
 ### Integration Tests
 
-- `dam contact-sheet "type:image" output.pdf` — generates valid PDF
-- `dam contact-sheet "type:image" output.pdf --dry-run` — reports count without writing
-- `dam contact-sheet "type:image" output.pdf --json` — JSON result with page count
-- `dam contact-sheet "nonexistent:true" output.pdf` — exits with error on zero results
-- `dam contact-sheet "type:image" output.pdf --layout dense --landscape --paper a3` — all options compose
+- `maki contact-sheet "type:image" output.pdf` — generates valid PDF
+- `maki contact-sheet "type:image" output.pdf --dry-run` — reports count without writing
+- `maki contact-sheet "type:image" output.pdf --json` — JSON result with page count
+- `maki contact-sheet "nonexistent:true" output.pdf` — exits with error on zero results
+- `maki contact-sheet "type:image" output.pdf --layout dense --landscape --paper a3` — all options compose
 
 ---
 
@@ -342,7 +342,7 @@ Not in scope for the initial implementation, but a natural follow-up:
 
 ### Phase 1: Core Generation
 
-- `dam contact-sheet` command with all options listed above
+- `maki contact-sheet` command with all options listed above
 - Image-based PDF rendering via `printpdf`
 - Three layout presets (dense, standard, large)
 - All metadata fields
@@ -353,7 +353,7 @@ Not in scope for the initial implementation, but a natural follow-up:
 - `--group-by` section headers
 - Custom column/row override
 - `--template` for custom per-cell text format strings
-- `[contact_sheet]` config section in `dam.toml`
+- `[contact_sheet]` config section in `maki.toml`
 - Web UI integration
 
 ---

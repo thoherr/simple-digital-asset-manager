@@ -5,9 +5,9 @@
 The system is organized in four layers, from top to bottom:
 
 ### 1. Interface Layer
-- **CLI** — subcommand-based interface (`dam import`, `dam search`, `dam relocate`, etc.)
-- **Interactive Shell** — `dam shell` provides a readline-based REPL with cached catalog state, named variables (`$name = search ...`), session defaults (`set --json`), tab completion, `.dam` script files, and `source` for script composition. Shares the same command dispatcher as the CLI; each command opens a fresh SQLite connection (same per-request pattern as the web server).
-- **Web UI** — browser-based interface via `dam serve`. Uses axum (HTTP), askama (templates), htmx (interactivity). Opens fresh SQLite connections per request via `spawn_blocking`. Serves preview images from the catalog's `previews/` directory. Integrates with the local OS for file management (reveal in Finder, open terminal).
+- **CLI** — subcommand-based interface (`maki import`, `maki search`, `maki relocate`, etc.)
+- **Interactive Shell** — `maki shell` provides a readline-based REPL with cached catalog state, named variables (`$name = search ...`), session defaults (`set --json`), tab completion, `.maki` script files, and `source` for script composition. Shares the same command dispatcher as the CLI; each command opens a fresh SQLite connection (same per-request pattern as the web server).
+- **Web UI** — browser-based interface via `maki serve`. Uses axum (HTTP), askama (templates), htmx (interactivity). Opens fresh SQLite connections per request via `spawn_blocking`. Serves preview images from the catalog's `previews/` directory. Integrates with the local OS for file management (reveal in Finder, open terminal).
 
 ### 2. Core Library
 - **Asset Service** — orchestrates import, deletion, grouping, relocation, verification, deduplication, role fixing. Main business logic.
@@ -17,7 +17,7 @@ The system is organized in four layers, from top to bottom:
 - **Query Engine** — searches the local catalog and performs metadata editing (tags, rating, color label, grouping, auto-grouping).
 - **Preview Generator** — creates thumbnails/previews using external tools (dcraw/libraw, ffmpeg). Caches in local catalog.
 - **Format Module** — template engine for flexible CLI output (presets, custom templates, JSON serialization).
-- **Config Module** — parses `dam.toml` configuration (preview settings, serve settings, import exclusions/auto-tags).
+- **Config Module** — parses `maki.toml` configuration (preview settings, serve settings, import exclusions/auto-tags).
 - **EXIF Reader** — extracts EXIF metadata from image files (camera, lens, ISO, focal length, aperture, dimensions, dates).
 - **XMP Reader** — extracts and writes back XMP metadata (keywords, rating, description, color label) for bidirectional sync with CaptureOne/Lightroom.
 - **Collection Store** — manages static album collections (dual storage: SQLite for queries + YAML for rebuild persistence).
@@ -35,7 +35,7 @@ The system is organized in four layers, from top to bottom:
 
 - **Content-addressable storage**: originals are immutable and identified by SHA-256 hash.
 - **Text-based metadata**: sidecar files (YAML) are the source of truth for all metadata.
-- **SQLite as local catalog**: fast queries, single file, no server. Acts as cache/index over the authoritative sidecar files. All connections use WAL mode, memory-mapped I/O (256 MB), and tuned pragmas for optimal read performance. A `schema_version` table tracks the current schema; commands verify it at startup with a single fast query and exit with an error if outdated. Only `dam init` and `dam migrate` modify the schema.
+- **SQLite as local catalog**: fast queries, single file, no server. Acts as cache/index over the authoritative sidecar files. All connections use WAL mode, memory-mapped I/O (256 MB), and tuned pragmas for optimal read performance. A `schema_version` table tracks the current schema; commands verify it at startup with a single fast query and exit with an error if outdated. Only `maki init` and `maki migrate` modify the schema.
 - **Offline-capable**: the local catalog holds enough information (index + thumbnails) to browse and search without media being mounted.
 - **Duplicate location tracking**: when the same content (same SHA-256) is found at a new file path, the location is added to the existing variant rather than being silently skipped. This preserves knowledge of all physical copies, enables the `duplicates` command, and supports future cleanup/consolidation workflows.
 - **Stem-based auto-grouping**: files sharing the same filename stem in the same directory are grouped into one asset during import (e.g. `DSC_4521.NEF` + `DSC_4521.jpg` + `DSC_4521.xmp`). Media files become variants; processing sidecars (XMP, COS, etc.) are attached as recipes. No timestamp matching is required — directory co-location and stem identity are sufficient. For cross-directory grouping (e.g., CaptureOne exports landing in a different directory), the `auto-group` command uses fuzzy prefix + separator matching to find related assets by filename stem across the entire catalog or a scoped search.

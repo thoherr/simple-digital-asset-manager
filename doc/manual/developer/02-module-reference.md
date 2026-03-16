@@ -1,6 +1,6 @@
 # Module Reference
 
-This document describes the modules that make up the `dam` crate. All source code lives under `src/`.
+This document describes the modules that make up the `maki` crate. All source code lives under `src/`.
 
 ## Module Dependency Graph
 
@@ -19,7 +19,7 @@ graph TD
     exif_reader["exif_reader"]
     xmp_reader["xmp_reader"]
     embedded_xmp["embedded_xmp"]
-    config["config<br/>(dam.toml)"]
+    config["config<br/>(maki.toml)"]
     collection["collection"]
     saved_search["saved_search"]
     stack["stack"]
@@ -81,7 +81,7 @@ graph TD
 | `asset_service` | `src/asset_service.rs` | Orchestrates import, export, grouping, auto-grouping, auto-tagging, relocate, delete, and preview generation. Coordinates between content store, metadata store, catalog, EXIF/XMP readers, and preview generator. Entry point for all write operations that involve multiple subsystems. |
 | `catalog` | `src/catalog.rs` | SQLite database operations: schema creation, migrations, CRUD for assets/variants/recipes/locations, search queries with pagination and filtering, statistics, and tag management. Provides `Catalog::open()` (with migrations) and `Catalog::open_fast()` (skip migrations, for per-request use in the web server). |
 | `collection` | `src/collection.rs` | Collection (static album) persistence. Dual storage: SQLite tables (`collections`, `collection_assets`) for fast queries, plus `collections.yaml` at catalog root for rebuild resilience. Provides `CollectionStore` with create, list, add/remove assets, and export/import operations. |
-| `config` | `src/config.rs` | Parses and validates `dam.toml` configuration file. Defines `CatalogConfig` with sub-structs `PreviewConfig` (max_edge, format, quality), `ServeConfig` (port, bind), `ImportConfig` (exclude globs, auto_tags), and `AiConfig` (threshold, labels, model_dir, prompt). All sections are optional with sensible defaults. |
+| `config` | `src/config.rs` | Parses and validates `maki.toml` configuration file. Defines `CatalogConfig` with sub-structs `PreviewConfig` (max_edge, format, quality), `ServeConfig` (port, bind), `ImportConfig` (exclude globs, auto_tags), and `AiConfig` (threshold, labels, model_dir, prompt). All sections are optional with sensible defaults. |
 | `content_store` | `src/content_store.rs` | SHA-256 content hashing for content-addressable storage. Provides `hash_file()` for computing file digests used as variant identity and integrity verification. |
 | `embedding_store` | `src/embedding_store.rs` | *Feature-gated (`ai`)*. Dual persistence for image embeddings: SQLite table for queries + binary files for rebuild resilience. Provides `EmbeddingStore` with `store()`, `get()`, `find_similar()`, `has_embedding()`, `count()`, `remove()`, `list_models()`, and `all_embeddings_for_model()` — all scoped by model ID. `EmbeddingIndex` loads all embeddings for a model into a contiguous `Vec<f32>` buffer for fast in-memory similarity search (dot product with `BinaryHeap` min-heap for top-K). Index is cached in `AppState` and updated in-place when new embeddings are stored. Embeddings stored as little-endian f32 BLOBs in SQLite and as raw binary files under `embeddings/<model>/<prefix>/<asset_id>.bin`. Free functions: `write_embedding_binary()`, `read_embedding_binary()`, `delete_embedding_binary()`, `scan_embedding_binaries()`. Table: `embeddings(asset_id TEXT, embedding BLOB, model TEXT, PRIMARY KEY (asset_id, model))`. Migrates old single-PK schema automatically. |
 | `face` | `src/face.rs` | *Feature-gated (`ai`)*. Face detection and recognition pipeline using ONNX models. `FaceDetector` wraps YuNet (face detection with bounding boxes, landmarks, confidence) and ArcFace (512-dim recognition embeddings). Multi-stride output decoder handles YuNet models with 12 separate tensors at strides 8/16/32. Provides `detect_faces()` (returns `Vec<DetectedFace>` with normalized bboxes), `compute_embedding()` (112×112 aligned face → 512-dim L2-normalized vector), and `generate_crop()` (150×150 JPEG thumbnail). Model specs: `DETECTION_MODEL` (YuNet), `RECOGNITION_MODEL` (ArcFace), `FACE_MODEL_SPECS` (for listing/downloading). |
@@ -90,7 +90,7 @@ graph TD
 | `embedded_xmp` | `src/embedded_xmp.rs` | Extracts XMP metadata embedded in JPEG and TIFF binary data (APP1 marker for JPEG, IFD tag 700 for TIFF). Returns parsed XMP data for merging during import. Supported formats: `.jpg`/`.jpeg`/`.tif`/`.tiff`; all other extensions return empty immediately with zero I/O. |
 | `exif_reader` | `src/exif_reader.rs` | EXIF metadata extraction from image files using the `kamadak-exif` crate. Extracts camera make/model, lens, focal length, aperture, shutter speed, ISO, date/time, GPS coordinates, dimensions, and orientation. Provides `apply_exif_orientation()` for auto-rotating images based on EXIF orientation tags, and `apply_rotation()` for manual rotation overrides (used by preview generation). |
 | `format` | `src/format.rs` | Output format template engine for CLI commands. Supports preset formats (`ids`, `short`, `full`, `json`) and custom templates with `{placeholder}` substitution and escape sequences (`\t`, `\n`). Used by `search --format` and `duplicates --format`. |
-| `model_manager` | `src/model_manager.rs` | *Feature-gated (`ai`)*. Download and cache management for SigLIP ONNX model files from HuggingFace. Model-aware: derives HuggingFace URL from `ModelSpec.hf_repo`. Downloads `vision_model_quantized.onnx`, `text_model_quantized.onnx`, and `tokenizer.json` via curl. Provides `ModelManager` with `ensure_model()`, `download_model()`, `remove_model()`, `list_files()`, `total_size()`, and `list_available_models()`. Default cache dir: `~/.dam/models/<model-id>/`. |
+| `model_manager` | `src/model_manager.rs` | *Feature-gated (`ai`)*. Download and cache management for SigLIP ONNX model files from HuggingFace. Model-aware: derives HuggingFace URL from `ModelSpec.hf_repo`. Downloads `vision_model_quantized.onnx`, `text_model_quantized.onnx`, and `tokenizer.json` via curl. Provides `ModelManager` with `ensure_model()`, `download_model()`, `remove_model()`, `list_files()`, `total_size()`, and `list_available_models()`. Default cache dir: `~/.maki/models/<model-id>/`. |
 | `metadata_store` | `src/metadata_store.rs` | YAML sidecar file read/write operations. Sidecars are the source of truth for asset metadata. Stored at `assets/<id-prefix>/<id>.yaml` within the catalog root. Handles serialization/deserialization of `Asset` structs with all nested variants, recipes, locations, and tags. |
 | `models` | `src/models/` | Core data structures shared across all modules. Split into sub-modules: |
 | | `src/models/mod.rs` | Re-exports and shared types (`Asset`, `FileLocation`) |
@@ -117,4 +117,4 @@ For detailed Rust API documentation with full type signatures, run:
 cargo doc --no-deps --open
 ```
 
-This generates HTML documentation from doc comments in the source code and opens it in your browser. The output is written to `target/doc/dam/`.
+This generates HTML documentation from doc comments in the source code and opens it in your browser. The output is written to `target/doc/maki/`.

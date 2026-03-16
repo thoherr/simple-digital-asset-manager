@@ -4,31 +4,31 @@ Commands for initializing a catalog and registering storage volumes.
 
 ---
 
-## dam init
+## maki init
 
 ### NAME
 
-dam-init -- initialize a new catalog in the current directory
+maki-init -- initialize a new catalog in the current directory
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] init
+maki [GLOBAL FLAGS] init
 ```
 
 ### DESCRIPTION
 
-Creates a new dam catalog rooted in the current working directory. This sets up the directory structure, configuration file, SQLite database, and volume registry needed to begin managing assets.
+Creates a new maki catalog rooted in the current working directory. This sets up the directory structure, configuration file, SQLite database, and volume registry needed to begin managing assets.
 
 The following files and directories are created:
 
-- `dam.toml` -- catalog configuration file (preview settings, serve settings, import exclusions)
+- `maki.toml` -- catalog configuration file (preview settings, serve settings, import exclusions)
 - `metadata/` -- directory for YAML sidecar files (source of truth for asset metadata)
 - `previews/` -- directory for generated preview thumbnails
 - `catalog.db` -- SQLite database (derived cache for fast queries)
 - `volumes.yaml` -- storage volume registry
 
-If `dam.toml` already exists in the current directory, the command fails with an error to prevent accidental re-initialization.
+If `maki.toml` already exists in the current directory, the command fails with an error to prevent accidental re-initialization.
 
 ### ARGUMENTS
 
@@ -46,14 +46,14 @@ Initialize a catalog in a new directory:
 
 ```bash
 mkdir ~/Photos && cd ~/Photos
-dam init
+maki init
 ```
 
 Initialize and verify with JSON output:
 
 ```bash
 cd /Volumes/Archive/PhotoLibrary
-dam init --json
+maki init --json
 # {"status": "initialized", "path": "/Volumes/Archive/PhotoLibrary"}
 ```
 
@@ -61,38 +61,38 @@ Attempt to re-initialize (fails safely):
 
 ```bash
 cd ~/Photos
-dam init
-# Error: A dam catalog already exists in this directory.
+maki init
+# Error: A maki catalog already exists in this directory.
 ```
 
 ### SEE ALSO
 
-[volume add](#dam-volume-add) -- register a storage volume after initialization.
+[volume add](#maki-volume-add) -- register a storage volume after initialization.
 [CLI Conventions](00-cli-conventions.md) -- catalog discovery, global flags, exit codes.
 
 ---
 
-## dam volume add
+## maki volume add
 
 ### NAME
 
-dam-volume-add -- register a new storage volume with the catalog
+maki-volume-add -- register a new storage volume with the catalog
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] volume add <LABEL> <PATH> [--purpose <PURPOSE>]
+maki [GLOBAL FLAGS] volume add <LABEL> <PATH> [--purpose <PURPOSE>]
 ```
 
 ### DESCRIPTION
 
-Registers a storage volume (a directory tree containing media files) with the catalog. Each volume is assigned a UUID and tracked by its label and mount point path. Volumes allow dam to manage files spread across multiple disks, external drives, and network mounts.
+Registers a storage volume (a directory tree containing media files) with the catalog. Each volume is assigned a UUID and tracked by its label and mount point path. Volumes allow maki to manage files spread across multiple disks, external drives, and network mounts.
 
 The label is a human-readable name for the volume (e.g., "Photos2026", "Archive", "ExternalSSD"). The path is the mount point or root directory of the volume. The path must exist at the time of registration.
 
-An optional `--purpose` flag assigns a logical role to the volume in the storage hierarchy. This metadata is used by duplicate analysis and backup coverage commands to distinguish between unwanted duplicates (same file on the same working volume) and wanted backups (same file on an archive or backup volume). The purpose can be changed later with `dam volume set-purpose`.
+An optional `--purpose` flag assigns a logical role to the volume in the storage hierarchy. This metadata is used by duplicate analysis and backup coverage commands to distinguish between unwanted duplicates (same file on the same working volume) and wanted backups (same file on an archive or backup volume). The purpose can be changed later with `maki volume set-purpose`.
 
-After registration, files under the volume's path can be imported and tracked. If the volume becomes unavailable (e.g., an external drive is disconnected), it is reported as "offline" in `dam volume list`, and commands that need to access its files will skip it gracefully.
+After registration, files under the volume's path can be imported and tracked. If the volume becomes unavailable (e.g., an external drive is disconnected), it is reported as "offline" in `maki volume list`, and commands that need to access its files will skip it gracefully.
 
 ### ARGUMENTS
 
@@ -114,7 +114,7 @@ After registration, files under the volume's path can be imported and tracked. I
 Register an external drive:
 
 ```bash
-dam volume add "Photos" /Volumes/PhotoDrive
+maki volume add "Photos" /Volumes/PhotoDrive
 # Registered volume 'Photos' (a1b2c3d4-e5f6-7890-abcd-ef1234567890)
 #   Path: /Volumes/PhotoDrive
 ```
@@ -122,7 +122,7 @@ dam volume add "Photos" /Volumes/PhotoDrive
 Register a volume with a purpose:
 
 ```bash
-dam volume add "Master Media" /Volumes/MediaDrive --purpose archive
+maki volume add "Master Media" /Volumes/MediaDrive --purpose archive
 # Registered volume 'Master Media' (e5f67890-...)
 #   Path: /Volumes/MediaDrive
 #   Purpose: archive
@@ -131,30 +131,30 @@ dam volume add "Master Media" /Volumes/MediaDrive --purpose archive
 Register multiple volumes for a multi-disk workflow:
 
 ```bash
-dam volume add "Laptop" /Volumes/MacintoshHD --purpose working
-dam volume add "Master Media" /Volumes/MediaDrive --purpose archive
-dam volume add "Backup A" /Volumes/BackupDisk --purpose backup
-dam volume add "Dropbox" ~/Dropbox/Photos --purpose cloud
+maki volume add "Laptop" /Volumes/MacintoshHD --purpose working
+maki volume add "Master Media" /Volumes/MediaDrive --purpose archive
+maki volume add "Backup A" /Volumes/BackupDisk --purpose backup
+maki volume add "Dropbox" ~/Dropbox/Photos --purpose cloud
 ```
 
 ### SEE ALSO
 
-[volume list](#dam-volume-list) -- list registered volumes and their status.
-[import](02-ingest-commands.md#dam-import) -- import files from a volume.
-[relocate](05-maintain-commands.md#dam-relocate) -- copy or move asset files between volumes.
+[volume list](#maki-volume-list) -- list registered volumes and their status.
+[import](02-ingest-commands.md#maki-import) -- import files from a volume.
+[relocate](05-maintain-commands.md#maki-relocate) -- copy or move asset files between volumes.
 
 ---
 
-## dam volume list
+## maki volume list
 
 ### NAME
 
-dam-volume-list -- list all registered volumes and their online/offline status
+maki-volume-list -- list all registered volumes and their online/offline status
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] volume list
+maki [GLOBAL FLAGS] volume list
 ```
 
 ### DESCRIPTION
@@ -178,7 +178,7 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 List all volumes:
 
 ```bash
-dam volume list
+maki volume list
 # Laptop (a1b2c3d4-...) [online] [working]
 #   Path: /Volumes/MacintoshHD
 # Master Media (e5f67890-...) [online] [archive]
@@ -190,34 +190,34 @@ dam volume list
 List volumes as JSON for scripting:
 
 ```bash
-dam volume list --json | jq '.[] | select(.is_online) | .label'
+maki volume list --json | jq '.[] | select(.is_online) | .label'
 ```
 
 Check if a specific volume is online:
 
 ```bash
-dam volume list --json | jq '.[] | select(.label == "Archive") | .is_online'
+maki volume list --json | jq '.[] | select(.label == "Archive") | .is_online'
 ```
 
 ### SEE ALSO
 
-[volume add](#dam-volume-add) -- register a new volume.
-[volume set-purpose](#dam-volume-set-purpose) -- change a volume's purpose.
-[stats](04-retrieve-commands.md#dam-stats) -- `--volumes` flag shows per-volume asset counts and sizes.
+[volume add](#maki-volume-add) -- register a new volume.
+[volume set-purpose](#maki-volume-set-purpose) -- change a volume's purpose.
+[stats](04-retrieve-commands.md#maki-stats) -- `--volumes` flag shows per-volume asset counts and sizes.
 [CLI Conventions](00-cli-conventions.md) -- catalog discovery rules.
 
 ---
 
-## dam volume set-purpose
+## maki volume set-purpose
 
 ### NAME
 
-dam-volume-set-purpose -- set or clear the logical purpose of a volume
+maki-volume-set-purpose -- set or clear the logical purpose of a volume
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] volume set-purpose <VOLUME> <PURPOSE>
+maki [GLOBAL FLAGS] volume set-purpose <VOLUME> <PURPOSE>
 ```
 
 ### DESCRIPTION
@@ -243,34 +243,34 @@ This command only accepts [global flags](00-cli-conventions.md#global-flags).
 Set a volume's purpose:
 
 ```bash
-dam volume set-purpose "Photos" archive
+maki volume set-purpose "Photos" archive
 # Volume 'Photos' purpose set to: archive
 ```
 
 Clear a volume's purpose:
 
 ```bash
-dam volume set-purpose "Photos" none
+maki volume set-purpose "Photos" none
 # Volume 'Photos' purpose cleared.
 ```
 
 ### SEE ALSO
 
-[volume add](#dam-volume-add) -- register a new volume (with optional `--purpose`).
-[volume list](#dam-volume-list) -- list volumes and their purposes.
+[volume add](#maki-volume-add) -- register a new volume (with optional `--purpose`).
+[volume list](#maki-volume-list) -- list volumes and their purposes.
 
 ---
 
-## dam volume remove
+## maki volume remove
 
 ### NAME
 
-dam-volume-remove -- remove a volume and all its associated catalog data
+maki-volume-remove -- remove a volume and all its associated catalog data
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] volume remove <VOLUME> [--apply]
+maki [GLOBAL FLAGS] volume remove <VOLUME> [--apply]
 ```
 
 ### DESCRIPTION
@@ -306,7 +306,7 @@ This command also accepts [global flags](00-cli-conventions.md#global-flags). `-
 Preview what removing a volume would do:
 
 ```bash
-dam volume remove "Old Drive"
+maki volume remove "Old Drive"
 # Volume 'Old Drive' would remove: 1523 locations, 87 recipes, 412 orphaned assets, 412 orphaned previews
 #   Run with --apply to remove.
 ```
@@ -314,33 +314,33 @@ dam volume remove "Old Drive"
 Remove the volume:
 
 ```bash
-dam volume remove "Old Drive" --apply
+maki volume remove "Old Drive" --apply
 # Volume 'Old Drive' removed: 1523 locations removed, 87 recipes removed, 412 orphaned assets removed, 412 orphaned previews removed
 ```
 
 JSON output for scripting:
 
 ```bash
-dam volume remove "Old Drive" --json
+maki volume remove "Old Drive" --json
 ```
 
 ### SEE ALSO
 
-[volume list](#dam-volume-list) -- list volumes and their status.
-[cleanup](05-maintain-commands.md#dam-cleanup) -- remove stale records for missing files (works across volumes).
+[volume list](#maki-volume-list) -- list volumes and their status.
+[cleanup](05-maintain-commands.md#maki-cleanup) -- remove stale records for missing files (works across volumes).
 
 ---
 
-## dam volume combine
+## maki volume combine
 
 ### NAME
 
-dam-volume-combine -- merge a source volume into a target volume by rewriting paths
+maki-volume-combine -- merge a source volume into a target volume by rewriting paths
 
 ### SYNOPSIS
 
 ```
-dam [GLOBAL FLAGS] volume combine <SOURCE> <TARGET> [--apply]
+maki [GLOBAL FLAGS] volume combine <SOURCE> <TARGET> [--apply]
 ```
 
 ### DESCRIPTION
@@ -359,7 +359,7 @@ In apply mode, the operation proceeds in phases:
 2. **Catalog**: Ensures the target volume exists in the SQLite catalog, then bulk-updates all `file_locations` and `recipes` rows in a single SQL statement each.
 3. **Cleanup**: Removes the source volume from `volumes.yaml` and the SQLite `volumes` table.
 
-Sidecars are updated first (source of truth). If the process crashes between sidecar and catalog updates, `dam rebuild-catalog` reconstructs the correct state from sidecars.
+Sidecars are updated first (source of truth). If the process crashes between sidecar and catalog updates, `maki rebuild-catalog` reconstructs the correct state from sidecars.
 
 ### ARGUMENTS
 
@@ -381,7 +381,7 @@ This command also accepts [global flags](00-cli-conventions.md#global-flags). `-
 Preview what combining would do:
 
 ```bash
-dam volume combine "media_2024" "Media"
+maki volume combine "media_2024" "Media"
 # Would combine 'media_2024' into 'Media': 4832 locations, 312 recipes (3210 assets, prefix 'media_2024/')
 #   Run with --apply to combine.
 ```
@@ -389,7 +389,7 @@ dam volume combine "media_2024" "Media"
 Execute the combination:
 
 ```bash
-dam volume combine "media_2024" "Media" --apply
+maki volume combine "media_2024" "Media" --apply
 # Volume 'media_2024' combined into 'Media': 4832 locations moved, 312 recipes moved (3210 assets, prefix 'media_2024/')
 ```
 
@@ -397,15 +397,15 @@ Combine multiple year-volumes into a single disk volume:
 
 ```bash
 for year in media_2010 media_2011 media_2012 media_2013 media_2014 media_2015; do
-  dam volume combine "$year" "Media" --apply
+  maki volume combine "$year" "Media" --apply
 done
 ```
 
 ### SEE ALSO
 
-[volume list](#dam-volume-list) -- list volumes and verify the result.
-[volume remove](#dam-volume-remove) -- remove a volume and delete its data (rather than merging).
-[rebuild-catalog](05-maintain-commands.md#dam-rebuild-catalog) -- reconstruct SQLite from sidecars if needed after a crash.
+[volume list](#maki-volume-list) -- list volumes and verify the result.
+[volume remove](#maki-volume-remove) -- remove a volume and delete its data (rather than merging).
+[rebuild-catalog](05-maintain-commands.md#maki-rebuild-catalog) -- reconstruct SQLite from sidecars if needed after a crash.
 
 ---
 

@@ -46,7 +46,7 @@ Die Datei `CLAUDE.md` im Projektstammverzeichnis ist das zentrale Steuerungsinst
 │    → Datenmodell-Details                             │
 │                                                      │
 │  Konfiguration                                       │
-│    → dam.toml Struktur mit Defaults                  │
+│    → maki.toml Struktur mit Defaults                  │
 │                                                      │
 │  Coding-Konventionen                                 │
 │    → Patterns, Migrations, Anti-Patterns             │
