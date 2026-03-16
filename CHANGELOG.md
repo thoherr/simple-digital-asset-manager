@@ -2,10 +2,19 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
-## v3.2.7 (2026-03-16)
+## v4.0.0 (2026-03-16)
+
+### Breaking Changes
+- **Renamed binary from `dam` to `maki`** — the CLI command is now `maki` (Media Asset Keeper & Indexer). All subcommands work identically: `maki init`, `maki import`, `maki search`, etc. Existing users should rename `dam.toml` to `maki.toml` and `~/.dam/` to `~/.maki/`. For backward compatibility, `maki.toml` lookup falls back to `dam.toml` with a deprecation notice.
+- **Configuration file renamed** — `dam.toml` → `maki.toml`. The old filename is still accepted with a warning.
+- **Data directory renamed** — `~/.dam/` → `~/.maki/` (AI models, shell history). Old paths are not auto-migrated.
+
+### New Features
+- **MAKI brand identity** — full visual rebrand of the web UI with brand color palette (salmon/coral for images, amber for video, teal for audio, nori blue for documents), favicon, SVG logo in navigation bar, asset type color-coded badges, Inter font family, and updated light/dark mode palettes.
+- **Branded PDF manual** — custom cover page with MAKI logo and tagline, branded headers and footers throughout.
 
 ### Enhancements
-- **MAKI branding** — the web UI is now branded as MAKI (Media Asset Keeper & Indexer). New color scheme based on brand guidelines: salmon/coral for images, amber for video, teal for audio, nori blue for documents. Includes favicon, SVG logo in nav bar, asset type color-coded badges, updated light and dark mode palettes, and Inter font family. All page titles updated from "DAM" to "MAKI".
+- **All documentation updated** — README, user manual, command reference, architecture docs, and CHANGELOG updated with the new command name, config filename, and data paths. ~4,300 references across ~60 files.
 
 ## v3.2.6 (2026-03-15)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build the dam user manual as a single PDF.
+# Build the MAKI user manual as a single PDF.
 # Prerequisites: pandoc, xelatex (e.g. via MacTeX or texlive-xetex), mmdc (mermaid-cli)
 #
 # Usage:
@@ -12,7 +12,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MANUAL_DIR="$SCRIPT_DIR"
 REPO_ROOT="$MANUAL_DIR/../.."
-OUTPUT="$MANUAL_DIR/dam-manual.pdf"
+OUTPUT="$MANUAL_DIR/maki-manual.pdf"
 
 # Extract version from Cargo.toml
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' "$REPO_ROOT/Cargo.toml")
@@ -100,15 +100,15 @@ for f in "${FILES[@]}"; do
 done
 
 # --- Rewrite cross-document .md links to internal anchors ---
-# In the concatenated document, links like [text](../reference/05-maintain-commands.md#dam-verify)
-# need to become [text](#dam-verify). Links without #anchor map to the file's first heading.
+# In the concatenated document, links like [text](../reference/05-maintain-commands.md#maki-verify)
+# need to become [text](#maki-verify). Links without #anchor map to the file's first heading.
 
 echo "Rewriting cross-document links..."
 
 perl -i -pe '
     # Map bare filenames (no #anchor) to their first heading anchor (pandoc format)
     my %file_anchor = (
-        "index.md"                  => "dam-user-manual",
+        "index.md"                  => "maki-user-manual",
         "01-overview.md"            => "overview-concepts",
         "02-setup.md"               => "setup",
         "03-ingest.md"              => "ingesting-assets",
@@ -124,7 +124,7 @@ perl -i -pe '
         "05-maintain-commands.md"   => "maintain-commands",
         "06-search-filters.md"      => "search-filter-reference",
         "07-format-templates.md"    => "format-templates-reference",
-        "08-configuration.md"       => "configuration-reference-dam.toml",
+        "08-configuration.md"       => "configuration-reference-maki.toml",
         "09-data-model.md"          => "data-model",
         "10-vlm-models.md"          => "vlm-model-guide",
         "01-rest-api.md"            => "rest-api-reference",
@@ -147,9 +147,9 @@ perl -i -pe '
     /ge;
 ' "$TMPFILE"
 
-# --- Insert page breaks before each "## dam ..." command in reference section ---
+# --- Insert page breaks before each "## maki ..." command in reference section ---
 
-sed -i '' 's/^## dam /\\newpage\n\n## dam /g' "$TMPFILE"
+sed -i '' 's/^## maki /\\newpage\n\n## maki /g' "$TMPFILE"
 
 # --- Render mermaid diagrams to PNG ---
 
@@ -198,30 +198,72 @@ awk -v tmpdir="$TMPDIR" '
 
 echo "Rendered $diagram_count mermaid diagrams."
 
-# --- Create LaTeX header for footer/header ---
+# --- Create LaTeX header/footer and custom title page ---
 
 cat > "$TMPDIR/header.tex" << 'LATEX'
 \usepackage{fancyhdr}
 \usepackage{lastpage}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+% Brand colors
+\definecolor{maki-salmon}{HTML}{e8634a}
+\definecolor{maki-nori}{HTML}{1a2332}
+\definecolor{maki-stone}{HTML}{556677}
+
+% Header/footer styling
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\small\textit{dam User Manual}}
-\fancyhead[R]{\small\textit{v__VERSION__}}
+\fancyhead[L]{\small\textit{\textcolor{maki-stone}{MAKI User Manual}}}
+\fancyhead[R]{\small\textit{\textcolor{maki-stone}{v__VERSION__}}}
 \fancyfoot[C]{\small\thepage}
-\fancyfoot[L]{\small dam v__VERSION__}
-\fancyfoot[R]{\small __DATE__}
+\fancyfoot[L]{\small\textcolor{maki-stone}{MAKI v__VERSION__}}
+\fancyfoot[R]{\small\textcolor{maki-stone}{__DATE__}}
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\footrulewidth}{0.4pt}
-% Also apply to chapter opening pages (plain style)
+
+% Apply to chapter opening pages (plain style)
 \fancypagestyle{plain}{
   \fancyhf{}
-  \fancyhead[L]{\small\textit{dam User Manual}}
-  \fancyhead[R]{\small\textit{v__VERSION__}}
+  \fancyhead[L]{\small\textit{\textcolor{maki-stone}{MAKI User Manual}}}
+  \fancyhead[R]{\small\textit{\textcolor{maki-stone}{v__VERSION__}}}
   \fancyfoot[C]{\small\thepage}
-  \fancyfoot[L]{\small dam v__VERSION__}
-  \fancyfoot[R]{\small __DATE__}
+  \fancyfoot[L]{\small\textcolor{maki-stone}{MAKI v__VERSION__}}
+  \fancyfoot[R]{\small\textcolor{maki-stone}{__DATE__}}
   \renewcommand{\headrulewidth}{0.4pt}
   \renewcommand{\footrulewidth}{0.4pt}
+}
+
+% Custom title page
+\renewcommand{\maketitle}{
+  \begin{titlepage}
+    \centering
+    \vspace*{2cm}
+
+    % Logo
+    \includegraphics[height=5cm]{maki-wordmark-tagline.png}
+
+    \vspace{2cm}
+
+    % Title
+    {\fontsize{36}{42}\selectfont\bfseries\textcolor{maki-nori}{User Manual}\par}
+
+    \vspace{0.8cm}
+
+    % Version and date
+    {\Large\textcolor{maki-stone}{Version __VERSION__}\par}
+    \vspace{0.3cm}
+    {\large\textcolor{maki-stone}{__DATE__}\par}
+
+    \vfill
+
+    % Bottom line
+    {\small\textcolor{maki-stone}{Media Asset Keeper \& Indexer}\par}
+    \vspace{0.3cm}
+    {\small\textcolor{maki-stone}{A digital asset manager for photographers and media professionals}\par}
+    \vspace{0.3cm}
+    {\footnotesize\textcolor{maki-stone}{Apache-2.0 License}\par}
+  \end{titlepage}
 }
 LATEX
 
@@ -239,9 +281,8 @@ pandoc "$TMPDIR/manual-final.md" \
     --toc-depth=2 \
     -V geometry:margin=1in \
     -V documentclass=report \
-    -V title="dam User Manual" \
-    -V subtitle="v${VERSION} — Digital Asset Manager for Photographers" \
-    -V date="$DATE" \
+    -V title="" \
+    -V date="" \
     -V colorlinks=true \
     -V linkcolor=blue \
     -V urlcolor=blue \
