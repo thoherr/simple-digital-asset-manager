@@ -364,7 +364,7 @@
     var filterBtn = document.getElementById('filter-toggle');
     if (filterBtn && filterRow) {
         var hasActiveFilters = "{{ query }}{{ tag }}{{ rating }}{{ label }}{{ format_filter }}{{ asset_type }}{{ volume }}{{ collection }}{{ path }}{{ person }}".length > 0;
-        var filterOpen = hasActiveFilters || localStorage.getItem('dam-filter-open') !== 'false';
+        var filterOpen = hasActiveFilters || localStorage.getItem('maki-filter-open') !== 'false';
         function applyFilterState() {
             if (filterOpen) {
                 filterRow.style.display = '';
@@ -378,14 +378,14 @@
         }
         filterBtn.addEventListener('click', function() {
             filterOpen = !filterOpen;
-            localStorage.setItem('dam-filter-open', filterOpen);
+            localStorage.setItem('maki-filter-open', filterOpen);
             applyFilterState();
         });
         applyFilterState();
 
         window.damFilterToggle = function() {
             filterOpen = !filterOpen;
-            localStorage.setItem('dam-filter-open', filterOpen);
+            localStorage.setItem('maki-filter-open', filterOpen);
             applyFilterState();
         };
     }

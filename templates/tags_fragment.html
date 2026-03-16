@@ -1,7 +1,7 @@
 <div class="tags-section">
     {% for t in tags %}
     <span class="tag-chip">
-        <a href="/?tag={{ t|urlencode }}" class="tag-link" onclick="sessionStorage.setItem('dam-browse-focus','{{ asset_id }}')">{{ t|tag_display }}</a>
+        <a href="/?tag={{ t|urlencode }}" class="tag-link" onclick="sessionStorage.setItem('maki-browse-focus','{{ asset_id }}')">{{ t|tag_display }}</a>
         <button class="remove-tag"
                 hx-delete="/api/asset/{{ asset_id }}/tags?tag={{ t|urlencode }}"
                 hx-target="#tags"

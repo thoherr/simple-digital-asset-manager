@@ -517,10 +517,10 @@ function onFilterChange() {
     function storeStrollContext() {
         var ids = [centerId];
         satellites.forEach(function(s) { ids.push(s.dataset.id); });
-        sessionStorage.setItem('dam-browse-ids', JSON.stringify(ids));
-        sessionStorage.setItem('dam-browse-url', window.location.href);
-        sessionStorage.setItem('dam-browse-page', '0');
-        sessionStorage.setItem('dam-browse-total-pages', '0');
+        sessionStorage.setItem('maki-browse-ids', JSON.stringify(ids));
+        sessionStorage.setItem('maki-browse-url', window.location.href);
+        sessionStorage.setItem('maki-browse-page', '0');
+        sessionStorage.setItem('maki-browse-total-pages', '0');
     }
 
     function goDetail(assetId) {
@@ -687,7 +687,7 @@ function onFilterChange() {
             case 'B':
                 if (e.shiftKey) {
                     e.preventDefault();
-                    var home = sessionStorage.getItem('dam-browse-home') || '/';
+                    var home = sessionStorage.getItem('maki-browse-home') || '/';
                     window.location.href = home;
                 }
                 break;

@@ -540,7 +540,7 @@
 {% include "lightbox_js.html" %}
 
 // Mark browse page as needing refresh on any mutation
-function markBrowseDirty() { try { sessionStorage.setItem('dam-browse-dirty', '1'); } catch(e) {} }
+function markBrowseDirty() { try { sessionStorage.setItem('maki-browse-dirty', '1'); } catch(e) {} }
 // Catch all htmx mutations (rating, label, tags, name, description, date)
 document.body.addEventListener('htmx:afterRequest', function(e) {
     if (e.detail.successful) markBrowseDirty();
@@ -592,7 +592,7 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
     damLightbox.onNavigateBeyond = function(delta) {
         var nav = delta < 0 ? document.getElementById('nav-prev') : document.getElementById('nav-next');
         if (nav && !nav.classList.contains('invisible')) {
-            sessionStorage.setItem('dam-lightbox-open', '1');
+            sessionStorage.setItem('maki-lightbox-open', '1');
             nav.click();
         } else {
             damLightbox.hideLoading();
@@ -600,8 +600,8 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
     };
 
     // Auto-open lightbox if navigating from another detail page's lightbox
-    if (sessionStorage.getItem('dam-lightbox-open')) {
-        sessionStorage.removeItem('dam-lightbox-open');
+    if (sessionStorage.getItem('maki-lightbox-open')) {
+        sessionStorage.removeItem('maki-lightbox-open');
         damLightbox.open(0);
     }
 })();
@@ -611,7 +611,7 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
     var labelNumMap = {'1':'Red','2':'Orange','3':'Yellow','4':'Green','5':'Blue','6':'Pink','7':'Purple'};
     var labelLetterMap = {r:'Red',o:'Orange',y:'Yellow',g:'Green',b:'Blue',p:'Pink',u:'Purple'};
 
-    sessionStorage.setItem('dam-browse-focus', assetId);
+    sessionStorage.setItem('maki-browse-focus', assetId);
 
     // Invalidate tag cache when tags are added/removed so autocomplete refreshes
     document.getElementById('tags').addEventListener('htmx:afterSwap', function() {
@@ -622,9 +622,9 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
     var browseIds = [];
     var browseUrl = '/';
     try {
-        var stored = sessionStorage.getItem('dam-browse-ids');
+        var stored = sessionStorage.getItem('maki-browse-ids');
         if (stored) browseIds = JSON.parse(stored);
-        var storedUrl = sessionStorage.getItem('dam-browse-url');
+        var storedUrl = sessionStorage.getItem('maki-browse-url');
         if (storedUrl) browseUrl = storedUrl;
     } catch(e) {}
 
@@ -633,8 +633,8 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
     var nextNav = document.getElementById('nav-next');
     var backNav = document.getElementById('nav-back');
 
-    var browsePage = parseInt(sessionStorage.getItem('dam-browse-page') || '0');
-    var browseTotalPages = parseInt(sessionStorage.getItem('dam-browse-total-pages') || '0');
+    var browsePage = parseInt(sessionStorage.getItem('maki-browse-page') || '0');
+    var browseTotalPages = parseInt(sessionStorage.getItem('maki-browse-total-pages') || '0');
 
     function setNavLinks() {
         if (idx > 0) {
@@ -666,7 +666,7 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
 
     // Cross-page: fetch adjacent page IDs at boundaries
     function fetchPageIds(targetPage, callback) {
-        var base = sessionStorage.getItem('dam-browse-url') || '/';
+        var base = sessionStorage.getItem('maki-browse-url') || '/';
         var url;
         try {
             var u = new URL(base, window.location.origin);
@@ -687,8 +687,8 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
             if (data.ids && data.ids.length > 0) {
                 browseIds = data.ids.concat(browseIds);
                 idx = data.ids.length;
-                sessionStorage.setItem('dam-browse-ids', JSON.stringify(browseIds));
-                sessionStorage.setItem('dam-browse-page', String(browsePage - 1));
+                sessionStorage.setItem('maki-browse-ids', JSON.stringify(browseIds));
+                sessionStorage.setItem('maki-browse-page', String(browsePage - 1));
                 browsePage = browsePage - 1;
                 prevNav.href = '/asset/' + browseIds[idx - 1];
                 prevNav.classList.remove('invisible');
@@ -702,7 +702,7 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
             nextSpinner.classList.remove('active');
             if (data.ids && data.ids.length > 0) {
                 browseIds = browseIds.concat(data.ids);
-                sessionStorage.setItem('dam-browse-ids', JSON.stringify(browseIds));
+                sessionStorage.setItem('maki-browse-ids', JSON.stringify(browseIds));
                 nextNav.href = '/asset/' + browseIds[idx + 1];
                 nextNav.classList.remove('invisible');
             }
@@ -944,7 +944,7 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
         // Shift+B: back to browse
         if (e.shiftKey && e.key === 'B') {
             e.preventDefault();
-            var home = sessionStorage.getItem('dam-browse-home') || '/';
+            var home = sessionStorage.getItem('maki-browse-home') || '/';
             window.location.href = home;
             return;
         }
@@ -1199,8 +1199,8 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
             container.addEventListener('click', function(e) {
                 var link = e.target.closest('[data-similar-nav]');
                 if (link) {
-                    sessionStorage.setItem('dam-browse-ids', JSON.stringify(similarIds));
-                    sessionStorage.setItem('dam-browse-url', window.location.pathname);
+                    sessionStorage.setItem('maki-browse-ids', JSON.stringify(similarIds));
+                    sessionStorage.setItem('maki-browse-url', window.location.pathname);
                 }
             });
         })
@@ -1249,9 +1249,9 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
     document.body.addEventListener('htmx:afterSwap', function(e) {
         if (e.detail.target && e.detail.target.id === 'preview') {
             try {
-                var rotated = JSON.parse(sessionStorage.getItem('dam-previews-changed') || '{}');
+                var rotated = JSON.parse(sessionStorage.getItem('maki-previews-changed') || '{}');
                 rotated['{{ asset_id }}'] = Date.now();
-                sessionStorage.setItem('dam-previews-changed', JSON.stringify(rotated));
+                sessionStorage.setItem('maki-previews-changed', JSON.stringify(rotated));
             } catch(ex) {}
         }
     });

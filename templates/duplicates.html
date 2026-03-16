@@ -293,8 +293,8 @@
         var cur = 0;
         function storeBrowseContext() {
             var ids = items.map(function(it) { return it.assetId; });
-            sessionStorage.setItem('dam-browse-ids', JSON.stringify(ids));
-            sessionStorage.setItem('dam-browse-url', window.location.href);
+            sessionStorage.setItem('maki-browse-ids', JSON.stringify(ids));
+            sessionStorage.setItem('maki-browse-url', window.location.href);
         }
         function goToDetail() {
             if (items.length === 0) return;

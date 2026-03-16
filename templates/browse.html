@@ -160,7 +160,7 @@ window.triggerSearch = onFilterChange;
     // --- Stack collapse toggle ---
     var stackCollapse = "{% if collapse_stacks %}1{% else %}0{% endif %}";
     // Restore from localStorage if this is a fresh page load (not a server-round-trip override)
-    var storedCollapse = localStorage.getItem('dam-stack-collapse');
+    var storedCollapse = localStorage.getItem('maki-stack-collapse');
     if (storedCollapse !== null && new URLSearchParams(window.location.search).get('stacks') === null) {
         stackCollapse = storedCollapse;
     }
@@ -171,7 +171,7 @@ window.triggerSearch = onFilterChange;
 
     function setStackCollapse(val) {
         stackCollapse = val;
-        localStorage.setItem('dam-stack-collapse', val);
+        localStorage.setItem('maki-stack-collapse', val);
     }
 
     // Expose for hx-vals
@@ -184,7 +184,7 @@ window.triggerSearch = onFilterChange;
     // Bust cached thumbnails for assets whose previews were regenerated (rotation etc.)
     function bustChangedPreviews() {
         try {
-            var changed = JSON.parse(sessionStorage.getItem('dam-previews-changed') || '{}');
+            var changed = JSON.parse(sessionStorage.getItem('maki-previews-changed') || '{}');
             var ids = Object.keys(changed);
             if (ids.length === 0) return;
             var cards = document.querySelectorAll('.asset-card');
@@ -203,7 +203,7 @@ window.triggerSearch = onFilterChange;
                     }
                 }
             });
-            sessionStorage.removeItem('dam-previews-changed');
+            sessionStorage.removeItem('maki-previews-changed');
         } catch(e) {}
     }
 
@@ -212,24 +212,24 @@ window.triggerSearch = onFilterChange;
     window.addEventListener('pageshow', function(event) {
         // Always clear dirty flag (fresh loads already have correct data)
         if (!event.persisted) {
-            sessionStorage.removeItem('dam-browse-dirty');
+            sessionStorage.removeItem('maki-browse-dirty');
         }
         if (event.persisted) {
             bustChangedPreviews();
             // Clear saved selection — JS Set is already intact via bfcache
-            sessionStorage.removeItem('dam-browse-selection');
+            sessionStorage.removeItem('maki-browse-selection');
 
             // If detail page made changes, refresh the results grid
-            if (sessionStorage.getItem('dam-browse-dirty')) {
-                sessionStorage.removeItem('dam-browse-dirty');
+            if (sessionStorage.getItem('maki-browse-dirty')) {
+                sessionStorage.removeItem('maki-browse-dirty');
                 htmx.ajax('GET', window.location.href, {target: '#results', swap: 'innerHTML'});
                 // Focus will be restored by htmx:afterSwap handler (by asset ID)
                 return;
             }
 
-            var lbAsset = sessionStorage.getItem('dam-lightbox-asset');
+            var lbAsset = sessionStorage.getItem('maki-lightbox-asset');
             if (lbAsset && window.damLightbox) {
-                sessionStorage.removeItem('dam-lightbox-asset');
+                sessionStorage.removeItem('maki-lightbox-asset');
                 // Sync items from current grid and open by ID
                 var pgCards = document.querySelectorAll('.asset-card');
                 var pgItems = Array.from(pgCards).map(function(c) {
@@ -249,7 +249,7 @@ window.triggerSearch = onFilterChange;
                 damLightbox.openById(lbAsset);
                 return;
             }
-            var focId = sessionStorage.getItem('dam-browse-focus');
+            var focId = sessionStorage.getItem('maki-browse-focus');
             if (focId && window.damKeyNav) {
                 window.damKeyNav.setFocusById(focId);
             }
@@ -328,9 +328,9 @@ window.triggerSearch = onFilterChange;
 
     // Restore selection from sessionStorage — but clear on forced reload
     try {
-        var savedSel = sessionStorage.getItem('dam-browse-selection');
+        var savedSel = sessionStorage.getItem('maki-browse-selection');
         if (savedSel) {
-            sessionStorage.removeItem('dam-browse-selection');
+            sessionStorage.removeItem('maki-browse-selection');
             var navType = (performance.getEntriesByType('navigation')[0] || {}).type;
             if (navType !== 'reload') {
                 JSON.parse(savedSel).forEach(function(id) { selected.add(id); });
@@ -1077,8 +1077,8 @@ window.triggerSearch = onFilterChange;
             ? 'Export ' + count + ' selected asset' + (count === 1 ? '' : 's')
             : 'Export all results';
         var defaultName = mode === 'selection'
-            ? 'dam-export-' + count + '-assets'
-            : 'dam-export';
+            ? 'maki-export-' + count + '-assets'
+            : 'maki-export';
         overlay.innerHTML = '<div class="group-confirm-modal export-modal">' +
             '<h3>' + title + '</h3>' +
             '<div class="export-options">' +
@@ -1133,7 +1133,7 @@ window.triggerSearch = onFilterChange;
                     return r.text().then(function(t) { throw new Error(t); });
                 }
                 return r.blob().then(function(blob) {
-                    var userFilename = (document.getElementById('export-filename').value || 'dam-export').trim();
+                    var userFilename = (document.getElementById('export-filename').value || 'maki-export').trim();
                     if (!userFilename.endsWith('.zip')) userFilename += '.zip';
                     var url = URL.createObjectURL(blob);
                     var a = document.createElement('a');
@@ -1243,9 +1243,9 @@ window.triggerSearch = onFilterChange;
     // Persist selection to sessionStorage so it survives fresh page loads (back-nav)
     window.addEventListener('pagehide', function() {
         if (selected.size > 0) {
-            sessionStorage.setItem('dam-browse-selection', JSON.stringify(Array.from(selected)));
+            sessionStorage.setItem('maki-browse-selection', JSON.stringify(Array.from(selected)));
         } else {
-            sessionStorage.removeItem('dam-browse-selection');
+            sessionStorage.removeItem('maki-browse-selection');
         }
     });
 
@@ -1266,7 +1266,7 @@ window.triggerSearch = onFilterChange;
 
 // --- Grid density ---
 (function() {
-    var stored = localStorage.getItem('dam-grid-density');
+    var stored = localStorage.getItem('maki-grid-density');
     if (stored && stored !== 'normal') {
         document.documentElement.setAttribute('data-density', stored);
     }
@@ -1288,7 +1288,7 @@ window.triggerSearch = onFilterChange;
         } else {
             document.documentElement.setAttribute('data-density', d);
         }
-        localStorage.setItem('dam-grid-density', d);
+        localStorage.setItem('maki-grid-density', d);
         setActive();
     });
 
@@ -1647,7 +1647,7 @@ window.triggerSearch = onFilterChange;
 
     damLightbox.onClose = function() {
         if (window.damKeyNav) {
-            damKeyNav.setFocusById(sessionStorage.getItem('dam-browse-focus'));
+            damKeyNav.setFocusById(sessionStorage.getItem('maki-browse-focus'));
         }
     };
     damLightbox.onRatingChange = function(id, rating) {
@@ -1668,7 +1668,7 @@ window.triggerSearch = onFilterChange;
         if (window.damBatch) window.damBatch.refreshResults();
     };
     damLightbox.onImageClick = function(id) {
-        sessionStorage.setItem('dam-browse-focus', id);
+        sessionStorage.setItem('maki-browse-focus', id);
         document.getElementById('lb-detail-link').click();
     };
     damLightbox.onNavigateBeyond = function(delta) {
@@ -1696,14 +1696,14 @@ window.triggerSearch = onFilterChange;
         var cards = getCards();
         var idx = cards.indexOf(card);
         if (idx >= 0) {
-            sessionStorage.setItem('dam-browse-focus', card.getAttribute('data-asset-id'));
+            sessionStorage.setItem('maki-browse-focus', card.getAttribute('data-asset-id'));
             damLightbox.open(idx);
         }
     });
     // Auto-open lightbox if returning from detail page via "l" key
-    var lbAsset = sessionStorage.getItem('dam-lightbox-asset');
+    var lbAsset = sessionStorage.getItem('maki-lightbox-asset');
     if (lbAsset) {
-        sessionStorage.removeItem('dam-lightbox-asset');
+        sessionStorage.removeItem('maki-lightbox-asset');
         syncLightboxItems();
         damLightbox.openById(lbAsset);
     }
@@ -1883,7 +1883,7 @@ window.triggerSearch = onFilterChange;
             var focId = getFocusedId();
             if (focId) {
                 e.preventDefault();
-                sessionStorage.setItem('dam-browse-focus', focId);
+                sessionStorage.setItem('maki-browse-focus', focId);
                 window.location.href = '/asset/' + focId;
             }
             return;
@@ -2020,7 +2020,7 @@ window.triggerSearch = onFilterChange;
     };
 
     // Restore focus on fresh page load (non-bfcache back-nav)
-    var initFocusId = sessionStorage.getItem('dam-browse-focus');
+    var initFocusId = sessionStorage.getItem('maki-browse-focus');
     if (initFocusId) {
         var initCards = getCards();
         for (var fi = 0; fi < initCards.length; fi++) {
@@ -2198,7 +2198,7 @@ window.damCalendar = (function() {
 
     function setView(mode) {
         document.documentElement.setAttribute('data-view', mode);
-        localStorage.setItem('dam-view-mode', mode);
+        localStorage.setItem('maki-view-mode', mode);
         // Update toggle button states
         document.querySelectorAll('.view-btn').forEach(function(btn) {
             btn.classList.toggle('active', btn.getAttribute('data-view') === mode);
@@ -2222,7 +2222,7 @@ window.damCalendar = (function() {
     });
 
     // Restore view mode from localStorage
-    var savedView = localStorage.getItem('dam-view-mode') || 'grid';
+    var savedView = localStorage.getItem('maki-view-mode') || 'grid';
     document.documentElement.setAttribute('data-view', savedView);
     // Initial button state set after first render via htmx:afterSwap or directly
     setTimeout(function() {
@@ -2409,7 +2409,7 @@ window.damFacets = (function() {
     }
 
     function init() {
-        var pref = localStorage.getItem('dam-sidebar');
+        var pref = localStorage.getItem('maki-sidebar');
         if (pref === 'open') {
             document.documentElement.setAttribute('data-sidebar', 'open');
             fetchFacets();
@@ -2422,11 +2422,11 @@ window.damFacets = (function() {
     function toggle() {
         if (isOpen()) {
             document.documentElement.removeAttribute('data-sidebar');
-            localStorage.setItem('dam-sidebar', 'closed');
+            localStorage.setItem('maki-sidebar', 'closed');
             updateToggleBtn(false);
         } else {
             document.documentElement.setAttribute('data-sidebar', 'open');
-            localStorage.setItem('dam-sidebar', 'open');
+            localStorage.setItem('maki-sidebar', 'open');
             updateToggleBtn(true);
             fetchFacets();
         }
@@ -2600,7 +2600,7 @@ window.damFacets = (function() {
 
     function getSectionState(key) {
         try {
-            var states = JSON.parse(localStorage.getItem('dam-facet-sections') || '{}');
+            var states = JSON.parse(localStorage.getItem('maki-facet-sections') || '{}');
             return states[key] !== false; // default open
         } catch(e) { return true; }
     }
@@ -2616,9 +2616,9 @@ window.damFacets = (function() {
 
     function saveSectionState(key, open) {
         try {
-            var states = JSON.parse(localStorage.getItem('dam-facet-sections') || '{}');
+            var states = JSON.parse(localStorage.getItem('maki-facet-sections') || '{}');
             states[key] = open;
-            localStorage.setItem('dam-facet-sections', JSON.stringify(states));
+            localStorage.setItem('maki-facet-sections', JSON.stringify(states));
         } catch(e) {}
     }
 
@@ -2640,13 +2640,13 @@ window.damFacets = (function() {
         var cards = document.querySelectorAll('.asset-card');
         var ids = [];
         cards.forEach(function(c) { ids.push(c.getAttribute('data-asset-id')); });
-        sessionStorage.setItem('dam-browse-ids', JSON.stringify(ids));
-        sessionStorage.setItem('dam-browse-url', window.location.href);
-        sessionStorage.setItem('dam-browse-home', window.location.href);
+        sessionStorage.setItem('maki-browse-ids', JSON.stringify(ids));
+        sessionStorage.setItem('maki-browse-url', window.location.href);
+        sessionStorage.setItem('maki-browse-home', window.location.href);
         var meta = document.getElementById('results-meta');
         if (meta) {
-            sessionStorage.setItem('dam-browse-page', meta.dataset.page);
-            sessionStorage.setItem('dam-browse-total-pages', meta.dataset.totalPages);
+            sessionStorage.setItem('maki-browse-page', meta.dataset.page);
+            sessionStorage.setItem('maki-browse-total-pages', meta.dataset.totalPages);
         }
     }
     storeBrowseContext();

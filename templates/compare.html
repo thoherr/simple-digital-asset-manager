@@ -242,12 +242,12 @@
     // dam-browse-url may have been overwritten by storeCompareContext() during a
     // detail round-trip, so we keep a dedicated dam-compare-back key.
     var browseUrl;
-    var storedBrowse = sessionStorage.getItem('dam-browse-url');
+    var storedBrowse = sessionStorage.getItem('maki-browse-url');
     if (storedBrowse && storedBrowse.indexOf('/compare') === -1) {
         browseUrl = storedBrowse;
-        sessionStorage.setItem('dam-compare-back', storedBrowse);
+        sessionStorage.setItem('maki-compare-back', storedBrowse);
     } else {
-        browseUrl = sessionStorage.getItem('dam-compare-back') || '/';
+        browseUrl = sessionStorage.getItem('maki-compare-back') || '/';
     }
     document.getElementById('compare-back').href = browseUrl;
 
@@ -418,8 +418,8 @@
     function storeCompareContext() {
         var ids = [];
         cols.forEach(function(c) { ids.push(c.getAttribute('data-asset-id')); });
-        sessionStorage.setItem('dam-browse-ids', JSON.stringify(ids));
-        sessionStorage.setItem('dam-browse-url', window.location.href);
+        sessionStorage.setItem('maki-browse-ids', JSON.stringify(ids));
+        sessionStorage.setItem('maki-browse-url', window.location.href);
     }
 
     // Intercept asset name links to store compare context first
@@ -514,7 +514,7 @@
         // Shift+B: back to browse
         if (e.shiftKey && e.key === 'B') {
             e.preventDefault();
-            var home = sessionStorage.getItem('dam-browse-home') || '/';
+            var home = sessionStorage.getItem('maki-browse-home') || '/';
             window.location.href = home;
             return;
         }
