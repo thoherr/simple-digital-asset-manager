@@ -164,6 +164,16 @@ awk '
     capture { print > file }
 ' TMPDIR="$TMPDIR" "$TMPFILE"
 
+# Auto-detect chrome-headless-shell for puppeteer/mmdc if not already set
+if [[ -z "${PUPPETEER_EXECUTABLE_PATH:-}" ]]; then
+    for chrome_bin in "$HOME"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell; do
+        if [[ -x "$chrome_bin" ]]; then
+            export PUPPETEER_EXECUTABLE_PATH="$chrome_bin"
+            break
+        fi
+    done
+fi
+
 for mmd_file in "$TMPDIR"/mermaid-*.mmd; do
     [[ -f "$mmd_file" ]] || break
     diagram_count=$((diagram_count + 1))
