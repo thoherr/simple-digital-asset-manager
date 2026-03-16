@@ -121,13 +121,18 @@ pub fn call_vlm_with_mode(
     match mode {
         DescribeMode::Both => {
             // Two separate calls: describe first, then tags
-            let desc_raw = call_vlm(endpoint, model, image_base64, DEFAULT_DESCRIBE_PROMPT, params, verbosity)?;
+            let desc_raw = call_vlm(endpoint, model, image_base64, prompt, params, verbosity)?;
             let tags_raw = call_vlm(endpoint, model, image_base64, DEFAULT_TAGS_PROMPT, params, verbosity)?;
             let description = Some(desc_raw.trim().to_string());
             let tags = extract_tags_from_json(&tags_raw).unwrap_or_default();
             Ok(VlmOutput { description, tags })
         }
-        _ => {
+        DescribeMode::Tags => {
+            // Tags mode always uses the tags prompt — custom prompt only affects describe
+            let raw = call_vlm(endpoint, model, image_base64, DEFAULT_TAGS_PROMPT, params, verbosity)?;
+            parse_vlm_output(&raw, mode)
+        }
+        DescribeMode::Describe => {
             let raw = call_vlm(endpoint, model, image_base64, prompt, params, verbosity)?;
             parse_vlm_output(&raw, mode)
         }
@@ -145,11 +150,19 @@ pub fn parse_vlm_output(raw: &str, mode: DescribeMode) -> Result<VlmOutput> {
             tags: Vec::new(),
         }),
         DescribeMode::Tags => {
-            let tags = extract_tags_from_json(raw)?;
-            Ok(VlmOutput {
-                description: None,
-                tags,
-            })
+            match extract_tags_from_json(raw) {
+                Ok(tags) => Ok(VlmOutput { description: None, tags }),
+                Err(_) => {
+                    eprintln!(
+                        "Note: model returned prose instead of JSON tags — \
+                         saving as description instead. Try --mode both or a more capable model."
+                    );
+                    Ok(VlmOutput {
+                        description: Some(raw.trim().to_string()),
+                        tags: Vec::new(),
+                    })
+                }
+            }
         }
     }
 }
@@ -180,7 +193,12 @@ fn extract_tags_from_json(raw: &str) -> Result<Vec<String>> {
         return Ok(dedup_tags(tags));
     }
 
-    anyhow::bail!("Could not parse tags from VLM response: {}", &raw[..raw.len().min(200)])
+    anyhow::bail!(
+        "Model returned prose instead of JSON tags. \
+         Try --mode describe, --mode both, or a more capable model. \
+         Response: {}",
+        &raw[..raw.len().min(200)]
+    )
 }
 
 /// Deduplicate tags preserving first occurrence order.
@@ -809,9 +827,12 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_tags_invalid_json() {
-        let raw = "Here are some tags: sunset, beach, ocean";
-        assert!(parse_vlm_output(raw, DescribeMode::Tags).is_err());
+    fn test_parse_tags_prose_fallback_to_description() {
+        // Model returned prose instead of JSON — should save as description, not fail
+        let raw = "A young woman with long, flowing blonde hair looks upward with a contemplative expression.";
+        let output = parse_vlm_output(raw, DescribeMode::Tags).unwrap();
+        assert!(output.tags.is_empty());
+        assert_eq!(output.description, Some(raw.trim().to_string()));
     }
 
     #[test]
