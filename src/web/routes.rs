@@ -2647,6 +2647,101 @@ pub async fn dissolve_stack(
     }
 }
 
+/// POST /api/asset/{id}/stack-similar — stack visually similar assets with this one as pick.
+#[cfg(feature = "ai")]
+pub async fn stack_by_similarity(
+    State(state): State<Arc<AppState>>,
+    Path(asset_id): Path<String>,
+    Json(params): Json<StackSimilarRequest>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let catalog = state.catalog()?;
+        let full_id = catalog
+            .resolve_asset_id(&asset_id)?
+            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+
+        // Check if already stacked
+        let store = crate::stack::StackStore::new(catalog.conn());
+        if store.stack_for_asset(&full_id)?.is_some() {
+            anyhow::bail!("Asset is already in a stack. Dissolve it first.");
+        }
+
+        let model_id = &state.ai_config.model;
+        let spec = crate::ai::get_model_spec(model_id)
+            .ok_or_else(|| anyhow::anyhow!("AI model not configured"))?;
+
+        let emb_store = crate::embedding_store::EmbeddingStore::new(catalog.conn());
+        let query_emb = emb_store
+            .get(&full_id, model_id)?
+            .ok_or_else(|| anyhow::anyhow!(
+                "No embedding for this asset. Run `maki embed --asset {}` first.", &full_id
+            ))?;
+
+        // Load embedding index
+        let needs_load = state.ai_embedding_index.read().unwrap().is_none();
+        if needs_load {
+            if let Ok(index) = crate::embedding_store::EmbeddingIndex::load(
+                catalog.conn(), model_id, spec.embedding_dim,
+            ) {
+                *state.ai_embedding_index.write().unwrap() = Some(index);
+            }
+        }
+
+        let threshold = params.threshold.unwrap_or(85.0).clamp(0.0, 100.0) / 100.0;
+        let limit = params.limit.unwrap_or(40);
+
+        let results = {
+            let idx_guard = state.ai_embedding_index.read().unwrap();
+            if let Some(ref idx) = *idx_guard {
+                idx.search(&query_emb, limit, Some(&full_id))
+            } else {
+                return Err(anyhow::anyhow!("Embedding index not available"));
+            }
+        };
+
+        // Filter by threshold, exclude already-stacked assets
+        let mut stack_ids: Vec<String> = vec![full_id.clone()]; // pick first
+        for (id, sim) in &results {
+            if *sim >= threshold {
+                if store.stack_for_asset(id)?.is_none() {
+                    stack_ids.push(id.clone());
+                }
+            }
+        }
+
+        if stack_ids.len() < 2 {
+            anyhow::bail!("No similar assets found above {}% threshold", (threshold * 100.0) as u32);
+        }
+
+        let stack = store.create(&stack_ids)?;
+        let yaml = store.export_all()?;
+        crate::stack::save_yaml(&state.catalog_root, &yaml)?;
+
+        Ok(serde_json::json!({
+            "stack_id": stack.id.to_string(),
+            "member_count": stack_ids.len(),
+            "threshold": (threshold * 100.0) as u32,
+        }))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => {
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": format!("{e:#}") }))).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+#[cfg(feature = "ai")]
+#[derive(Debug, serde::Deserialize)]
+pub struct StackSimilarRequest {
+    pub threshold: Option<f32>,
+    pub limit: Option<usize>,
+}
+
 /// GET /api/stack/{id}/members — return stack member cards as JSON for inline expand.
 pub async fn stack_members_api(
     State(state): State<Arc<AppState>>,

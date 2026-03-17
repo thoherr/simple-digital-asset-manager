@@ -77,6 +77,9 @@
             <summary>Similar images</summary>
             <button id="find-similar-btn" class="btn btn-sm" onclick="findSimilar()">Find similar</button>
             <a href="/?q=similar:{{ asset_id }}" class="btn btn-sm" style="margin-left:4px;">Browse similar</a>
+            {% if stack_members.is_empty() %}
+            <button id="stack-similar-btn" class="btn btn-sm" style="margin-left:4px;" onclick="stackSimilar()">Stack similar</button>
+            {% endif %}
             <a href="/stroll?id={{ asset_id }}" class="btn btn-sm" style="margin-left:4px;">Stroll from here</a>
             <div id="similar-results" style="display:none"></div>
         </details>
@@ -1210,6 +1213,42 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
             btn.disabled = false;
             container.innerHTML = '<span style="color:#e74c3c;font-size:0.85rem;">Error: ' + err.message + '</span>';
             container.style.display = 'block';
+        });
+    };
+
+    // --- Stack by similarity ---
+    window.stackSimilar = function() {
+        var btn = document.getElementById('stack-similar-btn');
+        if (!btn) return;
+        var threshold = prompt('Minimum similarity % (0-100):', '85');
+        if (threshold === null) return;
+        threshold = parseFloat(threshold);
+        if (isNaN(threshold) || threshold < 0 || threshold > 100) {
+            alert('Invalid threshold. Enter a number between 0 and 100.');
+            return;
+        }
+        btn.textContent = 'Stacking...';
+        btn.disabled = true;
+        fetch('/api/asset/{{ asset_id }}/stack-similar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ threshold: threshold })
+        })
+        .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+        .then(function(res) {
+            if (!res.ok) {
+                btn.textContent = 'Stack similar';
+                btn.disabled = false;
+                alert(res.data.error || 'Failed to stack');
+                return;
+            }
+            // Reload page to show the new stack
+            window.location.reload();
+        })
+        .catch(function(err) {
+            btn.textContent = 'Stack similar';
+            btn.disabled = false;
+            alert('Error: ' + err.message);
         });
     };
 

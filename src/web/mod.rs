@@ -516,6 +516,10 @@ fn build_router(state: Arc<AppState>) -> Router {
                 axum::routing::post(routes::find_similar),
             )
             .route(
+                "/api/asset/{id}/stack-similar",
+                axum::routing::post(routes::stack_by_similarity),
+            )
+            .route(
                 "/api/batch/auto-tag",
                 axum::routing::post(routes::batch_auto_tag),
             )
