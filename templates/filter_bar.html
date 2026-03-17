@@ -18,71 +18,75 @@
         <input type="text" name="path" placeholder="Path prefix..." value="{{ path }}" class="path-filter-input" autocomplete="off">
     </div>
     <div class="filter-row-bottom">
-        <div class="rating-filter-stars" id="rating-stars">
-            {% for i in 1..=5u8 %}
-            {% let filled = rating == "5" && i <= 5 || rating == "4+" && i <= 4 || rating == "4" && i <= 4 || rating == "3+" && i <= 3 || rating == "3" && i <= 3 || rating == "2+" && i <= 2 || rating == "2" && i <= 2 || rating == "1+" && i <= 1 || rating == "1" && i <= 1 %}
-            <span class="star {% if filled %}filled{% else %}empty{% endif %}" data-value="{{ i }}">{% if filled %}&#9733;{% else %}&#9734;{% endif %}</span>
-            {% endfor %}
-            <span class="rating-filter-hint" id="rating-hint">{% if !rating.is_empty() %}{{ rating }}{% endif %}</span>
-        </div>
-        <div class="label-filter" id="label-filter">
-            <span class="label-dot-filter{% if label == "Red" %} active{% endif %}" data-label="Red" style="background: #e74c3c;" title="Red"></span>
-            <span class="label-dot-filter{% if label == "Orange" %} active{% endif %}" data-label="Orange" style="background: #e67e22;" title="Orange"></span>
-            <span class="label-dot-filter{% if label == "Yellow" %} active{% endif %}" data-label="Yellow" style="background: #f1c40f;" title="Yellow"></span>
-            <span class="label-dot-filter{% if label == "Green" %} active{% endif %}" data-label="Green" style="background: #27ae60;" title="Green"></span>
-            <span class="label-dot-filter{% if label == "Blue" %} active{% endif %}" data-label="Blue" style="background: #3498db;" title="Blue"></span>
-            <span class="label-dot-filter{% if label == "Pink" %} active{% endif %}" data-label="Pink" style="background: #e91e8e;" title="Pink"></span>
-            <span class="label-dot-filter{% if label == "Purple" %} active{% endif %}" data-label="Purple" style="background: #9b59b6;" title="Purple"></span>
-        </div>
-        <select name="type">
-            <option value="">All types</option>
-            <option value="image"{% if asset_type == "image" %} selected{% endif %}>Image</option>
-            <option value="video"{% if asset_type == "video" %} selected{% endif %}>Video</option>
-            <option value="audio"{% if asset_type == "audio" %} selected{% endif %}>Audio</option>
-            <option value="document"{% if asset_type == "document" %} selected{% endif %}>Document</option>
-        </select>
-        <div class="format-filter" id="format-filter">
-            <button type="button" class="format-filter-trigger" id="format-trigger">All formats</button>
-            <div class="format-filter-panel" id="format-panel">
-                {% for g in format_groups %}
-                <div class="format-group" data-group="{{ g.key }}">
-                    <label class="format-group-header">
-                        <input type="checkbox" class="format-group-toggle" data-group="{{ g.key }}">
-                        All {{ g.label }}
-                    </label>
-                    {% for f in g.formats %}
-                    <label class="format-option">
-                        <input type="checkbox" class="format-cb" value="{{ f.name }}" data-group="{{ g.key }}">
-                        {{ f.name }} <span class="format-count">({{ f.count }})</span>
-                    </label>
-                    {% endfor %}
-                </div>
+        <div class="filter-row-left">
+            <div class="rating-filter-stars" id="rating-stars">
+                {% for i in 1..=5u8 %}
+                {% let filled = rating == "5" && i <= 5 || rating == "4+" && i <= 4 || rating == "4" && i <= 4 || rating == "3+" && i <= 3 || rating == "3" && i <= 3 || rating == "2+" && i <= 2 || rating == "2" && i <= 2 || rating == "1+" && i <= 1 || rating == "1" && i <= 1 %}
+                <span class="star {% if filled %}filled{% else %}empty{% endif %}" data-value="{{ i }}">{% if filled %}&#9733;{% else %}&#9734;{% endif %}</span>
                 {% endfor %}
+                <span class="rating-filter-hint" id="rating-hint">{% if !rating.is_empty() %}{{ rating }}{% endif %}</span>
+            </div>
+            <div class="label-filter" id="label-filter">
+                <span class="label-dot-filter{% if label == "Red" %} active{% endif %}" data-label="Red" style="background: #e74c3c;" title="Red"></span>
+                <span class="label-dot-filter{% if label == "Orange" %} active{% endif %}" data-label="Orange" style="background: #e67e22;" title="Orange"></span>
+                <span class="label-dot-filter{% if label == "Yellow" %} active{% endif %}" data-label="Yellow" style="background: #f1c40f;" title="Yellow"></span>
+                <span class="label-dot-filter{% if label == "Green" %} active{% endif %}" data-label="Green" style="background: #27ae60;" title="Green"></span>
+                <span class="label-dot-filter{% if label == "Blue" %} active{% endif %}" data-label="Blue" style="background: #3498db;" title="Blue"></span>
+                <span class="label-dot-filter{% if label == "Pink" %} active{% endif %}" data-label="Pink" style="background: #e91e8e;" title="Pink"></span>
+                <span class="label-dot-filter{% if label == "Purple" %} active{% endif %}" data-label="Purple" style="background: #9b59b6;" title="Purple"></span>
             </div>
         </div>
-        {% if !all_volumes.is_empty() %}
-        <select name="volume">
-            <option value="">All volumes</option>
-            {% for v in all_volumes %}
-            <option value="{{ v.id }}"{% if volume == v.id %} selected{% endif %}>{{ v.label }}</option>
-            {% endfor %}
-        </select>
-        {% endif %}
-        {% if !all_collections.is_empty() %}
-        <select name="collection">
-            <option value="">All collections</option>
-            {% for c in all_collections %}
-            <option value="{{ c.name }}"{% if collection == c.name %} selected{% endif %}>{{ c.name }}</option>
-            {% endfor %}
-        </select>
-        {% endif %}
-        {% if ai_enabled && !all_people.is_empty() %}
-        <select name="person">
-            <option value="">All people</option>
-            {% for p in all_people %}
-            <option value="{{ p.name }}"{% if person == p.name %} selected{% endif %}>{{ p.name }}</option>
-            {% endfor %}
-        </select>
-        {% endif %}
+        <div class="filter-row-right">
+            {% if !all_collections.is_empty() %}
+            <select name="collection">
+                <option value="">All collections</option>
+                {% for c in all_collections %}
+                <option value="{{ c.name }}"{% if collection == c.name %} selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+            {% if ai_enabled && !all_people.is_empty() %}
+            <select name="person">
+                <option value="">All people</option>
+                {% for p in all_people %}
+                <option value="{{ p.name }}"{% if person == p.name %} selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+            <select name="type">
+                <option value="">All types</option>
+                <option value="image"{% if asset_type == "image" %} selected{% endif %}>Image</option>
+                <option value="video"{% if asset_type == "video" %} selected{% endif %}>Video</option>
+                <option value="audio"{% if asset_type == "audio" %} selected{% endif %}>Audio</option>
+                <option value="document"{% if asset_type == "document" %} selected{% endif %}>Document</option>
+            </select>
+            <div class="format-filter" id="format-filter">
+                <button type="button" class="format-filter-trigger" id="format-trigger">All formats</button>
+                <div class="format-filter-panel" id="format-panel">
+                    {% for g in format_groups %}
+                    <div class="format-group" data-group="{{ g.key }}">
+                        <label class="format-group-header">
+                            <input type="checkbox" class="format-group-toggle" data-group="{{ g.key }}">
+                            All {{ g.label }}
+                        </label>
+                        {% for f in g.formats %}
+                        <label class="format-option">
+                            <input type="checkbox" class="format-cb" value="{{ f.name }}" data-group="{{ g.key }}">
+                            {{ f.name }} <span class="format-count">({{ f.count }})</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% if !all_volumes.is_empty() %}
+            <select name="volume">
+                <option value="">All volumes</option>
+                {% for v in all_volumes %}
+                <option value="{{ v.id }}"{% if volume == v.id %} selected{% endif %}>{{ v.label }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+        </div>
     </div>
 </div>
