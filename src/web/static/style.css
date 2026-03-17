@@ -190,12 +190,16 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
 .filter-row {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.4rem;
 }
 .filter-row-top {
     display: flex;
     gap: 0.5rem;
-    align-items: center;
+    align-items: stretch;
+}
+.filter-row-top > * {
+    flex: 1 1 0;
+    min-width: 0;
 }
 .filter-row-bottom {
     display: flex;
@@ -264,8 +268,6 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     border-radius: var(--radius);
     font-size: 0.9rem;
     background: var(--bg-input);
-    flex: 1;
-    min-width: 140px;
 }
 
 /* Saved searches row */
@@ -935,8 +937,6 @@ select.badge {
     flex-wrap: wrap;
     align-items: center;
     gap: 0.2rem;
-    min-width: 200px;
-    flex: 1;
     padding: 0.3rem 0.5rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
