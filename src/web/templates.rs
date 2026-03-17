@@ -55,6 +55,7 @@ pub struct AssetCard {
     pub next_id: Option<String>,
     pub preview_rotation: Option<u16>,
     pub face_count: u32,
+    pub similarity: Option<f32>,
 }
 
 impl AssetCard {
@@ -81,7 +82,13 @@ impl AssetCard {
             next_id: None,
             preview_rotation: row.preview_rotation,
             face_count: row.face_count,
+            similarity: None,
         }
+    }
+
+    /// Return similarity as a percentage (0-100), if set.
+    pub fn similarity_pct(&self) -> Option<u32> {
+        self.similarity.map(|s| (s * 100.0) as u32)
     }
 
     /// Build the detail page URL with optional prev/next query params.
@@ -249,6 +256,7 @@ pub struct BrowsePage {
     pub vlm_models: Vec<String>,
     pub default_filter: String,
     pub default_filter_active: bool,
+    pub has_similarity: bool,
 }
 
 #[derive(Template)]
@@ -270,6 +278,7 @@ pub struct ResultsPartial {
     pub per_page: u32,
     pub total_pages: u32,
     pub collapse_stacks: bool,
+    pub has_similarity: bool,
 }
 
 #[derive(Template)]

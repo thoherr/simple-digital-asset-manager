@@ -414,6 +414,11 @@ select.badge {
     background: var(--border);
     font-variant-numeric: tabular-nums;
 }
+.badge-similarity {
+    background: #2ea8a0;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+}
 .badge-stack {
     background: var(--primary);
     color: #fff;

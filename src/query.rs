@@ -118,6 +118,8 @@ pub struct ParsedSearch {
     #[cfg(feature = "ai")]
     pub similar_limit: Option<usize>,
     #[cfg(feature = "ai")]
+    pub min_sim: Option<f32>,
+    #[cfg(feature = "ai")]
     pub text_query: Option<String>,
     #[cfg(feature = "ai")]
     pub text_query_limit: Option<usize>,
@@ -187,6 +189,7 @@ impl ParsedSearch {
         {
             if self.similar.is_none() { self.similar = other.similar.clone(); }
             if self.similar_limit.is_none() { self.similar_limit = other.similar_limit; }
+            if self.min_sim.is_none() { self.min_sim = other.min_sim; }
             if self.text_query.is_none() { self.text_query = other.text_query.clone(); }
             if self.text_query_limit.is_none() { self.text_query_limit = other.text_query_limit; }
         }
@@ -511,6 +514,13 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
                     }
                 } else {
                     parsed.similar = Some(_value.to_string());
+                }
+            }
+        } else if let Some(_value) = token_body.strip_prefix("min_sim:") {
+            #[cfg(feature = "ai")]
+            {
+                if let Ok(v) = _value.parse::<f32>() {
+                    parsed.min_sim = Some(v.clamp(0.0, 100.0));
                 }
             }
         } else if let Some(_value) = token_body.strip_prefix("text:") {
@@ -1000,11 +1010,18 @@ impl QueryEngine {
                 .ok_or_else(|| anyhow::anyhow!(
                     "No embedding found for asset '{similar_ref}'. Run `maki embed --asset {full_id}` first."
                 ))?;
-            let limit = parsed.similar_limit.unwrap_or(20);
+            let limit = parsed.similar_limit.unwrap_or(40);
             let dim = query_emb.len();
             let index = crate::embedding_store::EmbeddingIndex::load(catalog.conn(), model_id, dim)?;
-            let results = index.search(&query_emb, limit, Some(&full_id));
-            similar_ids = results.into_iter().map(|(id, _score)| id).collect::<Vec<_>>();
+            let results = index.search(&query_emb, limit.saturating_sub(1), Some(&full_id));
+            // min_sim is specified as percentage 0-100, convert to 0.0-1.0
+            let min_sim = parsed.min_sim.unwrap_or(0.0) / 100.0;
+            // Include the source asset itself
+            similar_ids = std::iter::once(full_id.clone())
+                .chain(results.into_iter()
+                    .filter(|(_id, score)| *score >= min_sim)
+                    .map(|(id, _score)| id))
+                .collect::<Vec<_>>();
             opts.similar_asset_ids = Some(&similar_ids);
         }
 
@@ -3777,6 +3794,22 @@ mod tests {
         let p = parse_search_query("similar:550e8400-e29b-41d4-a716-446655440000:10");
         assert_eq!(p.similar.as_deref(), Some("550e8400-e29b-41d4-a716-446655440000"));
         assert_eq!(p.similar_limit, Some(10));
+    }
+
+    #[cfg(feature = "ai")]
+    #[test]
+    fn parse_min_sim() {
+        let p = parse_search_query("similar:abc123 min_sim:90");
+        assert_eq!(p.similar.as_deref(), Some("abc123"));
+        assert_eq!(p.min_sim, Some(90.0));
+    }
+
+    #[cfg(feature = "ai")]
+    #[test]
+    fn parse_min_sim_without_similar() {
+        let p = parse_search_query("min_sim:85");
+        assert_eq!(p.min_sim, Some(85.0));
+        assert!(p.similar.is_none());
     }
 
     #[cfg(feature = "ai")]

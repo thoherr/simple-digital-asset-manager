@@ -374,6 +374,8 @@ pub enum SearchSort {
     NameDesc,
     SizeDesc,
     SizeAsc,
+    /// Sort by similarity score (client-side — scores are not in SQL).
+    SimilarityDesc,
 }
 
 impl SearchSort {
@@ -385,6 +387,8 @@ impl SearchSort {
             SearchSort::NameDesc => "COALESCE(a.name, bv.original_filename) DESC",
             SearchSort::SizeDesc => "bv.file_size DESC",
             SearchSort::SizeAsc => "bv.file_size ASC",
+            // Dummy SQL order — real sorting done client-side with similarity scores
+            SearchSort::SimilarityDesc => "a.id",
         }
     }
 
@@ -395,6 +399,7 @@ impl SearchSort {
             "name_desc" => SearchSort::NameDesc,
             "size_desc" => SearchSort::SizeDesc,
             "size_asc" => SearchSort::SizeAsc,
+            "similarity" => SearchSort::SimilarityDesc,
             _ => SearchSort::DateDesc,
         }
     }

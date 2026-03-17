@@ -37,6 +37,67 @@ fn resolve_best_variant_idx(
         .ok_or_else(|| anyhow::anyhow!("Asset has no variants"))
 }
 
+/// Resolve `similar:` filter: look up embedding, search index, return matching IDs with scores.
+/// Returns (ordered_ids, score_map). The source asset is included with similarity 100%.
+/// Empty if no `similar:` filter is active.
+#[cfg(feature = "ai")]
+fn resolve_similar_filter(
+    catalog: &crate::catalog::Catalog,
+    state: &AppState,
+    parsed: &crate::query::ParsedSearch,
+) -> anyhow::Result<(Vec<String>, std::collections::HashMap<String, f32>)> {
+    use std::collections::HashMap;
+    if let Some(ref similar_ref) = parsed.similar {
+        let full_id = catalog
+            .resolve_asset_id(similar_ref)?
+            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{similar_ref}'"))?;
+        let model_id = &state.ai_config.model;
+        let spec = crate::ai::get_model_spec(model_id);
+        if let Some(spec) = spec {
+            let emb_store = crate::embedding_store::EmbeddingStore::new(catalog.conn());
+            let query_emb = emb_store
+                .get(&full_id, model_id)?
+                .ok_or_else(|| anyhow::anyhow!(
+                    "No embedding for '{similar_ref}'. Run `maki embed --asset {full_id}` first."
+                ))?;
+            // limit defaults to 40 results (including the source asset)
+            let limit = parsed.similar_limit.unwrap_or(40);
+            // min_sim is specified as percentage 0-100, convert to 0.0-1.0
+            let min_sim = parsed.min_sim.unwrap_or(0.0) / 100.0;
+            // Ensure embedding index is loaded
+            let needs_load = state.ai_embedding_index.read().unwrap().is_none();
+            if needs_load {
+                if let Ok(index) = crate::embedding_store::EmbeddingIndex::load(
+                    catalog.conn(), model_id, spec.embedding_dim,
+                ) {
+                    *state.ai_embedding_index.write().unwrap() = Some(index);
+                }
+            }
+            // Search excludes the source — we add it back with score 1.0
+            let results = {
+                let idx_guard = state.ai_embedding_index.read().unwrap();
+                if let Some(ref idx) = *idx_guard {
+                    idx.search(&query_emb, limit.saturating_sub(1), Some(&full_id))
+                } else {
+                    Vec::new()
+                }
+            };
+            let mut filtered: Vec<(String, f32)> = Vec::with_capacity(results.len() + 1);
+            // Include the source asset itself at 100%
+            filtered.push((full_id.clone(), 1.0));
+            for (id, sim) in results {
+                if sim >= min_sim {
+                    filtered.push((id, sim));
+                }
+            }
+            let scores: HashMap<String, f32> = filtered.iter().cloned().collect();
+            let ids: Vec<String> = filtered.into_iter().map(|(id, _)| id).collect();
+            return Ok((ids, scores));
+        }
+    }
+    Ok((Vec::new(), std::collections::HashMap::new()))
+}
+
 #[derive(Debug, serde::Deserialize)]
 pub struct SearchParams {
     pub q: Option<String>,
@@ -221,15 +282,59 @@ pub async fn browse_page(
             }
         }
 
-        let per_page = state.per_page;
+        // Resolve similar: filter (embedding similarity search)
+        #[cfg(feature = "ai")]
+        let similar_ids;
+        #[cfg(feature = "ai")]
+        let similarity_scores: std::collections::HashMap<String, f32>;
+        #[cfg(feature = "ai")]
+        {
+            let (ids, scores) = resolve_similar_filter(&catalog, &state, &parsed)?;
+            similar_ids = ids;
+            similarity_scores = scores;
+            if !similar_ids.is_empty() {
+                opts.similar_asset_ids = Some(&similar_ids);
+            }
+        }
+
+        let has_similarity;
+        #[cfg(feature = "ai")]
+        { has_similarity = parsed.similar.is_some() && !similarity_scores.is_empty(); }
+        #[cfg(not(feature = "ai"))]
+        { has_similarity = false; }
+
+        // Similarity results are bounded by the embedding search limit (not paginated),
+        // so fetch them all on one page to allow correct client-side sorting.
+        let per_page = if has_similarity { u32::MAX } else { state.per_page };
         opts.sort = SearchSort::from_str(sort_str);
-        opts.page = page;
+        // Auto-sort by similarity when similar: is active and user hasn't chosen a sort
+        if has_similarity && sort_str == "date_desc" {
+            opts.sort = SearchSort::SimilarityDesc;
+        }
+        opts.page = if has_similarity { 1 } else { page };
         opts.per_page = per_page;
         opts.collapse_stacks = collapse_stacks;
 
         let (rows, total) = catalog.search_paginated_with_count(&opts)?;
-        let total_pages = ((total as f64) / per_page as f64).ceil() as u32;
+        let display_per_page = state.per_page;
+        let total_pages = if has_similarity { 1 } else { ((total as f64) / display_per_page as f64).ceil() as u32 };
         let mut cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
+
+        // Populate similarity scores on cards and sort client-side
+        #[cfg(feature = "ai")]
+        if !similarity_scores.is_empty() {
+            for card in &mut cards {
+                card.similarity = similarity_scores.get(&card.asset_id).copied();
+            }
+            if matches!(opts.sort, SearchSort::SimilarityDesc) {
+                cards.sort_by(|a, b| {
+                    let sa = a.similarity.unwrap_or(0.0);
+                    let sb = b.similarity.unwrap_or(0.0);
+                    sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+        }
+
         link_cards(&mut cards);
 
         if is_htmx {
@@ -250,6 +355,7 @@ pub async fn browse_page(
                 per_page,
                 total_pages,
                 collapse_stacks,
+                has_similarity,
             };
             return Ok::<_, anyhow::Error>(tmpl.render()?);
         }
@@ -319,6 +425,7 @@ pub async fn browse_page(
             vlm_models: state.vlm_config.available_models(),
             default_filter: state.default_filter.clone().unwrap_or_default(),
             default_filter_active: !nodefault && state.default_filter.is_some(),
+            has_similarity,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
@@ -516,15 +623,55 @@ pub async fn search_api(
             }
         }
 
-        let per_page = state.per_page;
+        // Resolve similar: filter
+        #[cfg(feature = "ai")]
+        let similar_ids;
+        #[cfg(feature = "ai")]
+        let similarity_scores: std::collections::HashMap<String, f32>;
+        #[cfg(feature = "ai")]
+        {
+            let (ids, scores) = resolve_similar_filter(&catalog, &state, &parsed)?;
+            similar_ids = ids;
+            similarity_scores = scores;
+            if !similar_ids.is_empty() {
+                opts.similar_asset_ids = Some(&similar_ids);
+            }
+        }
+
+        let has_similarity;
+        #[cfg(feature = "ai")]
+        { has_similarity = parsed.similar.is_some() && !similarity_scores.is_empty(); }
+        #[cfg(not(feature = "ai"))]
+        { has_similarity = false; }
+
+        let per_page = if has_similarity { u32::MAX } else { state.per_page };
         opts.sort = SearchSort::from_str(sort_str);
-        opts.page = page;
+        if has_similarity && sort_str == "date_desc" {
+            opts.sort = SearchSort::SimilarityDesc;
+        }
+        opts.page = if has_similarity { 1 } else { page };
         opts.per_page = per_page;
         opts.collapse_stacks = collapse_stacks;
 
         let (rows, total) = catalog.search_paginated_with_count(&opts)?;
-        let total_pages = ((total as f64) / per_page as f64).ceil() as u32;
+        let display_per_page = state.per_page;
+        let total_pages = if has_similarity { 1 } else { ((total as f64) / display_per_page as f64).ceil() as u32 };
         let mut cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
+
+        #[cfg(feature = "ai")]
+        if !similarity_scores.is_empty() {
+            for card in &mut cards {
+                card.similarity = similarity_scores.get(&card.asset_id).copied();
+            }
+            if matches!(opts.sort, SearchSort::SimilarityDesc) {
+                cards.sort_by(|a, b| {
+                    let sa = a.similarity.unwrap_or(0.0);
+                    let sb = b.similarity.unwrap_or(0.0);
+                    sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+        }
+
         link_cards(&mut cards);
 
         let tmpl = ResultsPartial {
@@ -544,6 +691,7 @@ pub async fn search_api(
             per_page,
             total_pages,
             collapse_stacks,
+            has_similarity,
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })

@@ -76,6 +76,7 @@
         <details>
             <summary>Similar images</summary>
             <button id="find-similar-btn" class="btn btn-sm" onclick="findSimilar()">Find similar</button>
+            <a href="/?q=similar:{{ asset_id }}" class="btn btn-sm" style="margin-left:4px;">Browse similar</a>
             <a href="/stroll?id={{ asset_id }}" class="btn btn-sm" style="margin-left:4px;">Stroll from here</a>
             <div id="similar-results" style="display:none"></div>
         </details>

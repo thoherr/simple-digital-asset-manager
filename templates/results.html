@@ -37,6 +37,14 @@
         {% else %}
         <a class="sort-btn" href="{% call sort_url("size_desc") %}" hx-get="{% call sort_url("size_desc") %}" hx-target="#results" hx-push-url="true">Size</a>
         {% endif %}
+
+        {% if has_similarity %}
+        {% if sort == "similarity" %}
+        <a class="sort-btn active" href="{% call sort_url("date_desc") %}" hx-get="{% call sort_url("date_desc") %}" hx-target="#results" hx-push-url="true">Similarity<span class="sort-arrow">&#9660;</span></a>
+        {% else %}
+        <a class="sort-btn" href="{% call sort_url("similarity") %}" hx-get="{% call sort_url("similarity") %}" hx-target="#results" hx-push-url="true">Similarity</a>
+        {% endif %}
+        {% endif %}
     </div>
 
     <div class="sidebar-controls">
@@ -132,6 +140,7 @@
                 {% if card.variant_count > 1 %}<span class="badge badge-count">{{ card.variant_count }}v</span>{% endif %}
                 {% if let Some(sc) = card.stack_count %}<span class="badge badge-stack" data-stack-id="{{ card.stack_id.as_deref().unwrap_or_default() }}" title="Click to expand/collapse stack ({{ sc }} members)">&#8862; {{ sc }}</span>{% endif %}
                 {% if card.face_count > 0 %}<span class="badge" title="{{ card.face_count }} face(s)">&#128100; {{ card.face_count }}</span>{% endif %}
+                {% if let Some(pct) = card.similarity_pct() %}<span class="badge badge-similarity" title="Similarity">{{ pct }}%</span>{% endif %}
                 <span>{{ card.date }}</span>
             </div>
             {% if card.rating.is_some() && card.rating.unwrap() > 0 %}
