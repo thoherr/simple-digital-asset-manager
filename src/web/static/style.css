@@ -257,7 +257,9 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     border-radius: var(--radius);
     font-size: 0.9rem;
     background: var(--bg-input);
-    width: 140px;
+    flex: 1;
+    min-width: 140px;
+    max-width: 450px;
 }
 
 /* Saved searches row */
