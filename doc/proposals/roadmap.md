@@ -1,8 +1,26 @@
-# DAM Roadmap
+# MAKI Roadmap
 
-Living document tracking planned enhancements. Previous proposals (all implemented or deferred) are in `archive/`.
+Living document tracking planned enhancements. Previous proposals (all implemented or deferred) are in `archive/`. Active proposals are in `doc/proposals/`.
 
-Current version: **v4.0.0** (2026-03-16)
+Current version: **v4.0.3** (2026-03-18)
+
+---
+
+## Active Proposals
+
+### Similarity Stacking (Phase 3)
+
+Auto-discover visual clusters across the catalog and propose stacks. See `doc/proposals/similarity-browse-and-grouping.md`.
+
+**Status:** Phase 1 (similarity browse) and Phase 2 (stack-by-similarity from detail page) implemented in v4.0.2. Phase 3 (catalog-wide auto-stack) pending.
+
+**Scope:**
+- `maki auto-stack --threshold 85` — scan all embedded assets, cluster by similarity, propose stacks
+- Pick selection: highest-rated in each cluster
+- `--dry-run` for review, `--apply` to create
+- Clustering algorithm: greedy connected-components over embedding similarity matrix
+
+**Complexity:** Medium. Embedding infrastructure and stacking exist; needs clustering algorithm and CLI command.
 
 ---
 
@@ -42,33 +60,23 @@ Write metadata changes back into JPEG/TIFF files directly, not just XMP sidecars
 **Scope:**
 - `maki writeback --embed` writes rating, tags, description, label into file's embedded metadata
 - IPTC keywords, caption/description, urgency (mapped from rating)
-- EXIF UserComment for description (optional)
 - Preserves existing embedded metadata; only updates DAM-managed fields
 - Re-hashes file after write, updates variant content hash
 
-**Complexity:** High. Modifying binary file metadata without corruption requires careful handling. Could use `img_parts` or `little_cms` crates.
+**Complexity:** High. Modifying binary file metadata without corruption requires careful handling.
 
 ---
 
 ### Web UI Export Progress
 
-The ZIP export modal shows "Preparing..." with no progress feedback. For large exports this can take minutes with no indication of progress.
+The ZIP export modal shows "Preparing..." with no progress feedback.
 
 **Scope:**
-- Server sends export plan summary (file count, estimated size) before starting the ZIP build
-- Client shows a progress bar or asset counter during ZIP creation
-- Options: SSE stream, polling endpoint, or initial size estimate + indeterminate progress bar
-- Warn user before very large downloads (e.g. "> 1 GB, continue?")
+- Server sends export plan summary (file count, estimated size) before starting
+- Client shows a progress bar or asset counter
+- Warn before very large downloads (> 1 GB)
 
-**Complexity:** Low-Medium. Backend plan info already available via `build_export_plan()`; needs a two-phase request or SSE channel.
-
-### Web UI Delete ✅
-
-Implemented in v3.2.1. Batch delete from the browse toolbar with confirmation modal, "remove files" checkbox, and grid refresh. `POST /api/batch/delete` endpoint.
-
-### Shell `export` Built-in ✅
-
-Implemented in v3.2.1. Shell `export` is a built-in with variable expansion, tilde expansion, and `--zip` support. Multi-ID export fixed to handle all IDs from a variable in a single operation.
+**Complexity:** Low-Medium.
 
 ---
 
@@ -80,36 +88,32 @@ Named preset configurations for different import scenarios (studio shoot, travel
 
 **Scope:**
 - `[import.profiles.<name>]` sections in `maki.toml`
-- Each profile: auto_tags, exclude patterns, target volume, smart_previews, embeddings
 - `maki import --profile studio <PATHS...>` selects a profile
 - Profiles inherit from `[import]` defaults, override specific fields
-- `maki import --list-profiles` shows available profiles
 
-**Complexity:** Low. Config parsing and merge logic only.
+**Complexity:** Low.
 
 ### Multi-User Web Access
 
-Allow browsing the catalog from other devices on the LAN (iPad, phone, second computer).
+Allow browsing the catalog from other devices on the LAN.
 
 **Scope:**
-- `maki serve --bind 0.0.0.0` already works for LAN access
-- Add `--read-only` mode: disables all write endpoints (rating, tags, labels, delete, etc.)
-- Optional: basic auth (`[serve] username/password` in `maki.toml`)
-- Responsive CSS improvements for mobile viewports (browse grid already adapts)
+- `--read-only` mode: disables all write endpoints
+- Optional basic auth (`[serve] username/password` in `maki.toml`)
+- Responsive CSS improvements for mobile viewports
 
-**Complexity:** Low-Medium. Most infrastructure exists; needs endpoint guards and auth middleware.
+**Complexity:** Low-Medium.
 
 ### Volume Health Monitoring
 
 Surface drive health and verification staleness proactively.
 
 **Scope:**
-- Extend `maki stats --verified` with per-volume staleness warnings
-- `maki verify --report` generates a health summary (oldest unverified, % coverage, estimated time)
-- Optional: track volume mount/unmount history for "last seen" timestamps
-- Web UI: volume health indicators on backup page
+- Per-volume staleness warnings in `maki stats --verified`
+- `maki verify --report` health summary
+- Web UI volume health indicators on backup page
 
-**Complexity:** Low. Builds on existing verify timestamps and stats infrastructure.
+**Complexity:** Low.
 
 ---
 
@@ -120,18 +124,17 @@ Surface drive health and verification staleness proactively.
 Track metadata changes with timestamps for audit trail and undo capability.
 
 **Scope:**
-- `asset_history` table: asset_id, field, old_value, new_value, timestamp, source (cli/web/sync)
-- `maki history <asset-id>` shows change log
-- `maki undo <asset-id>` reverts last change (or last N)
-- Web UI: history panel on detail page
+- `asset_history` table: asset_id, field, old_value, new_value, timestamp, source
+- `maki history <asset-id>` and `maki undo <asset-id>`
+- Web UI history panel on detail page
 
-**Complexity:** High. Requires change tracking in every write path (edit, tag, rating, label, import, refresh, sync-metadata).
+**Complexity:** High.
 
 ---
 
 ## Completed (Archived)
 
-Design documents for completed features are in `doc/proposals/archive/` (AI auto-tagging, contact sheets, export-based previews, pending writeback, photo workflow integration, REPL shell, stroll page, storage workflow, VLM integration, v2.5 milestone). Key milestones:
+Design documents for completed features are in `doc/proposals/archive/`. Key milestones:
 
 - **v0.1–v1.0**: Core CLI — import, search, metadata, volumes, previews
 - **v1.1–v1.4**: Storage workflow — dedup, backup-status, copies filter, volume purpose
@@ -140,8 +143,12 @@ Design documents for completed features are in `doc/proposals/archive/` (AI auto
 - **v2.0–v2.1**: AI — auto-tag, embeddings, similarity search, suggest tags
 - **v2.2**: Performance — SQLite pragmas, single connection, denormalized columns
 - **v2.3**: Stroll, sync-metadata, comprehensive cleanup, faces/people
-- **v2.4**: Contact sheet export, split command, alternate variant role, grouped CLI help, CoreML GPU acceleration, VLM image descriptions
-- **v2.5**: Text-to-image semantic search, auto-describe during import, concurrent VLM, analytics dashboard, batch relocate, drag-and-drop, per-stack expand/collapse, audit filters (variants/scattered), metadata reimport
-- **v3.0**: Asset management shell — interactive REPL with named variables, tab completion, session defaults, script files, source command, `-c` one-liner mode
-- **v3.1**: Preview command, consistent positional query and shell variable expansion for all multi-asset commands
-- **v3.2**: Web UI export as ZIP download, batch delete, shell export built-in with tilde expansion, CLI `--zip` flag, dark mode modal fixes, per-model VLM config, sampling parameters, verbose threading through web server, documentation consolidation
+- **v2.4**: Contact sheet export, split command, alternate variant role, CoreML GPU, VLM descriptions
+- **v2.5**: Text-to-image search, auto-describe during import, concurrent VLM, analytics, batch relocate, drag-and-drop, per-stack expand/collapse
+- **v3.0**: Interactive shell — REPL with variables, tab completion, script files
+- **v3.1**: Preview command, consistent positional query and shell variable expansion
+- **v3.2**: Web UI export ZIP, batch delete, shell export, per-model VLM config, verbose threading, documentation consolidation
+- **v4.0**: MAKI rebrand (binary `dam` → `maki`, config `dam.toml` → `maki.toml`, full visual rebrand), branded PDF manual
+- **v4.0.1**: Default browse filter (`[browse] default_filter`), VLM tags mode fix, organizing/culling manual chapter
+- **v4.0.2**: Similarity browse (scores on cards, `min_sim:` filter, sort by similarity), stack-by-similarity from detail page, stack management toolbar (add/remove/set-pick), filter bar two-row layout
+- **v4.0.3**: Windows support (cross-platform path normalization, `\\?\` prefix handling, 8MB stack, tool detection), GitHub Actions CI (macOS/Linux/Windows × standard/AI), missing tool warnings, README branding

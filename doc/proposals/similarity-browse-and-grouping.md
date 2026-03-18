@@ -26,7 +26,7 @@ Summary:
 - **Sort by similarity** — auto-default when `similar:` is active, with toolbar button.
 - Source asset included at 100%. Results fetched on single page for correct sorting.
 
-## Phase 2: Stack by Similarity (Targeted)
+## Phase 2: Stack by Similarity (Targeted) — implemented in v4.0.2
 
 **Goal:** One-click stacking of similar images around a hero shot from the detail page.
 
