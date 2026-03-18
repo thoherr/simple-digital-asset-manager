@@ -2946,25 +2946,35 @@ impl Catalog {
 
     /// Helper: generate tag LIKE clause parts for a single tag value.
     /// Returns a Vec of SQL expressions (each with params already pushed).
+    ///
+    /// Tags containing `"` may be stored in JSON two ways:
+    /// - Unescaped: `"\"Sir\" Oliver Mally"` (serde_json proper)
+    /// - Raw: `""Sir" Oliver Mally"` (legacy/malformed JSON)
+    /// We match both forms.
     fn tag_like_parts(params: &mut Vec<Box<dyn rusqlite::types::ToSql>>, tag: &str) -> Vec<String> {
         let stored = crate::tag_util::tag_input_to_storage(tag);
+        let mut exprs = Vec::new();
+
+        // Primary patterns: match the stored form
+        params.push(Box::new(format!("%\"{stored}\"%")));
+        exprs.push("a.tags LIKE ?".to_string());
+        params.push(Box::new(format!("%\"{stored}|%")));
+        exprs.push("a.tags LIKE ?".to_string());
+
+        // If stored form differs from input, also match input form
         if tag != stored {
-            params.push(Box::new(format!("%\"{stored}\"%")));
-            params.push(Box::new(format!("%\"{stored}|%")));
             params.push(Box::new(format!("%\"{tag}\"%")));
-            vec![
-                "a.tags LIKE ?".to_string(),
-                "a.tags LIKE ?".to_string(),
-                "a.tags LIKE ?".to_string(),
-            ]
-        } else {
-            params.push(Box::new(format!("%\"{stored}\"%")));
-            params.push(Box::new(format!("%\"{stored}|%")));
-            vec![
-                "a.tags LIKE ?".to_string(),
-                "a.tags LIKE ?".to_string(),
-            ]
+            exprs.push("a.tags LIKE ?".to_string());
         }
+
+        // If tag contains ", also match JSON-escaped form (\" in stored JSON)
+        if tag.contains('"') {
+            let json_escaped = tag.replace('"', "\\\"");
+            params.push(Box::new(format!("%\"{json_escaped}\"%")));
+            exprs.push("a.tags LIKE ?".to_string());
+        }
+
+        exprs
     }
 
     /// Helper: add a single positive tag clause (AND).

@@ -788,7 +788,8 @@ mod filters {
     }
 
     /// Escape a string for safe embedding in a JavaScript double-quoted string literal.
-    /// Handles `"`, `\`, newlines, and other special chars.
+    /// Handles `"`, `\`, `<`, newlines, and other special chars.
+    /// Returns `Safe` to bypass Askama's HTML auto-escaping (we handle escaping ourselves).
     pub fn js_string(s: &str) -> ::askama::Result<String> {
         let mut out = String::with_capacity(s.len());
         for c in s.chars() {
@@ -798,6 +799,8 @@ mod filters {
                 '\n' => out.push_str("\\n"),
                 '\r' => out.push_str("\\r"),
                 '\t' => out.push_str("\\t"),
+                '<' => out.push_str("\\x3c"),  // prevent </script> injection
+                '>' => out.push_str("\\x3e"),
                 _ => out.push(c),
             }
         }
