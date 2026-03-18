@@ -2,6 +2,17 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.0.3 (2026-03-18)
+
+### New Features
+- **Windows support** — full cross-platform path normalization (all stored paths use forward slashes), `tool_available()` uses `where` on Windows, 8MB stack size via MSVC linker flags, `\\?\` extended path prefix handling.
+- **GitHub Actions CI** — automated build and test on macOS, Linux, and Windows, both standard and AI feature builds (6 combinations).
+
+### Enhancements
+- **Missing tool warnings** — maki now prints a warning (once per tool) when dcraw/libraw or ffmpeg are not found, instead of silently falling back to info card previews.
+- **External tools documentation** — changed from "optional" to "highly recommended" with Windows install commands (winget/scoop).
+- **README branding** — replaced text title with MAKI logo and tagline.
+
 ## v4.0.2 (2026-03-18)
 
 ### New Features
