@@ -787,6 +787,23 @@ mod filters {
         .to_string())
     }
 
+    /// Escape a string for safe embedding in a JavaScript double-quoted string literal.
+    /// Handles `"`, `\`, newlines, and other special chars.
+    pub fn js_string(s: &str) -> ::askama::Result<String> {
+        let mut out = String::with_capacity(s.len());
+        for c in s.chars() {
+            match c {
+                '\\' => out.push_str("\\\\"),
+                '"' => out.push_str("\\\""),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                _ => out.push(c),
+            }
+        }
+        Ok(out)
+    }
+
     /// Convert tag from storage form (`|` separator) to display form (`/` separator).
     /// Uses simple replacement (no `\/` escaping) since web display is read-only.
     pub fn tag_display(tag: &str) -> ::askama::Result<String> {

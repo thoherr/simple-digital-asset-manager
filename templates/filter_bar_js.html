@@ -3,7 +3,7 @@
 // Requires: onFilterChange() defined before this script
 (function() {
     var allTags = [];
-    var initialTagStr = "{{ tag }}";
+    var initialTagStr = "{{ tag|js_string }}";
 
     function fetchTags() {
         fetch('/api/tags')
@@ -369,7 +369,7 @@
     var filterRow = document.getElementById('filter-row');
     var filterBtn = document.getElementById('filter-toggle');
     if (filterBtn && filterRow) {
-        var hasActiveFilters = "{{ query }}{{ tag }}{{ rating }}{{ label }}{{ format_filter }}{{ asset_type }}{{ volume }}{{ collection }}{{ path }}{{ person }}".length > 0;
+        var hasActiveFilters = "{{ query|js_string }}{{ tag|js_string }}{{ rating }}{{ label }}{{ format_filter }}{{ asset_type }}{{ volume }}{{ collection }}{{ path|js_string }}{{ person|js_string }}".length > 0;
         var filterOpen = hasActiveFilters || localStorage.getItem('maki-filter-open') !== 'false';
         function applyFilterState() {
             if (filterOpen) {
