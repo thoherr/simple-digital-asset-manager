@@ -1,0 +1,7 @@
+# Windows default stack is 1MB (vs 8MB on Unix), which causes stack overflows
+# in debug builds with deeply nested clap parsing and SQLite migrations.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-args=/STACK:8388608"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "link-args=/STACK:8388608"]

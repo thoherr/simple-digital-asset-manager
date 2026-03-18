@@ -1258,7 +1258,8 @@ mod tests {
         // Verify file exists at expected path
         let path = arcface_binary_path(dir.path(), "face-abc123");
         assert!(path.exists());
-        assert!(path.to_str().unwrap().contains("arcface/fa/face-abc123.bin"));
+        let path_str = path.to_str().unwrap().replace('\\', "/");
+        assert!(path_str.contains("arcface/fa/face-abc123.bin"));
 
         // Read it back via scan
         let entries = scan_arcface_binaries(dir.path()).unwrap();

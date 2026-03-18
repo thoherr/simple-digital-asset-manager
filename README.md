@@ -80,13 +80,17 @@ The full **[User Manual](doc/manual/index.md)** covers:
 
 Configuration is documented in the [Configuration Reference](doc/manual/reference/08-configuration.md). All settings live in `maki.toml` at the catalog root; every field is optional with sensible defaults.
 
-## Optional External Tools
+## External Tools (Highly Recommended)
 
 - **dcraw** or **LibRaw** (dcraw_emu) — RAW file preview extraction
 - **ffmpeg** — video thumbnail extraction
 - **curl** — model file download for AI auto-tagging (only needed with `--features ai`) and VLM image descriptions (`maki describe`)
 
-These are optional. When missing, RAW and video files get an info card preview instead.
+Install on macOS: `brew install libraw ffmpeg curl`
+Install on Linux: `sudo apt install libraw-bin ffmpeg curl` (Debian/Ubuntu)
+Install on Windows: `winget install LibRaw.LibRaw Gyan.FFmpeg cURL.cURL` or `scoop install libraw ffmpeg curl`
+
+When missing, RAW and video files get an info card preview instead. maki prints a warning on first use when a tool is not found.
 
 ## AI Auto-Tagging (Optional Feature)
 

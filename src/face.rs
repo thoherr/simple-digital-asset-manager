@@ -820,8 +820,9 @@ mod tests {
     #[test]
     fn default_face_model_dir_path() {
         let dir = default_face_model_dir().unwrap();
+        let dir_str = dir.to_str().unwrap().replace('\\', "/");
         assert!(
-            dir.to_str().unwrap().contains(".maki/models/faces"),
+            dir_str.contains(".maki/models/faces"),
             "Expected .maki/models/faces path, got: {}",
             dir.display()
         );

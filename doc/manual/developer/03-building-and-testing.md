@@ -30,7 +30,7 @@ Enables the `maki auto-tag` command with SigLIP-based zero-shot image classifica
 ### Requirements
 
 - **Rust edition**: 2021 (stable toolchain)
-- **Platforms**: macOS, Linux
+- **Platforms**: macOS, Linux, Windows
 - **SQLite**: Bundled via `rusqlite` with the `bundled` feature (no system SQLite required)
 
 ## Testing
@@ -180,7 +180,7 @@ Generates `doc/manual/maki-manual.pdf` from the 21 Markdown source files. The sc
 | `predicates` | Assertion helpers for CLI output matching |
 | `tempfile` | Temporary directories for test isolation |
 
-### External Tools (Optional)
+### External Tools (Highly Recommended)
 
 These tools are not Rust dependencies but are invoked as subprocesses for specific preview generation tasks. Their absence does not prevent the application from running; missing tools result in info card fallback previews.
 
@@ -188,13 +188,48 @@ These tools are not Rust dependencies but are invoked as subprocesses for specif
 
 - **ffmpeg** -- Video thumbnail extraction. Used to capture a frame from video files (MP4, MOV, AVI, etc.) for preview generation.
 
-- **curl** -- Model file download for AI auto-tagging (only with `--features ai`). Used to download ONNX model files from HuggingFace. Available by default on macOS and most Linux distributions.
+- **curl** -- Model file download for AI auto-tagging (only with `--features ai`) and VLM image descriptions (`maki describe`). Used to download ONNX model files from HuggingFace. Available by default on macOS and most Linux distributions.
+
+**Install on macOS** (Homebrew):
+
+```bash
+brew install libraw ffmpeg curl
+```
+
+**Install on Linux** (package manager):
+
+```bash
+# Debian/Ubuntu
+sudo apt install libraw-bin ffmpeg curl
+
+# Fedora
+sudo dnf install LibRaw ffmpeg curl
+```
+
+**Install on Windows** (winget or scoop):
+
+```powershell
+# winget
+winget install LibRaw.LibRaw Gyan.FFmpeg cURL.cURL
+
+# scoop
+scoop install libraw ffmpeg curl
+```
 
 To check if these tools are available:
 
 ```bash
+# macOS / Linux
 which dcraw_emu || which dcraw
 which ffmpeg
+which curl
+```
+
+```powershell
+# Windows (PowerShell)
+Get-Command dcraw_emu -ErrorAction SilentlyContinue
+Get-Command ffmpeg -ErrorAction SilentlyContinue
+Get-Command curl -ErrorAction SilentlyContinue
 ```
 
 Preview generation silently falls back to info cards (metadata display images) when these tools are missing. Use `maki generate-previews --debug` to see external tool invocations and errors.

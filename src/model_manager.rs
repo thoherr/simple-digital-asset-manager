@@ -203,8 +203,9 @@ mod tests {
     #[test]
     fn default_model_dir_under_home() {
         let dir = ModelManager::default_model_dir(DEFAULT_MODEL_ID).unwrap();
+        let dir_str = dir.to_str().unwrap().replace('\\', "/");
         assert!(
-            dir.to_str().unwrap().contains(".maki/models/siglip-vit-b16-256"),
+            dir_str.contains(".maki/models/siglip-vit-b16-256"),
             "Expected .maki/models path, got: {}",
             dir.display()
         );
@@ -213,8 +214,9 @@ mod tests {
     #[test]
     fn default_model_dir_large() {
         let dir = ModelManager::default_model_dir("siglip-vit-l16-256").unwrap();
+        let dir_str = dir.to_str().unwrap().replace('\\', "/");
         assert!(
-            dir.to_str().unwrap().contains(".maki/models/siglip-vit-l16-256"),
+            dir_str.contains(".maki/models/siglip-vit-l16-256"),
             "Expected .maki/models path, got: {}",
             dir.display()
         );

@@ -8645,14 +8645,14 @@ mod auto_tag {
             &config_path,
             format!(
                 "[ai]\nmodel_dir = \"{}\"\n",
-                model_tmp.path().display()
+                model_tmp.path().display().to_string().replace('\\', "/")
             ),
         )
         .unwrap();
 
         maki()
             .current_dir(&root)
-            .args(["auto-tag", "--query", "*"])
+            .args(["auto-tag", "*"])
             .assert()
             .failure()
             .stderr(predicate::str::contains("Model not downloaded"));
@@ -8670,7 +8670,7 @@ mod auto_tag {
             &config_path,
             format!(
                 "[ai]\nmodel_dir = \"{}\"\n",
-                model_tmp.path().display()
+                model_tmp.path().display().to_string().replace('\\', "/")
             ),
         )
         .unwrap();
@@ -8710,7 +8710,7 @@ mod auto_tag {
         // Auto-tag dry run
         maki()
             .current_dir(&root)
-            .args(["auto-tag", "--query", "type:image"])
+            .args(["auto-tag", "type:image"])
             .assert()
             .success()
             .stdout(predicate::str::contains("dry run"));
@@ -8740,7 +8740,6 @@ mod auto_tag {
             .current_dir(&root)
             .args([
                 "auto-tag",
-                "--query",
                 "type:image",
                 "--apply",
                 "--threshold",
@@ -8773,7 +8772,7 @@ mod auto_tag {
 
         let output = maki()
             .current_dir(&root)
-            .args(["auto-tag", "--query", "type:image", "--json"])
+            .args(["auto-tag", "type:image", "--json"])
             .assert()
             .success();
 
@@ -8812,7 +8811,6 @@ mod auto_tag {
             .current_dir(&root)
             .args([
                 "auto-tag",
-                "--query",
                 "type:image",
                 "--labels",
                 labels_path.to_str().unwrap(),
@@ -8846,7 +8844,6 @@ mod auto_tag {
             .current_dir(&root)
             .args([
                 "auto-tag",
-                "--query",
                 "type:image",
                 "--threshold",
                 "0.99",
@@ -8930,7 +8927,7 @@ mod auto_tag {
         // Auto-tag both to generate embeddings
         maki()
             .current_dir(&root)
-            .args(["auto-tag", "--query", "type:image"])
+            .args(["auto-tag", "type:image"])
             .assert()
             .success();
 
@@ -8967,7 +8964,7 @@ mod auto_tag {
         // No assets to tag
         maki()
             .current_dir(&root)
-            .args(["auto-tag", "--query", "type:image", "--json"])
+            .args(["auto-tag", "type:image", "--json"])
             .assert()
             .success();
     }
@@ -8993,7 +8990,7 @@ mod auto_tag {
 
         let output = maki()
             .current_dir(&root)
-            .args(["auto-tag", "--query", "*", "--json"])
+            .args(["auto-tag", "*", "--json"])
             .assert()
             .success();
 

@@ -78,10 +78,26 @@ impl Volume {
 }
 
 /// A physical location of a variant on a specific volume.
+///
+/// `relative_path` always uses forward slashes for cross-platform consistency
+/// (paths are stored in SQLite and YAML sidecars, shared across OS).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileLocation {
     pub volume_id: Uuid,
+    #[serde(serialize_with = "serialize_path_forward_slash")]
     pub relative_path: PathBuf,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verified_at: Option<DateTime<Utc>>,
+}
+
+/// Serialize a PathBuf with forward slashes for cross-platform YAML/JSON consistency.
+fn serialize_path_forward_slash<S: serde::Serializer>(path: &PathBuf, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&path.to_string_lossy().replace('\\', "/"))
+}
+
+impl FileLocation {
+    /// Return the relative path as a string with forward slashes (cross-platform).
+    pub fn relative_path_str(&self) -> String {
+        self.relative_path.to_string_lossy().replace('\\', "/")
+    }
 }

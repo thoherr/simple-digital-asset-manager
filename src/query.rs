@@ -744,13 +744,13 @@ pub fn normalize_path_for_search(
 ) -> (String, Option<String>) {
     // Step 1: Expand ~ and resolve ./ ../ when cwd is available
     let resolved = if let Some(cwd) = cwd {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"));
         if path == "~" {
-            std::env::var("HOME")
-                .map(|h| h.to_string())
+            home.map(|h| h.to_string())
                 .unwrap_or_else(|_| path.to_string())
         } else if let Some(rest) = path.strip_prefix("~/") {
-            std::env::var("HOME")
-                .map(|h| std::path::PathBuf::from(h).join(rest).to_string_lossy().to_string())
+            home.map(|h| std::path::PathBuf::from(h).join(rest).to_string_lossy().to_string())
                 .unwrap_or_else(|_| path.to_string())
         } else if path.starts_with("./") || path.starts_with("../") {
             let joined = cwd.join(path);
@@ -765,6 +765,9 @@ pub fn normalize_path_for_search(
     };
 
     // Step 2: If absolute, try to match a volume mount point
+    // On Windows, canonicalized paths have \\?\ prefix — strip it for matching
+    #[cfg(windows)]
+    let resolved = resolved.strip_prefix(r"\\?\").unwrap_or(&resolved).to_string();
     let p = std::path::Path::new(&resolved);
     if !p.is_absolute() {
         return (resolved, None);
@@ -774,8 +777,15 @@ pub fn normalize_path_for_search(
     let mut best_len = 0;
 
     for v in volumes {
-        if p.starts_with(&v.mount_point) {
-            let len = v.mount_point.as_os_str().len();
+        // On Windows, volume mount points may also have \\?\ prefix
+        #[cfg(windows)]
+        let mount = std::path::PathBuf::from(
+            v.mount_point.to_string_lossy().strip_prefix(r"\\?\").unwrap_or(&v.mount_point.to_string_lossy())
+        );
+        #[cfg(unix)]
+        let mount = &v.mount_point;
+        if p.starts_with(&mount) {
+            let len = mount.as_os_str().len();
             if len > best_len {
                 best = Some(v);
                 best_len = len;
@@ -785,11 +795,18 @@ pub fn normalize_path_for_search(
 
     match best {
         Some(vol) => {
+            // Use the same \\?\-stripped mount for strip_prefix
+            #[cfg(windows)]
+            let mount = std::path::PathBuf::from(
+                vol.mount_point.to_string_lossy().strip_prefix(r"\\?\").unwrap_or(&vol.mount_point.to_string_lossy())
+            );
+            #[cfg(unix)]
+            let mount = &vol.mount_point;
             let relative = p
-                .strip_prefix(&vol.mount_point)
+                .strip_prefix(&mount)
                 .unwrap()
                 .to_string_lossy()
-                .to_string();
+                .replace('\\', "/");
             (relative, Some(vol.id.to_string()))
         }
         None => (resolved, None),
@@ -810,7 +827,8 @@ fn clean_path(path: &std::path::Path) -> String {
         }
     }
     let result: std::path::PathBuf = parts.iter().collect();
-    result.to_string_lossy().to_string()
+    // Normalize to forward slashes for cross-platform consistency
+    result.to_string_lossy().replace('\\', "/")
 }
 
 /// Search and filter assets via the SQLite catalog.
@@ -4153,6 +4171,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn normalize_absolute_path_matching_volume() {
         let vol = make_volume("Photos", "/Volumes/Photos");
         let (rel, vid) = normalize_path_for_search(
@@ -4179,6 +4198,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn normalize_picks_longest_mount_point() {
         let vol_parent = make_volume("Root", "/Volumes");
         let vol_child = make_volume("Photos", "/Volumes/Photos");
@@ -4191,6 +4211,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn normalize_tilde_expands_to_home() {
         let home = std::env::var("HOME").unwrap();
         let vol = make_volume("Home", &home);
@@ -4204,6 +4225,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn normalize_tilde_alone() {
         let home = std::env::var("HOME").unwrap();
         let vol = make_volume("Home", &home);
@@ -4223,6 +4245,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn normalize_dot_slash_resolves_relative_to_cwd() {
         let vol = make_volume("Photos", "/Volumes/Photos");
         let cwd = std::path::Path::new("/Volumes/Photos/Capture");
@@ -4235,6 +4258,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn normalize_dotdot_resolves_relative_to_cwd() {
         let vol = make_volume("Photos", "/Volumes/Photos");
         let cwd = std::path::Path::new("/Volumes/Photos/Capture/2026");
@@ -4257,6 +4281,71 @@ mod tests {
         // Plain relative paths stay as volume-relative prefix matches
         assert_eq!(rel, "Capture/2026");
         assert!(vid.is_none());
+    }
+
+    // ── Windows path normalization tests ────────────────────────────
+
+    #[test]
+    #[cfg(windows)]
+    fn normalize_windows_absolute_path_matching_volume() {
+        let vol = make_volume("Photos", r"D:\Photos");
+        let (rel, vid) = normalize_path_for_search(
+            r"D:\Photos\Capture\2026", &[vol.clone()], None,
+        );
+        assert_eq!(rel, "Capture/2026");
+        assert_eq!(vid, Some(vol.id.to_string()));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn normalize_windows_picks_longest_mount_point() {
+        let vol_parent = make_volume("Drive", r"D:\");
+        let vol_child = make_volume("Photos", r"D:\Photos");
+        let (rel, vid) = normalize_path_for_search(
+            r"D:\Photos\Capture\2026", &[vol_parent, vol_child.clone()], None,
+        );
+        assert_eq!(rel, "Capture/2026");
+        assert_eq!(vid, Some(vol_child.id.to_string()));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn normalize_windows_tilde_expands_to_userprofile() {
+        let home = std::env::var("USERPROFILE").unwrap();
+        let vol = make_volume("Home", &home);
+        let cwd = std::path::Path::new(r"C:\Temp");
+
+        let (rel, vid) = normalize_path_for_search(
+            "~/Photos/2026", &[vol.clone()], Some(cwd),
+        );
+        assert_eq!(rel, "Photos/2026");
+        assert_eq!(vid, Some(vol.id.to_string()));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn normalize_windows_dot_slash_resolves_relative_to_cwd() {
+        let vol = make_volume("Photos", r"D:\Photos");
+        let cwd = std::path::Path::new(r"D:\Photos\Capture");
+
+        let (rel, vid) = normalize_path_for_search(
+            "./2026-02-22", &[vol.clone()], Some(cwd),
+        );
+        assert_eq!(rel, "Capture/2026-02-22");
+        assert_eq!(vid, Some(vol.id.to_string()));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn normalize_windows_dotdot_resolves_relative_to_cwd() {
+        let vol = make_volume("Photos", r"D:\Photos");
+        let cwd = std::path::Path::new(r"D:\Photos\Capture\2026");
+
+        let (rel, vid) = normalize_path_for_search(
+            "../2025", &[vol.clone()], Some(cwd),
+        );
+        assert_eq!(rel, "Capture/2025");
+        assert_eq!(vid, Some(vol.id.to_string()));
     }
 
     // -- from-tag pattern matching tests --

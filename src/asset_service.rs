@@ -1603,7 +1603,7 @@ impl AssetService {
                     volume.mount_point.display()
                 )
             })?;
-        let new_relative_str = new_relative.to_string_lossy().to_string();
+        let new_relative_str = new_relative.to_string_lossy().replace('\\', "/");
 
         // Convert from_path to volume-relative (strip mount point if absolute)
         let from = Path::new(from_path);
@@ -1618,7 +1618,7 @@ impl AssetService {
                     )
                 })?
                 .to_string_lossy()
-                .to_string()
+                .replace('\\', "/")
         } else {
             from_path.to_string()
         };

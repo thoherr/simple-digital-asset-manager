@@ -31,18 +31,19 @@ maki --version
 
 ### Supported platforms
 
-maki builds and runs on **macOS** and **Linux**. Both x86_64 and ARM (Apple Silicon) are supported.
+maki builds and runs on **macOS**, **Linux**, and **Windows**. Both x86_64 and ARM (Apple Silicon) are supported.
 
-### Optional external tools
+### External tools (highly recommended)
 
-maki handles standard image formats (JPEG, PNG, TIFF, WebP) natively. Two external tools extend its preview capabilities:
+maki handles standard image formats (JPEG, PNG, TIFF, WebP) natively. The following external tools extend its capabilities:
 
 | Tool | Purpose | Install |
 |------|---------|---------|
-| **dcraw** or **dcraw_emu** (LibRaw) | RAW file previews (NEF, ARW, CR2, CR3, etc.) | `brew install dcraw` or `brew install libraw` on macOS; your package manager on Linux |
-| **ffmpeg** | Video thumbnail extraction | `brew install ffmpeg` on macOS; your package manager on Linux |
+| **dcraw** or **dcraw_emu** (LibRaw) | RAW file previews (NEF, ARW, CR2, CR3, etc.) | `brew install dcraw` or `brew install libraw` on macOS; your package manager on Linux; `winget install LibRaw.LibRaw` or `scoop install libraw` on Windows |
+| **ffmpeg** | Video thumbnail extraction | `brew install ffmpeg` on macOS; your package manager on Linux; `winget install Gyan.FFmpeg` or `scoop install ffmpeg` on Windows |
+| **curl** | AI model download and VLM image descriptions | Pre-installed on macOS and most Linux distributions; `winget install cURL.cURL` or `scoop install curl` on Windows |
 
-If these tools are not installed, maki still imports RAW and video files. It generates an info card (a placeholder JPEG showing file metadata) instead of a rendered preview. You can install the tools later and run `maki generate-previews --force` to regenerate real previews.
+When an external tool is missing, maki prints a warning on first use explaining what is needed and why. It still imports RAW and video files, but generates an info card (a placeholder JPEG showing file metadata) instead of a rendered preview. You can install the tools later and run `maki generate-previews --force` to regenerate real previews.
 
 
 ## Initializing a Catalog

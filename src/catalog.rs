@@ -1074,7 +1074,7 @@ impl Catalog {
             rusqlite::params![
                 content_hash,
                 loc.volume_id.to_string(),
-                loc.relative_path.to_string_lossy().to_string(),
+                loc.relative_path_str(),
                 loc.verified_at.map(|t| t.to_rfc3339()),
             ],
         )?;
@@ -1115,7 +1115,7 @@ impl Catalog {
                 format!("{:?}", recipe.recipe_type).to_lowercase(),
                 recipe.content_hash,
                 recipe.location.volume_id.to_string(),
-                recipe.location.relative_path.to_string_lossy().to_string(),
+                recipe.location.relative_path_str(),
             ],
         )?;
         Ok(())
@@ -2363,10 +2363,12 @@ impl Catalog {
         old_path: &str,
         new_path: &str,
     ) -> Result<()> {
+        let new_path_norm = new_path.replace('\\', "/");
+        let old_path_norm = old_path.replace('\\', "/");
         let changed = self.conn.execute(
             "UPDATE file_locations SET relative_path = ?1 \
              WHERE content_hash = ?2 AND volume_id = ?3 AND relative_path = ?4",
-            rusqlite::params![new_path, content_hash, volume_id, old_path],
+            rusqlite::params![new_path_norm, content_hash, volume_id, old_path_norm],
         )?;
         if changed == 0 {
             anyhow::bail!(
@@ -2382,9 +2384,10 @@ impl Catalog {
         recipe_id: &str,
         new_path: &str,
     ) -> Result<()> {
+        let new_path_norm = new_path.replace('\\', "/");
         let changed = self.conn.execute(
             "UPDATE recipes SET relative_path = ?1 WHERE id = ?2",
-            rusqlite::params![new_path, recipe_id],
+            rusqlite::params![new_path_norm, recipe_id],
         )?;
         if changed == 0 {
             anyhow::bail!("No recipe found with id '{recipe_id}'");
@@ -4727,10 +4730,12 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
 
-        assert_eq!(
-            tables,
-            vec!["assets", "collection_assets", "collections", "embeddings", "file_locations", "recipes", "schema_version", "stacks", "variants", "volumes"]
-        );
+        // With --features ai, face detection adds 'faces' and 'people' tables
+        #[cfg(feature = "ai")]
+        let expected = vec!["assets", "collection_assets", "collections", "embeddings", "faces", "file_locations", "people", "recipes", "schema_version", "stacks", "variants", "volumes"];
+        #[cfg(not(feature = "ai"))]
+        let expected = vec!["assets", "collection_assets", "collections", "embeddings", "file_locations", "recipes", "schema_version", "stacks", "variants", "volumes"];
+        assert_eq!(tables, expected);
     }
 
     #[test]

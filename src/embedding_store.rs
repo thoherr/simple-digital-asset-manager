@@ -718,7 +718,8 @@ mod tests {
         // Verify file exists at expected path
         let path = embedding_binary_path(dir.path(), TEST_MODEL, "asset-abc123");
         assert!(path.exists());
-        assert!(path.to_str().unwrap().contains(&format!("{TEST_MODEL}/as/asset-abc123.bin")));
+        let path_str = path.to_str().unwrap().replace('\\', "/");
+        assert!(path_str.contains(&format!("{TEST_MODEL}/as/asset-abc123.bin")));
 
         // Read it back
         let loaded = read_embedding_binary(dir.path(), TEST_MODEL, "asset-abc123").unwrap().unwrap();

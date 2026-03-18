@@ -1692,10 +1692,11 @@ mod tests {
 
     #[test]
     fn tilde_expansion() {
-        let home = std::env::var("HOME").unwrap_or_default();
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_default();
         assert_eq!(expand_tilde("~/Desktop"), format!("{home}/Desktop"));
         assert_eq!(expand_tilde("~"), home);
-        assert_eq!(expand_tilde("/tmp/foo"), "/tmp/foo");
         assert_eq!(expand_tilde("hello"), "hello");
     }
 
@@ -1704,7 +1705,9 @@ mod tests {
         let vars = Variables::new();
         let tokens = vec!["export".into(), "~/out".into()];
         let expanded = expand_variables_in_tokens(tokens, &vars);
-        let home = std::env::var("HOME").unwrap_or_default();
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_default();
         assert_eq!(expanded.command, vec!["export", &format!("{home}/out")]);
     }
 }

@@ -241,6 +241,7 @@ impl PreviewGenerator {
                     || msg.contains("No such file")
                     || msg.contains("does not contain any stream")
                 {
+                    warn_missing_tool_once(&msg);
                     self.generate_info_card(dest, source_path, &fmt, max_edge, quality)
                 } else {
                     Err(e)
@@ -810,8 +811,33 @@ fn ensure_parent(path: &Path) -> Result<()> {
 }
 
 /// Check if a command-line tool is available on PATH.
+/// Print a warning about a missing tool, but only once per tool name.
+fn warn_missing_tool_once(msg: &str) {
+    use std::sync::Mutex;
+    static WARNED: Mutex<Option<std::collections::HashSet<String>>> = Mutex::new(None);
+    let tool = if msg.contains("dcraw") {
+        "dcraw/libraw"
+    } else if msg.contains("ffmpeg") {
+        "ffmpeg"
+    } else {
+        return;
+    };
+    let mut guard = WARNED.lock().unwrap();
+    let set = guard.get_or_insert_with(std::collections::HashSet::new);
+    if set.insert(tool.to_string()) {
+        eprintln!(
+            "Warning: {tool} not found in PATH — falling back to info card previews. \
+             Install {tool} for proper RAW/video previews."
+        );
+    }
+}
+
 fn tool_available(name: &str) -> bool {
-    Command::new("which")
+    #[cfg(unix)]
+    let checker = "which";
+    #[cfg(windows)]
+    let checker = "where";
+    Command::new(checker)
         .arg(name)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
