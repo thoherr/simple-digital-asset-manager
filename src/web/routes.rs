@@ -306,11 +306,8 @@ pub async fn browse_page(
         // Similarity results are bounded by the embedding search limit (not paginated),
         // so fetch them all on one page to allow correct client-side sorting.
         let per_page = if has_similarity { u32::MAX } else { state.per_page };
-        opts.sort = SearchSort::from_str(sort_str);
-        // Auto-sort by similarity when similar: is active and user hasn't chosen a sort
-        if has_similarity && sort_str == "date_desc" {
-            opts.sort = SearchSort::SimilarityDesc;
-        }
+        let effective_sort = if has_similarity && params.sort.is_none() { "similarity" } else { sort_str };
+        opts.sort = SearchSort::from_str(effective_sort);
         opts.page = if has_similarity { 1 } else { page };
         opts.per_page = per_page;
         opts.collapse_stacks = collapse_stacks;
@@ -348,7 +345,7 @@ pub async fn browse_page(
                 label: label_str.to_string(),
                 collection: collection_str.to_string(),
                 path: path_str.to_string(),
-                sort: sort_str.to_string(),
+                sort: effective_sort.to_string(),
                 cards,
                 total,
                 page,
@@ -404,7 +401,7 @@ pub async fn browse_page(
             volume: volume.to_string(),
             rating: rating_str.to_string(),
             label: label_str.to_string(),
-            sort: sort_str.to_string(),
+            sort: effective_sort.to_string(),
             cards,
             total,
             page,
@@ -645,10 +642,8 @@ pub async fn search_api(
         { has_similarity = false; }
 
         let per_page = if has_similarity { u32::MAX } else { state.per_page };
-        opts.sort = SearchSort::from_str(sort_str);
-        if has_similarity && sort_str == "date_desc" {
-            opts.sort = SearchSort::SimilarityDesc;
-        }
+        let effective_sort = if has_similarity && params.sort.is_none() { "similarity" } else { sort_str };
+        opts.sort = SearchSort::from_str(effective_sort);
         opts.page = if has_similarity { 1 } else { page };
         opts.per_page = per_page;
         opts.collapse_stacks = collapse_stacks;
@@ -684,7 +679,7 @@ pub async fn search_api(
             label: label_str.to_string(),
             collection: collection_str.to_string(),
             path: path_str.to_string(),
-            sort: sort_str.to_string(),
+            sort: effective_sort.to_string(),
             cards,
             total,
             page,
