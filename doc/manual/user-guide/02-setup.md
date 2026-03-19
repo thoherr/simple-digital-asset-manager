@@ -73,8 +73,6 @@ This creates the following structure:
   previews/         # Generated preview images
 ```
 
-![Catalog directory structure after maki init](../screenshots/catalog-structure.png)
-
 ### How catalog detection works
 
 After initialization, you can run maki commands from the catalog root or any subdirectory. maki locates the catalog by walking up from your current working directory, looking for a `maki.toml` file. This means you can organize files in subdirectories and still run commands without specifying the catalog path.
