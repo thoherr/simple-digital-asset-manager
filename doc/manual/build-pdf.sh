@@ -253,7 +253,7 @@ cat > "$TMPDIR/header.tex" << 'LATEX'
     \vspace*{2cm}
 
     % Logo
-    \includegraphics[height=5cm]{__MANUAL_DIR__/maki-wordmark-tagline.png}
+    \makebox[\textwidth]{\includegraphics[height=5cm]{__MANUAL_DIR__/maki-wordmark-tagline.png}}
 
     \vspace{2cm}
 
