@@ -238,17 +238,17 @@ Auto-group uses fuzzy prefix matching with separator-boundary detection:
 ```mermaid
 flowchart TD
     A[Collect filename stems from assets] --> B[Sort stems by length, shortest first]
-    B --> C[For each stem, find shortest existing root\nthat is a prefix match]
-    C --> D{Shorter stem is prefix\nof longer stem?}
+    B --> C[For each stem, find shortest existing root<br/>that is a prefix match]
+    C --> D{Shorter stem is prefix<br/>of longer stem?}
     D -- No --> E[Register as new root]
-    D -- Yes --> F{Next character in\nlonger string?}
-    F -- "Non-alphanumeric\n(separator: - _ space ( )" --> G[Match: assign to root's group]
-    F -- "Alphanumeric\n(continuation)" --> E
+    D -- Yes --> F{Next character in<br/>longer string?}
+    F -- "Non-alphanumeric<br/>(separator: - _ space ( )" --> G[Match: assign to root's group]
+    F -- "Alphanumeric<br/>(continuation)" --> E
     E --> H[Group assets by resolved root stem]
     G --> H
     H --> I[Filter to groups with 2+ assets]
-    I --> J[Select target per group:\n1. Prefer asset with RAW variant\n2. Oldest by created_at]
-    J --> K[Merge donor variants into target\nre-role Original to Alternate]
+    I --> J[Select target per group:<br/>1. Prefer asset with RAW variant<br/>2. Oldest by created_at]
+    J --> K[Merge donor variants into target<br/>re-role Original to Alternate]
 ```
 
 **Matching examples:**

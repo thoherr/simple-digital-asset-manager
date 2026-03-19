@@ -6,11 +6,11 @@ The six core maintenance commands form a cycle:
 
 ```mermaid
 flowchart LR
-    V["maki verify\n(detect corruption)"]
-    S["maki sync\n(reconcile moved/\nmodified files)"]
-    SM["maki sync-metadata\n(bidirectional\nXMP sync)"]
-    R["maki refresh\n(re-read changed\nrecipes)"]
-    C["maki cleanup\n(remove stale\nrecords)"]
+    V["maki verify<br/>(detect corruption)"]
+    S["maki sync<br/>(reconcile moved/<br/>modified files)"]
+    SM["maki sync-metadata<br/>(bidirectional<br/>XMP sync)"]
+    R["maki refresh<br/>(re-read changed<br/>recipes)"]
+    C["maki cleanup<br/>(remove stale<br/>records)"]
 
     V --> S --> SM --> R --> C --> V
 ```
