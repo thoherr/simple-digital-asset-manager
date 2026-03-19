@@ -306,7 +306,7 @@ pub async fn browse_page(
         // Similarity results are bounded by the embedding search limit (not paginated),
         // so fetch them all on one page to allow correct client-side sorting.
         let per_page = if has_similarity { u32::MAX } else { state.per_page };
-        let effective_sort = if has_similarity && params.sort.is_none() { "similarity" } else { sort_str };
+        let effective_sort = if has_similarity && params.sort.is_none() { "similarity_desc" } else { sort_str };
         opts.sort = SearchSort::from_str(effective_sort);
         opts.page = if has_similarity { 1 } else { page };
         opts.per_page = per_page;
@@ -323,11 +323,15 @@ pub async fn browse_page(
             for card in &mut cards {
                 card.similarity = similarity_scores.get(&card.asset_id).copied();
             }
-            if matches!(opts.sort, SearchSort::SimilarityDesc) {
+            if matches!(opts.sort, SearchSort::SimilarityDesc | SearchSort::SimilarityAsc) {
                 cards.sort_by(|a, b| {
                     let sa = a.similarity.unwrap_or(0.0);
                     let sb = b.similarity.unwrap_or(0.0);
-                    sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+                    if matches!(opts.sort, SearchSort::SimilarityAsc) {
+                        sa.partial_cmp(&sb).unwrap_or(std::cmp::Ordering::Equal)
+                    } else {
+                        sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+                    }
                 });
             }
         }
@@ -642,7 +646,7 @@ pub async fn search_api(
         { has_similarity = false; }
 
         let per_page = if has_similarity { u32::MAX } else { state.per_page };
-        let effective_sort = if has_similarity && params.sort.is_none() { "similarity" } else { sort_str };
+        let effective_sort = if has_similarity && params.sort.is_none() { "similarity_desc" } else { sort_str };
         opts.sort = SearchSort::from_str(effective_sort);
         opts.page = if has_similarity { 1 } else { page };
         opts.per_page = per_page;
@@ -658,11 +662,15 @@ pub async fn search_api(
             for card in &mut cards {
                 card.similarity = similarity_scores.get(&card.asset_id).copied();
             }
-            if matches!(opts.sort, SearchSort::SimilarityDesc) {
+            if matches!(opts.sort, SearchSort::SimilarityDesc | SearchSort::SimilarityAsc) {
                 cards.sort_by(|a, b| {
                     let sa = a.similarity.unwrap_or(0.0);
                     let sb = b.similarity.unwrap_or(0.0);
-                    sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+                    if matches!(opts.sort, SearchSort::SimilarityAsc) {
+                        sa.partial_cmp(&sb).unwrap_or(std::cmp::Ordering::Equal)
+                    } else {
+                        sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+                    }
                 });
             }
         }

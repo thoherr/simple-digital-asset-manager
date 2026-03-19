@@ -39,10 +39,12 @@
         {% endif %}
 
         {% if has_similarity %}
-        {% if sort == "similarity" %}
-        <a class="sort-btn active" href="{% call sort_url("date_desc") %}" hx-get="{% call sort_url("date_desc") %}" hx-target="#results" hx-push-url="true">Similarity<span class="sort-arrow">&#9660;</span></a>
+        {% if sort == "similarity_desc" %}
+        <a class="sort-btn active" href="{% call sort_url("similarity_asc") %}" hx-get="{% call sort_url("similarity_asc") %}" hx-target="#results" hx-push-url="true">Similarity<span class="sort-arrow">&#9660;</span></a>
+        {% else if sort == "similarity_asc" %}
+        <a class="sort-btn active" href="{% call sort_url("similarity_desc") %}" hx-get="{% call sort_url("similarity_desc") %}" hx-target="#results" hx-push-url="true">Similarity<span class="sort-arrow">&#9650;</span></a>
         {% else %}
-        <a class="sort-btn" href="{% call sort_url("similarity") %}" hx-get="{% call sort_url("similarity") %}" hx-target="#results" hx-push-url="true">Similarity</a>
+        <a class="sort-btn" href="{% call sort_url("similarity_desc") %}" hx-get="{% call sort_url("similarity_desc") %}" hx-target="#results" hx-push-url="true">Similarity</a>
         {% endif %}
         {% endif %}
     </div>
