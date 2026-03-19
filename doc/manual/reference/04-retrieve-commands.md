@@ -29,8 +29,7 @@ Searches the catalog for assets matching the given query. The query string suppo
 | `type:` | Asset type | `type:image`, `type:video`, `type:audio` |
 | `tag:` | Tag name (hierarchical: matches descendants) | `tag:landscape`, `tag:"golden hour"`, `tag:animals/birds` |
 | `format:` | File format | `format:jpg`, `format:nef`, `format:mp4` |
-| `rating:` | Star rating (exact) | `rating:5` |
-| `rating:N+` | Star rating (minimum) | `rating:3+` |
+| `rating:` | Star rating (exact, range, OR) | `rating:5`, `rating:3+`, `rating:3-5`, `rating:2,4` |
 | `label:` | Color label | `label:Red`, `label:Green` |
 | `camera:` | Camera model (partial match) | `camera:fuji`, `camera:"Canon EOS R5"` |
 | `lens:` | Lens model (partial match) | `lens:56mm`, `lens:"RF 50mm f/1.2"` |
@@ -47,16 +46,23 @@ Searches the catalog for assets matching the given query. The query string suppo
 | `dateUntil:` | Creation date upper bound (inclusive) | `dateUntil:2026-12-31` |
 | `copies:` | File location count (exact) | `copies:1`, `copies:2` |
 | `copies:N+` | File location count (minimum) | `copies:2+`, `copies:3+` |
+| `id:` | Asset ID (prefix match) | `id:72a0bb4b` |
+| `variants:` | Variant count (exact or minimum) | `variants:2`, `variants:2+` |
+| `scattered:` | Variants on N+ different volumes | `scattered:2+` |
 | `orphan:true` | Assets with zero file locations | `orphan:true` |
+| `orphan:false` | Assets with at least one file location | `orphan:false` |
 | `missing:true` | Assets with files missing on disk | `missing:true` |
 | `stale:N` | Not verified in N days | `stale:30`, `stale:90` |
-| `volume:none` | Assets not on any online volume | `volume:none` |
+| `volume:` | Assets on a specific volume | `volume:Archive`, `volume:none` |
 | `stacked:true` | Assets in a stack | `stacked:true` |
 | `stacked:false` | Assets not in any stack | `stacked:false` |
 | `geo:` | GPS geolocation | `geo:any`, `geo:none`, `geo:52.5,13.4,10` |
 | `faces:` | Face count (ai feature) | `faces:any`, `faces:none`, `faces:2+` |
 | `person:` | Named person (ai feature) | `person:Alice`, `person:"John Smith"` |
 | `similar:` | Visual similarity (ai feature) | `similar:72a0bb4b`, `similar:72a0bb4b:50` |
+| `min_sim:` | Minimum similarity threshold (ai) | `min_sim:90` |
+| `text:` | Semantic text-to-image search (ai) | `text:sunset`, `text:"woman reading"` |
+| `embed:` | Embedding status (ai feature) | `embed:any`, `embed:none` |
 
 Filters can be freely combined. Free-text tokens that do not match a filter prefix are joined as a text search against filenames and metadata.
 

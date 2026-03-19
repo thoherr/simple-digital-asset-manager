@@ -77,6 +77,8 @@ All filters can be combined in a single query. Remaining tokens become free-text
 | Format | `format:<ext>` | `format:nef`, `format:jpg` |
 | Rating (exact) | `rating:<N>` | `rating:5` |
 | Rating (minimum) | `rating:<N>+` | `rating:3+` |
+| Rating (range) | `rating:<N>-<M>` | `rating:3-5` |
+| Rating (OR) | `rating:<N>,<M>` | `rating:2,4`, `rating:2,4+` |
 | Color label | `label:<color>` | `label:Red`, `label:Blue` |
 | Camera | `camera:<text>` | `camera:fuji`, `camera:"Canon EOS R5"` |
 | Lens | `lens:<text>` | `lens:56mm`, `lens:"RF 50mm f/1.2"` |

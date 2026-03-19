@@ -136,23 +136,39 @@ maki search "format:tif tag:processed"
 
 ## rating
 
-**Syntax:** `rating:<N>` (exact) or `rating:<N>+` (minimum)
+**Syntax:** `rating:<N>` | `rating:<N>+` | `rating:<N>-<M>` | `rating:<N>,<M>` | `rating:<N>,<M>+`
 
-**Values:** 1 through 5
+**Values:** 0 through 5 (0 = unrated)
 
-**Description:** Filters by the asset's star rating (1--5 scale). Use a bare number for exact match, or append `+` for "this rating or higher." Ratings are extracted from XMP during import. Microsoft Photo ratings (percentage values 1--99) are automatically normalized to the 1--5 scale (1=1, 25=2, 50=3, 75=4, 99=5).
+**Description:** Filters by the asset's star rating (1--5 scale, 0 = unrated). Supports the full numeric filter syntax:
+
+| Syntax | Meaning | Example |
+|--------|---------|---------|
+| `N` | exactly N | `rating:5` |
+| `N+` | N or more | `rating:3+` |
+| `N-M` | from N to M | `rating:3-5` |
+| `N,M` | exactly N OR M | `rating:2,4` |
+| `N,M+` | exactly N OR M+ | `rating:2,4+` |
+
+Ratings are extracted from XMP during import. Microsoft Photo ratings (percentage values 1--99) are automatically normalized to the 1--5 scale (1=1, 25=2, 50=3, 75=4, 99=5).
 
 **Examples:**
 
 ```
 maki search "rating:5"          # exactly 5 stars
 maki search "rating:3+"         # 3 stars or more
-maki search "rating:4+ tag:landscape"
+maki search "rating:3-5"        # 3, 4, or 5 stars
+maki search "rating:2,4"        # exactly 2 or 4 stars
+maki search "rating:2,4+"       # exactly 2, or 4 stars and above
+maki search "rating:0"          # unrated assets
 ```
 
 **SQL behavior:**
 - Exact: `WHERE a.rating = ?`
 - Minimum: `WHERE a.rating >= ?`
+- Range: `WHERE a.rating >= ? AND a.rating <= ?`
+- Values: `WHERE a.rating IN (?, ?)`
+- Combined: `WHERE (a.rating IN (?) OR a.rating >= ?)`
 
 Pure assets-table filter, no JOIN required.
 
@@ -481,18 +497,22 @@ maki search "id:c654efa4-4e55"
 
 ## orphan
 
-**Syntax:** `orphan:true`
+**Syntax:** `orphan:true` | `orphan:false`
 
-**Description:** Finds assets that have zero file location records in the catalog. These are assets whose files have all been removed (via cleanup or manual deletion) but whose metadata records remain.
+**Description:** Filters by whether an asset has any file location records.
+
+- `orphan:true` — assets with zero file locations (files removed but metadata remains)
+- `orphan:false` — assets with at least one file location (has files on disk)
 
 **Examples:**
 
 ```
-maki search "orphan:true"
-maki search "orphan:true type:image"
+maki search "orphan:true"                   # assets with no files on disk
+maki search "orphan:false type:image"       # images that have files
+maki search "volume:none orphan:false"      # has files, but not on any online volume
 ```
 
-**SQL behavior:** `WHERE NOT EXISTS (SELECT 1 FROM file_locations fl JOIN variants v ON fl.content_hash = v.content_hash WHERE v.asset_id = a.id)`. Pure SQL subquery, no disk I/O.
+**SQL behavior:** `orphan:true` uses `NOT EXISTS (...)`, `orphan:false` uses `EXISTS (...)` on the file_locations/variants subquery. Pure SQL, no disk I/O.
 
 ---
 

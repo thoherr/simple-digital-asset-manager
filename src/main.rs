@@ -397,10 +397,9 @@ enum Commands {
     /// Search assets
     #[command(display_order = 30)]
     Search {
-        /// Free-text keywords and optional filters (type:image, tag:landscape, format:jpg,
-        /// rating:3+, camera:fuji, lens:56mm, iso:100-800, focal:35-70, f:1.4-2.8,
-        /// width:4000+, height:2000+, meta:key=value, orphan:true, missing:true,
-        /// stale:30, volume:none)
+        /// Free-text keywords and filters. See 'maki help search' or the manual for the
+        /// full list. Common filters: type:, tag:, format:, rating:, label:, camera:, lens:,
+        /// path:, collection:, date:, volume:, copies:, stacked:, person:, similar: (ai)
         query: String,
 
         /// Output format: ids, short, full, json, or a custom template (e.g. '{id}\t{name}')

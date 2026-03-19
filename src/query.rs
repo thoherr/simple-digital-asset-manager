@@ -96,7 +96,9 @@ pub struct ParsedSearch {
     pub path_prefixes: Vec<String>,
     pub path_prefixes_exclude: Vec<String>,
     pub rating_min: Option<u8>,
+    pub rating_max: Option<u8>,
     pub rating_exact: Option<u8>,
+    pub rating_values: Vec<u8>,
     pub iso_min: Option<i64>,
     pub iso_max: Option<i64>,
     pub focal_min: Option<f64>,
@@ -107,6 +109,7 @@ pub struct ParsedSearch {
     pub height_min: Option<i64>,
     pub meta_filters: Vec<(String, String)>,
     pub orphan: bool,
+    pub orphan_false: bool,
     pub stale_days: Option<u64>,
     pub missing: bool,
     pub volumes: Vec<String>,
@@ -177,7 +180,9 @@ impl ParsedSearch {
         // Option fields: prefer self, fall back to other
         if self.text.is_none() { self.text = other.text.clone(); }
         if self.rating_min.is_none() { self.rating_min = other.rating_min; }
+        if self.rating_max.is_none() { self.rating_max = other.rating_max; }
         if self.rating_exact.is_none() { self.rating_exact = other.rating_exact; }
+        self.rating_values.extend(other.rating_values.iter());
         if self.iso_min.is_none() { self.iso_min = other.iso_min; }
         if self.iso_max.is_none() { self.iso_max = other.iso_max; }
         if self.focal_min.is_none() { self.focal_min = other.focal_min; }
@@ -213,6 +218,7 @@ impl ParsedSearch {
 
         // Bool fields: OR
         self.orphan = self.orphan || other.orphan;
+        self.orphan_false = self.orphan_false || other.orphan_false;
         self.missing = self.missing || other.missing;
         self.volume_none = self.volume_none || other.volume_none;
     }
@@ -240,7 +246,9 @@ impl ParsedSearch {
             path_prefixes: &self.path_prefixes,
             path_prefixes_exclude: &self.path_prefixes_exclude,
             rating_min: self.rating_min,
+            rating_max: self.rating_max,
             rating_exact: self.rating_exact,
+            rating_values: &self.rating_values,
             iso_min: self.iso_min,
             iso_max: self.iso_max,
             focal_min: self.focal_min,
@@ -255,6 +263,7 @@ impl ParsedSearch {
                 .map(|(k, v)| (k.as_str(), v.as_str()))
                 .collect(),
             orphan: self.orphan,
+            orphan_false: self.orphan_false,
             stale_days: self.stale_days,
             copies_exact: self.copies_exact,
             copies_min: self.copies_min,
@@ -355,6 +364,11 @@ fn tokenize_query(query: &str) -> Vec<String> {
 /// assert_eq!(p.tags, vec!["Fools Theater"]);
 /// assert_eq!(p.cameras, vec!["Canon EOS R5"]);
 ///
+/// // Rating range
+/// let p = parse_search_query("rating:3-5");
+/// assert_eq!(p.rating_min, Some(3));
+/// assert_eq!(p.rating_max, Some(5));
+///
 /// // Free text (unrecognized tokens)
 /// let p = parse_search_query("sunset beach");
 /// assert_eq!(p.text, Some("sunset beach".to_string()));
@@ -392,10 +406,35 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
                 parsed.formats.push(value.to_string());
             }
         } else if let Some(value) = token_body.strip_prefix("rating:") {
-            // Rating doesn't support negation — ignore the `-` prefix
-            if let Some(num_str) = value.strip_suffix('+') {
+            // Syntax: 3 (exact), 3+ (min), 3-5 (range), 2,4 (OR), 2,4+ (OR with min)
+            if value.contains(',') {
+                for part in value.split(',') {
+                    let part = part.trim();
+                    if let Some(num_str) = part.strip_suffix('+') {
+                        if let Ok(n) = num_str.parse::<u8>() {
+                            parsed.rating_min = Some(n);
+                        }
+                    } else if part.contains('-') {
+                        if let Some((lo, hi)) = part.split_once('-') {
+                            if let (Ok(a), Ok(b)) = (lo.parse::<u8>(), hi.parse::<u8>()) {
+                                parsed.rating_min = Some(a);
+                                parsed.rating_max = Some(b);
+                            }
+                        }
+                    } else if let Ok(n) = part.parse::<u8>() {
+                        parsed.rating_values.push(n);
+                    }
+                }
+            } else if let Some(num_str) = value.strip_suffix('+') {
                 if let Ok(n) = num_str.parse::<u8>() {
                     parsed.rating_min = Some(n);
+                }
+            } else if value.contains('-') {
+                if let Some((lo, hi)) = value.split_once('-') {
+                    if let (Ok(a), Ok(b)) = (lo.parse::<u8>(), hi.parse::<u8>()) {
+                        parsed.rating_min = Some(a);
+                        parsed.rating_max = Some(b);
+                    }
                 }
             } else if let Ok(n) = value.parse::<u8>() {
                 parsed.rating_exact = Some(n);
@@ -440,6 +479,8 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
             }
         } else if token_body == "orphan:true" {
             parsed.orphan = true;
+        } else if token_body == "orphan:false" {
+            parsed.orphan_false = true;
         } else if token_body == "missing:true" {
             parsed.missing = true;
         } else if let Some(value) = token_body.strip_prefix("stale:") {
@@ -485,6 +526,7 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
                 parsed.variant_count_exact = value.parse().ok();
             }
         } else if let Some(value) = token_body.strip_prefix("scattered:") {
+            let value = value.strip_suffix('+').unwrap_or(value);
             parsed.scattered_min = value.parse().ok();
         } else if let Some(value) = token_body.strip_prefix("date:") {
             parsed.date_prefix = Some(value.to_string());
@@ -3401,7 +3443,15 @@ mod tests {
     fn parse_orphan_filter() {
         let p = parse_search_query("orphan:true");
         assert!(p.orphan);
+        assert!(!p.orphan_false);
         assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_orphan_false_filter() {
+        let p = parse_search_query("orphan:false");
+        assert!(!p.orphan);
+        assert!(p.orphan_false);
     }
 
     #[test]
@@ -3577,6 +3627,51 @@ mod tests {
         let p = parse_search_query("scattered:2 variants:3+");
         assert_eq!(p.scattered_min, Some(2));
         assert_eq!(p.variant_count_min, Some(3));
+    }
+
+    #[test]
+    fn parse_scattered_with_plus_suffix() {
+        let p = parse_search_query("scattered:2+");
+        assert_eq!(p.scattered_min, Some(2));
+    }
+
+    #[test]
+    fn parse_rating_comma_separated() {
+        // rating:4,5 → exact values 4 and 5
+        let p = parse_search_query("rating:4,5");
+        assert_eq!(p.rating_values, vec![4, 5]);
+        assert!(p.rating_min.is_none());
+        assert!(p.rating_exact.is_none());
+    }
+
+    #[test]
+    fn parse_rating_comma_with_min() {
+        // rating:2,4+ → exact 2 OR minimum 4
+        let p = parse_search_query("rating:2,4+");
+        assert_eq!(p.rating_values, vec![2]);
+        assert_eq!(p.rating_min, Some(4));
+    }
+
+    #[test]
+    fn parse_rating_comma_multiple() {
+        let p = parse_search_query("rating:1,3,5");
+        assert_eq!(p.rating_values, vec![1, 3, 5]);
+    }
+
+    #[test]
+    fn parse_rating_range() {
+        let p = parse_search_query("rating:3-5");
+        assert_eq!(p.rating_min, Some(3));
+        assert_eq!(p.rating_max, Some(5));
+        assert!(p.rating_exact.is_none());
+    }
+
+    #[test]
+    fn parse_rating_range_low() {
+        let p = parse_search_query("rating:1-2");
+        assert_eq!(p.rating_min, Some(1));
+        assert_eq!(p.rating_max, Some(2));
+        assert!(p.rating_exact.is_none());
     }
 
     // ── date filter parse tests ─────────────────────────────────────

@@ -432,7 +432,9 @@ pub struct SearchOptions<'a> {
     pub volume_ids: &'a [String],
     pub volume_ids_exclude: &'a [String],
     pub rating_min: Option<u8>,
+    pub rating_max: Option<u8>,
     pub rating_exact: Option<u8>,
+    pub rating_values: &'a [u8],
     pub iso_min: Option<i64>,
     pub iso_max: Option<i64>,
     pub focal_min: Option<f64>,
@@ -443,6 +445,7 @@ pub struct SearchOptions<'a> {
     pub height_min: Option<i64>,
     pub meta_filters: Vec<(&'a str, &'a str)>,
     pub orphan: bool,
+    pub orphan_false: bool,
     pub stale_days: Option<u64>,
     pub missing_asset_ids: Option<&'a [String]>,
     pub no_online_locations: Option<&'a [String]>,
@@ -499,7 +502,9 @@ impl<'a> Default for SearchOptions<'a> {
             volume_ids: &[],
             volume_ids_exclude: &[],
             rating_min: None,
+            rating_max: None,
             rating_exact: None,
+            rating_values: &[],
             iso_min: None,
             iso_max: None,
             focal_min: None,
@@ -510,6 +515,7 @@ impl<'a> Default for SearchOptions<'a> {
             height_min: None,
             meta_filters: Vec::new(),
             orphan: false,
+            orphan_false: false,
             stale_days: None,
             missing_asset_ids: None,
             no_online_locations: None,
@@ -2589,13 +2595,40 @@ impl Catalog {
         }
 
         // --- Rating ---
-        if let Some(min) = opts.rating_min {
-            clauses.push("a.rating >= ?".to_string());
-            params.push(Box::new(min as i64));
-        }
-        if let Some(exact) = opts.rating_exact {
-            clauses.push("a.rating = ?".to_string());
-            params.push(Box::new(exact as i64));
+        // Supports: exact (3), minimum (3+), range (3-5), OR values (2,4), combined (2,4+)
+        {
+            let mut parts: Vec<String> = Vec::new();
+            // Exact values from comma syntax: rating:2,4
+            if !opts.rating_values.is_empty() {
+                let placeholders: Vec<&str> = opts.rating_values.iter().map(|_| "?").collect();
+                parts.push(format!("a.rating IN ({})", placeholders.join(",")));
+                for v in opts.rating_values {
+                    params.push(Box::new(*v as i64));
+                }
+            }
+            // Range or minimum: rating:3+ or rating:3-5
+            if let Some(min) = opts.rating_min {
+                if let Some(max) = opts.rating_max {
+                    parts.push("(a.rating >= ? AND a.rating <= ?)".to_string());
+                    params.push(Box::new(min as i64));
+                    params.push(Box::new(max as i64));
+                } else {
+                    parts.push("a.rating >= ?".to_string());
+                    params.push(Box::new(min as i64));
+                }
+            }
+            // Single exact value: rating:3
+            if let Some(exact) = opts.rating_exact {
+                parts.push("a.rating = ?".to_string());
+                params.push(Box::new(exact as i64));
+            }
+            if !parts.is_empty() {
+                if parts.len() == 1 {
+                    clauses.push(parts.into_iter().next().unwrap());
+                } else {
+                    clauses.push(format!("({})", parts.join(" OR ")));
+                }
+            }
         }
 
         // --- Color label (equality on a.color_label) ---
@@ -2690,6 +2723,12 @@ impl Catalog {
         if opts.orphan {
             clauses.push(
                 "NOT EXISTS (SELECT 1 FROM file_locations fl2 JOIN variants v2 ON fl2.content_hash = v2.content_hash WHERE v2.asset_id = a.id)"
+                    .to_string(),
+            );
+        }
+        if opts.orphan_false {
+            clauses.push(
+                "EXISTS (SELECT 1 FROM file_locations fl2 JOIN variants v2 ON fl2.content_hash = v2.content_hash WHERE v2.asset_id = a.id)"
                     .to_string(),
             );
         }
