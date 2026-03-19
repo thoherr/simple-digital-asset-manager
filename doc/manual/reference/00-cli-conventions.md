@@ -21,10 +21,9 @@ All data types (`SearchRow`, `AssetDetails`, `ImportResult`, `VerifyResult`, `Sy
 
 ### `-l` / `--log`
 
-Enables per-file progress logging to stderr. The format depends on the command:
+Enables per-file progress logging to stderr. Applies to all multi-file commands: import, verify, sync, sync-metadata, refresh, cleanup, generate-previews, relocate, writeback, dedup, export, delete, fix-roles, fix-dates, fix-recipes, auto-group, describe, and `maki serve` (logs HTTP requests).
 
-- **Multi-file commands** (import, verify, sync, refresh, cleanup, generate-previews): each file prints a line in the format `filename -- status (duration)`.
-- **`maki serve`**: each HTTP request prints `METHOD /path -> STATUS (duration)`.
+Each file prints a status line to stderr in the format `filename -- status (duration)`.
 
 ```bash
 maki import /Volumes/Photos/2026 --log

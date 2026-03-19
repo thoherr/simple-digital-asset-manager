@@ -17,7 +17,7 @@ struct Cli {
     #[arg(long, global = true, display_order = 30)]
     json: bool,
 
-    /// Log individual file progress (import, verify, generate-previews)
+    /// Log per-file progress to stderr (all multi-file commands)
     #[arg(short = 'l', long = "log", global = true, display_order = 40)]
     log: bool,
 
