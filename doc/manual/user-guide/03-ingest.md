@@ -249,21 +249,17 @@ JPEG and TIFF files can contain XMP metadata embedded in their binary structure 
 
 Other file formats (RAW, video, audio, etc.) are skipped for embedded XMP extraction -- zero I/O overhead.
 
-### Precedence Chain
+### Processing Order and Precedence
 
-When the same metadata field is available from multiple sources:
+Metadata sources are processed in this order during import:
 
-```
-EXIF  >  Embedded XMP  >  Sidecar XMP
-(highest)               (lowest)
-```
+1. **EXIF** — extracted first. Sets `created_at`, camera/lens info, exposure data, GPS coordinates.
+2. **Embedded XMP** (JPEG/TIFF only) — fills any fields still empty after EXIF (insert-if-absent).
+3. **Sidecar XMP** — fills any fields still empty after embedded XMP (insert-if-absent).
 
-- **EXIF** values are assigned directly and always win.
-- **Embedded XMP** values use insert-if-absent semantics.
-- **Sidecar XMP** values use insert-if-absent semantics.
-- **Tags** are the exception: all sources merge (union of all keywords).
+For rating, description, and color label, the **first source to set a value wins** on initial import. Tags are always merged from all sources (union of all keywords, no removal).
 
-For description, rating, and color label, the first source that provides a value wins.
+When a sidecar recipe is **updated later** (e.g. after editing in Capture One or Lightroom), the behavior changes: sidecar XMP **overwrites** rating, description, and color label. This ensures that edits made in photo editing software take effect. The `created_at` date is never overwritten — it is always derived from EXIF.
 
 ## Preview Generation
 
