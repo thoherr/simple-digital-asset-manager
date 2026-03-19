@@ -2,6 +2,21 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.0.4 (2026-03-19)
+
+### Bug Fixes
+- **Tags with double quotes** — tags containing `"` (e.g. `"Sir" Oliver Mally`) now work correctly in browse, search, and tag filtering. Fixed both the SQL LIKE matching (now handles JSON-escaped `\"` form) and the JavaScript string injection (custom `js_string` filter with `|safe` bypass).
+
+### Enhancements
+- **Doc tests** — 10 new documentation examples covering `parse_search_query`, `parse_date_input`, `render_template`, `parse_format`, tag utilities, `FileLocation::relative_path_str`, and `Asset::validate_color_label`. These serve as both API documentation and regression tests.
+- **Tag matching tests** — 4 new unit tests for tags with special characters (double quotes, apostrophes, ampersands) to prevent regressions.
+- **Updated branding** — cover page logo and header icon updated from current marketing assets.
+
+### Documentation
+- Updated roadmap with v4.0.1–v4.0.3 completed milestones and Phase 3 auto-stack proposal.
+- Added i18n proposal for multi-language manual (English/German).
+- Removed redundant catalog structure screenshot (code block is easier to maintain).
+
 ## v4.0.3 (2026-03-18)
 
 ### New Features
