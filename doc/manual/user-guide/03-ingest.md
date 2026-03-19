@@ -25,7 +25,7 @@ flowchart TD
     J --> M[Write sidecar YAML + update catalog]
 ```
 
-**Metadata precedence**: When the same field appears in multiple sources, EXIF wins over embedded XMP, which wins over sidecar XMP. Tags (keywords) are merged from all sources as a union.
+**Metadata precedence**: On initial import, fields are set by the first source that provides them: EXIF data is extracted first, then embedded XMP fills any remaining empty fields, then sidecar XMP fills what is still unset. Tags (keywords) are merged from all sources as a union. On subsequent recipe updates (e.g. after editing in Capture One or Lightroom), sidecar XMP takes highest precedence and overwrites rating, description, and color label. The `created_at` date is always derived from EXIF and never overwritten by XMP.
 
 ## Basic Import
 
