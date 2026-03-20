@@ -883,7 +883,7 @@ enum Commands {
         #[arg(long, display_order = 21)]
         upgrade: bool,
 
-        /// Generate smart previews (high-resolution, 2560px) instead of thumbnails
+        /// Also generate smart previews (high-resolution, 2560px) alongside thumbnails
         #[arg(long, display_order = 22)]
         smart: bool,
     },
@@ -5029,14 +5029,17 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
                     if let Some((content_hash, format)) = lookup {
                         let file_start = std::time::Instant::now();
-                        let result = if smart {
-                            if force { preview_gen.regenerate_smart(&content_hash, file_path, &format) }
-                            else { preview_gen.generate_smart(&content_hash, file_path, &format) }
-                        } else if force {
+                        // Generate regular preview (always)
+                        let result = if force {
                             preview_gen.regenerate(&content_hash, file_path, &format)
                         } else {
                             preview_gen.generate(&content_hash, file_path, &format)
                         };
+                        // Also generate smart preview when --smart is set
+                        if smart {
+                            let _ = if force { preview_gen.regenerate_smart(&content_hash, file_path, &format) }
+                            else { preview_gen.generate_smart(&content_hash, file_path, &format) };
+                        }
                         let file_elapsed = file_start.elapsed();
                         let name = file_path.file_name()
                             .and_then(|n| n.to_str())
@@ -5118,14 +5121,20 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                         if let Some(path) = source_path {
                             let file_start = std::time::Instant::now();
                             let rotation = asset_data.preview_rotation;
-                            let result = if smart {
-                                if force || upgrade { preview_gen.regenerate_smart_with_rotation(&variant.content_hash, &path, &variant.format, rotation) }
-                                else { preview_gen.generate_smart(&variant.content_hash, &path, &variant.format) }
-                            } else if force || upgrade {
+                            // Generate regular preview (always)
+                            let result = if force || upgrade {
                                 preview_gen.regenerate_with_rotation(&variant.content_hash, &path, &variant.format, rotation)
                             } else {
                                 preview_gen.generate(&variant.content_hash, &path, &variant.format)
                             };
+                            // Also generate smart preview when --smart is set
+                            if smart {
+                                let _ = if force || upgrade {
+                                    preview_gen.regenerate_smart_with_rotation(&variant.content_hash, &path, &variant.format, rotation)
+                                } else {
+                                    preview_gen.generate_smart(&variant.content_hash, &path, &variant.format)
+                                };
+                            }
                             let file_elapsed = file_start.elapsed();
                             let name = path.file_name()
                                 .and_then(|n| n.to_str())
