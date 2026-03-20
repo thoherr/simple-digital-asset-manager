@@ -896,43 +896,45 @@ maki search "camera:fuji"
 
 ## Filter Availability
 
-| Filter | CLI `maki search` | Web UI | Saved Searches |
-|--------|:---:|:---:|:---:|
-| Free text | yes | yes (text input) | yes |
-| `type:` | yes | yes (dropdown) | yes |
-| `tag:` | yes | yes (dropdown) | yes |
-| `format:` | yes | yes (dropdown) | yes |
-| `rating:` | yes | yes (star clicks) | yes |
-| `label:` | yes | yes (color dots) | yes |
-| `camera:` | yes | no | yes |
-| `lens:` | yes | no | yes |
-| `iso:` | yes | no | yes |
-| `focal:` | yes | no | yes |
-| `f:` | yes | no | yes |
-| `width:` | yes | no | yes |
-| `height:` | yes | no | yes |
-| `meta:` | yes | no | yes |
-| `path:` | yes | yes (text input) | yes |
-| `collection:` | yes | yes (dropdown) | yes |
-| `volume:` | yes | yes (dropdown) | yes |
-| `volume:none` | yes | no | yes |
-| `copies:` | yes | no | yes |
-| `variants:` | yes | no | yes |
-| `scattered:` | yes | no | yes |
-| `date:` | yes | yes (query input) | yes |
-| `dateFrom:` | yes | yes (query input) | yes |
-| `dateUntil:` | yes | yes (query input) | yes |
-| `id:` | yes | yes (query input) | yes |
-| `orphan:true` | yes | no | yes |
-| `missing:true` | yes | no | yes |
-| `stale:` | yes | no | yes |
-| `stacked:` | yes | no | yes |
-| `geo:` | yes | yes (query input) | yes |
-| `faces:` | yes | yes (query input) | yes |
-| `person:` | yes | yes (dropdown) | yes |
-| `similar:` | yes (ai feature) | yes (detail page) | no |
-| `text:` | yes (ai feature) | yes (query input) | yes |
-| `embed:` | yes (ai feature) | no | yes |
+All filters work in the CLI (`maki search`), the web UI search box, and in saved searches. The web UI additionally provides dedicated controls for the most common filters:
+
+| Filter | Web UI control | Saved Searches |
+|--------|----------------|:-:|
+| Free text | search box | yes |
+| `type:` | dropdown + search box | yes |
+| `tag:` | tag chips + search box | yes |
+| `format:` | multi-select panel + search box | yes |
+| `rating:` | star clicks + search box | yes |
+| `label:` | color dots + search box | yes |
+| `camera:` | search box | yes |
+| `lens:` | search box | yes |
+| `iso:` | search box | yes |
+| `focal:` | search box | yes |
+| `f:` | search box | yes |
+| `width:` | search box | yes |
+| `height:` | search box | yes |
+| `meta:` | search box | yes |
+| `path:` | text input + search box | yes |
+| `collection:` | dropdown + search box | yes |
+| `volume:` | dropdown + search box | yes |
+| `copies:` | search box | yes |
+| `variants:` | search box | yes |
+| `scattered:` | search box | yes |
+| `date:` | search box | yes |
+| `dateFrom:` | search box | yes |
+| `dateUntil:` | search box | yes |
+| `id:` | search box | yes |
+| `orphan:` | search box | yes |
+| `missing:true` | search box | yes |
+| `stale:` | search box | yes |
+| `stacked:` | search box | yes |
+| `geo:` | search box | yes |
+| `faces:` | search box | yes |
+| `person:` | dropdown + search box | yes |
+| `similar:` (ai) | "Browse similar" button + search box | no |
+| `min_sim:` (ai) | search box | no |
+| `text:` (ai) | search box | yes |
+| `embed:` (ai) | search box | yes |
 
 ---
 
