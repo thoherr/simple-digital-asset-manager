@@ -315,7 +315,7 @@ With a smart preview loaded, you can zoom and pan:
 - **Drag**: pan the image when zoomed in (cursor changes to grab/grabbing)
 - **Keyboard**: `,` fit to screen, `.` 100% zoom, `+` zoom in, `-` zoom out
 
-Smart previews can be generated via `maki import --smart`, `[import] smart_previews = true` in config, the "Generate smart preview" button on the detail page, or on-demand via `[preview] generate_on_demand = true`.
+Smart previews can be generated via `maki import --smart`, `[import] smart_previews = true` in config, the "Regenerate previews" button on the detail page, or on-demand via `[preview] generate_on_demand = true`.
 
 ### Keyboard shortcuts
 

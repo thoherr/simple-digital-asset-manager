@@ -92,7 +92,7 @@ JPEG compression quality for smart previews. Only applies when the preview forma
 
 When `true`, the web server generates smart previews automatically on first request. The first load takes a few seconds while the preview is generated; subsequent requests are served from disk. A pulsing "HD" badge in the lightbox and detail page provides visual feedback during generation.
 
-When `false`, smart previews must be generated explicitly via `maki import --smart`, the "Generate smart preview" button on the asset detail page, or a future batch command.
+When `false`, smart previews must be generated explicitly via `maki import --smart`, the "Regenerate previews" button on the asset detail page, or a future batch command.
 
 ### Notes
 
