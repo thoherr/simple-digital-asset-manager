@@ -4,132 +4,6 @@ This page documents every entity in the maki data model, their fields, relations
 
 ---
 
-## ER Diagram
-
-```mermaid
-erDiagram
-    Asset ||--o{ Variant : "has variants"
-    Variant ||--o{ FileLocation : "stored at"
-    Variant ||--o{ Recipe : "attached recipes"
-    FileLocation }o--|| Volume : "on volume"
-    Recipe }o--|| Volume : "on volume"
-    Collection }o--o{ Asset : "contains"
-    Stack ||--o{ Asset : "groups"
-
-    Asset {
-        UUID id PK "deterministic UUID v5 from content hash"
-        string name "optional user-assigned display name"
-        string original_filename "filename of primary variant at import"
-        string asset_type "image, video, audio, document, other"
-        string description "optional free-text description"
-        string_array tags "keyword list"
-        u8 rating "1-5 star rating, optional"
-        string color_label "color name, optional"
-        datetime created_at "from EXIF or filesystem"
-        UUID stack_id FK "denormalized: parent stack, optional"
-        integer stack_position "denormalized: position in stack (0 = pick)"
-        string best_variant_hash "denormalized: hash of best display variant"
-        string primary_variant_format "denormalized: identity format"
-        integer variant_count "denormalized: number of variants"
-    }
-
-    Stack {
-        UUID id PK
-        datetime created_at
-        string_array asset_ids "ordered member list (index 0 = pick)"
-    }
-
-    Variant {
-        string content_hash PK "SHA-256 of file contents"
-        UUID asset_id FK "parent asset"
-        string role "original, alternate, processed, export, sidecar"
-        string format "file extension (nef, jpg, tif, ...)"
-        u64 file_size "bytes"
-        string original_filename "filename at import"
-        map source_metadata "EXIF + XMP key-value pairs"
-        string camera_model "indexed: from EXIF"
-        string lens_model "indexed: from EXIF"
-        real focal_length_mm "indexed: from EXIF"
-        real f_number "indexed: from EXIF"
-        integer iso "indexed: from EXIF"
-        integer image_width "from EXIF"
-        integer image_height "from EXIF"
-    }
-
-    FileLocation {
-        integer id PK "auto-increment"
-        string content_hash FK "parent variant"
-        UUID volume_id FK "storage volume"
-        string relative_path "path relative to volume mount point"
-        datetime verified_at "last integrity check, optional"
-    }
-
-    Recipe {
-        UUID id PK
-        string variant_hash FK "parent variant"
-        string software "XMP, CaptureOne, RawTherapee, DxO, ON1"
-        string recipe_type "sidecar or embedded_export"
-        string content_hash "SHA-256 of recipe file"
-        UUID volume_id FK "storage volume"
-        string relative_path "path relative to volume mount point"
-        datetime verified_at "last integrity check, optional"
-    }
-
-    Volume {
-        UUID id PK
-        string label "human-readable name"
-        string mount_point "filesystem path"
-        string volume_type "local, external, network"
-        string purpose "working, archive, backup, cloud (optional)"
-        bool is_online "computed: does mount_point exist on disk"
-    }
-
-    Collection {
-        UUID id PK
-        string name UK "unique human-readable name"
-        string description "optional"
-        datetime created_at
-    }
-
-    SavedSearch {
-        string name UK "unique identifier"
-        string query "search filter string"
-        string sort "optional sort order"
-    }
-
-    Embedding {
-        string asset_id PK "parent asset"
-        blob embedding "768 x f32 vector"
-        string model "model identifier"
-    }
-
-    Face {
-        UUID id PK
-        UUID asset_id FK "parent asset"
-        UUID person_id FK "assigned person, optional"
-        real bbox_x "normalized 0-1"
-        real bbox_y "normalized 0-1"
-        real bbox_w "normalized 0-1"
-        real bbox_h "normalized 0-1"
-        real confidence "detection score"
-        blob embedding "512 x f32 ArcFace vector"
-        string crop_path "path to face crop JPEG"
-        datetime created_at
-    }
-
-    Person {
-        UUID id PK
-        string name "optional, user-assigned"
-        UUID representative_face_id FK "thumbnail face"
-        datetime created_at
-    }
-
-    Asset ||--o{ Face : "detected faces"
-    Face }o--o| Person : "assigned to"
-```
-
----
-
 ## Entities
 
 ### Asset
@@ -408,6 +282,21 @@ A single `catalog.db` file providing fast indexed queries. Contains denormalized
 | `maki.toml` | TOML | User configuration (preview settings, serve settings, import settings) |
 | `previews/<prefix>/<hash>.jpg` | JPEG | Preview thumbnails keyed by variant content hash |
 | `faces/<prefix>/<face_id>.jpg` | JPEG | Face crop thumbnails (150×150, with `--features ai`) |
+
+### Entity Relationships
+
+```mermaid
+erDiagram
+    Asset ||--o{ Variant : "has variants"
+    Variant ||--o{ FileLocation : "stored at"
+    Variant ||--o{ Recipe : "attached recipes"
+    FileLocation }o--|| Volume : "on volume"
+    Recipe }o--|| Volume : "on volume"
+    Collection }o--o{ Asset : "contains"
+    Stack ||--o{ Asset : "groups"
+    Asset ||--o{ Face : "detected faces"
+    Face }o--o| Person : "assigned to"
+```
 
 ### Content-Addressable Identity
 

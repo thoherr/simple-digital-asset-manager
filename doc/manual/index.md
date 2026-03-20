@@ -35,6 +35,8 @@ Man-page style documentation for every command, filter, and configuration option
 - [Data Model](reference/09-data-model.md) — Asset, Variant, Recipe, Volume, and FileLocation entities
 - [VLM Model Guide](reference/10-vlm-models.md) — Vision-language models for `maki describe`: tested models, backends, hardware guide
 
+\newpage
+
 ## Developer Guide
 
 Technical documentation for integrators and contributors.
