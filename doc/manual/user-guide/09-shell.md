@@ -241,7 +241,7 @@ import /Volumes/Cards/DCIM --log
 auto-group
 generate-previews --log
 auto-tag --apply --log
-describe --query "description:none" --apply --log
+describe "description:none" --apply --log
 stats
 ```
 
@@ -435,8 +435,8 @@ Save this as `post-import.maki` and run after every import:
 $new = search "imported:today"
 auto-group $new
 generate-previews $new --log
-auto-tag --apply --query "tags:none type:image" --log
-describe --query "description:none" --apply --log
+auto-tag "tags:none type:image" --apply --log
+describe "description:none" --apply --log
 stats
 ```
 

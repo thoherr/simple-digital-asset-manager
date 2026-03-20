@@ -703,7 +703,7 @@ Select with `--model <id>` or set `[ai] model` in `maki.toml`. The default is `s
 
 By default runs in **report-only mode** -- shows suggested tags without applying them. Use `--apply` to write suggested tags to assets.
 
-**Scope required**: at least one scope filter (`--query`, `--asset`, or `--volume`) must be specified to prevent accidental full-catalog processing. Use `--query "*"` to explicitly process all assets.
+**Scope required**: at least one scope (positional query, `--asset`, or `--volume`) must be specified to prevent accidental full-catalog processing. Use `"*"` to explicitly process all assets.
 
 Model files are downloaded from HuggingFace on first use. Use `--download` to pre-download, `--remove-model` to delete cached files, and `--list-models` to show all known models with download status, size, and active indicator.
 
@@ -774,7 +774,7 @@ maki auto-tag --download --model siglip-vit-l16-256
 Preview suggested tags for all images (report-only):
 
 ```bash
-maki auto-tag --query "*"
+maki auto-tag "*"
 ```
 
 Auto-tag a specific asset and apply the tags:
@@ -786,19 +786,19 @@ maki auto-tag --asset a1b2c3d4 --apply
 Auto-tag images matching a search query with a higher threshold:
 
 ```bash
-maki auto-tag --query "type:image rating:4+" --threshold 0.4 --apply
+maki auto-tag "type:image rating:4+" --threshold 0.4 --apply
 ```
 
 Use the larger model for a specific query:
 
 ```bash
-maki auto-tag --query "tag:unreviewed" --model siglip-vit-l16-256 --apply
+maki auto-tag "tag:unreviewed" --model siglip-vit-l16-256 --apply
 ```
 
 Use a custom labels file:
 
 ```bash
-maki auto-tag --labels my-labels.txt --query "*" --apply
+maki auto-tag --labels my-labels.txt "*" --apply
 ```
 
 Find visually similar images:
@@ -824,7 +824,7 @@ maki auto-tag --list-models
 Auto-tag with JSON output for scripting:
 
 ```bash
-maki auto-tag --query "tag:unreviewed" --json | jq '.suggestions[] | {asset: .asset_id, tags: [.suggested_tags[].tag]}'
+maki auto-tag "tag:unreviewed" --json | jq '.suggestions[] | {asset: .asset_id, tags: [.suggested_tags[].tag]}'
 ```
 
 ### SEE ALSO
@@ -861,7 +861,7 @@ For each matching asset, the command finds the best available image (smart previ
 
 By default, assets that already have a stored embedding for the active model are skipped. Use `--force` to re-generate embeddings (e.g., after switching to a higher-resolution preview).
 
-**Scope required**: at least one scope filter (`--query`, `--asset`, or `--volume`) must be specified to prevent accidental full-catalog processing. Use `--query "*"` to explicitly process all assets.
+**Scope required**: at least one scope (positional query, `--asset`, or `--volume`) must be specified to prevent accidental full-catalog processing. Use `"*"` to explicitly process all assets.
 
 **Non-destructive**: embedding generation does not modify any asset metadata, tags, or files. It only writes to the `embeddings` table.
 
@@ -894,7 +894,7 @@ By default, assets that already have a stored embedding for the active model are
 Generate embeddings for all assets:
 
 ```bash
-maki embed --query "*"
+maki embed "*"
 ```
 
 Generate embeddings for a single asset:
@@ -912,19 +912,19 @@ maki embed --volume "Photos 2024"
 Force re-generation with a different model:
 
 ```bash
-maki embed --query "*" --model siglip-vit-l16-256 --force
+maki embed "*" --model siglip-vit-l16-256 --force
 ```
 
 Generate embeddings for untagged images only:
 
 ```bash
-maki embed --query "tag:none type:image"
+maki embed "tag:none type:image"
 ```
 
 Check progress with JSON output:
 
 ```bash
-maki embed --query "*" --json | jq '{embedded, skipped}'
+maki embed "*" --json | jq '{embedded, skipped}'
 ```
 
 Export all embeddings to binary files (one-time migration):
@@ -964,7 +964,7 @@ Three modes are available via `--mode`:
 
 By default, the command runs in **report-only mode**: results are generated and displayed but not saved. Use `--apply` to write descriptions/tags to assets. Use `--dry-run` to see what would be processed without calling the VLM at all.
 
-The command requires at least one scope filter (a positional query, `--asset`, or `--volume`) to prevent accidental processing of the entire catalog.
+The command requires at least one scope (positional query, `--asset`, or `--volume`) to prevent accidental processing of the entire catalog.
 
 For each asset, the command:
 1. Checks if a description already exists (skips unless `--force` is set; tags mode always runs)
@@ -1039,7 +1039,7 @@ maki describe --check
 Preview descriptions for undescribed assets (report-only):
 
 ```bash
-maki describe --query "description:none type:image"
+maki describe "description:none type:image"
 ```
 
 Generate and apply descriptions to a specific volume:
@@ -1057,7 +1057,7 @@ maki describe --asset a1b2c3d4 --apply
 Use a faster model for batch processing:
 
 ```bash
-maki describe --query "date:2024-06" --model moondream --apply
+maki describe "date:2024-06" --model moondream --apply
 ```
 
 Use a remote server or larger model:
@@ -1069,7 +1069,7 @@ maki describe --endpoint http://gpu-server:11434 --model qwen2.5vl:7b --apply
 Generate tags only:
 
 ```bash
-maki describe --mode tags --query "tag:untagged" --apply
+maki describe --mode tags "tag:untagged" --apply
 ```
 
 Generate both descriptions and tags in one pass (two VLM calls per asset):
@@ -1081,13 +1081,13 @@ maki describe --mode both --asset a1b2c3d4 --apply
 Custom prompt for architectural photography:
 
 ```bash
-maki describe --prompt "Describe the architectural style, materials, and features." --query "tag:architecture" --apply
+maki describe --prompt "Describe the architectural style, materials, and features." "tag:architecture" --apply
 ```
 
 Deterministic output (temperature 0) for reproducible batch tagging:
 
 ```bash
-maki describe --mode tags --temperature 0 --query "date:2024-06" --apply
+maki describe --mode tags --temperature 0 "date:2024-06" --apply
 ```
 
 Increase timeout for a large model's first load:
@@ -1105,19 +1105,19 @@ maki describe --model qwen3-vl:4b --num-ctx 4096 --top-p 0.9 --apply
 Overwrite existing descriptions with a better model:
 
 ```bash
-maki describe --query "rating:4+" --model qwen2.5vl:7b --force --apply
+maki describe "rating:4+" --model qwen2.5vl:7b --force --apply
 ```
 
 Dry run with JSON output:
 
 ```bash
-maki describe --query "rating:4+" --dry-run --json
+maki describe "rating:4+" --dry-run --json
 ```
 
 Use a cloud API (OpenAI-compatible endpoint):
 
 ```bash
-maki describe --endpoint https://api.openai.com --model gpt-4o --apply --query "*"
+maki describe --endpoint https://api.openai.com --model gpt-4o --apply "*"
 ```
 
 ### SEE ALSO

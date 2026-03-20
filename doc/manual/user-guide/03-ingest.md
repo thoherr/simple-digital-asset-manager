@@ -420,10 +420,10 @@ After importing, you can use AI to automatically suggest tags for your images:
 maki auto-tag --download
 
 # Preview suggested tags (report-only)
-maki auto-tag --query "type:image"
+maki auto-tag "type:image"
 
 # Apply suggested tags
-maki auto-tag --query "type:image" --apply
+maki auto-tag "type:image" --apply
 ```
 
 The command uses SigLIP vision-language models for zero-shot classification against ~100 built-in photography categories (landscape, portrait, architecture, animals, etc.). Tags above the confidence threshold (default 0.1) are suggested. Use `--threshold` to adjust sensitivity.
@@ -433,13 +433,13 @@ Two models are available: the default ViT-B/16-256 (~207 MB) and the larger ViT-
 ```
 # Download and use the larger model
 maki auto-tag --download --model siglip-vit-l16-256
-maki auto-tag --query "type:image" --model siglip-vit-l16-256 --apply
+maki auto-tag "type:image" --model siglip-vit-l16-256 --apply
 ```
 
 You can provide a custom label vocabulary:
 
 ```
-maki auto-tag --labels my-labels.txt --query "*" --apply
+maki auto-tag --labels my-labels.txt "*" --apply
 ```
 
 Image embeddings are stored per model in the catalog, enabling visual similarity search:
@@ -463,7 +463,7 @@ Or enable it permanently in `maki.toml`:
 embeddings = true
 ```
 
-This runs embedding generation as a post-import phase using the preview image for each imported asset. If the AI model is not downloaded, the embedding phase is silently skipped. You can also batch-generate embeddings for existing assets with `maki embed --query "*"`.
+This runs embedding generation as a post-import phase using the preview image for each imported asset. If the AI model is not downloaded, the embedding phase is silently skipped. You can also batch-generate embeddings for existing assets with `maki embed "*"`.
 
 See the [auto-tag reference](../reference/02-ingest-commands.md#maki-auto-tag) for all options and the [configuration reference](../reference/08-configuration.md#ai-section) for `[ai]` settings in `maki.toml`.
 
@@ -582,7 +582,7 @@ Requires `TOGETHER_API_KEY`.
 
 ```bash
 # Preview descriptions without saving (report-only)
-maki describe --query "description:none type:image" --log
+maki describe "description:none type:image" --log
 
 # Apply descriptions to undescribed assets on a volume
 maki describe --volume "Photos 2024" --apply --log
@@ -591,19 +591,19 @@ maki describe --volume "Photos 2024" --apply --log
 maki describe --asset a1b2c3d4 --apply
 
 # Overwrite existing descriptions with a better model
-maki describe --query "rating:5" --model qwen2.5vl:7b --force --apply
+maki describe "rating:5" --model qwen2.5vl:7b --force --apply
 
 # Use a custom prompt for specific content
-maki describe --prompt "List the key subjects and artistic techniques." --query "tag:art" --apply
+maki describe --prompt "List the key subjects and artistic techniques." "tag:art" --apply
 
 # Generate tags instead of descriptions
-maki describe --mode tags --query "tag:untagged" --apply
+maki describe --mode tags "tag:untagged" --apply
 
 # Generate both descriptions and tags (two VLM calls per asset)
 maki describe --mode both --asset a1b2c3d4 --apply
 
 # Dry run to see what would be processed
-maki describe --query "date:2024-06" --dry-run
+maki describe "date:2024-06" --dry-run
 ```
 
 Three modes are available: `--mode describe` (default) generates descriptions, `--mode tags` generates tag suggestions, and `--mode both` runs both — making two separate VLM calls per asset so each uses its optimal prompt. Tags are deduplicated and merged with existing asset tags.
