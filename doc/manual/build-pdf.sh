@@ -226,6 +226,15 @@ cat > "$TMPDIR/header.tex" << 'LATEX'
 \usepackage{graphicx}
 \usepackage{xcolor}
 
+% Unicode symbol fallback — Latin Modern lacks ⊞ ↗ ℹ ✓ etc.
+\usepackage{newunicodechar}
+\newfontfamily{\symbolfont}{Apple Symbols}[Scale=MatchLowercase]
+\newunicodechar{⊞}{{\symbolfont ⊞}}
+\newunicodechar{↗}{{\symbolfont ↗}}
+\newunicodechar{ℹ}{{\symbolfont ℹ}}
+\newfontfamily{\mathsymbolfont}{STIX Two Math}[Scale=MatchLowercase]
+\newunicodechar{✓}{{\mathsymbolfont ✓}}
+
 % Brand colors
 \definecolor{maki-salmon}{HTML}{e8634a}
 \definecolor{maki-nori}{HTML}{1a2332}

@@ -425,7 +425,7 @@ An expandable section lists all variants of the asset in a table with columns fo
 For assets with multiple variants, the **role column** is an inline dropdown. Click it to change a variant's role (original, alternate, processed, export, sidecar). Changes are saved immediately — a green flash confirms success. This is useful for correcting roles after import or `fix-roles` assigns an incorrect role (e.g. marking a re-exported JPEG as "alternate" when it should be "export").
 
 For locations on online volumes, two action buttons appear next to each path:
-- **📂 Reveal** — opens the system file manager with the file selected (Finder on macOS, Explorer on Windows, file manager on Linux).
+- **Reveal (file manager)** — opens the system file manager with the file selected (Finder on macOS, Explorer on Windows, file manager on Linux).
 - **>_ Terminal** — opens a terminal window in the file's parent directory (Terminal.app on macOS, cmd on Windows, system terminal emulator on Linux).
 
 ### Recipes
