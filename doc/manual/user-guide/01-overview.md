@@ -2,11 +2,11 @@
 
 This chapter introduces the data model, architecture, and workflow of **maki** -- a CLI digital asset manager designed for photographers and media professionals managing large collections (terabytes of images, videos, and processing files) across multiple storage devices.
 
-## Data Model
+## Core Concepts
 
 maki organizes your files around these core concepts.
 
-```mermaid
+```mermaid {width=50%}
 erDiagram
     Asset ||--o{ Variant : "has variants"
     Variant ||--o{ Recipe : "has recipes"
@@ -29,6 +29,7 @@ Variants carry a **role** that describes their purpose:
 | Role | Meaning |
 |------|---------|
 | **Original** | Camera original (RAW, in-camera JPEG) |
+| **Alternate** | Another original of the same shot (e.g. in-camera JPEG alongside RAW) |
 | **Processed** | Intermediate edit (PSD, layered TIFF) |
 | **Export** | Final deliverable (resized JPEG, web TIFF) |
 | **Sidecar** | Accompanying non-media file |

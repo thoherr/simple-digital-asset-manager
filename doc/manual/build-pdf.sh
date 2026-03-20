@@ -188,13 +188,21 @@ for mmd_file in "$TMPDIR"/mermaid-*.mmd; do
 done
 
 # Replace ```mermaid...``` blocks with image references in the markdown
+# Supports optional width hint: ```mermaid {width=50%}
 awk -v tmpdir="$TMPDIR" '
     /^```mermaid/ {
         block++
+        # Extract width hint if present, e.g. ```mermaid {width=50%}
+        width = "100%"
+        n = split($0, parts, "{width=")
+        if (n > 1) {
+            split(parts[2], wparts, "}")
+            width = wparts[1]
+        }
         png = tmpdir "/mermaid-" block ".png"
         if ((getline line < png) > 0) {
             close(png)
-            print "![](mermaid-" block ".png){width=100%}\n"
+            print "![](mermaid-" block ".png){width=" width "}\n"
         } else {
             # Render failed — keep original code block
             print
