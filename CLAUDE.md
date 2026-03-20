@@ -23,7 +23,7 @@ See `doc/architecture-overview.md` for design decisions, `doc/component-specific
 
 ## Implemented Commands
 
-39 commands: `init`, `volume add/list/combine/remove`, `import`, `delete`, `export`, `contact-sheet`, `describe`, `search`, `show`, `preview`, `tag`, `edit`, `group`, `split`, `auto-group`, `auto-tag`, `embed`, `faces`, `stack`, `duplicates`, `dedup`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `migrate`, `relocate`, `update-location`, `verify`, `sync`, `sync-metadata`, `refresh`, `cleanup`, `writeback`, `backup-status`, `stats`, `serve`, `saved-search`, `collection`, `shell`
+41 commands: `init`, `volume add/list/combine/remove/set-purpose`, `import`, `delete`, `export`, `contact-sheet`, `describe`, `search`, `show`, `preview`, `tag`, `edit`, `group`, `split`, `auto-group`, `auto-tag`, `embed`, `faces`, `stack`, `duplicates`, `dedup`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `migrate`, `relocate`, `update-location`, `verify`, `sync`, `sync-metadata`, `refresh`, `cleanup`, `writeback`, `backup-status`, `stats`, `serve`, `saved-search`, `collection`, `shell`
 
 See `doc/specification.md` for detailed command behavior, flags, and search filter documentation.
 

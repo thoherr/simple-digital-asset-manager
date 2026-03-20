@@ -1316,4 +1316,4 @@ maki migrate --json
 
 ---
 
-Previous: [Retrieve Commands](04-retrieve-commands.md) -- `search`, `show`, `duplicates`, `stats`, `serve`.
+Previous: [Retrieve Commands](04-retrieve-commands.md) -- `search`, `show`, `preview`, `export`, `contact-sheet`, `duplicates`, `stats`, `backup-status`, `serve`, `shell`.

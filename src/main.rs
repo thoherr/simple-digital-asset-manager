@@ -329,7 +329,7 @@ enum Commands {
         #[arg(long, display_order = 7)]
         max_tokens: Option<u32>,
 
-        /// Request timeout in seconds (default from maki.toml or 120)
+        /// Request timeout in seconds (default from maki.toml or 300)
         #[arg(long, display_order = 8)]
         timeout: Option<u32>,
 
@@ -1340,8 +1340,9 @@ Interactive:
 
 Options:
       --json         Output machine-readable JSON
+  -v, --verbose      Show operational details (file counts, volume detection, etc.)
   -l, --log          Log individual file progress
-  -d, --debug        Show debug output from external tools
+  -d, --debug        Show debug output from external tools (implies --verbose)
   -t, --time         Show elapsed time after command execution
   -h, --help         Print help (use <command> --help for details)
   -V, --version      Print version

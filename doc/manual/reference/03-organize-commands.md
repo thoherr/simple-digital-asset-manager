@@ -367,7 +367,7 @@ maki-saved-search-save -- save a search query with a name
 ### SYNOPSIS
 
 ```
-maki [GLOBAL FLAGS] saved-search save <NAME> <QUERY> [--sort <SORT>]
+maki [GLOBAL FLAGS] saved-search save <NAME> <QUERY> [--sort <SORT>] [--favorite]
 ```
 
 Alias: `maki ss save`
@@ -392,6 +392,9 @@ Saved searches appear as clickable chips in the web UI browse page and can be ex
 
 **--sort \<SORT\>**
 : Sort order for results. Values: `date_desc` (default), `date_asc`, `name_asc`, `name_desc`, `size_asc`, `size_desc`.
+
+**--favorite**
+: Mark the saved search as a favorite. Favorite searches are shown prominently as chips on the web UI browse page.
 
 `--json` outputs the saved search entry.
 
@@ -969,6 +972,67 @@ maki st show a1b2c3d4-... --json
 
 ---
 
+## maki stack from-tag
+
+### NAME
+
+maki-stack-from-tag -- convert matching tags into stacks
+
+### SYNOPSIS
+
+```
+maki [GLOBAL FLAGS] stack from-tag <PATTERN> [--remove-tags] [--apply]
+```
+
+Alias: `maki st from-tag`
+
+### DESCRIPTION
+
+Finds assets whose tags match a pattern containing a `{}` wildcard, groups them by the wildcard value, and creates a stack from each group. This automates the common workflow of converting tag-based groupings (e.g., from CaptureOne or Lightroom) into maki stacks.
+
+Without `--apply`, runs in **report-only mode** showing what stacks would be created. With `--apply`, creates the stacks. With `--remove-tags`, the matched tag is removed from each asset after stacking.
+
+### ARGUMENTS
+
+**PATTERN** (required)
+: A tag pattern with `{}` as a wildcard placeholder. For example, `"Aperture Stack {}"` matches tags like "Aperture Stack 1", "Aperture Stack 2", etc.
+
+### OPTIONS
+
+**--remove-tags**
+: Remove the matched tag from each asset after stack creation. Only effective with `--apply`.
+
+**--apply**
+: Actually create stacks. Without this flag, the command only reports what it would do.
+
+### EXAMPLES
+
+Preview what stacks would be created from aperture stack tags:
+
+```bash
+maki stack from-tag "Aperture Stack {}"
+```
+
+Create stacks and remove the grouping tags:
+
+```bash
+maki st from-tag "Aperture Stack {}" --remove-tags --apply
+```
+
+Create stacks from bracket sequence tags:
+
+```bash
+maki stack from-tag "Bracket {}" --apply
+```
+
+### SEE ALSO
+
+[stack create](#maki-stack-create) -- manually create a stack from specific assets.
+[stack dissolve](#maki-stack-dissolve) -- dissolve stacks if the result is unwanted.
+[tag](02-ingest-commands.md#maki-tag) -- manage asset tags.
+
+---
+
 ---
 
 ## maki faces detect
@@ -1002,8 +1066,14 @@ Requires at least one scope filter (`--query`, `--asset`, or `--volume`) to prev
 **--volume \<label\>**
 : Process assets on a specific volume.
 
+**--min-confidence \<FLOAT\>**
+: Minimum detection confidence threshold (0.0–1.0, default 0.5). Faces below this confidence are discarded.
+
 **--apply**
 : Actually store detected faces (default is dry run).
+
+**--force**
+: Re-detect faces even if faces already exist for an asset. Without this flag, assets with existing face records are skipped.
 
 `--json`, `--log`, `--time` for output control.
 
@@ -1319,6 +1389,35 @@ Downloads the YuNet face detection model and ArcFace face recognition model from
 ```bash
 maki faces download
 ```
+
+---
+
+## maki faces status
+
+### NAME
+
+maki-faces-status -- show face detection model status
+
+### SYNOPSIS
+
+```
+maki [GLOBAL FLAGS] faces status
+```
+
+### DESCRIPTION
+
+Shows the download status of face detection and recognition models. Reports whether the YuNet face detection model and ArcFace face recognition model are downloaded and ready to use.
+
+### EXAMPLES
+
+```bash
+maki faces status
+```
+
+### SEE ALSO
+
+[faces download](#maki-faces-download) -- download face models.
+[faces detect](#maki-faces-detect) -- detect faces in images.
 
 ---
 
