@@ -9,6 +9,7 @@ maki organizes your files around these core concepts.
 ```mermaid
 flowchart LR
     Collection -->|contains| Asset
+    Saved_Search[Saved Search] -->|queries| Asset
     Asset -->|has| Variant
     Asset -->|member of| Stack
     Variant -->|stored on| Volume
