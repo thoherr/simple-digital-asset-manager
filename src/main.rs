@@ -3092,12 +3092,12 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             // Main auto-tag flow — require at least one scope filter
             if query.is_none() && asset.is_none() && volume.is_none() && similar.is_none() {
                 anyhow::bail!(
-                    "No scope specified. Use --query, --asset, or --volume to select assets.\n  \
+                    "No scope specified. Provide a query, --asset, or --volume to select assets.\n  \
                      Examples:\n    \
-                     maki auto-tag --query '*'           # all assets\n    \
+                     maki auto-tag '*'                   # all assets\n    \
                      maki auto-tag --asset <id>          # single asset\n    \
                      maki auto-tag --volume <label>      # one volume\n    \
-                     maki auto-tag --query 'tag:landscape' --apply"
+                     maki auto-tag 'tag:landscape' --apply"
                 );
             }
 
@@ -3240,9 +3240,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             if query.is_none() && asset.is_none() && volume.is_none() {
                 anyhow::bail!(
-                    "No scope specified. Use --query, --asset, or --volume to select assets.\n  \
+                    "No scope specified. Provide a query, --asset, or --volume to select assets.\n  \
                      Examples:\n    \
-                     maki embed --query '*'           # all assets\n    \
+                     maki embed '*'                   # all assets\n    \
                      maki embed --asset <id>          # single asset\n    \
                      maki embed --volume <label>      # one volume"
                 );
