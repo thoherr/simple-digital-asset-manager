@@ -246,6 +246,8 @@ maki provides three ways to organize assets into groups:
 
 All three are accessible from the CLI and the web UI. See [Organizing Assets](04-organize.md) for detailed usage.
 
+\newpage
+
 ## The Round-Trip Workflow
 
 A typical maki workflow follows this cycle:
