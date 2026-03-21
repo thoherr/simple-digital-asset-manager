@@ -21,7 +21,7 @@ flowchart TD
     F2 --> G
     G --> H[Create Asset + Variant records]
     H --> I[Attach Recipes]
-    I --> J[Generate preview thumbnail]
+    I --> J[Generate previews]
     J --> M[Write sidecar YAML + update catalog]
 ```
 
@@ -263,7 +263,7 @@ When a sidecar recipe is **updated later** (e.g. after editing in Capture One or
 
 ## Preview Generation
 
-maki generates preview thumbnails during import so you can browse assets without accessing the original files.
+maki generates preview thumbnails during import so you can browse assets without accessing the original files. Optionally, high-resolution **smart previews** (2560px) can be generated alongside thumbnails, enabling zoom and pan in the web UI lightbox.
 
 ### By File Type
 
@@ -274,13 +274,22 @@ maki generates preview thumbnails during import so you can browse assets without
 | Video (MP4, MOV, MKV, etc.) | `ffmpeg` frame extraction | 800px JPEG thumbnail |
 | Audio, documents, unknown | Info card renderer | 800x600 JPEG with file metadata |
 
-The maximum edge size (default 800px) and output format (JPEG or WebP) are configurable in `maki.toml`:
+The maximum edge size (default 800px) and output format (JPEG or WebP) are configurable in `maki.toml`. Smart previews have separate size and quality settings:
 
 ```toml
 [preview]
-max_edge = 1200
-format = "jpeg"
-quality = 85
+max_edge = 800          # regular thumbnail max edge (default 800)
+format = "jpeg"         # jpeg or webp
+quality = 85            # JPEG/WebP quality (1-100)
+smart_max_edge = 2560   # smart preview max edge (default 2560)
+smart_quality = 92      # smart preview quality (default 92)
+```
+
+To generate smart previews during import, use `--smart` or enable permanently:
+
+```toml
+[import]
+smart_previews = true
 ```
 
 ### Info Cards
@@ -293,7 +302,7 @@ When a file has no visual preview (audio files, documents) or when external tool
 
 ### Storage and Failure
 
-Previews are stored under the catalog's `previews/` directory:
+Previews are stored under the catalog's `previews/` and `smart_previews/` directories:
 
 ```
 previews/
@@ -301,9 +310,14 @@ previews/
     ab3f7c9e2d...1a4b.jpg
   f2/
     f29a4bc81e...7d3c.jpg
+smart_previews/
+  ab/
+    ab3f7c9e2d...1a4b.jpg
+  f2/
+    f29a4bc81e...7d3c.jpg
 ```
 
-The first two characters of the content hash serve as a subdirectory prefix to avoid having too many files in a single directory.
+The first two characters of the content hash serve as a subdirectory prefix to avoid having too many files in a single directory. Smart previews use the same naming scheme in a separate directory.
 
 **Preview generation never blocks import.** If `dcraw` is missing, a RAW file still imports successfully -- it just gets an info card instead of a rendered preview. You can regenerate previews later with `maki generate-previews`.
 

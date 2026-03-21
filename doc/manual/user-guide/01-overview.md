@@ -209,7 +209,7 @@ Additional modules handle EXIF extraction, XMP reading/writing, configuration pa
 
 ## Preview Generation
 
-maki generates preview thumbnails (800px JPEG by default) for each variant during import, enabling offline browsing even when media volumes are unmounted. Different file types use different strategies:
+maki generates preview thumbnails (800px JPEG by default) for each variant during import, enabling offline browsing even when media volumes are unmounted. Optionally, high-resolution smart previews (2560px) can be generated alongside thumbnails for zoom and pan in the web UI lightbox — enable with `maki import --smart` or `[import] smart_previews = true` in `maki.toml`. Different file types use different strategies:
 
 | File type | Strategy |
 |-----------|----------|

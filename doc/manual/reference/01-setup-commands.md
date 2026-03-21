@@ -24,7 +24,8 @@ The following files and directories are created:
 
 - `maki.toml` -- catalog configuration file (preview settings, serve settings, import exclusions)
 - `metadata/` -- directory for YAML sidecar files (source of truth for asset metadata)
-- `previews/` -- directory for generated preview thumbnails
+- `previews/` -- directory for generated preview thumbnails (800px)
+- `smart_previews/` -- directory for high-resolution smart previews (2560px, generated with `--smart`)
 - `catalog.db` -- SQLite database (derived cache for fast queries)
 - `volumes.yaml` -- storage volume registry
 
