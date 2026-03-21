@@ -1304,6 +1304,18 @@ impl QueryEngine {
             for recipe in &donor.recipes {
                 target.recipes.push(recipe.clone());
             }
+            // Keep the highest rating across target and donors
+            if let Some(donor_rating) = donor.rating {
+                target.rating = Some(target.rating.map_or(donor_rating, |r| r.max(donor_rating)));
+            }
+            // Keep first non-None color label
+            if target.color_label.is_none() && donor.color_label.is_some() {
+                target.color_label.clone_from(&donor.color_label);
+            }
+            // Keep first non-None description
+            if target.description.is_none() && donor.description.is_some() {
+                target.description.clone_from(&donor.description);
+            }
         }
 
         // Step 5: Save target sidecar and update catalog
@@ -1435,6 +1447,18 @@ impl QueryEngine {
             }
             for recipe in &donor.recipes {
                 target.recipes.push(recipe.clone());
+            }
+            // Keep the highest rating across target and donors
+            if let Some(donor_rating) = donor.rating {
+                target.rating = Some(target.rating.map_or(donor_rating, |r| r.max(donor_rating)));
+            }
+            // Keep first non-None color label
+            if target.color_label.is_none() && donor.color_label.is_some() {
+                target.color_label.clone_from(&donor.color_label);
+            }
+            // Keep first non-None description
+            if target.description.is_none() && donor.description.is_some() {
+                target.description.clone_from(&donor.description);
             }
         }
 
@@ -3176,6 +3200,128 @@ mod tests {
         let details = engine.show(&id1).unwrap();
         assert!(details.tags.contains(&"landscape".to_string()));
         assert!(details.tags.contains(&"nature".to_string()));
+    }
+
+    #[test]
+    fn group_merges_best_rating() {
+        let dir = tempfile::tempdir().unwrap();
+        let catalog_root = dir.path();
+        let catalog = Catalog::open(catalog_root).unwrap();
+        catalog.initialize().unwrap();
+        let store = MetadataStore::new(catalog_root);
+
+        // Asset 1: rating 3, no label, no description
+        let mut asset1 = Asset::new(AssetType::Image, "sha256:rate1");
+        asset1.created_at = chrono::Utc::now() - chrono::Duration::hours(2);
+        asset1.rating = Some(3);
+        let v1 = Variant {
+            content_hash: "sha256:rate1".to_string(),
+            asset_id: asset1.id,
+            role: VariantRole::Original,
+            format: "arw".to_string(),
+            file_size: 25_000_000,
+            original_filename: "DSC_001.ARW".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        asset1.variants.push(v1.clone());
+        catalog.insert_asset(&asset1).unwrap();
+        catalog.insert_variant(&v1).unwrap();
+        store.save(&asset1).unwrap();
+
+        // Asset 2: rating 5, color label Red, description "Great shot"
+        let mut asset2 = Asset::new(AssetType::Image, "sha256:rate2");
+        asset2.rating = Some(5);
+        asset2.color_label = Some("Red".to_string());
+        asset2.description = Some("Great shot".to_string());
+        let v2 = Variant {
+            content_hash: "sha256:rate2".to_string(),
+            asset_id: asset2.id,
+            role: VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 5_000_000,
+            original_filename: "DSC_001.JPG".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        asset2.variants.push(v2.clone());
+        catalog.insert_asset(&asset2).unwrap();
+        catalog.insert_variant(&v2).unwrap();
+        store.save(&asset2).unwrap();
+
+        let id1 = asset1.id.to_string();
+        let engine = QueryEngine::new(dir.path());
+        engine.group(&["sha256:rate1".to_string(), "sha256:rate2".to_string()]).unwrap();
+
+        let details = engine.show(&id1).unwrap();
+        // Highest rating wins
+        assert_eq!(details.rating, Some(5));
+        // First non-None color label
+        assert_eq!(details.color_label.as_deref(), Some("Red"));
+        // First non-None description
+        assert_eq!(details.description.as_deref(), Some("Great shot"));
+    }
+
+    #[test]
+    fn group_keeps_target_metadata_when_higher() {
+        let dir = tempfile::tempdir().unwrap();
+        let catalog_root = dir.path();
+        let catalog = Catalog::open(catalog_root).unwrap();
+        catalog.initialize().unwrap();
+        let store = MetadataStore::new(catalog_root);
+
+        // Asset 1 (target, older): rating 5, label Blue, description "Target desc"
+        let mut asset1 = Asset::new(AssetType::Image, "sha256:keep1");
+        asset1.created_at = chrono::Utc::now() - chrono::Duration::hours(2);
+        asset1.rating = Some(5);
+        asset1.color_label = Some("Blue".to_string());
+        asset1.description = Some("Target desc".to_string());
+        let v1 = Variant {
+            content_hash: "sha256:keep1".to_string(),
+            asset_id: asset1.id,
+            role: VariantRole::Original,
+            format: "arw".to_string(),
+            file_size: 25_000_000,
+            original_filename: "IMG_001.ARW".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        asset1.variants.push(v1.clone());
+        catalog.insert_asset(&asset1).unwrap();
+        catalog.insert_variant(&v1).unwrap();
+        store.save(&asset1).unwrap();
+
+        // Asset 2 (donor): rating 2, label Red, description "Donor desc"
+        let mut asset2 = Asset::new(AssetType::Image, "sha256:keep2");
+        asset2.rating = Some(2);
+        asset2.color_label = Some("Red".to_string());
+        asset2.description = Some("Donor desc".to_string());
+        let v2 = Variant {
+            content_hash: "sha256:keep2".to_string(),
+            asset_id: asset2.id,
+            role: VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 5_000_000,
+            original_filename: "IMG_001.JPG".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        asset2.variants.push(v2.clone());
+        catalog.insert_asset(&asset2).unwrap();
+        catalog.insert_variant(&v2).unwrap();
+        store.save(&asset2).unwrap();
+
+        let id1 = asset1.id.to_string();
+        let engine = QueryEngine::new(dir.path());
+        engine.group(&["sha256:keep1".to_string(), "sha256:keep2".to_string()]).unwrap();
+
+        let details = engine.show(&id1).unwrap();
+        // Target had higher rating — keep it
+        assert_eq!(details.rating, Some(5));
+        // Target already had label — keep it
+        assert_eq!(details.color_label.as_deref(), Some("Blue"));
+        // Target already had description — keep it
+        assert_eq!(details.description.as_deref(), Some("Target desc"));
     }
 
     #[test]
