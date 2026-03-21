@@ -268,7 +268,7 @@ See the [volume combine reference](../reference/01-setup-commands.md#maki-volume
 
 The `maki.toml` file at the catalog root controls maki's behavior. All sections are optional -- an empty file (or one with only comments) uses sensible defaults.
 
-Here is a complete example showing every available option:
+Here is an example showing common options (see the [Configuration Reference](../reference/08-configuration.md) for the full list):
 
 ```toml
 # Default volume for import when auto-detection is ambiguous
