@@ -152,11 +152,13 @@ maki is structured in three layers.
 ```mermaid
 flowchart TD
     subgraph Interface["Interface Layer"]
+        direction LR
         CLI["CLI (clap)"]
         WebUI["Web UI (axum + htmx + askama)"]
     end
 
     subgraph Core["Core Library"]
+        direction LR
         AS["Asset Service"]
         CS["Content Store"]
         MS["Metadata Store"]
@@ -166,6 +168,7 @@ flowchart TD
     end
 
     subgraph Storage["Storage Layer"]
+        direction LR
         Catalog["Local Catalog<br/>(SQLite + YAML + previews)"]
         Volumes["Media Volumes<br/>(external drives, NAS)"]
     end
