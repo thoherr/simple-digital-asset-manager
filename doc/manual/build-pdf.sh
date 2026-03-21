@@ -202,7 +202,11 @@ awk -v tmpdir="$TMPDIR" '
         png = tmpdir "/mermaid-" block ".png"
         if ((getline line < png) > 0) {
             close(png)
-            print "![](mermaid-" block ".png){width=" width "}\n"
+            if (width != "100%") {
+                print "\\begin{center}\n![](mermaid-" block ".png){width=" width "}\n\\end{center}\n"
+            } else {
+                print "![](mermaid-" block ".png){width=" width "}\n"
+            }
         } else {
             # Render failed — keep original code block
             print

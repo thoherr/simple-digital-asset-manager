@@ -17,6 +17,8 @@ flowchart TD
     style E fill:#e8634a,stroke:#c04a30,color:#fff,font-weight:bold
 ```
 
+\newpage
+
 For each new file, the import asset pipeline runs:
 
 ```mermaid
