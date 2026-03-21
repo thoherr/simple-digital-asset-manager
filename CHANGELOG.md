@@ -2,6 +2,18 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.0.8 (2026-03-21)
+
+### Bug Fixes
+- **`maki init` creates `smart_previews/` directory** — was missing from initialization.
+- **`assets/` → `metadata/`** — three documentation references used the old directory name.
+
+### Enhancements
+- **Smart preview documentation** — added throughout the manual: overview, ingest chapter (config options, directory structure), setup guide, setup commands, module reference.
+- **Manual layout improvements** — architecture diagram with horizontal subgraph items, import pipeline split into two compact diagrams, auto-group algorithm as horizontal flowchart, module dependency graph simplified, table row spacing increased, module table column widths adjusted, diagrams centered when scaled, page breaks for better flow.
+- **Windows VLM setup** — Ollama install instructions for Windows added.
+- **Config example** — clarified as excerpt, not complete reference.
+
 ## v4.0.7 (2026-03-20)
 
 ### Bug Fixes
