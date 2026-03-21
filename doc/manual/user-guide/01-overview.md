@@ -150,17 +150,13 @@ See [Ingesting Assets](03-ingest.md) for XMP extraction during import and [Maint
 maki is structured in three layers.
 
 ```mermaid
-block-beta
-    columns 3
-
-    block:interface:3
+flowchart TD
+    subgraph Interface["Interface Layer"]
         CLI["CLI (clap)"]
         WebUI["Web UI (axum + htmx + askama)"]
     end
 
-    space:3
-
-    block:core:3
+    subgraph Core["Core Library"]
         AS["Asset Service"]
         CS["Content Store"]
         MS["Metadata Store"]
@@ -169,19 +165,16 @@ block-beta
         PG["Preview Generator"]
     end
 
-    space:3
-
-    block:storage:3
+    subgraph Storage["Storage Layer"]
         Catalog["Local Catalog<br/>(SQLite + YAML + previews)"]
         Volumes["Media Volumes<br/>(external drives, NAS)"]
     end
 
-    interface --> core
-    core --> storage
+    Interface --> Core --> Storage
 
-    style interface fill:#4a90d9,color:#fff
-    style core fill:#7ab648,color:#fff
-    style storage fill:#e8943a,color:#fff
+    style Interface fill:#4a90d9,color:#fff
+    style Core fill:#7ab648,color:#fff
+    style Storage fill:#e8943a,color:#fff
 ```
 
 ### Interface Layer
@@ -206,6 +199,7 @@ Additional modules handle EXIF extraction, XMP reading/writing, configuration pa
 ### Storage Layer
 
 **Local Catalog** (always available on local disk):
+
 - `catalog.db` -- SQLite database (derived index, rebuildable)
 - `assets/` -- YAML sidecar files (source of truth)
 - `previews/` -- JPEG thumbnails for offline browsing
