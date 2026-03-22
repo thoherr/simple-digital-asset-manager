@@ -573,6 +573,8 @@ All keyboard shortcuts are suppressed when focus is in a text input, textarea, o
 
 ## Compare View
 
+![Compare view with side-by-side asset comparison](../screenshots/compare-view.png)
+
 Select 2–4 assets in the browse grid and click the "Compare" button in the batch toolbar to open a side-by-side comparison view.
 
 ### Layout
