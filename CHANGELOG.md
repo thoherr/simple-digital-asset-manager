@@ -2,6 +2,11 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.0.11 (2026-03-22)
+
+### Enhancements
+- **Automated binary releases** — GitHub Actions release workflow builds 6 binaries (macOS ARM, Linux x86_64, Windows x86_64 × standard/AI) on tag push. Archives include binary, README, and LICENSE. PDFs attached from repo.
+
 ## v4.0.10 (2026-03-22)
 
 ### New Features
