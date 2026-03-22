@@ -22,19 +22,22 @@
 \setlength{\columnsep}{12pt}
 \pagestyle{empty}
 
-% Section styling
-\titleformat{\section}{\small\bfseries\color{maki-salmon}}{}{0em}{}[\vspace{-4pt}\color{maki-salmon}\hrule\vspace{1pt}]
-\titleformat{\subsection}{\footnotesize\bfseries\color{maki-nori}}{}{0em}{}
-\titlespacing{\section}{0pt}{4pt}{1pt}
-\titlespacing{\subsection}{0pt}{2pt}{0pt}
+% Section styling — salmon header, thin rule below
+\titleformat{\section}{\small\bfseries\color{maki-salmon}}{}{0em}{}[\vspace{-2pt}{\color{maki-salmon!40}\hrule height 0.3pt}\vspace{2pt}]
+\titleformat{\subsection}{\footnotesize\ttfamily\bfseries\color{maki-nori}}{}{0em}{}
+\titlespacing{\section}{0pt}{5pt}{1pt}
+\titlespacing{\subsection}{0pt}{3pt}{0pt}
 
 % Compact list
 \setlist{nosep, leftmargin=1.2em, itemsep=0pt, parsep=0pt, topsep=0pt}
 
-% Command formatting
-\newcommand{\cmd}[1]{\texttt{\small #1}}
-\newcommand{\opt}[1]{\texttt{\small\color{maki-stone} #1}}
+% Command/option formatting
+\newcommand{\cmd}[1]{\texttt{\footnotesize #1}}
+\newcommand{\opt}[1]{\texttt{\scriptsize\color{maki-stone} #1}}
 \newcommand{\ai}{\textcolor{maki-teal}{\scriptsize [AI]}}
+
+% Body text is scriptsize, commands (subsection titles) are larger
+\AtBeginDocument{\scriptsize}
 
 \begin{document}
 
@@ -315,8 +318,15 @@ All support: \cmd{x} (exact), \cmd{x+} (min), \cmd{x-y} (range), \cmd{x,y} (OR)
 \end{tabularx}
 
 \section{Core Concepts}
-
-\textbf{Asset} — Logical media item. \textbf{Variant} — Concrete file (roles: Original, Alternate, Processed, Export, Sidecar). \textbf{Recipe} — XMP sidecar (tracked by location). \textbf{Volume} — Storage device (online/offline). \textbf{Stack} — Collapsed group in browse. \textbf{Collection} — Static album. \textbf{Saved Search} — Dynamic smart album.
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\textbf{Asset} & Logical media item (one photo) \\
+\textbf{Variant} & Concrete file (Original, Alternate, Processed, Export) \\
+\textbf{Recipe} & XMP/processing sidecar (tracked by location) \\
+\textbf{Volume} & Storage device (online/offline detection) \\
+\textbf{Stack} & Collapsed group in browse (own metadata) \\
+\textbf{Collection} & Static album (manual curation) \\
+\textbf{Saved Search} & Dynamic smart album (query re-evaluated) \\
+\end{tabularx}
 
 \section{Key Workflows}
 
