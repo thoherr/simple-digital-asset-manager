@@ -2,6 +2,12 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.0.12 (2026-03-23)
+
+### Enhancements
+- **13 branded screenshots** — all manual screenshots updated with MAKI branding. 6 new views added: lightbox, stroll, map, calendar, analytics, similarity browse, compare.
+- **GitHub repo renamed** to `thoherr/maki` (old URLs auto-redirect).
+
 ## v4.0.11 (2026-03-22)
 
 ### Enhancements
