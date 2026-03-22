@@ -901,6 +901,13 @@ impl QueryEngine {
         }
     }
 
+    /// Check if XMP writeback is enabled in maki.toml.
+    fn is_writeback_enabled(&self) -> bool {
+        crate::config::CatalogConfig::load(&self.catalog_root)
+            .map(|c| c.writeback.enabled)
+            .unwrap_or(false)
+    }
+
     /// Create a QueryEngine with a default filter from config.
     pub fn with_default_filter(catalog_root: &Path, default_filter: Option<String>) -> Self {
         Self {
@@ -1816,7 +1823,9 @@ impl QueryEngine {
             } else {
                 (changed.clone(), Vec::new())
             };
-            self.write_back_tags_to_xmp_inner(&mut asset, &to_add, &to_remove, &ctx.catalog, &ctx.meta_store, &ctx.online_volumes, &ctx.content_store);
+            if self.is_writeback_enabled() {
+                self.write_back_tags_to_xmp_inner(&mut asset, &to_add, &to_remove, &ctx.catalog, &ctx.meta_store, &ctx.online_volumes, &ctx.content_store);
+            }
         }
 
         Ok(TagResult {
@@ -2053,6 +2062,7 @@ impl QueryEngine {
         catalog: &Catalog,
         store: &MetadataStore,
     ) {
+        if !self.is_writeback_enabled() { return; }
         let registry = DeviceRegistry::new(&self.catalog_root);
         let volumes = match registry.list() {
             Ok(v) => v,
@@ -2435,6 +2445,7 @@ impl QueryEngine {
         catalog: &Catalog,
         store: &MetadataStore,
     ) {
+        if !self.is_writeback_enabled() { return; }
         let registry = DeviceRegistry::new(&self.catalog_root);
         let volumes = match registry.list() {
             Ok(v) => v,
@@ -2538,6 +2549,7 @@ impl QueryEngine {
         catalog: &Catalog,
         store: &MetadataStore,
     ) {
+        if !self.is_writeback_enabled() { return; }
         let registry = DeviceRegistry::new(&self.catalog_root);
         let volumes = match registry.list() {
             Ok(v) => v,
@@ -2656,6 +2668,13 @@ impl QueryEngine {
         log: bool,
         callback: Option<&dyn Fn(&str, &str)>,
     ) -> Result<WritebackResult> {
+        if !dry_run && !self.is_writeback_enabled() {
+            anyhow::bail!(
+                "XMP writeback is disabled. To enable, add to maki.toml:\n\n  \
+                 [writeback]\n  enabled = true\n\n  \
+                 Warning: this will modify .xmp recipe files on your volumes."
+            );
+        }
         let catalog = Catalog::open(&self.catalog_root)?;
         let store = MetadataStore::new(&self.catalog_root);
         let registry = DeviceRegistry::new(&self.catalog_root);
@@ -2728,6 +2747,13 @@ impl QueryEngine {
         log: bool,
         callback: Option<&dyn Fn(&str, &str)>,
     ) -> Result<WritebackResult> {
+        if !dry_run && !self.is_writeback_enabled() {
+            anyhow::bail!(
+                "XMP writeback is disabled. To enable, add to maki.toml:\n\n  \
+                 [writeback]\n  enabled = true\n\n  \
+                 Warning: this will modify .xmp recipe files on your volumes."
+            );
+        }
         let mut result = WritebackResult::default();
         result.dry_run = dry_run;
 

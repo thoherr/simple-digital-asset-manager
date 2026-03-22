@@ -481,6 +481,27 @@ fn is_default_contact_sheet(c: &ContactSheetDefaults) -> bool {
     *c == ContactSheetDefaults::default()
 }
 
+/// XMP writeback configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WritebackConfig {
+    /// Enable XMP writeback. When false (default), MAKI will not modify
+    /// recipe/XMP files on disk. Edits to rating, tags, description, and
+    /// color label are stored in the catalog but not written to XMP until
+    /// this is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+impl Default for WritebackConfig {
+    fn default() -> Self {
+        Self { enabled: false }
+    }
+}
+
+fn is_default_writeback(w: &WritebackConfig) -> bool {
+    *w == WritebackConfig::default()
+}
+
 /// Browse behavior configuration.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct BrowseConfig {
@@ -517,6 +538,8 @@ pub struct CatalogConfig {
     pub vlm: VlmConfig,
     #[serde(default, skip_serializing_if = "is_default_browse")]
     pub browse: BrowseConfig,
+    #[serde(default, skip_serializing_if = "is_default_writeback")]
+    pub writeback: WritebackConfig,
 }
 
 impl Default for CatalogConfig {
@@ -532,6 +555,7 @@ impl Default for CatalogConfig {
             contact_sheet: ContactSheetDefaults::default(),
             vlm: VlmConfig::default(),
             browse: BrowseConfig::default(),
+            writeback: WritebackConfig::default(),
         }
     }
 }
@@ -758,6 +782,7 @@ max_edge = 1000
             contact_sheet: ContactSheetDefaults::default(),
             vlm: VlmConfig::default(),
             browse: BrowseConfig::default(),
+            writeback: WritebackConfig::default(),
         };
         let toml_str = toml::to_string_pretty(&original).unwrap();
         let parsed: CatalogConfig = toml::from_str(&toml_str).unwrap();
@@ -907,6 +932,7 @@ max_edge = 1000
             contact_sheet: ContactSheetDefaults::default(),
             vlm: VlmConfig::default(),
             browse: BrowseConfig::default(),
+            writeback: WritebackConfig::default(),
         };
         original.save(dir.path()).unwrap();
         let loaded = CatalogConfig::load(dir.path()).unwrap();

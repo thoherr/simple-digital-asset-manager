@@ -9076,6 +9076,10 @@ fn sync_metadata_outbound_writes_pending() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
+    // Enable writeback for this test
+    let config_path = root.join("maki.toml");
+    std::fs::write(&config_path, "[writeback]\nenabled = true\n").unwrap();
+
     let xmp_path = root.join("photos/SM_003.xmp");
     create_test_file(&root, "photos/SM_003.ARW", b"raw-sm-outbound");
     create_test_file(
