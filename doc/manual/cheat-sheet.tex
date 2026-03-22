@@ -1,0 +1,388 @@
+\documentclass[a4paper,landscape,8pt]{article}
+\usepackage[margin=0.8cm]{geometry}
+\usepackage{multicol}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{tabularx}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+% Brand colors
+\definecolor{maki-salmon}{HTML}{e8634a}
+\definecolor{maki-nori}{HTML}{1a2332}
+\definecolor{maki-teal}{HTML}{2ea8a0}
+\definecolor{maki-stone}{HTML}{6b7b8d}
+\definecolor{maki-cream}{HTML}{f0ebe3}
+\definecolor{maki-blue}{HTML}{3868c8}
+
+% Compact formatting
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1pt}
+\setlength{\columnsep}{12pt}
+\pagestyle{empty}
+
+% Section styling
+\titleformat{\section}{\small\bfseries\color{maki-salmon}}{}{0em}{}[\vspace{-4pt}\color{maki-salmon}\hrule\vspace{1pt}]
+\titleformat{\subsection}{\footnotesize\bfseries\color{maki-nori}}{}{0em}{}
+\titlespacing{\section}{0pt}{4pt}{1pt}
+\titlespacing{\subsection}{0pt}{2pt}{0pt}
+
+% Compact list
+\setlist{nosep, leftmargin=1.2em, itemsep=0pt, parsep=0pt, topsep=0pt}
+
+% Command formatting
+\newcommand{\cmd}[1]{\texttt{\small #1}}
+\newcommand{\opt}[1]{\texttt{\small\color{maki-stone} #1}}
+\newcommand{\ai}{\textcolor{maki-teal}{\scriptsize [AI]}}
+
+\begin{document}
+
+% ============================================================
+% FRONT SIDE — Commands Reference
+% ============================================================
+
+\begin{center}
+{\Large\bfseries\color{maki-salmon} MAKI Cheat Sheet} \quad {\small\color{maki-stone} Media Asset Keeper \& Indexer — v4.0.8}
+\end{center}
+\vspace{-4pt}
+
+\begin{multicols}{3}
+
+\section{Global Options}
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\cmd{--json} & JSON output to stdout \\
+\cmd{-v, --verbose} & Show operational details \\
+\cmd{-l, --log} & Per-file progress to stderr \\
+\cmd{-d, --debug} & External tool debug output \\
+\cmd{-t, --time} & Show elapsed time \\
+\end{tabularx}
+
+\section{Setup}
+
+\subsection{maki init}
+Create a new catalog in the current directory.
+
+\subsection{maki volume add \textit{LABEL PATH}}
+Register a storage volume. \\
+\opt{--purpose working|archive|backup|cloud}
+
+\subsection{maki volume list}
+Show registered volumes with online/offline status. \\
+\opt{--json} \opt{--verbose}
+
+\subsection{maki volume set-purpose \textit{LABEL PURPOSE}}
+Change a volume's logical role.
+
+\subsection{maki volume remove \textit{LABEL}}
+Unregister a volume. \opt{--apply}
+
+\subsection{maki volume combine \textit{SOURCE TARGET}}
+Merge two volumes. \opt{--apply}
+
+\section{Ingest \& Edit}
+
+\subsection{maki import \textit{PATHS...}}
+Import files into the catalog. \\
+\opt{--volume} \opt{--auto-group} \opt{--smart} \\
+\opt{--embed} \ai{} \opt{--describe} \opt{--dry-run} \\
+\opt{--include GROUP} \opt{--skip GROUP}
+
+\subsection{maki delete \textit{ASSET\_IDS...}}
+Delete assets. \opt{--apply} \opt{--remove-files}
+
+\subsection{maki tag \textit{ASSET\_ID TAGS...}}
+Add or remove tags. \opt{--remove}
+
+\subsection{maki edit \textit{ASSET\_ID}}
+Edit metadata fields. \\
+\opt{--name} \opt{--description} \opt{--rating N} \\
+\opt{--label COLOR} \opt{--date} \opt{--clear-FIELD}
+
+\subsection{maki group \textit{HASHES...}}
+Group variants into one asset.
+
+\subsection{maki split \textit{ASSET\_ID} --variant \textit{HASH}}
+Split variants out of an asset.
+
+\subsection{maki auto-group \textit{[QUERY]}}
+Auto-group by filename stem. \opt{--apply}
+
+\subsection{maki describe \textit{[QUERY]}}
+Generate VLM image descriptions. \\
+\opt{--asset ID} \opt{--volume} \opt{--model} \\
+\opt{--mode describe|tags|both} \\
+\opt{--apply} \opt{--force} \opt{--dry-run}
+
+\subsection{maki auto-tag \textit{[QUERY]} \ai}
+AI auto-tagging with SigLIP. \\
+\opt{--asset} \opt{--volume} \opt{--threshold} \\
+\opt{--labels FILE} \opt{--apply} \opt{--download}
+
+\subsection{maki embed \textit{[QUERY]} \ai}
+Generate image embeddings. \\
+\opt{--asset} \opt{--volume} \opt{--force} \opt{--export}
+
+\section{Organize}
+
+\subsection{maki collection create \textit{NAME}}
+Create a static album. \opt{--description}
+
+\subsection{maki collection add \textit{NAME ASSET\_IDS...}}
+Add assets to a collection.
+
+\subsection{maki collection remove \textit{NAME ASSET\_IDS...}}
+Remove assets from a collection.
+
+\subsection{maki collection list / show / delete}
+List, show contents, or delete collections.
+
+\subsection{maki saved-search save \textit{NAME QUERY}}
+Save a search query. \opt{--sort} \opt{--favorite}
+
+\subsection{maki saved-search list / run / delete}
+List, run, or delete saved searches.
+
+\subsection{maki stack create \textit{ASSET\_IDS...}}
+Create a stack. First = pick.
+
+\subsection{maki stack add \textit{REF ASSET\_IDS...}}
+Add assets to existing stack.
+
+\subsection{maki stack remove / pick / dissolve / list / show}
+Stack management commands.
+
+\subsection{maki stack from-tag \textit{PATTERN}}
+Convert tag patterns to stacks. \opt{--apply} \opt{--remove-tags}
+
+\subsection{maki faces detect / cluster / people / name \ai}
+Face detection and recognition. \\
+\opt{--query} \opt{--asset} \opt{--apply} \opt{--min-confidence}
+
+\section{Retrieve}
+
+\subsection{maki search \textit{QUERY}}
+Search assets with filters (see back). \\
+\opt{--format ids|short|full|json|\{template\}} \\
+\opt{-q} (shorthand for \cmd{--format ids})
+
+\subsection{maki show \textit{ASSET\_ID}}
+Show full asset details.
+
+\subsection{maki preview \textit{ASSET\_ID}}
+Display preview in terminal. \opt{--open}
+
+\subsection{maki export \textit{QUERY TARGET}}
+Export to directory. \opt{--zip} \opt{--layout flat|mirror} \\
+\opt{--all-variants} \opt{--sidecars}
+
+\subsection{maki contact-sheet \textit{QUERY OUTPUT}}
+Generate PDF contact sheet. \\
+\opt{--layout} \opt{--paper} \opt{--landscape} \\
+\opt{--title} \opt{--fields} \opt{--sort}
+
+\subsection{maki stats}
+Catalog statistics. \opt{--tags} \opt{--verified}
+
+\subsection{maki serve}
+Start web UI. \opt{--port} \opt{--bind}
+
+\subsection{maki shell}
+Interactive shell. \opt{-c CMD} \opt{--script FILE}
+
+\section{Maintain}
+
+\subsection{maki verify \textit{[PATHS...]}}
+Check file integrity. \\
+\opt{--volume} \opt{--asset} \opt{--force} \opt{--max-age DAYS}
+
+\subsection{maki sync \textit{[PATHS...]}}
+Sync with disk changes. \opt{--apply} \opt{--remove-stale}
+
+\subsection{maki sync-metadata \textit{[QUERY]}}
+Bidirectional XMP sync. \opt{--asset} \opt{--dry-run}
+
+\subsection{maki refresh \textit{[PATHS...]}}
+Re-read changed recipes. \opt{--dry-run}
+
+\subsection{maki writeback \textit{[QUERY]}}
+Write pending edits to XMP. \opt{--all} \opt{--dry-run}
+
+\subsection{maki cleanup}
+Remove stale records. \opt{--apply} \opt{--list} \opt{--path}
+
+\subsection{maki generate-previews \textit{[PATHS...]}}
+Generate/regenerate previews. \\
+\opt{--force} \opt{--smart} \opt{--upgrade} \\
+\opt{--volume} \opt{--asset} \opt{--include} \opt{--skip}
+
+\subsection{maki relocate \textit{[ASSET\_IDS...]}}
+Copy/move files between volumes. \\
+\opt{--target VOLUME} \opt{--query} \opt{--remove-source} \opt{--dry-run}
+
+\subsection{maki rebuild-catalog}
+Rebuild SQLite from YAML sidecars.
+
+\subsection{maki migrate}
+Run database schema migrations.
+
+\end{multicols}
+
+\newpage
+
+% ============================================================
+% BACK SIDE — Search Filters, Workflows, Concepts
+% ============================================================
+
+\begin{center}
+{\Large\bfseries\color{maki-salmon} MAKI Cheat Sheet} \quad {\small\color{maki-stone} Search Filters, Workflows \& Concepts}
+\end{center}
+\vspace{-4pt}
+
+\begin{multicols}{3}
+
+\section{Search Filter Syntax}
+
+All filters work in CLI \cmd{maki search} and web UI search box.
+
+\subsection{Text \& Metadata}
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\cmd{tag:landscape} & Tag match (hierarchical) \\
+\cmd{-tag:rejected} & Exclude tag \\
+\cmd{type:image} & Asset type \\
+\cmd{format:nef} & File format \\
+\cmd{label:Red} & Color label \\
+\cmd{camera:fuji} & Camera (partial) \\
+\cmd{lens:56mm} & Lens (partial) \\
+\cmd{person:Alice} & Named person \ai \\
+\cmd{collection:Fav} & Collection \\
+\cmd{path:2026/} & Path prefix \\
+\cmd{id:72a0} & Asset ID prefix \\
+\cmd{meta:key=val} & Source metadata \\
+\end{tabularx}
+
+\subsection{Numeric Filters}
+All support: \cmd{x} (exact), \cmd{x+} (min), \cmd{x-y} (range), \cmd{x,y} (OR)
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\cmd{rating:3+} & 3 stars or more \\
+\cmd{rating:3-5} & 3 to 5 stars \\
+\cmd{rating:2,4} & Exactly 2 or 4 \\
+\cmd{iso:100-800} & ISO range \\
+\cmd{focal:35-70} & Focal length range \\
+\cmd{f:1.4-2.8} & Aperture range \\
+\cmd{width:4000+} & Min width (px) \\
+\cmd{height:2000+} & Min height (px) \\
+\cmd{copies:2+} & File copies \\
+\cmd{variants:2+} & Variant count \\
+\cmd{scattered:2+} & Scattered variants \\
+\cmd{faces:2+} & Face count \\
+\end{tabularx}
+
+\subsection{Date Filters}
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\cmd{date:2026} & Year prefix \\
+\cmd{date:2026-03} & Month prefix \\
+\cmd{date:2026-03-15} & Exact date \\
+\cmd{dateFrom:2026-01} & From (inclusive) \\
+\cmd{dateUntil:2026-12} & Until (inclusive) \\
+\end{tabularx}
+
+\subsection{Status Filters}
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\cmd{orphan:true} & No file locations \\
+\cmd{orphan:false} & Has file locations \\
+\cmd{missing:true} & Files missing on disk \\
+\cmd{stale:30} & Not verified in N days \\
+\cmd{stacked:true} & In a stack \\
+\cmd{volume:Archive} & On specific volume \\
+\cmd{volume:none} & No online volume \\
+\cmd{geo:any} & Has GPS data \\
+\end{tabularx}
+
+\subsection{AI Filters}
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\cmd{similar:72a0bb4b} & Visual similarity \\
+\cmd{min\_sim:90} & Similarity threshold \\
+\cmd{text:sunset} & Text-to-image search \\
+\cmd{embed:none} & No embedding \\
+\end{tabularx}
+
+\subsection{Combining Filters}
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\cmd{tag:a,b} & a OR b (comma) \\
+\cmd{tag:a tag:b} & a AND b (repeat) \\
+\cmd{-tag:x} & NOT (dash prefix) \\
+\end{tabularx}
+
+\section{Core Concepts}
+
+\textbf{Asset} — Logical media item. \textbf{Variant} — Concrete file (roles: Original, Alternate, Processed, Export, Sidecar). \textbf{Recipe} — XMP sidecar (tracked by location). \textbf{Volume} — Storage device (online/offline). \textbf{Stack} — Collapsed group in browse. \textbf{Collection} — Static album. \textbf{Saved Search} — Dynamic smart album.
+
+\section{Key Workflows}
+
+\subsection{Import \& Organize}
+\begin{enumerate}[leftmargin=1.5em]
+\item \cmd{maki init} + \cmd{maki volume add}
+\item \cmd{maki import --smart /path}
+\item \cmd{maki serve} — browse in web UI
+\item Rate, tag, label via UI or CLI
+\item \cmd{maki auto-tag ""} \ai — AI tagging
+\end{enumerate}
+
+\subsection{Maintenance Cycle}
+\begin{enumerate}[leftmargin=1.5em]
+\item \cmd{maki verify} — check integrity
+\item \cmd{maki sync} — detect moved/missing
+\item \cmd{maki sync-metadata} — bidirectional XMP
+\item \cmd{maki cleanup --apply} — remove stale
+\end{enumerate}
+
+\subsection{Backup \& Archive}
+\begin{enumerate}[leftmargin=1.5em]
+\item \cmd{maki volume add Archive /mnt/nas --purpose backup}
+\item \cmd{maki relocate --target Archive ""} — copy all
+\item \cmd{maki backup-status} — check coverage
+\item \cmd{maki dedup --apply} — remove same-volume dups
+\end{enumerate}
+
+\subsection{Export \& Deliver}
+\begin{enumerate}[leftmargin=1.5em]
+\item \cmd{maki export "rating:4+ tag:portfolio" ./out}
+\item \cmd{maki export "collection:Client" ./out --zip}
+\item \cmd{maki contact-sheet "rating:5" portfolio.pdf}
+\end{enumerate}
+
+\section{Output Formats}
+
+\cmd{maki search --format \textit{PRESET|TEMPLATE}}
+
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\cmd{ids} & One UUID per line \\
+\cmd{short} & ID, name, type, format, date \\
+\cmd{full} & + tags, description, rating \\
+\cmd{json} & JSON array \\
+\cmd{'\{id\}\textbackslash t\{name\}'} & Custom template \\
+\end{tabularx}
+
+Placeholders: \cmd{\{id\}}, \cmd{\{name\}}, \cmd{\{filename\}}, \cmd{\{type\}}, \cmd{\{format\}}, \cmd{\{tags\}}, \cmd{\{description\}}, \cmd{\{rating\}}, \cmd{\{label\}}, \cmd{\{date\}}, \cmd{\{size\}}
+
+\section{Configuration (maki.toml)}
+
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\cmd{[preview]} & max\_edge, format, quality, smart\_max\_edge \\
+\cmd{[serve]} & port, bind, per\_page \\
+\cmd{[import]} & exclude, auto\_tags, smart\_previews \\
+\cmd{[browse]} & default\_filter \\
+\cmd{[dedup]} & prefer \\
+\cmd{[verify]} & max\_age\_days \\
+\cmd{[ai]} & model, threshold, labels \ai \\
+\cmd{[vlm]} & endpoint, model, timeout \\
+\cmd{[contact\_sheet]} & layout, paper, fields \\
+\end{tabularx}
+
+\vfill
+{\footnotesize\color{maki-stone} MAKI v4.0.8 — \texttt{https://github.com/thoherr/simple-digital-asset-manager}}
+
+\end{multicols}
+
+\end{document}
