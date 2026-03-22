@@ -126,6 +126,8 @@ Your view mode preference is saved in the browser and preserved across reloads.
 
 ### Calendar heatmap view
 
+![Calendar heatmap view with monthly grids and year navigation](../screenshots/calendar-view.png)
+
 The calendar view displays a GitHub-style heatmap with 12 months laid out in a responsive grid (4 columns on wide screens, adapting down to 2 on narrow ones). Each day cell is colored by the number of assets created on that date, using a quartile-based 5-level color scale from empty (no assets) through increasingly intense shades.
 
 **Year navigation**: Arrow buttons and clickable year chips above the calendar let you browse between years. Only years that contain assets appear as chips.
@@ -137,6 +139,8 @@ The calendar view displays a GitHub-style heatmap with 12 months laid out in a r
 **Legend**: A color scale legend at the bottom of the calendar shows the meaning of each intensity level.
 
 ### Map view
+
+![Map view with geotagged assets on OpenStreetMap](../screenshots/map-view.png)
 
 The map view displays geotagged assets on an interactive OpenStreetMap map powered by Leaflet.js. Assets with GPS coordinates appear as markers, automatically clustered at wider zoom levels for performance.
 
@@ -186,6 +190,12 @@ When results span multiple pages, pagination controls appear both above and belo
 Page numbers with ellipsis keep the controls compact for large result sets. The number of results per page defaults to 60 and can be configured via `[serve] per_page` in `maki.toml` or the `--per-page` CLI flag.
 
 Use **Shift+Left/Right arrow** keys to quickly turn pages from the keyboard. The results grid fades during loading to provide visual feedback while the new page loads. In the lightbox, regular arrow keys at page boundaries automatically navigate to the next/previous page with a loading spinner overlay.
+
+### Similarity browse
+
+When searching with `similar:<asset-id>`, the browse grid shows visually similar assets with similarity percentage badges. A "Similarity" sort button appears for sorting by visual closeness. Use `min_sim:90` to filter by minimum similarity threshold.
+
+![Similarity browse with percentage badges and sort control](../screenshots/similarity-browse.png)
 
 ### Saved search chips
 
@@ -275,6 +285,8 @@ Focus and scroll position are preserved when navigating back to the browse page,
 
 
 ## Lightbox
+
+![Lightbox with full-screen preview, rating, and navigation](../screenshots/lightbox.png)
 
 Clicking a thumbnail opens a full-screen lightbox overlay. The lightbox is available on the browse grid, detail page, and stroll page.
 
@@ -682,6 +694,8 @@ On the asset detail page, a "Faces" section appears when faces have been detecte
 
 ## Stroll Page
 
+![Stroll page with center image and similar neighbors](../screenshots/stroll-page.png)
+
 > Requires `--features ai` compilation and image embeddings (generated via `maki embed` or `maki import --embed`).
 
 The stroll page provides a visual similarity exploration experience. Instead of browsing a flat grid, you start with a center image and see its most visually similar neighbors arranged in a radial layout around it. Click any neighbor to make it the new center, and the neighbors update -- letting you "stroll" through your collection by visual similarity.
@@ -730,6 +744,8 @@ A fan-out slider in the bottom-left corner (range 0--10, configurable via `[serv
 
 
 ## Analytics Page
+
+![Analytics dashboard with charts and statistics](../screenshots/analytics-dashboard.png)
 
 Navigate to `/analytics` or click "Analytics" in the navigation bar to see shooting and storage analytics.
 
