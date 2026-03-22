@@ -1,6 +1,6 @@
-# maki User Manual
+# MAKI User Manual
 
-**maki** is a command-line digital asset manager built in Rust, designed for photographers and media professionals who manage large collections across multiple storage devices.
+**MAKI** is a command-line digital asset manager built in Rust, designed for photographers and media professionals who manage large collections across multiple storage devices.
 
 This manual is organized into three sections:
 

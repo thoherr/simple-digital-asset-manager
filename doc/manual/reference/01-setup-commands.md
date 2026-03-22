@@ -18,7 +18,7 @@ maki [GLOBAL FLAGS] init
 
 ### DESCRIPTION
 
-Creates a new maki catalog rooted in the current working directory. This sets up the directory structure, configuration file, SQLite database, and volume registry needed to begin managing assets.
+Creates a new MAKI catalog rooted in the current working directory. This sets up the directory structure, configuration file, SQLite database, and volume registry needed to begin managing assets.
 
 The following files and directories are created:
 
@@ -87,7 +87,7 @@ maki [GLOBAL FLAGS] volume add <LABEL> <PATH> [--purpose <PURPOSE>]
 
 ### DESCRIPTION
 
-Registers a storage volume (a directory tree containing media files) with the catalog. Each volume is assigned a UUID and tracked by its label and mount point path. Volumes allow maki to manage files spread across multiple disks, external drives, and network mounts.
+Registers a storage volume (a directory tree containing media files) with the catalog. Each volume is assigned a UUID and tracked by its label and mount point path. Volumes allow MAKI to manage files spread across multiple disks, external drives, and network mounts.
 
 The label is a human-readable name for the volume (e.g., "Photos2026", "Archive", "ExternalSSD"). The path is the mount point or root directory of the volume. The path must exist at the time of registration.
 

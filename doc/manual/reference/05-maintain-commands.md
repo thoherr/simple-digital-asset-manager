@@ -315,7 +315,7 @@ maki refresh /Volumes/Photos/Capture/2026-02-22 --log
 
 ### NAME
 
-maki-sync-metadata -- bidirectional XMP metadata sync between DAM and recipe files
+maki-sync-metadata -- bidirectional XMP metadata sync between MAKI and recipe files
 
 ### SYNOPSIS
 
@@ -325,13 +325,13 @@ maki [GLOBAL FLAGS] sync-metadata [QUERY] [OPTIONS]
 
 ### DESCRIPTION
 
-Performs bidirectional metadata synchronization between the DAM catalog and XMP recipe files on disk. Scope can be narrowed with a positional search query, `--asset`, or `--volume`. Runs in three phases:
+Performs bidirectional metadata synchronization between the MAKI catalog and XMP recipe files on disk. Scope can be narrowed with a positional search query, `--asset`, or `--volume`. Runs in three phases:
 
 1. **Inbound (read external changes)**: Detects XMP recipe files that have been modified externally (e.g., by CaptureOne or Lightroom). Re-reads keywords, rating, description, and color label from the changed XMP file and updates the catalog and sidecar YAML.
-2. **Outbound (write pending edits)**: Finds recipes marked `pending_writeback` (edits made while the volume was offline) and writes the current DAM metadata back to the XMP file on disk.
+2. **Outbound (write pending edits)**: Finds recipes marked `pending_writeback` (edits made while the volume was offline) and writes the current MAKI metadata back to the XMP file on disk.
 3. **Media (with `--media`)**: Re-extracts embedded XMP metadata from JPEG/TIFF variant files.
 
-When both the disk file and the DAM have changed (phase 1 detects a change AND `pending_writeback` is set), the recipe is reported as a **conflict**. Conflicts are skipped — resolve manually or re-run with `refresh` or `writeback` as appropriate.
+When both the disk file and the MAKI catalog have changed (phase 1 detects a change AND `pending_writeback` is set), the recipe is reported as a **conflict**. Conflicts are skipped — resolve manually or re-run with `refresh` or `writeback` as appropriate.
 
 Without `--dry-run`, changes are applied immediately.
 
@@ -424,7 +424,7 @@ Scope can be narrowed with a positional search query, `--asset`, or `--volume`. 
 : Limit to recipes belonging to a specific asset (prefix match).
 
 **--all**
-: Write current metadata to every XMP recipe, not just pending ones. Useful for an initial sync or to force-push all DAM metadata to XMP files.
+: Write current metadata to every XMP recipe, not just pending ones. Useful for an initial sync or to force-push all MAKI metadata to XMP files.
 
 **--dry-run**
 : Report what would be written without modifying any files.
@@ -1286,7 +1286,7 @@ maki [GLOBAL FLAGS] migrate
 
 Runs all pending database schema migrations. Migrations are idempotent (safe to run repeatedly) and add new columns, indexes, and tables needed by newer versions of maki.
 
-A `schema_version` table tracks the current schema version. On startup, maki performs a single-query fast-check against this version number and skips migration logic entirely when the schema is already up to date, avoiding the overhead of running dozens of idempotent `ALTER TABLE` statements on every launch.
+A `schema_version` table tracks the current schema version. On startup, MAKI performs a single-query fast-check against this version number and skips migration logic entirely when the schema is already up to date, avoiding the overhead of running dozens of idempotent `ALTER TABLE` statements on every launch.
 
 Migrations also run automatically once at program startup for all commands, so this command is primarily useful for:
 

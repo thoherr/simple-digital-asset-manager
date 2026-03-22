@@ -92,7 +92,7 @@ maki verify --skip audio
 - **UNTRACKED** -- a file was found on disk but is not in the catalog (path mode only). The file's content hash does not match any known variant or recipe. Run `maki import` to bring it into the catalog, or ignore it if it is not a media file.
 - **skipped** -- the file is on an offline volume, or the path could not be read.
 
-If any files fail verification (FAILED status), maki exits with code 1. Scripts can check `$?` to detect problems:
+If any files fail verification (FAILED status), MAKI exits with code 1. Scripts can check `$?` to detect problems:
 
 ```bash
 maki verify --volume "Archive" || echo "Integrity check failed!"
@@ -288,7 +288,7 @@ Without flags, only recipes with `pending_writeback=1` are processed. Each recip
 maki writeback --all
 ```
 
-The `--all` flag writes current metadata to every XMP recipe, not just pending ones. Useful for an initial sync or to force-push all DAM metadata to XMP files.
+The `--all` flag writes current metadata to every XMP recipe, not just pending ones. Useful for an initial sync or to force-push all MAKI metadata to XMP files.
 
 ### Scope to a volume or asset
 
@@ -320,14 +320,14 @@ The flag records the *intent* to write back, not *what* changed. When writeback 
 ### Recommended workflow: volume comes back online
 
 ```bash
-# 1. Push DAM edits to XMP (DAM wins for fields edited while offline)
+# 1. Push MAKI edits to XMP (MAKI wins for fields edited while offline)
 maki writeback --volume "Archive 2025"
 
 # 2. Pull any CaptureOne/Lightroom edits from XMP
 maki refresh --volume "Archive 2025"
 ```
 
-Order matters: writeback first ensures DAM edits land in the XMP files. Then refresh picks up anything the external tool changed independently.
+Order matters: writeback first ensures MAKI edits land in the XMP files. Then refresh picks up anything the external tool changed independently.
 
 ### Monitoring flags
 
@@ -349,8 +349,8 @@ maki sync-metadata
 This runs three phases:
 
 1. **Inbound**: Detects externally modified XMP recipe files and re-reads their metadata (keywords, rating, description, color label).
-2. **Outbound**: Finds recipes marked `pending_writeback` and writes current DAM metadata back to the XMP file.
-3. **Conflict detection**: When both the XMP file changed on disk AND the recipe has pending DAM edits, the recipe is reported as a conflict and skipped.
+2. **Outbound**: Finds recipes marked `pending_writeback` and writes current MAKI metadata back to the XMP file.
+3. **Conflict detection**: When both the XMP file changed on disk AND the recipe has pending MAKI edits, the recipe is reported as a conflict and skipped.
 
 ### Scope to a volume or asset
 
@@ -378,7 +378,7 @@ Shows what would change without modifying any files.
 ### When to use sync-metadata vs. writeback + refresh
 
 - **`sync-metadata`**: The recommended single command for most workflows. Handles both directions and detects conflicts.
-- **`writeback` + `refresh`**: Use separately when you want explicit control over direction (e.g., force DAM edits to win with `writeback --all`, then pull external changes with `refresh`).
+- **`writeback` + `refresh`**: Use separately when you want explicit control over direction (e.g., force MAKI edits to win with `writeback --all`, then pull external changes with `refresh`).
 
 
 ## Cleanup
@@ -442,7 +442,7 @@ Prints stale entries to stderr (similar to `--log`, but only shows stale entries
 
 ### Offline volumes
 
-Offline volumes are skipped automatically with a note. maki never removes records for files on an offline volume -- it cannot know whether the file is truly gone or just disconnected.
+Offline volumes are skipped automatically with a note. MAKI never removes records for files on an offline volume -- it cannot know whether the file is truly gone or just disconnected.
 
 ### Monitoring flags
 
@@ -726,7 +726,7 @@ A typical maintenance session after reconnecting an archive drive:
 # 1. Check file integrity
 maki verify --volume "Archive 2025" --time
 
-# 2. Push any DAM edits made while the drive was offline
+# 2. Push any MAKI edits made while the drive was offline
 maki writeback --volume "Archive 2025"
 
 # 3. Pick up any recipe changes made while the drive was connected elsewhere

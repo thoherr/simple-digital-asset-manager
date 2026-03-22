@@ -264,7 +264,7 @@ maki [GLOBAL FLAGS] tag <ASSET_ID> [--remove] <TAGS...>
 
 Adds or removes tags on an asset. Tags are free-form text strings stored on the asset record. They are persisted in both the YAML sidecar file and the SQLite catalog.
 
-When tags are changed, maki automatically writes the changes back to any `.xmp` recipe files associated with the asset. Tag write-back uses operation-level deltas: added tags are inserted into the XMP `dc:subject` / `rdf:Bag` block, and removed tags are deleted -- tags added independently in external tools like CaptureOne are preserved.
+When tags are changed, MAKI automatically writes the changes back to any `.xmp` recipe files associated with the asset. Tag write-back uses operation-level deltas: added tags are inserted into the XMP `dc:subject` / `rdf:Bag` block, and removed tags are deleted -- tags added independently in external tools like CaptureOne are preserved.
 
 Tags are deduplicated: adding a tag that already exists is a no-op.
 

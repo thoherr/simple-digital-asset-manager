@@ -1,6 +1,6 @@
 # Ingesting Assets
 
-Importing is how files enter the maki catalog. Unlike traditional asset managers that copy files into a managed library folder, maki catalogs files **in place** on your existing volumes. The import process hashes each file (SHA-256), extracts metadata, generates previews, and records everything in the catalog -- but your originals stay exactly where they are.
+Importing is how files enter the MAKI catalog. Unlike traditional asset managers that copy files into a managed library folder, MAKI catalogs files **in place** on your existing volumes. The import process hashes each file (SHA-256), extracts metadata, generates previews, and records everything in the catalog -- but your originals stay exactly where they are.
 
 ## Import Pipeline
 
@@ -46,7 +46,7 @@ Import specific files:
 maki import /Volumes/PhotosDrive/DSC_0042.nef /Volumes/PhotosDrive/DSC_0043.nef
 ```
 
-The path you provide must reside on a [registered volume](02-setup.md). maki resolves the volume automatically from the file path. If auto-detection picks the wrong volume (for example, when mount points are nested), specify it explicitly:
+The path you provide must reside on a [registered volume](02-setup.md). MAKI resolves the volume automatically from the file path. If auto-detection picks the wrong volume (for example, when mount points are nested), specify it explicitly:
 
 ```
 maki import --volume "Photos 2024" /path/to/files
@@ -79,7 +79,7 @@ Import does not copy or move your files. The catalog stores references to files 
 
 ## Auto-Grouping
 
-When maki imports a directory, it groups files by **filename stem** -- the filename without its extension. Files sharing the same stem in the same directory become a single Asset with multiple Variants.
+When MAKI imports a directory, it groups files by **filename stem** -- the filename without its extension. Files sharing the same stem in the same directory become a single Asset with multiple Variants.
 
 ### How It Works
 
@@ -91,7 +91,7 @@ DSC_0042.jpg
 DSC_0042.xmp
 ```
 
-maki creates **one Asset** with:
+MAKI creates **one Asset** with:
 
 | File | Role | Record Type |
 |---|---|---|
@@ -152,7 +152,7 @@ Import complete: 3 imported, 1 recipe(s) attached, 3 preview(s) generated
 Auto-group: 1 stem group(s), 2 donor(s) merged, 2 variant(s) moved
 ```
 
-**How the neighborhood is determined**: For each imported file's directory (e.g., `2026-02-22/Capture/`), maki goes up one level to find the "session root" (`2026-02-22/`). It then searches the catalog for all assets under those session roots on the same volume. Only those assets participate in grouping.
+**How the neighborhood is determined**: For each imported file's directory (e.g., `2026-02-22/Capture/`), MAKI goes up one level to find the "session root" (`2026-02-22/`). It then searches the catalog for all assets under those session roots on the same volume. Only those assets participate in grouping.
 
 This scoping prevents false positives from restarting camera counters -- `DSC_0001` from a January shoot won't be grouped with `DSC_0001` from a June shoot because they live under different session roots.
 
@@ -190,7 +190,7 @@ Processing sidecars are files created by RAW processors and image editors to sto
 
 Recipes are attached to the **primary variant** of the matching asset (matched by filename stem in the same directory). They are identified by **location** (volume + path), not by content hash. This is an important distinction:
 
-- If you edit settings in CaptureOne and re-import, maki updates the existing recipe record rather than creating a duplicate.
+- If you edit settings in CaptureOne and re-import, MAKI updates the existing recipe record rather than creating a duplicate.
 - The recipe's content hash is updated to reflect the new file contents.
 
 ### Standalone Recipe Resolution
@@ -205,7 +205,7 @@ maki import /Volumes/PhotosDrive/Shoot/
 maki import /Volumes/PhotosDrive/Shoot/*.xmp
 ```
 
-maki finds the parent variant by matching the filename stem and directory, then attaches the recipe to it.
+MAKI finds the parent variant by matching the filename stem and directory, then attaches the recipe to it.
 
 ### Enabling Non-Default Recipe Groups
 
@@ -220,7 +220,7 @@ See [Import Options](#import-options) below for the full list of type groups.
 
 ## Metadata Extraction
 
-maki extracts metadata from three sources during import, each contributing different information about the asset.
+MAKI extracts metadata from three sources during import, each contributing different information about the asset.
 
 ### EXIF Data
 
@@ -250,7 +250,7 @@ When an `.xmp` file is attached as a recipe, its contents are parsed and merged 
 
 ### Embedded XMP
 
-JPEG and TIFF files can contain XMP metadata embedded in their binary structure (APP1 marker for JPEG, IFD tag 700 for TIFF). maki extracts the same fields as from sidecar XMP. This captures keywords, ratings, and labels from tools like CaptureOne and Lightroom that embed XMP directly in exported files.
+JPEG and TIFF files can contain XMP metadata embedded in their binary structure (APP1 marker for JPEG, IFD tag 700 for TIFF). MAKI extracts the same fields as from sidecar XMP. This captures keywords, ratings, and labels from tools like CaptureOne and Lightroom that embed XMP directly in exported files.
 
 Other file formats (RAW, video, audio, etc.) are skipped for embedded XMP extraction -- zero I/O overhead.
 
@@ -268,7 +268,7 @@ When a sidecar recipe is **updated later** (e.g. after editing in Capture One or
 
 ## Preview Generation
 
-maki generates preview thumbnails during import so you can browse assets without accessing the original files. Optionally, high-resolution **smart previews** (2560px) can be generated alongside thumbnails, enabling zoom and pan in the web UI lightbox.
+MAKI generates preview thumbnails during import so you can browse assets without accessing the original files. Optionally, high-resolution **smart previews** (2560px) can be generated alongside thumbnails, enabling zoom and pan in the web UI lightbox.
 
 ### By File Type
 
@@ -299,7 +299,7 @@ smart_previews = true
 
 ### Info Cards
 
-When a file has no visual preview (audio files, documents) or when external tools (`dcraw`, `ffmpeg`) are not installed, maki generates an **info card** -- an 800x600 JPEG displaying the file's metadata:
+When a file has no visual preview (audio files, documents) or when external tools (`dcraw`, `ffmpeg`) are not installed, MAKI generates an **info card** -- an 800x600 JPEG displaying the file's metadata:
 
 - Filename and format
 - File size
@@ -330,7 +330,7 @@ The first two characters of the content hash serve as a subdirectory prefix to a
 
 ### File Type Groups
 
-maki organizes recognized file extensions into groups. Some are enabled by default; others require opting in.
+MAKI organizes recognized file extensions into groups. Some are enabled by default; others require opting in.
 
 | Group | Extensions | Default |
 |---|---|---|
@@ -388,7 +388,7 @@ Auto-tags are merged with any tags extracted from XMP metadata (deduplicated).
 
 ## Duplicate Handling
 
-maki uses content hashing (SHA-256) to detect duplicates at the file level.
+MAKI uses content hashing (SHA-256) to detect duplicates at the file level.
 
 ### Three Outcomes
 
@@ -490,7 +490,7 @@ See the [auto-tag reference](../reference/02-ingest-commands.md#maki-auto-tag) f
 
 While SigLIP auto-tagging classifies images against a fixed vocabulary (~100 labels), vision-language models (VLMs) generate free-form text descriptions that capture scene context, spatial relationships, lighting, and mood. The `maki describe` command sends preview images to a VLM server and stores the generated text as the asset's description.
 
-Unlike auto-tagging, this feature requires **no special build flags** -- it works with any maki binary because it communicates with an external server via HTTP.
+Unlike auto-tagging, this feature requires **no special build flags** -- it works with any `maki` binary because it communicates with an external server via HTTP.
 
 ### Setting Up a Local VLM Server
 

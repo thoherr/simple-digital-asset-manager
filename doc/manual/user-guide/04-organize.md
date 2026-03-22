@@ -1,6 +1,6 @@
 # Organizing Assets
 
-Once your files are [imported](03-ingest.md), maki provides several tools for
+Once your files are [imported](03-ingest.md), MAKI provides several tools for
 organizing them: tags, metadata editing, variant grouping, static collections,
 and saved searches. All changes are persisted in both the SQLite catalog and
 YAML sidecar files. When `.xmp` recipe files are present, edits to ratings,
@@ -31,7 +31,7 @@ searches.
 
 Hierarchical tags interoperate with Lightroom's `lr:hierarchicalSubject` XMP
 field. When importing XMP files that contain `lr:hierarchicalSubject` entries,
-maki reads the hierarchy and stores the full path as a tag. Write-back preserves
+MAKI reads the hierarchy and stores the full path as a tag. Write-back preserves
 the hierarchy in the XMP file.
 
 The tags page in the web UI displays hierarchical tags as a collapsible tree
@@ -558,7 +558,7 @@ maki ss run "Five Stars" --format ids | xargs maki col add "Portfolio"
 
 > Requires `cargo build --features ai`.
 
-maki can detect faces in your images, group them into people, and let you search by person. This is an AI-powered feature that uses YuNet for face detection and ArcFace for face recognition.
+MAKI can detect faces in your images, group them into people, and let you search by person. This is an AI-powered feature that uses YuNet for face detection and ArcFace for face recognition.
 
 ### Setup
 

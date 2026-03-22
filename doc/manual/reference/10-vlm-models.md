@@ -2,7 +2,7 @@
 
 This document covers vision-language models (VLMs) compatible with `maki describe`. It lists tested models, hardware requirements, quality notes, and setup instructions for each inference backend.
 
-maki tries the **Ollama native API** (`/api/generate`) first, falling back to the **OpenAI-compatible** `/v1/chat/completions` endpoint. Both use base64-encoded images. Any server that implements either API works — Ollama, llama.cpp, vLLM, LM Studio, SGLang, or cloud providers.
+MAKI tries the **Ollama native API** (`/api/generate`) first, falling back to the **OpenAI-compatible** `/v1/chat/completions` endpoint. Both use base64-encoded images. Any server that implements either API works — Ollama, llama.cpp, vLLM, LM Studio, SGLang, or cloud providers.
 
 ---
 
@@ -233,7 +233,7 @@ Based on describing the same set of 50 photographs (landscapes, portraits, archi
 
 Some models (Qwen3-VL, Qwen3.5) support "extended thinking" — they wrap internal chain-of-thought reasoning in `<think>...</think>` tags before producing the actual answer. This can consume most of the `max_tokens` budget with reasoning text, leaving little room for the description itself.
 
-maki handles this automatically:
+MAKI handles this automatically:
 
 - Sends `think: false` to disable extended thinking (works with Ollama's native API)
 - Strips any `<think>...</think>` tags from the response as a fallback

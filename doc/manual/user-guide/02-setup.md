@@ -1,13 +1,13 @@
 # Setup
 
-This chapter covers building maki from source, initializing a catalog, registering storage volumes, and configuring the system to match your workflow.
+This chapter covers building MAKI from source, initializing a catalog, registering storage volumes, and configuring the system to match your workflow.
 
 
 ## Installation
 
 ### Building from source
 
-maki is written in Rust. You need a working Rust toolchain (rustc + cargo). Install one via [rustup](https://rustup.rs/) if you have not already.
+MAKI is written in Rust. You need a working Rust toolchain (rustc + cargo). Install one via [rustup](https://rustup.rs/) if you have not already.
 
 Clone the repository and build a release binary:
 
@@ -31,11 +31,11 @@ maki --version
 
 ### Supported platforms
 
-maki builds and runs on **macOS**, **Linux**, and **Windows**. Both x86_64 and ARM (Apple Silicon) are supported.
+MAKI builds and runs on **macOS**, **Linux**, and **Windows**. Both x86_64 and ARM (Apple Silicon) are supported.
 
 ### External tools (highly recommended)
 
-maki handles standard image formats (JPEG, PNG, TIFF, WebP) natively. The following external tools extend its capabilities:
+MAKI handles standard image formats (JPEG, PNG, TIFF, WebP) natively. The following external tools extend its capabilities:
 
 | Tool | Purpose | Install |
 |------|---------|---------|
@@ -43,12 +43,12 @@ maki handles standard image formats (JPEG, PNG, TIFF, WebP) natively. The follow
 | **ffmpeg** | Video thumbnail extraction | `brew install ffmpeg` on macOS; your package manager on Linux; `winget install Gyan.FFmpeg` or `scoop install ffmpeg` on Windows |
 | **curl** | AI model download and VLM image descriptions | Pre-installed on macOS and most Linux distributions; `winget install cURL.cURL` or `scoop install curl` on Windows |
 
-When an external tool is missing, maki prints a warning on first use explaining what is needed and why. It still imports RAW and video files, but generates an info card (a placeholder JPEG showing file metadata) instead of a rendered preview. You can install the tools later and run `maki generate-previews --force` to regenerate real previews.
+When an external tool is missing, MAKI prints a warning on first use explaining what is needed and why. It still imports RAW and video files, but generates an info card (a placeholder JPEG showing file metadata) instead of a rendered preview. You can install the tools later and run `maki generate-previews --force` to regenerate real previews.
 
 
 ## Initializing a Catalog
 
-A catalog is a directory that holds maki's database, configuration, metadata sidecars, and preview images. Create one by navigating to the directory you want as the catalog root and running `maki init`:
+A catalog is a directory that holds MAKI's database, configuration, metadata sidecars, and preview images. Create one by navigating to the directory you want as the catalog root and running `maki init`:
 
 ```bash
 mkdir ~/Photos
@@ -76,7 +76,7 @@ This creates the following structure:
 
 ### How catalog detection works
 
-After initialization, you can run maki commands from the catalog root or any subdirectory. maki locates the catalog by walking up from your current working directory, looking for a `maki.toml` file. This means you can organize files in subdirectories and still run commands without specifying the catalog path.
+After initialization, you can run `maki` commands from the catalog root or any subdirectory. MAKI locates the catalog by walking up from your current working directory, looking for a `maki.toml` file. This means you can organize files in subdirectories and still run commands without specifying the catalog path.
 
 ```bash
 cd ~/Photos
@@ -89,7 +89,7 @@ cd /tmp
 maki stats            # fails -- no maki.toml above /tmp
 ```
 
-If no catalog is found, maki prints:
+If no catalog is found, MAKI prints:
 
 ```
 Error: No maki catalog found. Run `maki init` to create one.
@@ -149,12 +149,12 @@ Travel SSD (b2c3d4e5-f6a7-8901-bcde-f12345678901) [offline]
 
 ### Online vs. offline
 
-maki checks whether each volume's mount point directory exists on disk:
+MAKI checks whether each volume's mount point directory exists on disk:
 
 - **Online**: The directory exists. maki can read files, generate previews, and verify integrity.
 - **Offline**: The directory does not exist (drive disconnected, NAS unreachable). maki still knows about the volume and its assets, but file operations are skipped gracefully.
 
-This design lets you manage a photo library that spans multiple external drives. You can search, browse, and view cached previews for assets on offline volumes. When you reconnect a drive, maki picks it up automatically.
+This design lets you manage a photo library that spans multiple external drives. You can search, browse, and view cached previews for assets on offline volumes. When you reconnect a drive, MAKI picks it up automatically.
 
 ### Multiple volumes
 
@@ -200,7 +200,7 @@ Volumes without a purpose are treated as unclassified — they still work for im
 
 ### Symlinks and path resolution
 
-maki resolves symlinks when registering volumes and importing files. All paths stored in the catalog are **physical (canonical) paths**, not the symlink paths you may see in your filesystem.
+MAKI resolves symlinks when registering volumes and importing files. All paths stored in the catalog are **physical (canonical) paths**, not the symlink paths you may see in your filesystem.
 
 This matters when your directory layout uses symlinks to span multiple disks. For example, if you have:
 
@@ -214,7 +214,7 @@ and you register `/Volumes/Pictures` as a volume, then:
 - Files under `.../masters/2025/` are tracked on the "Pictures" volume as expected.
 - Files under `.../masters/2026/` resolve through the symlink to `/Volumes/Dropbox/masters/2026/`, which is **outside** the Pictures volume mount point. Import will fail with "No registered volume contains path" unless the Dropbox path is also registered as a volume.
 
-**Why maki resolves symlinks:**
+**Why MAKI resolves symlinks:**
 
 - **Reliable verification.** `maki verify` re-hashes files by their catalog path. If the catalog stored a symlink path and the symlink later changed target, verification would silently check the wrong file — or fail when the link breaks.
 - **Correct offline detection.** A volume is "online" when its mount point exists. A broken symlink inside an online volume would cause confusing partial failures.
@@ -266,7 +266,7 @@ See the [volume combine reference](../reference/01-setup-commands.md#maki-volume
 
 ## Configuration (maki.toml)
 
-The `maki.toml` file at the catalog root controls maki's behavior. All sections are optional -- an empty file (or one with only comments) uses sensible defaults.
+The `maki.toml` file at the catalog root controls MAKI's behavior. All sections are optional -- an empty file (or one with only comments) uses sensible defaults.
 
 Here is an example showing common options (see the [Configuration Reference](../reference/08-configuration.md) for the full list):
 

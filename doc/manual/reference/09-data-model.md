@@ -1,6 +1,6 @@
 # Data Model
 
-This page documents every entity in the maki data model, their fields, relationships, and storage mechanisms.
+This page documents every entity in the MAKI data model, their fields, relationships, and storage mechanisms.
 
 ---
 
@@ -105,7 +105,7 @@ A processing sidecar file attached to a Variant. Unlike Variants, Recipes are id
 
 ### Volume
 
-A registered storage device. Volumes give maki a stable reference to storage that may come and go (external drives, network shares).
+A registered storage device. Volumes give MAKI a stable reference to storage that may come and go (external drives, network shares).
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -300,13 +300,13 @@ erDiagram
 
 ### Content-Addressable Identity
 
-Every file imported into maki is hashed with SHA-256. This hash is the file's identity:
+Every file imported into MAKI is hashed with SHA-256. This hash is the file's identity:
 
 - **Deduplication**: Importing the same file twice (even from different paths or drives) recognizes it as the same content and adds the new location to the existing Variant.
 - **Integrity verification**: `maki verify` re-hashes files and compares against stored hashes to detect corruption or bit rot.
 - **Transparent relocation**: Moving a file to a different drive does not change its identity. `maki relocate` and `maki update-location` update the catalog path.
 
-Originals (RAW files, camera JPEGs) are immutable -- their hash is stable forever. Recipe files are the exception: they are modified by external tools, so maki tracks them by location and updates their stored hash when changes are detected.
+Originals (RAW files, camera JPEGs) are immutable -- their hash is stable forever. Recipe files are the exception: they are modified by external tools, so MAKI tracks them by location and updates their stored hash when changes are detected.
 
 ---
 

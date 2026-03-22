@@ -1,6 +1,6 @@
 # Scripting
 
-maki's CLI is designed for composability with shell scripts and external programs. Every command supports `--json` for structured output, `-q` for piping asset IDs, and stderr/stdout separation so human messages never pollute machine-readable output.
+MAKI's CLI is designed for composability with shell scripts and external programs. Every command supports `--json` for structured output, `-q` for piping asset IDs, and stderr/stdout separation so human messages never pollute machine-readable output.
 
 This chapter covers practical scripting patterns using bash and Python. For interactive multi-step workflows with variables and tab completion, see the [Interactive Shell](09-shell.md) chapter — `maki shell` provides a REPL that eliminates much of the piping and quoting complexity shown here.
 
@@ -159,7 +159,7 @@ import json
 import subprocess
 import sys
 
-def dam_json(*args):
+def maki_json(*args):
     """Run a maki command with --json and return parsed output."""
     cmd = ["maki", "--json"] + list(args)
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -168,7 +168,7 @@ def dam_json(*args):
         return None
     return json.loads(result.stdout)
 
-def dam_ids(*args):
+def maki_ids(*args):
     """Run a maki search with -q and return a list of asset IDs."""
     cmd = ["maki", "search", "-q"] + list(args)
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -182,7 +182,7 @@ def dam_ids(*args):
 Find tags that are only used once (potential typos or inconsistencies):
 
 ```python
-stats = dam_json("stats", "--tags")
+stats = maki_json("stats", "--tags")
 if stats and stats.get("tags"):
     for tag in stats["tags"].get("top_tags", []):
         if tag["count"] == 1:
@@ -194,11 +194,11 @@ if stats and stats.get("tags"):
 Check which assets exist on only one volume:
 
 ```python
-at_risk = dam_ids("copies:1")
+at_risk = maki_ids("copies:1")
 print(f"Assets with only 1 copy: {len(at_risk)}")
 
 for asset_id in at_risk[:10]:  # show first 10
-    details = dam_json("show", asset_id)
+    details = maki_json("show", asset_id)
     if details:
         filename = details["variants"][0]["original_filename"]
         print(f"  {filename}")

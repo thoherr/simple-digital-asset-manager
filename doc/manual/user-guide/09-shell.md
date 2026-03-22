@@ -1,6 +1,6 @@
 # Interactive Shell
 
-maki includes an interactive shell that keeps catalog state alive between commands, giving near-instant response times and enabling multi-step workflows with named variables, session defaults, tab completion, and script files. Instead of paying the startup cost of locating the catalog, loading configuration, and opening SQLite on every invocation, the shell does this once and reuses it for the entire session.
+MAKI includes an interactive shell that keeps catalog state alive between commands, giving near-instant response times and enabling multi-step workflows with named variables, session defaults, tab completion, and script files. Instead of paying the startup cost of locating the catalog, loading configuration, and opening SQLite on every invocation, the shell does this once and reuses it for the entire session.
 
 This chapter covers interactive use, variables, scripting, and practical workflows. For one-shot CLI scripting with bash or Python, see [Scripting](08-scripting.md).
 

@@ -76,7 +76,7 @@ maki import /path --json --log --time
 
 ## Catalog Discovery
 
-maki locates the active catalog by searching for a `maki.toml` file:
+MAKI locates the active catalog by searching for a `maki.toml` file:
 
 1. Check the current working directory.
 2. Walk up through parent directories until one containing `maki.toml` is found.
