@@ -53,6 +53,7 @@ YAML sidecars are the source of truth; SQLite catalog is a derived cache rebuilt
 Rating, tag, description, and label changes are written back to `.xmp` recipe files on disk. After writing, the file is re-hashed and the recipe's `content_hash` is updated in both SQLite and YAML sidecar. Offline volumes are silently skipped with `pending_writeback=true` flag. `maki writeback` replays pending writes when volumes come online.
 
 ### Feature Gates
+- `--features pro`: MAKI Pro edition (includes `ai`, plus "Pro" branding and future pro-only features)
 - `--features ai`: SigLIP embeddings, auto-tag, face detection/recognition, stroll page, similarity search, text-to-image search
 - `--features ai-gpu`: CoreML execution provider on macOS (additive to `ai`)
 - VLM (`maki describe`): no feature gate — HTTP calls to external server

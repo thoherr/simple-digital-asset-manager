@@ -18,14 +18,14 @@ cargo build --release
 
 Produces an optimized binary at `target/release/maki`. Significantly faster runtime performance. Use this for production deployment.
 
-### Pro Build (AI Features)
+### Pro Build
 
 ```bash
-cargo build --features ai
-cargo build --release --features ai
+cargo build --features pro
+cargo build --release --features pro
 ```
 
-Builds the **MAKI Pro** edition with SigLIP-based zero-shot image classification, face detection/recognition, and visual similarity search. Adds ONNX Runtime (`ort`), `ndarray`, and `tokenizers` as dependencies. The ONNX Runtime shared library is downloaded automatically during build. Without `--features ai`, these dependencies are not compiled and AI commands (`auto-tag`, `embed`, `faces`) are not available.
+Builds the **MAKI Pro** edition with SigLIP-based zero-shot image classification, face detection/recognition, and visual similarity search. The `pro` feature enables `ai` automatically. Adds ONNX Runtime (`ort`), `ndarray`, and `tokenizers` as dependencies. The ONNX Runtime shared library is downloaded automatically during build. Without `--features pro` (or `--features ai`), these dependencies are not compiled and AI commands (`auto-tag`, `embed`, `faces`) are not available.
 
 ### Requirements
 

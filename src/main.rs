@@ -10,7 +10,7 @@ use maki::query::QueryEngine;
 
 #[derive(Parser)]
 #[command(name = "maki", about = "Media Asset Keeper & Indexer",
-    version = if cfg!(feature = "ai") {
+    version = if cfg!(feature = "pro") {
         concat!(env!("CARGO_PKG_VERSION"), " Pro")
     } else {
         env!("CARGO_PKG_VERSION")
@@ -1286,7 +1286,7 @@ enum FacesCommands {
 /// Print custom grouped help text through a pager.
 fn print_custom_help() {
     let version = env!("CARGO_PKG_VERSION");
-    let edition = if cfg!(feature = "ai") { " Pro" } else { "" };
+    let edition = if cfg!(feature = "pro") { " Pro" } else { "" };
     let ai_note = if cfg!(feature = "ai") { "" } else { "  (download MAKI Pro for: auto-tag, embed, faces, stroll)" };
 
     let help = format!("\

@@ -78,7 +78,7 @@ jobs:
       # --- Pro build (AI features) ---
 
       - name: Build release binary (Pro)
-        run: cargo build --release --target ${{ matrix.target }} --features ai
+        run: cargo build --release --target ${{ matrix.target }} --features pro
 
       - name: Package Pro binary (Unix)
         if: runner.os != 'Windows'

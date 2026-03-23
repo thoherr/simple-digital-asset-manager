@@ -772,7 +772,7 @@ mod filters {
 
     pub fn version(_s: &str) -> ::askama::Result<String> {
         let v = env!("CARGO_PKG_VERSION");
-        if cfg!(feature = "ai") {
+        if cfg!(feature = "pro") {
             Ok(format!("{v} Pro"))
         } else {
             Ok(v.to_string())
