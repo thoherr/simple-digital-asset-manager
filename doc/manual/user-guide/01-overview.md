@@ -18,8 +18,9 @@ MAKI runs on **macOS**, **Linux**, and **Windows**.
 
 MAKI is available in two editions:
 
-|------------|---------------------------------------------------|
-| **MAKI**   | The full digital asset manager: import, organize, browse, search, export, contact sheets, stacks, collections, web UI, and all maintenance commands. |
+| Edition      | Features                                                            |
+|--------------|---------------------------------------------------------------------|
+| **MAKI**     | The full digital asset manager: import, organize, browse, search, export, contact sheets, stacks, collections, web UI, and all maintenance commands. |
 | **MAKI Pro** | Everything in MAKI, plus AI-powered features: **auto-tagging**, **face detection and recognition**, **visual similarity search** (including Stroll), and **text-to-image search** — all running locally with no cloud dependency. |
 
 Both editions also support **VLM-powered image descriptions** via a local vision-language model server (Ollama, LM Studio, vLLM) — no special edition required.
