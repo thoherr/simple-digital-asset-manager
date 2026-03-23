@@ -12,9 +12,19 @@ You interact with MAKI through two interfaces: a **command-line interface** (CLI
 
 Metadata is stored as human-readable **YAML sidecar files** — the source of truth that survives database rebuilds and is friendly to version control. A SQLite database serves as a fast query index that can be fully reconstructed from the sidecars at any time.
 
-With the optional AI feature, MAKI provides **auto-tagging**, **face detection and recognition**, **visual similarity search**, and **VLM-powered image descriptions** — all running locally with no cloud dependency.
-
 MAKI runs on **macOS**, **Linux**, and **Windows**.
+
+## Editions
+
+MAKI is available in two editions:
+
+|------------|---------------------------------------------------|
+| **MAKI**   | The full digital asset manager: import, organize, browse, search, export, contact sheets, stacks, collections, web UI, and all maintenance commands. |
+| **MAKI Pro** | Everything in MAKI, plus AI-powered features: **auto-tagging**, **face detection and recognition**, **visual similarity search** (including Stroll), and **text-to-image search** — all running locally with no cloud dependency. |
+
+Both editions also support **VLM-powered image descriptions** via a local vision-language model server (Ollama, LM Studio, vLLM) — no special edition required.
+
+Pre-built binaries for both editions are available on the [GitHub releases page](https://github.com/thoherr/maki/releases). The Pro edition includes ONNX Runtime for on-device AI inference, with optional GPU acceleration on macOS (CoreML/Neural Engine).
 
 ## Core Concepts
 

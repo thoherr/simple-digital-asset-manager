@@ -5,29 +5,43 @@ This chapter covers building MAKI from source, initializing a catalog, registeri
 
 ## Installation
 
-### Building from source
+### Pre-built binaries
 
-MAKI is written in Rust. You need a working Rust toolchain (rustc + cargo). Install one via [rustup](https://rustup.rs/) if you have not already.
+Download a pre-built binary from the [GitHub releases page](https://github.com/thoherr/maki/releases). Each release provides two editions for every platform:
 
-Clone the repository and build a release binary:
+| Archive name | Edition |
+|-------------|---------|
+| `maki-VERSION-PLATFORM.tar.gz` | MAKI (standard) |
+| `maki-VERSION-PLATFORM-pro.tar.gz` | MAKI Pro (with AI features) |
 
-```bash
-git clone https://github.com/your-org/maki.git
-cd maki
-cargo build --release
-```
-
-The binary is at `target/release/maki`. Copy or symlink it to a directory on your `PATH`:
+Extract the archive and copy the `maki` binary to a directory on your `PATH`:
 
 ```bash
-cp target/release/maki /usr/local/bin/
+tar xzf maki-4.0.12-macos-arm64-pro.tar.gz
+cp maki /usr/local/bin/
 ```
 
 Verify the installation:
 
 ```bash
 maki --version
+# MAKI:     maki 4.0.12
+# MAKI Pro: maki 4.0.12 Pro
 ```
+
+### Building from source
+
+MAKI is written in Rust. You need a working Rust toolchain (rustc + cargo). Install one via [rustup](https://rustup.rs/) if you have not already.
+
+```bash
+git clone https://github.com/thoherr/maki.git
+cd maki
+cargo build --release                    # standard edition
+cargo build --release --features ai      # Pro edition
+cargo build --release --features ai-gpu  # Pro edition with GPU acceleration (macOS)
+```
+
+The binary is at `target/release/maki`. Copy or symlink it to a directory on your `PATH`.
 
 ### Supported platforms
 

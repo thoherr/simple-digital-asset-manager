@@ -17,8 +17,8 @@ A command-line digital asset manager built in Rust, designed for large collectio
 - **Stacks** — group burst shots and similar-scene images into collapsible stacks, showing only the "pick" in the browse grid
 - **Hierarchical tags** — tree-structured keywords with Lightroom `lr:hierarchicalSubject` interop
 - **Saved searches & collections** — smart albums (dynamic queries) and static albums (curated lists)
-- **AI auto-tagging** — zero-shot image classification using SigLIP vision-language models (ViT-B/16-256 or ViT-L/16-256) for automated tag suggestions, visual similarity search via stored embeddings, and natural language image search via `text:` filter (optional, requires `--features ai`)
-- **Face recognition** — detect faces with YuNet, generate ArcFace embeddings, auto-cluster into people groups, and manage named people across your catalog (optional, requires `--features ai`)
+- **AI auto-tagging** — zero-shot image classification using SigLIP vision-language models (ViT-B/16-256 or ViT-L/16-256) for automated tag suggestions, visual similarity search via stored embeddings, and natural language image search via `text:` filter (*MAKI Pro*)
+- **Face recognition** — detect faces with YuNet, generate ArcFace embeddings, auto-cluster into people groups, and manage named people across your catalog (*MAKI Pro*)
 - **Interactive shell** — `maki shell` REPL with named variables (`$picks = search "rating:5"`), tab completion, session defaults, `.maki` script files, and `source` for script composition
 - **Web UI** — browser-based interface with search, inline editing, batch operations, keyboard navigation, lightbox viewer, dark mode, grid density controls, calendar heatmap, faceted sidebar, visual similarity stroll page, and OS integration (reveal in Finder, open terminal)
 - **Flexible output** — JSON on all commands, custom format templates, quiet mode for scripting
@@ -94,15 +94,15 @@ Install on Windows: `winget install LibRaw.LibRaw Gyan.FFmpeg cURL.cURL` or `sco
 
 When missing, RAW and video files get an info card preview instead. maki prints a warning on first use when a tool is not found.
 
-## AI Auto-Tagging (Optional Feature)
+## AI Auto-Tagging (MAKI Pro)
 
-Build with `cargo build --features ai` to enable AI-powered commands. This uses SigLIP vision-language models (via ONNX Runtime) for zero-shot image classification against a configurable tag vocabulary. Two models are available: ViT-B/16-256 (~207 MB, default) and ViT-L/16-256 (~670 MB, higher accuracy). Select with `--model` or `[ai] model` in `maki.toml`. Model files are downloaded from HuggingFace on first use. Commands: `maki auto-tag` for tag suggestion/application, `maki embed` for batch embedding generation, `maki search "similar:<id>"` for visual similarity search, and `maki search "text:\"sunset on the beach\""` for natural language image search. The web UI includes a **Stroll page** (`/stroll`) for graph-based visual exploration — pick an asset, see its nearest visual neighbors arranged radially, click through to explore connections. The "Suggest tags" and "Auto-tag" buttons also store embeddings opportunistically. Similarity search uses an in-memory index for sub-millisecond results at any scale. See the [Configuration Reference](doc/manual/reference/08-configuration.md) for `[ai]` settings.
+Download the MAKI Pro binary or build with `cargo build --features ai` to enable AI-powered commands. This uses SigLIP vision-language models (via ONNX Runtime) for zero-shot image classification against a configurable tag vocabulary. Two models are available: ViT-B/16-256 (~207 MB, default) and ViT-L/16-256 (~670 MB, higher accuracy). Select with `--model` or `[ai] model` in `maki.toml`. Model files are downloaded from HuggingFace on first use. Commands: `maki auto-tag` for tag suggestion/application, `maki embed` for batch embedding generation, `maki search "similar:<id>"` for visual similarity search, and `maki search "text:\"sunset on the beach\""` for natural language image search. The web UI includes a **Stroll page** (`/stroll`) for graph-based visual exploration — pick an asset, see its nearest visual neighbors arranged radially, click through to explore connections. The "Suggest tags" and "Auto-tag" buttons also store embeddings opportunistically. Similarity search uses an in-memory index for sub-millisecond results at any scale. See the [Configuration Reference](doc/manual/reference/08-configuration.md) for `[ai]` settings.
 
 **GPU acceleration** (macOS): Build with `cargo build --features ai-gpu` to enable CoreML execution provider for hardware-accelerated inference on Apple Silicon (Neural Engine) and Intel Macs (Metal). Falls back to CPU automatically when CoreML is unavailable. Configure via `[ai] execution_provider` in `maki.toml` (`"auto"`, `"cpu"`, `"coreml"`).
 
-## Face Recognition (Optional Feature)
+## Face Recognition (MAKI Pro)
 
-Build with `cargo build --features ai` to enable face detection and people management. Uses two ONNX models: YuNet for face detection (bounding boxes + landmarks) and ArcFace for face recognition (512-dim embeddings). Models are downloaded via `maki faces download`.
+Download the MAKI Pro binary or build with `cargo build --features ai` to enable face detection and people management. Uses two ONNX models: YuNet for face detection (bounding boxes + landmarks) and ArcFace for face recognition (512-dim embeddings). Models are downloaded via `maki faces download`.
 
 **CLI workflow**: detect faces → cluster into groups → name people:
 

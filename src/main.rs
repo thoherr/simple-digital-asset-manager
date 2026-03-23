@@ -9,7 +9,12 @@ use maki::metadata_store::MetadataStore;
 use maki::query::QueryEngine;
 
 #[derive(Parser)]
-#[command(name = "maki", about = "Media Asset Keeper & Indexer", version,
+#[command(name = "maki", about = "Media Asset Keeper & Indexer",
+    version = if cfg!(feature = "ai") {
+        concat!(env!("CARGO_PKG_VERSION"), " Pro")
+    } else {
+        env!("CARGO_PKG_VERSION")
+    },
     after_help = "Use maki --help for grouped overview, or maki <command> --help for details."
 )]
 struct Cli {
@@ -1281,10 +1286,11 @@ enum FacesCommands {
 /// Print custom grouped help text through a pager.
 fn print_custom_help() {
     let version = env!("CARGO_PKG_VERSION");
-    let ai_note = if cfg!(feature = "ai") { "" } else { "  (build with --features ai for: auto-tag, embed, faces, stroll)" };
+    let edition = if cfg!(feature = "ai") { " Pro" } else { "" };
+    let ai_note = if cfg!(feature = "ai") { "" } else { "  (download MAKI Pro for: auto-tag, embed, faces, stroll)" };
 
     let help = format!("\
-maki {version} — Media Asset Keeper & Indexer{ai_note}
+maki{edition} {version} — Media Asset Keeper & Indexer{ai_note}
 
 Usage: maki [OPTIONS] <COMMAND>
 

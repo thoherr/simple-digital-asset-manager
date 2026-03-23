@@ -75,35 +75,35 @@ jobs:
           Compress-Archive -Path staging/* -DestinationPath $ARCHIVE
           echo "STANDARD_ARCHIVE=${ARCHIVE}" >> $env:GITHUB_ENV
 
-      # --- AI build ---
+      # --- Pro build (AI features) ---
 
-      - name: Build release binary (AI features)
+      - name: Build release binary (Pro)
         run: cargo build --release --target ${{ matrix.target }} --features ai
 
-      - name: Package AI binary (Unix)
+      - name: Package Pro binary (Unix)
         if: runner.os != 'Windows'
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          ARCHIVE="maki-${VERSION}-${{ matrix.platform }}-ai.${{ matrix.ext }}"
+          ARCHIVE="maki-${VERSION}-${{ matrix.platform }}-pro.${{ matrix.ext }}"
           rm -rf staging
           mkdir -p staging
           cp target/${{ matrix.target }}/release/maki staging/
           cp README.md LICENSE staging/
           cd staging && tar czf "../${ARCHIVE}" *
-          echo "AI_ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
+          echo "PRO_ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
 
-      - name: Package AI binary (Windows)
+      - name: Package Pro binary (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $VERSION = $env:GITHUB_REF_NAME -replace '^v', ''
-          $ARCHIVE = "maki-${VERSION}-${{ matrix.platform }}-ai.${{ matrix.ext }}"
+          $ARCHIVE = "maki-${VERSION}-${{ matrix.platform }}-pro.${{ matrix.ext }}"
           Remove-Item -Recurse -Force staging -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path staging -Force
           Copy-Item "target/${{ matrix.target }}/release/maki.exe" staging/
           Copy-Item README.md, LICENSE staging/
           Compress-Archive -Path staging/* -DestinationPath $ARCHIVE
-          echo "AI_ARCHIVE=${ARCHIVE}" >> $env:GITHUB_ENV
+          echo "PRO_ARCHIVE=${ARCHIVE}" >> $env:GITHUB_ENV
 
       # --- Upload artifacts ---
 
@@ -113,11 +113,11 @@ jobs:
           name: ${{ matrix.platform }}
           path: ${{ env.STANDARD_ARCHIVE }}
 
-      - name: Upload AI archive
+      - name: Upload Pro archive
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-ai
-          path: ${{ env.AI_ARCHIVE }}
+          name: ${{ matrix.platform }}-pro
+          path: ${{ env.PRO_ARCHIVE }}
 
   # --- Create GitHub release with all artifacts ---
 
@@ -155,10 +155,10 @@ jobs:
           body_path: release-notes.md
           files: |
             artifacts/macos-arm64/*
-            artifacts/macos-arm64-ai/*
+            artifacts/macos-arm64-pro/*
             artifacts/linux-x86_64/*
-            artifacts/linux-x86_64-ai/*
+            artifacts/linux-x86_64-pro/*
             artifacts/windows-x86_64/*
-            artifacts/windows-x86_64-ai/*
+            artifacts/windows-x86_64-pro/*
             doc/manual/maki-manual.pdf
             doc/manual/cheat-sheet.pdf

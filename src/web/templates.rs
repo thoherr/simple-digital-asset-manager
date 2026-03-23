@@ -771,7 +771,12 @@ mod filters {
     }
 
     pub fn version(_s: &str) -> ::askama::Result<String> {
-        Ok(env!("CARGO_PKG_VERSION").to_string())
+        let v = env!("CARGO_PKG_VERSION");
+        if cfg!(feature = "ai") {
+            Ok(format!("{v} Pro"))
+        } else {
+            Ok(v.to_string())
+        }
     }
 
     pub fn backup_bar_class(label: &str, min_copies: &u64) -> ::askama::Result<String> {
