@@ -2,7 +2,7 @@
 
 Living document tracking planned enhancements. Previous proposals (all implemented or deferred) are in `archive/`. Active proposals are in `doc/proposals/`.
 
-Current version: **v4.0.11** (2026-03-22)
+Current version: **v4.0.12** (2026-03-23)
 
 ---
 
@@ -160,3 +160,4 @@ Design documents for completed features are in `doc/proposals/archive/`. Key mil
 - **v4.0.9**: Cheat sheet (2-page landscape A4), group metadata merge (highest rating, first label/description), consistent MAKI/maki naming (~81 fixes), product overview illustration, DAM → MAKI in all remaining references
 - **v4.0.10**: XMP writeback safeguard (`[writeback] enabled = false` by default), documented across manual with warnings and recommended settings
 - **v4.0.11**: Automated binary release workflow (6 binaries: macOS ARM, Linux x86_64, Windows x86_64 × standard/AI), ubuntu-24.04 for Linux AI (glibc 2.38+)
+- **v4.0.12**: 13 branded screenshots (7 new views: lightbox, stroll, map, calendar, analytics, similarity browse, compare), repo renamed to `thoherr/maki`
