@@ -56,7 +56,7 @@ The volume is auto-detected from the first path by matching against registered v
 **--smart**
 : Generate smart previews (high-resolution, 2560px) alongside regular thumbnails during import. Smart previews enable zoom and pan in the web UI. Can be enabled permanently via `[import] smart_previews = true` in `maki.toml`. Smart preview dimensions are controlled by `[preview] smart_max_edge`.
 
-**--embed** *(feature-gated: requires `--features ai`)*
+**--embed** *(MAKI Pro)*
 : Generate SigLIP image embeddings for visual similarity search during import. Embeddings enable `maki auto-tag --similar` and the web UI "Find similar" button. Runs as a post-import phase using preview images (smart preview preferred, then regular preview). Silently skips if the AI model is not downloaded -- run `maki auto-tag --download` first. Can be enabled permanently via `[import] embeddings = true` in `maki.toml`. Non-image assets are skipped. Uses the model configured in `[ai] model`.
 
 **--describe**
@@ -102,7 +102,7 @@ Import with smart previews for high-resolution browsing:
 maki import --smart /Volumes/Photos/Capture/2026-02-22
 ```
 
-Import with embedding generation for visual similarity search (requires `--features ai`):
+Import with embedding generation for visual similarity search *(MAKI Pro)*:
 
 ```bash
 maki import --embed /Volumes/Photos/Capture/2026-02-22
@@ -670,7 +670,7 @@ maki auto-group --apply --json | jq '{merged: .total_donors_merged, moved: .tota
 
 ## maki auto-tag
 
-> **Feature-gated**: requires building with `--features ai`. Not available in default builds. Build with `--features ai-gpu` for CoreML GPU acceleration on macOS (see `[ai] execution_provider` in [Configuration](08-configuration.md#ai-section)).
+> **MAKI Pro** — not available in the standard edition. GPU acceleration is included automatically on macOS (CoreML). See `[ai] execution_provider` in [Configuration](08-configuration.md#ai-section).
 
 ### NAME
 
@@ -838,7 +838,7 @@ maki auto-tag "tag:unreviewed" --json | jq '.suggestions[] | {asset: .asset_id, 
 
 ## maki embed
 
-> **Feature-gated**: requires building with `--features ai`. Not available in default builds. Build with `--features ai-gpu` for CoreML GPU acceleration on macOS (see `[ai] execution_provider` in [Configuration](08-configuration.md#ai-section)).
+> **MAKI Pro** — not available in the standard edition. GPU acceleration is included automatically on macOS (CoreML). See `[ai] execution_provider` in [Configuration](08-configuration.md#ai-section).
 
 ### NAME
 

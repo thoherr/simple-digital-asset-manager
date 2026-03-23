@@ -554,11 +554,11 @@ maki ss run "Five Stars" --format ids | xargs maki col add "Portfolio"
 
 ---
 
-## People Management (Face Recognition)
+## People Management (Face Recognition) *(MAKI Pro)*
 
-> Requires `cargo build --features ai`.
+> Requires MAKI Pro. See [Editions](01-overview.md#editions).
 
-MAKI can detect faces in your images, group them into people, and let you search by person. This is an AI-powered feature that uses YuNet for face detection and ArcFace for face recognition.
+MAKI can detect faces in your images, group them into people, and let you search by person. Uses YuNet for face detection and ArcFace for face recognition.
 
 ### Setup
 

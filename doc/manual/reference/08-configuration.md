@@ -246,7 +246,7 @@ smart_previews = true
 
 ### embeddings
 
-> **Feature-gated**: requires building with `--features ai`.
+> Requires MAKI Pro.
 
 - **Type:** boolean
 - **Default:** `false`
@@ -340,7 +340,7 @@ copyright = "© 2026 Thomas Herrmann"
 
 ## [ai] Section
 
-> **Feature-gated**: these settings only take effect when maki is built with `--features ai`.
+> These settings require MAKI Pro.
 
 Controls AI auto-tagging behavior for `maki auto-tag`.
 
@@ -385,7 +385,7 @@ Text encoder prompt template. The `{}` placeholder is replaced with each label n
 - **Type:** string (`"auto"`, `"cpu"`, `"coreml"`)
 - **Default:** `"auto"`
 
-> Requires building with `--features ai-gpu` for GPU providers. With `--features ai` only, all values fall back to CPU.
+> GPU providers require the macOS Pro build (which includes CoreML support). On other platforms, all values fall back to CPU.
 
 Selects the ONNX Runtime execution provider for AI inference (SigLIP, YuNet, ArcFace). `"auto"` uses CoreML when available on macOS (Neural Engine on Apple Silicon, Metal on Intel), falling back to CPU. `"cpu"` forces CPU-only inference. `"coreml"` explicitly requests CoreML (errors if unavailable).
 
@@ -718,7 +718,7 @@ exclude = [
 auto_tags = ["inbox", "unreviewed"]
 # Generate smart previews during import.
 smart_previews = true
-# Generate embeddings for visual similarity search during import (--features ai).
+# Generate embeddings for visual similarity search during import (MAKI Pro).
 embeddings = true
 # Generate VLM descriptions during import (requires running Ollama or compatible endpoint).
 descriptions = true
@@ -747,14 +747,14 @@ label_style = "border"
 # Copyright text for page footer.
 copyright = ""
 
-# AI auto-tagging settings (only with --features ai).
+# AI auto-tagging settings (MAKI Pro).
 [ai]
 model = "siglip-vit-b16-256"
 threshold = 0.3
 # labels = "my-labels.txt"
 model_dir = "~/.maki/models"
 prompt = "a photograph of {}"
-# GPU acceleration (requires --features ai-gpu).
+# GPU acceleration (included automatically on macOS Pro builds).
 # execution_provider = "auto"
 
 # XMP writeback: disabled by default for safety.

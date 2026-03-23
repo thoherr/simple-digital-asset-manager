@@ -41,7 +41,7 @@ Builds the **MAKI Pro** edition with SigLIP-based zero-shot image classification
 cargo test
 ```
 
-Runs approximately 693 tests total: ~465 unit tests and ~228 integration tests. With `--features ai`, adds ~41 unit tests and ~13 integration tests.
+Runs approximately 693 tests total: ~465 unit tests and ~228 integration tests. With `--features pro` (or `--features ai`), adds ~41 unit tests and ~13 integration tests.
 
 ### Unit Tests Only
 
@@ -188,7 +188,7 @@ These tools are not Rust dependencies but are invoked as subprocesses for specif
 
 - **ffmpeg** -- Video thumbnail extraction. Used to capture a frame from video files (MP4, MOV, AVI, etc.) for preview generation.
 
-- **curl** -- Model file download for AI auto-tagging (only with `--features ai`) and VLM image descriptions (`maki describe`). Used to download ONNX model files from HuggingFace. Available by default on macOS and most Linux distributions.
+- **curl** -- Model file download for AI auto-tagging (MAKI Pro) and VLM image descriptions (`maki describe`). Used to download ONNX model files from HuggingFace. Available by default on macOS and most Linux distributions.
 
 **Install on macOS** (Homebrew):
 

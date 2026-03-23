@@ -1232,7 +1232,7 @@ This command is useful when:
 - Schema changes require a full rebuild.
 - The catalog needs to be verified against sidecar files.
 
-After rebuilding, all denormalized columns (best variant hash, primary format, variant count) are recomputed. Collections are preserved via `collections.yaml`. Stacks are restored from `stacks.yaml`, re-populating the `stacks` table and the `stack_id`/`stack_position` columns on the `assets` table. When built with `--features ai`: faces are restored from `faces.yaml`, people from `people.yaml`, ArcFace face embeddings from binary files in `embeddings/arcface/`, and SigLIP image embeddings from binary files in `embeddings/<model>/`. The `face_count` denormalized column is recomputed.
+After rebuilding, all denormalized columns (best variant hash, primary format, variant count) are recomputed. Collections are preserved via `collections.yaml`. Stacks are restored from `stacks.yaml`, re-populating the `stacks` table and the `stack_id`/`stack_position` columns on the `assets` table. With MAKI Pro: faces are restored from `faces.yaml`, people from `people.yaml`, ArcFace face embeddings from binary files in `embeddings/arcface/`, and SigLIP image embeddings from binary files in `embeddings/<model>/`. The `face_count` denormalized column is recomputed.
 
 ### ARGUMENTS
 

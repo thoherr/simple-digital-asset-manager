@@ -31,7 +31,7 @@ The top-level entity. An Asset represents a single logical media item -- "photo 
 | `best_variant_hash` | String | Content hash of the best display variant (see [Display Priority](#display-priority)). Used for the browse grid JOIN. |
 | `primary_variant_format` | String | Identity format of the asset. Prefers Original+RAW, then Original+any, then best variant's format. Shown on browse cards (e.g. "NEF"). |
 | `variant_count` | Integer | Number of variants. Shown as a badge on browse cards (e.g. "3v"). |
-| `face_count` | Integer | Number of detected faces. Shown as a badge on browse cards. Only present with `--features ai`. |
+| `face_count` | Integer | Number of detected faces. Shown as a badge on browse cards. *(MAKI Pro)* |
 | `stack_id` | Option\<UUID\> | Foreign key to the Stack this asset belongs to. `None` if unstacked. |
 | `stack_position` | Option\<Integer\> | Position within the stack (0 = pick). `None` if unstacked. |
 
@@ -157,7 +157,7 @@ A named query (smart album) stored in `searches.toml`. Re-evaluated every time i
 
 ### Embedding
 
-> Only present when built with `--features ai`.
+> MAKI Pro only.
 
 A stored image embedding vector for an asset, used by `maki auto-tag` for classification, `--similar` for visual similarity search, and `maki embed` for batch generation.
 
@@ -175,7 +175,7 @@ Storage overhead: ~3 KB per asset. For 100,000 assets: ~300 MB in SQLite.
 
 ### Face
 
-> Only present when built with `--features ai`.
+> MAKI Pro only.
 
 A detected face within an asset image, with bounding box, confidence, recognition embedding, and optional person assignment.
 
@@ -197,7 +197,7 @@ Storage overhead: ~2 KB per face (embedding + metadata). Face crops: ~5–15 KB 
 
 ### Person
 
-> Only present when built with `--features ai`.
+> MAKI Pro only.
 
 A named or unnamed person group linking detected faces across assets.
 
@@ -261,7 +261,7 @@ catalog/
 
 A single `catalog.db` file providing fast indexed queries. Contains denormalized columns for efficient browse-grid rendering. The catalog is always rebuildable from the YAML sidecars via `maki rebuild-catalog` -- it is a performance optimization, not a source of truth.
 
-**Tables**: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `collections`, `collection_assets`, `stacks`, `embeddings`, `faces`, `people` (last three with `--features ai`)
+**Tables**: `assets`, `variants`, `file_locations`, `volumes`, `recipes`, `collections`, `collection_assets`, `stacks`, `embeddings`, `faces`, `people` (last three MAKI Pro only)
 
 **Performance indexes** (created automatically via schema migrations):
 
@@ -281,7 +281,7 @@ A single `catalog.db` file providing fast indexed queries. Contains denormalized
 | `stacks.yaml` | YAML | Stack definitions with ordered asset ID lists |
 | `maki.toml` | TOML | User configuration (preview settings, serve settings, import settings) |
 | `previews/<prefix>/<hash>.jpg` | JPEG | Preview thumbnails keyed by variant content hash |
-| `faces/<prefix>/<face_id>.jpg` | JPEG | Face crop thumbnails (150×150, with `--features ai`) |
+| `faces/<prefix>/<face_id>.jpg` | JPEG | Face crop thumbnails (150×150, MAKI Pro) |
 
 ### Entity Relationships
 

@@ -57,12 +57,12 @@ Searches the catalog for assets matching the given query. The query string suppo
 | `stacked:true` | Assets in a stack | `stacked:true` |
 | `stacked:false` | Assets not in any stack | `stacked:false` |
 | `geo:` | GPS geolocation | `geo:any`, `geo:none`, `geo:52.5,13.4,10` |
-| `faces:` | Face count (ai feature) | `faces:any`, `faces:none`, `faces:2+` |
-| `person:` | Named person (ai feature) | `person:Alice`, `person:"John Smith"` |
-| `similar:` | Visual similarity (ai feature) | `similar:72a0bb4b`, `similar:72a0bb4b:50` |
-| `min_sim:` | Minimum similarity threshold (ai) | `min_sim:90` |
-| `text:` | Semantic text-to-image search (ai) | `text:sunset`, `text:"woman reading"` |
-| `embed:` | Embedding status (ai feature) | `embed:any`, `embed:none` |
+| `faces:` | Face count *(Pro)* | `faces:any`, `faces:none`, `faces:2+` |
+| `person:` | Named person *(Pro)* | `person:Alice`, `person:"John Smith"` |
+| `similar:` | Visual similarity *(Pro)* | `similar:72a0bb4b`, `similar:72a0bb4b:50` |
+| `min_sim:` | Minimum similarity threshold *(Pro)* | `min_sim:90` |
+| `text:` | Semantic text-to-image search *(Pro)* | `text:sunset`, `text:"woman reading"` |
+| `embed:` | Embedding status *(Pro)* | `embed:any`, `embed:none` |
 
 Filters can be freely combined. Free-text tokens that do not match a filter prefix are joined as a text search against filenames and metadata.
 
@@ -151,7 +151,7 @@ Find orphaned assets (no file locations):
 maki search "orphan:true"
 ```
 
-Find visually similar assets (requires ai feature + embeddings):
+Find visually similar assets *(MAKI Pro + embeddings)*:
 
 ```bash
 maki search "similar:72a0bb4b"

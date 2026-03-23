@@ -410,7 +410,7 @@ The right side contains the asset's metadata, all editable inline:
 
 **Tags** -- displayed as removable chips. Click the x on a chip to remove that tag. Use the text input below to add new tags -- it offers autocomplete suggestions from your catalog's tag list as you type. Changes are written back to XMP recipe files on disk with operation-level deltas (tags added independently in CaptureOne or Lightroom are preserved).
 
-**Suggest tags** (requires `--features ai`) -- a "Suggest tags" button appears below the tag input when the server is compiled with AI support. Click it to analyze the asset image with the SigLIP vision model. The button shows "Analyzing..." while the model processes (the first request may take a few seconds while the model loads). Results appear as suggestion chips, each showing the tag name and a confidence percentage. Tags already on the asset appear dimmed with an "already applied" label. Click ✓ to accept a new tag (it is added immediately), click × to dismiss it, or click "Accept new" to apply all unapplied suggestions at once.
+**Suggest tags** *(MAKI Pro)* -- a "Suggest tags" button appears below the tag input in MAKI Pro. Click it to analyze the asset image with the SigLIP vision model. The button shows "Analyzing..." while the model processes (the first request may take a few seconds while the model loads). Results appear as suggestion chips, each showing the tag name and a confidence percentage. Tags already on the asset appear dimmed with an "already applied" label. Click ✓ to accept a new tag (it is added immediately), click × to dismiss it, or click "Accept new" to apply all unapplied suggestions at once.
 
 **Re-import metadata** -- a "Re-import metadata" button appears below the tag section. Click it to clear the asset's tags, description, rating, and color label, then re-extract metadata from variant source files (XMP recipe sidecars and embedded XMP in JPEG/TIFF files). A confirmation dialog asks before proceeding since the operation is destructive. This is useful for cleaning up metadata after splitting mis-grouped assets, where tags from multiple unrelated images may have been merged together. The page reloads after completion to reflect all changes. Offline volumes are silently skipped during re-extraction.
 
@@ -487,9 +487,9 @@ A fixed toolbar appears at the bottom of the screen whenever one or more assets 
 
 **Describe** (requires VLM server): sends each selected asset's preview image to the configured VLM server and generates a natural language description. Assets that already have a description are skipped. A confirmation dialog shows the count and warns about per-asset timing. After processing, a summary reports how many descriptions were set. This button only appears when a VLM server is reachable at startup (see [VLM Setup](03-ingest.md#vlm-image-descriptions)).
 
-**Auto-tag** (requires `--features ai`): analyzes each selected asset with the SigLIP vision model and applies suggested tags above the configured confidence threshold. A confirmation dialog shows the count of selected assets. After processing, a summary reports how many tags were applied. This button only appears when the server is compiled with the `ai` feature.
+**Auto-tag** *(MAKI Pro)*: analyzes each selected asset with the SigLIP vision model and applies suggested tags above the configured confidence threshold. A confirmation dialog shows the count of selected assets. After processing, a summary reports how many tags were applied. This button only appears in MAKI Pro.
 
-**Detect faces** (requires `--features ai`): runs face detection on each selected asset's preview image using YuNet and ArcFace. Detected faces are stored with bounding boxes, embeddings, and crop thumbnails. A summary reports how many faces were found. This button only appears when the server is compiled with the `ai` feature.
+**Detect faces** *(MAKI Pro)*: runs face detection on each selected asset's preview image using YuNet and ArcFace. Detected faces are stored with bounding boxes, embeddings, and crop thumbnails. A summary reports how many faces were found. This button only appears in MAKI Pro.
 
 **Export**: downloads the selected assets as a ZIP archive. A modal dialog lets you choose layout (flat — all files in root with hash-suffix collision resolution, or mirror — preserves original directory structure), whether to include all variants or just the best, and whether to include sidecar/recipe files. The ZIP is streamed to the browser as a download.
 
@@ -665,7 +665,7 @@ This is the web equivalent of `maki stats --all` on the command line. See [Brows
 
 ## People Page
 
-> Requires `--features ai` compilation.
+> Requires MAKI Pro.
 
 Navigate to `/people` or click "People" in the navigation bar to manage detected faces and named people.
 
@@ -698,7 +698,7 @@ On the asset detail page, a "Faces" section appears when faces have been detecte
 
 ![Stroll page with center image and similar neighbors](../screenshots/stroll-page.png)
 
-> Requires `--features ai` compilation and image embeddings (generated via `maki embed` or `maki import --embed`).
+> Requires MAKI Pro and image embeddings (generated via `maki embed` or `maki import --embed`).
 
 The stroll page provides a visual similarity exploration experience. Instead of browsing a flat grid, you start with a center image and see its most visually similar neighbors arranged in a radial layout around it. Click any neighbor to make it the new center, and the neighbors update -- letting you "stroll" through your collection by visual similarity.
 

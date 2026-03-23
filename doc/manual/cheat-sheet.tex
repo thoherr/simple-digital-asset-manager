@@ -42,7 +42,7 @@
 % Command/option formatting
 \newcommand{\cmd}[1]{\texttt{\footnotesize #1}}
 \newcommand{\opt}[1]{\texttt{\scriptsize\color{maki-stone} #1}}
-\newcommand{\ai}{\textcolor{maki-teal}{\scriptsize [AI]}}
+\newcommand{\pro}{\textcolor{maki-teal}{\scriptsize [Pro]}}
 
 % Body text is scriptsize, commands (subsection titles) are larger
 % Slightly more breathing room between lines
@@ -98,7 +98,7 @@ Merge two volumes. \opt{--apply}
 \subsection{maki import \textit{PATHS...}}
 Import files into the catalog. \\
 \opt{--volume} \opt{--auto-group} \opt{--smart} \\
-\opt{--embed} \ai{} \opt{--describe} \opt{--dry-run} \\
+\opt{--embed} \pro{} \opt{--describe} \opt{--dry-run} \\
 \opt{--include GROUP} \opt{--skip GROUP}
 
 \subsection{maki delete \textit{ASSET\_IDS...}}
@@ -127,12 +127,12 @@ Generate VLM image descriptions. \\
 \opt{--mode describe|tags|both} \\
 \opt{--apply} \opt{--force} \opt{--dry-run}
 
-\subsection{maki auto-tag \textit{[QUERY]} \ai}
+\subsection{maki auto-tag \textit{[QUERY]} \pro}
 AI auto-tagging with SigLIP. \\
 \opt{--asset} \opt{--volume} \opt{--threshold} \\
 \opt{--labels FILE} \opt{--apply} \opt{--download}
 
-\subsection{maki embed \textit{[QUERY]} \ai}
+\subsection{maki embed \textit{[QUERY]} \pro}
 Generate image embeddings. \\
 \opt{--asset} \opt{--volume} \opt{--force} \opt{--export}
 
@@ -168,7 +168,7 @@ Stack management commands.
 \subsection{maki stack from-tag \textit{PATTERN}}
 Convert tag patterns to stacks. \opt{--apply} \opt{--remove-tags}
 
-\subsection{maki faces detect / cluster / people / name \ai}
+\subsection{maki faces detect / cluster / people / name \pro}
 Face detection and recognition. \\
 \opt{--query} \opt{--asset} \opt{--apply} \opt{--min-confidence}
 
@@ -274,7 +274,7 @@ Run database schema migrations.
 \item \cmd{maki import --smart /path}
 \item \cmd{maki serve} — browse in web UI
 \item Rate, tag, label via UI or CLI
-\item \cmd{maki auto-tag ""} \ai — AI tagging
+\item \cmd{maki auto-tag ""} \pro — AI tagging
 \end{enumerate}
 
 \subsection{Maintenance Cycle}
@@ -315,7 +315,7 @@ All filters work in CLI \cmd{maki search} and web UI search box.
 \cmd{label:Red} & Color label \\
 \cmd{camera:fuji} & Camera (partial) \\
 \cmd{lens:56mm} & Lens (partial) \\
-\cmd{person:Alice} & Named person \ai \\
+\cmd{person:Alice} & Named person \pro \\
 \cmd{collection:Fav} & Collection \\
 \cmd{path:2026/} & Path prefix \\
 \cmd{id:72a0} & Asset ID prefix \\
@@ -360,7 +360,7 @@ All support: \cmd{x} (exact), \cmd{x+} (min), \cmd{x-y} (range), \cmd{x,y} (OR)
 \cmd{geo:any} & Has GPS data \\
 \end{tabularx}
 
-\subsection{AI Filters}
+\subsection{Pro Filters}
 \begin{tabularx}{\columnwidth}{@{}lX@{}}
 \cmd{similar:72a0bb4b} & Visual similarity \\
 \cmd{min\_sim:90} & Similarity threshold \\
@@ -399,7 +399,7 @@ Placeholders: \cmd{\{id\}}, \cmd{\{name\}}, \cmd{\{filename\}}, \cmd{\{type\}}, 
 \cmd{[writeback]} & enabled (default: false) \\
 \cmd{[dedup]} & prefer \\
 \cmd{[verify]} & max\_age\_days \\
-\cmd{[ai]} & model, threshold, labels \ai \\
+\cmd{[ai]} & model, threshold, labels \pro \\
 \cmd{[vlm]} & endpoint, model, timeout \\
 \cmd{[contact\_sheet]} & layout, paper, fields \\
 \end{tabularx}

@@ -105,10 +105,10 @@ All filters can be combined in a single query. Remaining tokens become free-text
 | Stacked | `stacked:true` or `stacked:false` | `stacked:true` |
 | Face count | `faces:any`, `faces:none`, `faces:N`, `faces:N+` | `faces:2+` |
 | Person | `person:<name>` | `person:Alice`, `person:"John Smith"` |
-| Visual similarity (ai) | `similar:<id>` or `similar:<id>:<limit>` | `similar:72a0bb4b`, `similar:72a0bb4b:50` |
-| Similarity threshold (ai) | `min_sim:<percent>` | `min_sim:90` |
-| Text search (ai) | `text:<query>` | `text:sunset beach` |
-| Embedding status (ai) | `embed:any`, `embed:none` | `embed:none type:image` |
+| Visual similarity *(Pro)* | `similar:<id>` or `similar:<id>:<limit>` | `similar:72a0bb4b`, `similar:72a0bb4b:50` |
+| Similarity threshold *(Pro)* | `min_sim:<percent>` | `min_sim:90` |
+| Text search *(Pro)* | `text:<query>` | `text:sunset beach` |
+| Embedding status *(Pro)* | `embed:any`, `embed:none` | `embed:none type:image` |
 
 **Hierarchical tag matching**: The `tag:` filter matches hierarchically. Searching for `tag:animals` finds assets tagged `animals`, `animals/birds`, `animals/birds/eagles`, and any other descendant of `animals`. To match only the exact tag, use the full path (e.g., `tag:animals/birds/eagles`).
 
@@ -560,7 +560,7 @@ For the full command reference, see [export](../reference/04-retrieve-commands.m
 
 ## Visual Similarity
 
-With the `ai` feature and image embeddings generated (via `maki embed` or `maki import --embed`), you can find visually similar assets:
+With MAKI Pro and image embeddings generated (via `maki embed` or `maki import --embed`), you can find visually similar assets:
 
 ```
 maki search "similar:72a0bb4b"              # top 20 similar assets

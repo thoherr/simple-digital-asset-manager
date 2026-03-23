@@ -1049,7 +1049,7 @@ maki [GLOBAL FLAGS] faces detect [--query <Q>] [--asset <id>] [--volume <label>]
 
 ### DESCRIPTION
 
-Detects faces in asset preview images using the YuNet ONNX model. For each detected face, computes a 512-dimensional ArcFace embedding and generates a 150×150 JPEG crop thumbnail. Requires the `ai` feature (`cargo build --features ai`).
+Detects faces in asset preview images using the YuNet ONNX model. For each detected face, computes a 512-dimensional ArcFace embedding and generates a 150×150 JPEG crop thumbnail. Requires MAKI Pro.
 
 Without `--apply`, runs in report-only mode showing how many faces would be detected. With `--apply`, stores face records in the catalog and generates crop thumbnails.
 

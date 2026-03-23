@@ -383,7 +383,7 @@ Auto-tags are merged with any tags extracted from XMP metadata (deduplicated).
 | `--include <group>` | Enable an additional file type group (repeatable) |
 | `--skip <group>` | Disable a default file type group (repeatable) |
 | `--smart` | Generate smart previews (2560px) for zoom/pan in the web UI |
-| `--embed` | Generate image embeddings for visual similarity search (requires `--features ai`) |
+| `--embed` | Generate image embeddings for visual similarity search *(MAKI Pro)* |
 | `--json` | Structured JSON output to stdout |
 | `--log` | Per-file progress to stderr (`filename -- status (duration)`) |
 | `--time` | Show total elapsed time |
@@ -430,9 +430,9 @@ abc3f7c9...  DSC_0042.nef
 
 This is useful for identifying redundant copies, verifying backups, or cleaning up after file reorganization. See the [maintenance chapter](07-maintenance.md) for more on managing file locations.
 
-## AI Auto-Tagging
+## AI Auto-Tagging *(MAKI Pro)*
 
-> Requires building with `--features ai`. For GPU-accelerated inference on macOS, use `--features ai-gpu` (CoreML). See [Building & Testing](../developer/03-building-and-testing.md).
+> Requires MAKI Pro. GPU-accelerated inference is included automatically on macOS. See [Editions](01-overview.md#editions).
 
 After importing, you can use AI to automatically suggest tags for your images:
 
@@ -665,8 +665,8 @@ A dropdown appears next to the Describe button when two or more models are confi
 | **Output** | Tags from fixed vocabulary | Free-form text, tags, or both |
 | **Speed** | ~50--150 ms/image | ~3--36s/image |
 | **Best for** | Categorical filtering, similarity | Documentation, open-ended tagging |
-| **Requires** | `--features ai`, ONNX models | `curl`, running VLM server |
-| **GPU** | CoreML via `--features ai-gpu` | Automatic via Ollama |
+| **Requires** | MAKI Pro, ONNX models | `curl`, running VLM server |
+| **GPU** | Included on macOS (CoreML) | Automatic via Ollama |
 
 The two approaches are complementary. Use SigLIP for fast categorical tagging across large batches, and VLM for rich descriptions when quality matters more than speed.
 
