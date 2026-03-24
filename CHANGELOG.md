@@ -2,6 +2,11 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.1.2 (2026-03-24)
+
+### Enhancements
+- **Website link in `--help`** — `maki --help` now shows `https://maki-dam.com` at the bottom for docs, downloads, and support.
+
 ## v4.1.1 (2026-03-24)
 
 ### Enhancements

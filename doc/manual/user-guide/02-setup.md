@@ -17,7 +17,7 @@ Download a pre-built binary from the [GitHub releases page](https://github.com/t
 Extract the archive and copy the `maki` binary to a directory on your `PATH`:
 
 ```bash
-tar xzf maki-4.1.1-macos-arm64-pro.tar.gz
+tar xzf maki-4.1.2-macos-arm64-pro.tar.gz
 cp maki /usr/local/bin/
 ```
 
@@ -25,8 +25,8 @@ Verify the installation:
 
 ```bash
 maki --version
-# MAKI:     maki 4.1.1
-# MAKI Pro: maki 4.1.1 Pro
+# MAKI:     maki 4.1.2
+# MAKI Pro: maki 4.1.2 Pro
 ```
 
 ### Building from source
