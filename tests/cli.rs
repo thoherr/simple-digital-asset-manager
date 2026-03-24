@@ -9004,6 +9004,7 @@ mod auto_tag {
 // ── sync-metadata ──────────────────────────────────────────────────
 
 #[test]
+#[cfg(feature = "pro")]
 fn sync_metadata_unchanged() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
@@ -9030,6 +9031,7 @@ fn sync_metadata_unchanged() {
 }
 
 #[test]
+#[cfg(feature = "pro")]
 fn sync_metadata_inbound_reads_external_changes() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
@@ -9072,6 +9074,7 @@ fn sync_metadata_inbound_reads_external_changes() {
 }
 
 #[test]
+#[cfg(feature = "pro")]
 fn sync_metadata_outbound_writes_pending() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
@@ -9123,6 +9126,7 @@ fn sync_metadata_outbound_writes_pending() {
 }
 
 #[test]
+#[cfg(feature = "pro")]
 fn sync_metadata_dry_run() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
@@ -9165,6 +9169,7 @@ fn sync_metadata_dry_run() {
 }
 
 #[test]
+#[cfg(feature = "pro")]
 fn sync_metadata_json_output() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());

@@ -313,6 +313,8 @@ maki refresh /Volumes/Photos/Capture/2026-02-22 --log
 
 ## maki sync-metadata
 
+> **MAKI Pro** — not available in the standard edition.
+
 ### NAME
 
 maki-sync-metadata -- bidirectional XMP metadata sync between MAKI and recipe files
@@ -393,6 +395,8 @@ maki sync-metadata --media --log --time
 ---
 
 ## maki writeback
+
+> **MAKI Pro** — not available in the standard edition.
 
 ### NAME
 

@@ -270,7 +270,7 @@ maki refresh --log --time --json
 ```
 
 
-## Write Back
+## Write Back *(MAKI Pro)*
 
 `maki writeback` replays pending metadata writes to XMP recipe files. When you edit metadata (rating, label, tags, description) while a volume is offline, the XMP write-back is skipped and the recipe is marked with a `pending_writeback` flag. The edits are safe in the YAML sidecar and SQLite catalog, but the `.xmp` files on disk still have old values. This command pushes those pending changes to XMP when the volume comes back online.
 
@@ -338,7 +338,7 @@ maki writeback --log --time --json
 ```
 
 
-## Sync Metadata
+## Sync Metadata *(MAKI Pro)*
 
 `maki sync-metadata` performs bidirectional XMP metadata sync in a single command — combining the inbound (refresh) and outbound (writeback) steps with conflict detection.
 

@@ -715,6 +715,7 @@ enum Commands {
     },
 
     /// Bidirectional metadata sync: read external XMP changes and write back pending DAM edits
+    #[cfg(feature = "pro")]
     #[command(name = "sync-metadata", display_order = 42)]
     SyncMetadata {
         /// Search query to select assets (same syntax as `maki search`)
@@ -743,6 +744,7 @@ enum Commands {
     },
 
     /// Write back pending metadata changes to XMP recipe files
+    #[cfg(feature = "pro")]
     #[command(display_order = 42)]
     Writeback {
         /// Search query to select assets (same syntax as `maki search`)
@@ -1289,7 +1291,7 @@ enum FacesCommands {
 fn print_custom_help() {
     let version = env!("CARGO_PKG_VERSION");
     let edition = if cfg!(feature = "pro") { " Pro" } else { "" };
-    let ai_note = if cfg!(feature = "pro") { "" } else { "  (download MAKI Pro for: describe, auto-tag, embed, faces, stroll)" };
+    let ai_note = if cfg!(feature = "pro") { "" } else { "  (download MAKI Pro for: describe, auto-tag, embed, faces, stroll, writeback, sync-metadata)" };
 
     let help = format!("\
 maki{edition} {version} — Media Asset Keeper & Indexer{ai_note}
@@ -1328,9 +1330,7 @@ Retrieve:
 Maintain:
   verify             Check file integrity
   sync               Sync catalog with disk changes (moved/modified/missing files)
-  refresh            Re-read metadata from changed sidecar/recipe files
-  sync-metadata      Bidirectional metadata sync: read XMP changes + write back pending edits
-  writeback          Write back pending metadata changes to XMP recipe files
+  refresh            Re-read metadata from changed sidecar/recipe files{sync_metadata}{writeback}
   cleanup            Remove stale file location records (files no longer on disk)
   dedup              Remove same-volume duplicate file locations
   relocate           Copy or move asset files to another volume
@@ -1361,6 +1361,8 @@ Options:
         auto_tag = if cfg!(feature = "ai") { "\n  auto-tag           Auto-tag assets using AI vision model" } else { "" },
         embed = if cfg!(feature = "ai") { "\n  embed              Generate embeddings for visual similarity search" } else { "" },
         faces = if cfg!(feature = "ai") { "\n  faces              Face detection and recognition" } else { "" },
+        sync_metadata = if cfg!(feature = "pro") { "\n  sync-metadata      Bidirectional metadata sync: read XMP changes + write back pending edits" } else { "" },
+        writeback = if cfg!(feature = "pro") { "\n  writeback          Write back pending metadata changes to XMP recipe files" } else { "" },
     );
 
     // Pipe through pager if stdout is a terminal
@@ -4249,6 +4251,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             Ok(())
         }
+        #[cfg(feature = "pro")]
         Commands::SyncMetadata { query, volume, asset, dry_run, media, asset_ids } => {
             let start = std::time::Instant::now();
             let catalog_root = maki::config::find_catalog_root()?;
@@ -4464,6 +4467,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             Ok(())
         }
+        #[cfg(feature = "pro")]
         Commands::Writeback { query, volume, asset, all, dry_run, asset_ids } => {
             let catalog_root = maki::config::find_catalog_root()?;
             let engine = maki::query::QueryEngine::new(&catalog_root);
