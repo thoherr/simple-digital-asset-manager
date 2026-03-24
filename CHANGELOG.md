@@ -2,6 +2,12 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.1.1 (2026-03-24)
+
+### Enhancements
+- **Star rating filter cycle** — click cycle changed from exact→minimum→clear to minimum→exact→clear for more natural progressive narrowing (e.g. 3+ → 3 → all).
+- **Repo structure cleanup** — brand images moved to `doc/images/`, quick reference cards to `doc/quickref/`. Symlinks replaced with relative path resolution.
+
 ## v4.1.0 (2026-03-24)
 
 ### New Features
