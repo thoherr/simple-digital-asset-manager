@@ -1352,6 +1352,8 @@ Options:
   -t, --time         Show elapsed time after command execution
   -h, --help         Print help (use <command> --help for details)
   -V, --version      Print version
+
+  https://maki-dam.com — docs, downloads, and support
 ",
         auto_tag = if cfg!(feature = "ai") { "\n  auto-tag           Auto-tag assets using AI vision model" } else { "" },
         embed = if cfg!(feature = "ai") { "\n  embed              Generate embeddings for visual similarity search" } else { "" },
