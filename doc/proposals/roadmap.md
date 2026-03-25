@@ -58,6 +58,19 @@ SigLIP embedding generation on CPU is slow for large catalogs. GPU backends make
 
 **Complexity:** Low for adding providers (code pattern exists), high for testing/packaging.
 
+### Video Playback & Metadata
+
+MAKI imports videos and generates thumbnails, but the web UI has no playback, and there are no video-specific search filters. For a media asset manager this is a notable gap.
+
+**Scope:**
+- Web UI video player on detail page (HTML5 `<video>` for MP4/WebM, transcoded proxy for others)
+- Video duration, codec, resolution, framerate extracted at import and stored as source metadata
+- Search filters: `duration:`, `codec:`, `resolution:` (e.g. `resolution:4k+`)
+- Browse card badge showing duration (e.g. "1:23")
+- Lightbox video playback
+
+**Complexity:** Medium. HTML5 video is straightforward for common formats; transcoding proxies and codec extraction via ffprobe add complexity.
+
 ### IPTC/EXIF Write-Back *(Pro)*
 
 Write metadata changes back into JPEG/TIFF files directly, not just XMP sidecars. Some workflows and stock photo submissions require embedded metadata.
@@ -73,6 +86,18 @@ Write metadata changes back into JPEG/TIFF files directly, not just XMP sidecars
 ---
 
 ## Tier 2 — Workflow Convenience
+
+### Mobile & Tablet Browsing
+
+The web UI works on mobile but isn't optimized. Combined with read-only multi-user access, this enables "show photos to clients on iPad" and remote browsing from any device on the LAN.
+
+**Scope:**
+- Responsive layout improvements: touch-friendly grid, swipe navigation in lightbox
+- Collapsible filter bar for small screens
+- `--read-only` mode (disables all write endpoints) for safe sharing
+- Optional basic auth (`[serve] username/password` in `maki.toml`)
+
+**Complexity:** Medium. CSS/layout work plus read-only mode (which is mostly route-level guards).
 
 ### Advanced Contact Sheet Templates *(Pro)*
 
@@ -107,17 +132,6 @@ Named preset configurations for different import scenarios (studio shoot, travel
 
 **Complexity:** Low.
 
-### Multi-User Web Access
-
-Allow browsing the catalog from other devices on the LAN.
-
-**Scope:**
-- `--read-only` mode: disables all write endpoints
-- Optional basic auth (`[serve] username/password` in `maki.toml`)
-- Responsive CSS improvements for mobile viewports
-
-**Complexity:** Low-Medium.
-
 ### Volume Health Monitoring
 
 Surface drive health and verification staleness proactively.
@@ -143,6 +157,28 @@ Track metadata changes with timestamps for audit trail and undo capability.
 - Web UI history panel on detail page
 
 **Complexity:** High.
+
+### Tethered Shooting
+
+Live import during a connected camera session. Essentially watch mode + auto-import + immediate preview in the web UI.
+
+**Scope:**
+- Build on watch mode (Tier 1) with lower latency
+- Auto-open imported assets in the web UI
+- CaptureOne hot folder integration as primary use case
+
+**Complexity:** Medium (requires watch mode first).
+
+### Print Workflow
+
+Print selected assets with proper page layout. Currently only contact sheets are supported.
+
+**Scope:**
+- `maki print` command or web UI print button
+- Single-image and multi-image layouts with configurable margins
+- ICC color profile support for accurate print colors
+
+**Complexity:** High. Color management is complex; layout engine already exists in contact sheet code.
 
 ---
 
