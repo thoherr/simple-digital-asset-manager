@@ -410,7 +410,9 @@ enum Commands {
     Search {
         /// Free-text keywords and filters. See 'maki help search' or the manual for the
         /// full list. Common filters: type:, tag:, format:, rating:, label:, camera:, lens:,
-        /// path:, collection:, date:, volume:, copies:, stacked:, person:, similar: (ai)
+        /// iso:, focal:, f:, width:, height:, path:, collection:, date:, volume:, copies:,
+        /// variants:, scattered:, stacked:, geo:, faces: (Pro), person: (Pro), similar: (Pro),
+        /// text: (Pro), embed: (Pro)
         query: String,
 
         /// Output format: ids, short, full, json, or a custom template (e.g. '{id}\t{name}')
