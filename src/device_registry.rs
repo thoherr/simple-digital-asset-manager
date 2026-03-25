@@ -167,6 +167,27 @@ impl DeviceRegistry {
         }
     }
 
+    /// Rename a volume by label or UUID.
+    pub fn rename(&self, label_or_id: &str, new_label: &str) -> Result<()> {
+        let mut volumes = self.load()?;
+
+        let vol = volumes.iter_mut().find(|v| {
+            v.label == label_or_id
+                || uuid::Uuid::parse_str(label_or_id)
+                    .map(|u| v.id == u)
+                    .unwrap_or(false)
+        });
+
+        match vol {
+            Some(v) => {
+                v.label = new_label.to_string();
+                self.save(&volumes)?;
+                Ok(())
+            }
+            None => anyhow::bail!("No volume found matching '{}'", label_or_id),
+        }
+    }
+
     /// Check which mount points are currently available.
     pub fn detect_online(&self) -> Result<()> {
         anyhow::bail!("not yet implemented")

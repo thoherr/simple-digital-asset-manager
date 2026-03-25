@@ -341,6 +341,23 @@ pub struct VolumeCombineResult {
     pub errors: Vec<String>,
 }
 
+/// Result of a volume split operation.
+#[derive(Debug, serde::Serialize)]
+pub struct VolumeSplitResult {
+    pub source_label: String,
+    pub source_id: String,
+    pub new_label: String,
+    pub new_id: String,
+    pub path_prefix: String,
+    pub locations: usize,
+    pub locations_moved: usize,
+    pub recipes: usize,
+    pub recipes_moved: usize,
+    pub assets_affected: usize,
+    pub apply: bool,
+    pub errors: Vec<String>,
+}
+
 /// Status of a single recipe during refresh.
 pub enum RefreshStatus {
     Unchanged,
@@ -3703,6 +3720,138 @@ impl AssetService {
             result
                 .errors
                 .push(format!("Failed to remove volume from registry: {e}"));
+        }
+
+        Ok(result)
+    }
+
+    /// Split a subdirectory from a volume into a new volume.
+    ///
+    /// The inverse of `combine_volume`: creates a new volume at the source's
+    /// mount_point/path, then moves matching file_locations and recipes from
+    /// the source to the new volume, stripping the path prefix. The source
+    /// volume is NOT removed (it likely has other assets).
+    pub fn split_volume(
+        &self,
+        source_label: &str,
+        new_label: &str,
+        path: &str,
+        purpose: Option<&str>,
+        apply: bool,
+        on_asset: impl Fn(&str, Duration),
+    ) -> Result<VolumeSplitResult> {
+        let registry = DeviceRegistry::new(&self.catalog_root);
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let metadata_store = MetadataStore::new(&self.catalog_root);
+
+        let source = registry.resolve_volume(source_label)?;
+        let source_id = source.id.to_string();
+
+        // Normalize prefix: ensure it ends with '/'
+        let prefix = if path.ends_with('/') {
+            path.to_string()
+        } else {
+            format!("{path}/")
+        };
+
+        // Count matching locations and recipes
+        let locations = catalog.list_locations_for_volume_under_prefix(&source_id, &prefix)?;
+        let recipes = catalog.list_recipes_for_volume_under_prefix(&source_id, &prefix)?;
+        let asset_ids = catalog.list_asset_ids_on_volume_with_prefix(&source_id, &prefix)?;
+
+        // Compute new mount point
+        let new_mount = source.mount_point.join(path);
+
+        let mut result = VolumeSplitResult {
+            source_label: source.label.clone(),
+            source_id: source_id.clone(),
+            new_label: new_label.to_string(),
+            new_id: String::new(), // filled after registration
+            path_prefix: prefix.clone(),
+            locations: locations.len(),
+            locations_moved: 0,
+            recipes: recipes.len(),
+            recipes_moved: 0,
+            assets_affected: asset_ids.len(),
+            apply,
+            errors: Vec::new(),
+        };
+
+        if !apply {
+            return Ok(result);
+        }
+
+        // --- Apply mode ---
+
+        // 1. Register the new volume
+        use crate::models::volume::{VolumeType, VolumePurpose};
+        let vol_purpose = purpose.and_then(VolumePurpose::parse);
+        let new_volume = registry.register(new_label, &new_mount, VolumeType::Local, vol_purpose)?;
+        let new_id = new_volume.id.to_string();
+        result.new_id = new_id.clone();
+
+        // 2. Update sidecars (source of truth)
+        for asset_id_str in &asset_ids {
+            let asset_start = std::time::Instant::now();
+            let uuid = match asset_id_str.parse::<uuid::Uuid>() {
+                Ok(u) => u,
+                Err(e) => {
+                    result.errors.push(format!("Invalid asset UUID {asset_id_str}: {e}"));
+                    continue;
+                }
+            };
+            match metadata_store.load(uuid) {
+                Ok(mut asset) => {
+                    let mut changed = false;
+
+                    for variant in &mut asset.variants {
+                        for loc in &mut variant.locations {
+                            if loc.volume_id == source.id {
+                                let rel = loc.relative_path.to_string_lossy().to_string();
+                                if let Some(stripped) = rel.strip_prefix(&prefix) {
+                                    loc.volume_id = new_volume.id;
+                                    loc.relative_path = std::path::PathBuf::from(stripped);
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+
+                    for recipe in &mut asset.recipes {
+                        if recipe.location.volume_id == source.id {
+                            let rel = recipe.location.relative_path.to_string_lossy().to_string();
+                            if let Some(stripped) = rel.strip_prefix(&prefix) {
+                                recipe.location.volume_id = new_volume.id;
+                                recipe.location.relative_path = std::path::PathBuf::from(stripped);
+                                changed = true;
+                            }
+                        }
+                    }
+
+                    if changed {
+                        if let Err(e) = metadata_store.save(&asset) {
+                            result.errors.push(format!("Failed to save sidecar for asset {asset_id_str}: {e}"));
+                        }
+                    }
+                    on_asset(asset_id_str, asset_start.elapsed());
+                }
+                Err(e) => {
+                    result.errors.push(format!("Failed to load sidecar for asset {asset_id_str}: {e}"));
+                }
+            }
+        }
+
+        // 3. Ensure new volume exists in catalog
+        catalog.ensure_volume(&new_volume)?;
+
+        // 4. Bulk SQL update: move matching locations and strip prefix
+        match catalog.bulk_split_file_locations(&source_id, &new_id, &prefix) {
+            Ok(n) => result.locations_moved = n,
+            Err(e) => result.errors.push(format!("Failed to move file locations: {e}")),
+        }
+        match catalog.bulk_split_recipes(&source_id, &new_id, &prefix) {
+            Ok(n) => result.recipes_moved = n,
+            Err(e) => result.errors.push(format!("Failed to move recipes: {e}")),
         }
 
         Ok(result)

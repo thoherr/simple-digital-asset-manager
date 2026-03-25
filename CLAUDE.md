@@ -23,7 +23,7 @@ See `doc/architecture-overview.md` for design decisions, `doc/component-specific
 
 ## Implemented Commands
 
-41 top-level commands (71 including subcommands): `init`, `volume` (add/list/combine/remove/set-purpose), `import`, `delete`, `export`, `contact-sheet`, `describe`, `search`, `show`, `preview`, `tag`, `edit`, `group`, `split`, `auto-group`, `auto-tag`, `embed`, `faces` (detect/download/status/cluster/people/name/merge/delete-person/unassign/export), `stack` (create/add/remove/pick/dissolve/list/show/from-tag), `duplicates`, `dedup`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `migrate`, `relocate`, `update-location`, `verify`, `sync`, `sync-metadata`, `refresh`, `cleanup`, `writeback`, `backup-status`, `stats`, `serve`, `saved-search` (save/list/run/delete), `collection` (create/list/show/add/remove/delete), `shell`
+41 top-level commands (73 including subcommands): `init`, `volume` (add/list/combine/split/rename/remove/set-purpose), `import`, `delete`, `export`, `contact-sheet`, `describe`, `search`, `show`, `preview`, `tag`, `edit`, `group`, `split`, `auto-group`, `auto-tag`, `embed`, `faces` (detect/download/status/cluster/people/name/merge/delete-person/unassign/export), `stack` (create/add/remove/pick/dissolve/list/show/from-tag), `duplicates`, `dedup`, `generate-previews`, `fix-roles`, `fix-dates`, `fix-recipes`, `rebuild-catalog`, `migrate`, `relocate`, `update-location`, `verify`, `sync`, `sync-metadata`, `refresh`, `cleanup`, `writeback`, `backup-status`, `stats`, `serve`, `saved-search` (save/list/run/delete), `collection` (create/list/show/add/remove/delete), `shell`
 
 See `doc/specification.md` for detailed command behavior, flags, and search filter documentation.
 

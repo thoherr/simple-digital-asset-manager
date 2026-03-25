@@ -1176,6 +1176,15 @@ impl Catalog {
         Ok(())
     }
 
+    /// Rename a volume in the catalog.
+    pub fn rename_volume(&self, volume_id: &str, new_label: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE volumes SET label = ?1 WHERE id = ?2",
+            rusqlite::params![new_label, volume_id],
+        )?;
+        Ok(())
+    }
+
     /// Count file_location rows on a given volume.
     pub fn count_locations_for_volume(&self, volume_id: &str) -> Result<usize> {
         let count: i64 = self.conn.query_row(
@@ -1245,6 +1254,60 @@ impl Catalog {
             "UPDATE recipes SET volume_id = ?1, relative_path = ?2 || relative_path \
              WHERE volume_id = ?3",
             rusqlite::params![target_volume_id, prefix, source_volume_id],
+        )?;
+        Ok(changed)
+    }
+
+    /// List asset IDs on a volume whose file locations match a path prefix.
+    pub fn list_asset_ids_on_volume_with_prefix(&self, volume_id: &str, prefix: &str) -> Result<Vec<String>> {
+        let pattern = format!("{prefix}%");
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT v.asset_id FROM file_locations fl \
+             JOIN variants v ON v.content_hash = fl.content_hash \
+             WHERE fl.volume_id = ?1 AND fl.relative_path LIKE ?2 \
+             UNION \
+             SELECT DISTINCT v.asset_id FROM recipes r \
+             JOIN variants v ON v.content_hash = r.variant_hash \
+             WHERE r.volume_id = ?1 AND r.relative_path LIKE ?2",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![volume_id, pattern], |row| {
+            row.get::<_, String>(0)
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
+    /// Bulk-move file_locations matching a prefix from source to target volume, stripping the prefix.
+    /// Returns the number of rows updated.
+    pub fn bulk_split_file_locations(
+        &self,
+        source_volume_id: &str,
+        target_volume_id: &str,
+        prefix: &str,
+    ) -> Result<usize> {
+        let changed = self.conn.execute(
+            "UPDATE file_locations SET volume_id = ?1, relative_path = SUBSTR(relative_path, ?2) \
+             WHERE volume_id = ?3 AND relative_path LIKE ?4",
+            rusqlite::params![target_volume_id, prefix.len() + 1, source_volume_id, format!("{prefix}%")],
+        )?;
+        Ok(changed)
+    }
+
+    /// Bulk-move recipes matching a prefix from source to target volume, stripping the prefix.
+    /// Returns the number of rows updated.
+    pub fn bulk_split_recipes(
+        &self,
+        source_volume_id: &str,
+        target_volume_id: &str,
+        prefix: &str,
+    ) -> Result<usize> {
+        let changed = self.conn.execute(
+            "UPDATE recipes SET volume_id = ?1, relative_path = SUBSTR(relative_path, ?2) \
+             WHERE volume_id = ?3 AND relative_path LIKE ?4",
+            rusqlite::params![target_volume_id, prefix.len() + 1, source_volume_id, format!("{prefix}%")],
         )?;
         Ok(changed)
     }

@@ -1041,6 +1041,36 @@ enum VolumeCommands {
         #[arg(long)]
         apply: bool,
     },
+
+    /// Split a subdirectory from a volume into a new volume
+    Split {
+        /// Source volume label or UUID
+        source: String,
+
+        /// Label for the new volume
+        new_label: String,
+
+        /// Subdirectory path to split off (relative to volume mount point)
+        #[arg(long)]
+        path: String,
+
+        /// Volume purpose for the new volume (working, archive, backup, cloud)
+        #[arg(long)]
+        purpose: Option<String>,
+
+        /// Actually split (default is report-only)
+        #[arg(long)]
+        apply: bool,
+    },
+
+    /// Rename a volume
+    Rename {
+        /// Current volume label or UUID
+        volume: String,
+
+        /// New label
+        new_label: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1721,6 +1751,81 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                             println!("  Run with --apply to combine.");
                         }
                     }
+                }
+                Ok(())
+            }
+            VolumeCommands::Split { source, new_label, path, purpose, apply } => {
+                let catalog_root = maki::config::find_catalog_root()?;
+                let config = CatalogConfig::load(&catalog_root)?;
+                let service = AssetService::new(&catalog_root, verbosity, &config.preview);
+
+                let show_log = cli.log;
+                let result = service.split_volume(
+                    &source,
+                    &new_label,
+                    &path,
+                    purpose.as_deref(),
+                    apply,
+                    |asset_id, elapsed| {
+                        if show_log {
+                            eprintln!("  {} — updated ({})", asset_id, format_duration(elapsed));
+                        }
+                    },
+                )?;
+
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                } else {
+                    for err in &result.errors {
+                        eprintln!("  {err}");
+                    }
+
+                    if apply {
+                        println!(
+                            "Volume '{}' split: new volume '{}' created with {} locations, {} recipes ({} assets, prefix '{}')",
+                            result.source_label,
+                            result.new_label,
+                            result.locations_moved,
+                            result.recipes_moved,
+                            result.assets_affected,
+                            result.path_prefix,
+                        );
+                    } else {
+                        println!(
+                            "Would split '{}': new volume '{}' with {} locations, {} recipes ({} assets, prefix '{}')",
+                            result.source_label,
+                            result.new_label,
+                            result.locations,
+                            result.recipes,
+                            result.assets_affected,
+                            result.path_prefix,
+                        );
+                        if result.locations > 0 || result.recipes > 0 {
+                            println!("  Run with --apply to split.");
+                        }
+                    }
+                }
+                Ok(())
+            }
+            VolumeCommands::Rename { volume, new_label } => {
+                let catalog_root = maki::config::find_catalog_root()?;
+                let registry = DeviceRegistry::new(&catalog_root);
+                let vol = registry.resolve_volume(&volume)?;
+                let old_label = vol.label.clone();
+
+                registry.rename(&volume, &new_label)?;
+
+                let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                catalog.rename_volume(&vol.id.to_string(), &new_label)?;
+
+                if cli.json {
+                    println!("{}", serde_json::json!({
+                        "old_label": old_label,
+                        "new_label": new_label,
+                        "volume_id": vol.id.to_string(),
+                    }));
+                } else {
+                    println!("Volume '{}' renamed to '{}'", old_label, new_label);
                 }
                 Ok(())
             }
