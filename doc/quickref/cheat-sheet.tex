@@ -99,7 +99,7 @@ Merge two volumes. \opt{--apply}
 \subsection{maki import \textit{PATHS...}}
 Import files into the catalog. \\
 \opt{--volume} \opt{--auto-group} \opt{--smart} \\
-\opt{--embed} \pro{} \opt{--describe} \opt{--dry-run} \\
+\opt{--embed} \pro{} \opt{--describe} \pro{} \opt{--dry-run} \\
 \opt{--include GROUP} \opt{--skip GROUP}
 
 \subsection{maki delete \textit{ASSET\_IDS...}}
@@ -122,7 +122,7 @@ Split variants out of an asset.
 \subsection{maki auto-group \textit{[QUERY]}}
 Auto-group by filename stem. \opt{--apply}
 
-\subsection{maki describe \textit{[QUERY]}}
+\subsection{maki describe \textit{[QUERY]} \pro}
 Generate VLM image descriptions. \\
 \opt{--asset ID} \opt{--volume} \opt{--model} \\
 \opt{--mode describe|tags|both} \\
@@ -213,13 +213,13 @@ Check file integrity. \\
 \subsection{maki sync \textit{[PATHS...]}}
 Sync with disk changes. \opt{--apply} \opt{--remove-stale}
 
-\subsection{maki sync-metadata \textit{[QUERY]}}
+\subsection{maki sync-metadata \textit{[QUERY]} \pro}
 Bidirectional XMP sync. \opt{--asset} \opt{--dry-run}
 
 \subsection{maki refresh \textit{[PATHS...]}}
 Re-read changed recipes. \opt{--dry-run}
 
-\subsection{maki writeback \textit{[QUERY]}}
+\subsection{maki writeback \textit{[QUERY]} \pro}
 Write pending edits to XMP. \opt{--all} \opt{--dry-run}
 
 \subsection{maki cleanup}
@@ -282,7 +282,7 @@ Run database schema migrations.
 \begin{enumerate}[leftmargin=1.5em]
 \item \cmd{maki verify} — check integrity
 \item \cmd{maki sync} — detect moved/missing
-\item \cmd{maki sync-metadata} — bidirectional XMP
+\item \cmd{maki sync-metadata} — bidirectional XMP \pro
 \item \cmd{maki cleanup --apply} — remove stale
 \end{enumerate}
 
@@ -337,7 +337,7 @@ All support: \cmd{x} (exact), \cmd{x+} (min), \cmd{x-y} (range), \cmd{x,y} (OR)
 \cmd{copies:2+} & File copies \\
 \cmd{variants:2+} & Variant count \\
 \cmd{scattered:2+} & Scattered variants \\
-\cmd{faces:2+} & Face count \\
+\cmd{faces:2+} & Face count \pro \\
 \end{tabularx}
 
 \subsection{Date Filters}
@@ -397,11 +397,11 @@ Placeholders: \cmd{\{id\}}, \cmd{\{name\}}, \cmd{\{filename\}}, \cmd{\{type\}}, 
 \cmd{[serve]} & port, bind, per\_page \\
 \cmd{[import]} & exclude, auto\_tags, smart\_previews \\
 \cmd{[browse]} & default\_filter \\
-\cmd{[writeback]} & enabled (default: false) \\
+\cmd{[writeback]} & enabled (default: false) \pro \\
 \cmd{[dedup]} & prefer \\
 \cmd{[verify]} & max\_age\_days \\
 \cmd{[ai]} & model, threshold, labels \pro \\
-\cmd{[vlm]} & endpoint, model, timeout \\
+\cmd{[vlm]} & endpoint, model, timeout \pro \\
 \cmd{[contact\_sheet]} & layout, paper, fields \\
 \end{tabularx}
 
