@@ -166,6 +166,10 @@ enum Commands {
         #[arg(long)]
         clear_label: bool,
 
+        /// Remove all tags
+        #[arg(long)]
+        clear_tags: bool,
+
         /// Set date (YYYY, YYYY-MM, YYYY-MM-DD, or ISO 8601)
         #[arg(long)]
         date: Option<String>,
@@ -2421,7 +2425,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             }
             Ok(())
         }
-        Commands::Edit { asset_id, name, clear_name, description, clear_description, rating, clear_rating, label, clear_label, date, clear_date, role, variant } => {
+        Commands::Edit { asset_id, name, clear_name, description, clear_description, rating, clear_rating, label, clear_label, clear_tags, date, clear_date, role, variant } => {
             use maki::query::{EditFields, parse_date_input};
 
             // Handle --role --variant separately from asset-level edits
@@ -2446,7 +2450,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 return Ok(());
             }
 
-            if name.is_none() && !clear_name && description.is_none() && !clear_description && rating.is_none() && !clear_rating && label.is_none() && !clear_label && date.is_none() && !clear_date {
+            if name.is_none() && !clear_name && description.is_none() && !clear_description && rating.is_none() && !clear_rating && label.is_none() && !clear_label && !clear_tags && date.is_none() && !clear_date {
                 anyhow::bail!("No edit flags provided. Use --name, --description, --rating, --label, --date, --role/--variant, or --clear-*.");
             }
 
@@ -2493,10 +2497,28 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             let catalog_root = maki::config::find_catalog_root()?;
             let engine = QueryEngine::new(&catalog_root);
+
+            // Clear all tags if requested (before edit, so JSON output includes the result)
+            let tags_cleared = if clear_tags {
+                let details = engine.show(&asset_id)?;
+                if !details.tags.is_empty() {
+                    let tag_result = engine.tag(&asset_id, &details.tags, true)?;
+                    tag_result.current_tags.is_empty()
+                } else {
+                    true
+                }
+            } else {
+                false
+            };
+
             let result = engine.edit(&asset_id, fields)?;
 
             if cli.json {
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                let mut json = serde_json::to_value(&result)?;
+                if clear_tags {
+                    json["tags_cleared"] = serde_json::json!(tags_cleared);
+                }
+                println!("{}", serde_json::to_string_pretty(&json)?);
             } else {
                 if let Some(name) = &result.name {
                     println!("Name: {name}");
@@ -2518,6 +2540,9 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     println!("Label: {l}");
                 } else {
                     println!("Label: (none)");
+                }
+                if tags_cleared {
+                    println!("Tags: cleared");
                 }
                 // Show date (truncate to YYYY-MM-DD)
                 let date_display = result.created_at.split('T').next().unwrap_or(&result.created_at);
