@@ -629,25 +629,34 @@ maki search "variants:5+ type:image"  # images with many variants
 
 ## scattered
 
-**Syntax:** `scattered:<N>`
+**Syntax:** `scattered:<N>` or `scattered:<N>/<depth>`
 
-**Values:** Positive integer (minimum number of distinct directories)
+**Values:** Positive integer (minimum number of distinct directories). Optional `/<depth>` specifies how many path segments to compare.
 
-**Description:** Finds assets whose variant files are stored in multiple distinct directories. Counts distinct volume + top-level directory combinations across all file locations of an asset's variants. Useful for detecting mis-grouped assets — variants that truly belong together typically share the same directory, while incorrectly merged assets often have files in different locations.
+**Description:** Finds assets whose variant files are stored in multiple distinct directories. Counts distinct directory paths across all file locations of an asset's variants, ignoring the volume — so backup copies in the same relative path on different volumes don't count as scattered.
 
-Common patterns:
-- `scattered:2` — variants in 2+ distinct directories (likely mis-grouped)
-- `scattered:2 variants:3+` — combine with variant count for maximum precision
+By default, the full parent directory (everything before the filename) is compared. The optional `/<depth>` parameter truncates paths to the first N segments before counting, which is useful when subdirectories like `Selects/` and `Output/` within the same shoot folder shouldn't count as scattered.
 
 **Examples:**
 
 ```
-maki search "scattered:2"                    # variants in 2+ directories
-maki search "scattered:2 variants:3+"        # scattered + many variants
-maki search "scattered:3 type:image"         # images across 3+ directories
+maki search "scattered:2+"                   # files in 2+ distinct directories
+maki search "scattered:2+ variants:3+"       # scattered + many variants
+maki search "scattered:2+/1"                 # scattered at top-level directory
+                                             # (2026-03-10/Selects/a.nef and
+                                             #  2026-03-10/Output/a.nef → same at depth 1)
+maki search "scattered:2+/2"                 # scattered at 2 directory levels
 ```
 
-**SQL behavior:** Scalar subquery counting `DISTINCT volume_id || ':' || first_path_component` across `file_locations` joined through `variants`. Self-contained, no outer JOIN flags needed.
+**Depth examples** with paths `2026-03-10/Selects/img.nef` and `2026-03-10/Output/img.nef`:
+
+| Syntax | Compared as | Count | Scattered? |
+|--------|------------|-------|------------|
+| `scattered:2+` | `2026-03-10/Selects` vs `2026-03-10/Output` | 2 | yes |
+| `scattered:2+/1` | `2026-03-10` vs `2026-03-10` | 1 | no |
+| `scattered:2+/2` | `2026-03-10/Selects` vs `2026-03-10/Output` | 2 | yes |
+
+**SQL behavior:** Uses a custom `path_dir(path, depth)` function to extract directory prefixes. Scalar subquery counting `DISTINCT path_dir(relative_path, depth)` across `file_locations` joined through `variants`. Self-contained, no outer JOIN flags needed.
 
 ---
 

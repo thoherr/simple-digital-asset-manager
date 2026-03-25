@@ -31,7 +31,7 @@ Filters combine with **AND** — every filter must match. Free-text tokens that 
 | Asset ID | `id:<prefix>` | `id:72a0bb4b` |
 | Copies | `copies:<N>`, `copies:<N>+` | `copies:1`, `copies:2+` |
 | Variants | `variants:<N>+` | `variants:2+` |
-| Scattered | `scattered:<N>+` | `scattered:2+` |
+| Scattered | `scattered:<N>+`, `scattered:<N>+/<depth>` | `scattered:2+`, `scattered:2+/1` |
 | GPS | `geo:<S>,<W>,<N>,<E>` | `geo:47.5,11.0,48.5,13.0` |
 | GPS (any/none) | `geo:any`, `geo:none` | `geo:any` |
 | Orphan | `orphan:true` | `orphan:true` |
