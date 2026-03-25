@@ -151,7 +151,7 @@ Find orphaned assets (no file locations):
 maki search "orphan:true"
 ```
 
-Find visually similar assets *(MAKI Pro + embeddings)*:
+Find visually similar assets *(Pro + embeddings)*:
 
 ```bash
 maki search "similar:72a0bb4b"

@@ -56,10 +56,10 @@ The volume is auto-detected from the first path by matching against registered v
 **--smart**
 : Generate smart previews (high-resolution, 2560px) alongside regular thumbnails during import. Smart previews enable zoom and pan in the web UI. Can be enabled permanently via `[import] smart_previews = true` in `maki.toml`. Smart preview dimensions are controlled by `[preview] smart_max_edge`.
 
-**--embed** *(MAKI Pro)*
+**--embed** *(Pro)*
 : Generate SigLIP image embeddings for visual similarity search during import. Embeddings enable `maki auto-tag --similar` and the web UI "Find similar" button. Runs as a post-import phase using preview images (smart preview preferred, then regular preview). Silently skips if the AI model is not downloaded -- run `maki auto-tag --download` first. Can be enabled permanently via `[import] embeddings = true` in `maki.toml`. Non-image assets are skipped. Uses the model configured in `[ai] model`.
 
-**--describe** *(MAKI Pro)*
+**--describe** *(Pro)*
 : Generate VLM descriptions for newly imported assets as a post-import phase. Requires a running Ollama instance (or compatible VLM endpoint configured in `[vlm]`). Runs after the embed phase if both are enabled. Uses the VLM model, prompt, and parameters from `[vlm]` config (including per-model overrides). Concurrency is controlled by `[vlm] concurrency`. Can be enabled permanently via `[import] descriptions = true` in `maki.toml`. Non-image assets are skipped.
 
 **--dry-run**
@@ -102,7 +102,7 @@ Import with smart previews for high-resolution browsing:
 maki import --smart /Volumes/Photos/Capture/2026-02-22
 ```
 
-Import with embedding generation for visual similarity search *(MAKI Pro)*:
+Import with embedding generation for visual similarity search *(Pro)*:
 
 ```bash
 maki import --embed /Volumes/Photos/Capture/2026-02-22
@@ -668,9 +668,7 @@ maki auto-group --apply --json | jq '{merged: .total_donors_merged, moved: .tota
 
 ---
 
-## maki auto-tag
-
-> **MAKI Pro** — not available in the standard edition. GPU acceleration is included automatically on macOS (CoreML). See `[ai] execution_provider` in [Configuration](08-configuration.md#ai-section).
+## maki auto-tag *(Pro)*
 
 ### NAME
 
@@ -836,9 +834,7 @@ maki auto-tag "tag:unreviewed" --json | jq '.suggestions[] | {asset: .asset_id, 
 
 ---
 
-## maki embed
-
-> **MAKI Pro** — not available in the standard edition. GPU acceleration is included automatically on macOS (CoreML). See `[ai] execution_provider` in [Configuration](08-configuration.md#ai-section).
+## maki embed *(Pro)*
 
 ### NAME
 
@@ -940,9 +936,7 @@ maki embed --export
 
 ---
 
-## maki describe
-
-> **MAKI Pro** — not available in the standard edition.
+## maki describe *(Pro)*
 
 ### NAME
 

@@ -1,6 +1,6 @@
-# VLM Model Guide *(MAKI Pro)*
+# VLM Model Guide *(Pro)*
 
-This document covers vision-language models (VLMs) compatible with `maki describe`. It lists tested models, hardware requirements, quality notes, and setup instructions for each inference backend. Requires MAKI Pro.
+This document covers vision-language models (VLMs) compatible with `maki describe`. It lists tested models, hardware requirements, quality notes, and setup instructions for each inference backend.
 
 MAKI tries the **Ollama native API** (`/api/generate`) first, falling back to the **OpenAI-compatible** `/v1/chat/completions` endpoint. Both use base64-encoded images. Any server that implements either API works — Ollama, llama.cpp, vLLM, LM Studio, SGLang, or cloud providers.
 

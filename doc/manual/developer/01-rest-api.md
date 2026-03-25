@@ -83,7 +83,7 @@ curl http://localhost:8080/collections
 
 ### `GET /people` -- People Page
 
-*Requires MAKI Pro.*
+*(Pro)*
 
 Returns an HTML page showing all detected people with face crop thumbnails, names, face counts, and management controls (rename, merge, delete). Includes a "Cluster" button to run auto-clustering from the UI.
 
@@ -101,7 +101,7 @@ curl http://localhost:8080/backup
 
 ### `GET /stroll` -- Stroll Page
 
-*Requires MAKI Pro.*
+*(Pro)*
 
 Returns an interactive visual similarity exploration page. Centers on a randomly selected asset (or a specific asset via query parameter) and displays its nearest neighbors by SigLIP embedding distance. Clicking a neighbor re-centers the view on that asset.
 
@@ -678,7 +678,7 @@ Returns the analytics page with shooting frequency, camera/lens usage, rating di
 
 ### `POST /api/asset/{id}/suggest-tags` -- AI Tag Suggestions
 
-*Requires MAKI Pro.*
+*(Pro)*
 
 Analyzes the asset's preview image with SigLIP and returns suggested tags with confidence scores. Tags already on the asset are included but marked with `existing: true`. The model is lazy-loaded on first request and cached in server memory.
 
@@ -708,7 +708,7 @@ curl -X POST http://localhost:8080/api/asset/550e8400-e29b-41d4-a716-44665544000
 
 ### `POST /api/batch/auto-tag` -- Batch AI Auto-Tag
 
-*Requires MAKI Pro.*
+*(Pro)*
 
 Auto-tags selected assets using SigLIP. For each asset, encodes the preview image, classifies against the configured label vocabulary, and applies tags above the threshold. Existing tags are not duplicated.
 
@@ -750,7 +750,7 @@ curl -X POST http://localhost:8080/api/batch/auto-tag \
 
 ### `POST /api/batch/detect-faces` -- Batch Face Detection
 
-*Requires MAKI Pro.*
+*(Pro)*
 
 Detects faces in the preview images of the selected assets using YuNet + ArcFace. Stores face records, embeddings, and crop thumbnails.
 
@@ -973,7 +973,7 @@ curl -X POST http://localhost:8080/api/batch/export \
 
 ## Face & People APIs
 
-*All face and people endpoints require MAKI Pro.*
+*All face and people endpoints are Pro features.*
 
 ### `GET /api/asset/{id}/faces` -- List Faces for Asset
 
@@ -1230,7 +1230,7 @@ curl "http://localhost:8080/api/calendar?year=2026&tag=landscape&rating=4%2B"
 
 ### `GET /api/stroll/neighbors` -- Embedding Neighbors
 
-*Requires MAKI Pro.*
+*(Pro)*
 
 Returns the nearest neighbors of an asset by SigLIP embedding similarity. Used by the Stroll page for visual exploration and by the fan-out feature, which fetches transitive neighbors when a satellite is focused (L2 neighbors-of-neighbors).
 

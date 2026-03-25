@@ -383,7 +383,7 @@ Auto-tags are merged with any tags extracted from XMP metadata (deduplicated).
 | `--include <group>` | Enable an additional file type group (repeatable) |
 | `--skip <group>` | Disable a default file type group (repeatable) |
 | `--smart` | Generate smart previews (2560px) for zoom/pan in the web UI |
-| `--embed` | Generate image embeddings for visual similarity search *(MAKI Pro)* |
+| `--embed` | Generate image embeddings for visual similarity search *(Pro)* |
 | `--json` | Structured JSON output to stdout |
 | `--log` | Per-file progress to stderr (`filename -- status (duration)`) |
 | `--time` | Show total elapsed time |
@@ -430,9 +430,7 @@ abc3f7c9...  DSC_0042.nef
 
 This is useful for identifying redundant copies, verifying backups, or cleaning up after file reorganization. See the [maintenance chapter](07-maintenance.md) for more on managing file locations.
 
-## AI Auto-Tagging *(MAKI Pro)*
-
-> Requires MAKI Pro. GPU-accelerated inference is included automatically on macOS. See [Editions](01-overview.md#editions).
+## AI Auto-Tagging *(Pro)*
 
 After importing, you can use AI to automatically suggest tags for your images:
 
@@ -488,9 +486,7 @@ This runs embedding generation as a post-import phase using the preview image fo
 
 See the [auto-tag reference](../reference/02-ingest-commands.md#maki-auto-tag) for all options and the [configuration reference](../reference/08-configuration.md#ai-section) for `[ai]` settings in `maki.toml`.
 
-## VLM Image Descriptions *(MAKI Pro)*
-
-> Requires MAKI Pro. See [Editions](01-overview.md#editions).
+## VLM Image Descriptions *(Pro)*
 
 While SigLIP auto-tagging classifies images against a fixed vocabulary (~100 labels), vision-language models (VLMs) generate free-form text descriptions that capture scene context, spatial relationships, lighting, and mood. The `maki describe` command sends preview images to a VLM server and stores the generated text as the asset's description.
 
@@ -665,7 +661,7 @@ A dropdown appears next to the Describe button when two or more models are confi
 | **Output** | Tags from fixed vocabulary | Free-form text, tags, or both |
 | **Speed** | ~50--150 ms/image | ~3--36s/image |
 | **Best for** | Categorical filtering, similarity | Documentation, open-ended tagging |
-| **Requires** | MAKI Pro, ONNX models | MAKI Pro, running VLM server |
+| **Requires** | *(Pro)*, ONNX models | *(Pro)*, running VLM server |
 | **GPU** | Included on macOS (CoreML) | Automatic via Ollama |
 
 The two approaches are complementary. Use SigLIP for fast categorical tagging across large batches, and VLM for rich descriptions when quality matters more than speed.

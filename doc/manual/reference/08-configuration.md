@@ -246,7 +246,7 @@ smart_previews = true
 
 ### embeddings
 
-> Requires MAKI Pro.
+*(Pro)*
 
 - **Type:** boolean
 - **Default:** `false`
@@ -338,9 +338,7 @@ copyright = "© 2026 Thomas Herrmann"
 
 ---
 
-## [ai] Section
-
-> These settings require MAKI Pro.
+## [ai] Section *(Pro)*
 
 Controls AI auto-tagging behavior for `maki auto-tag`.
 
@@ -424,9 +422,9 @@ text_limit = 50
 
 ---
 
-## [vlm] Section
+## [vlm] Section *(Pro)*
 
-Controls the VLM (vision-language model) integration for `maki describe`. Requires MAKI Pro.
+Controls the VLM (vision-language model) integration for `maki describe`.
 
 ### endpoint
 
@@ -718,7 +716,7 @@ exclude = [
 auto_tags = ["inbox", "unreviewed"]
 # Generate smart previews during import.
 smart_previews = true
-# Generate embeddings for visual similarity search during import (MAKI Pro).
+# Generate embeddings for visual similarity search during import (Pro).
 embeddings = true
 # Generate VLM descriptions during import (requires running Ollama or compatible endpoint).
 descriptions = true
@@ -747,7 +745,7 @@ label_style = "border"
 # Copyright text for page footer.
 copyright = ""
 
-# AI auto-tagging settings (MAKI Pro).
+# AI auto-tagging settings (Pro).
 [ai]
 model = "siglip-vit-b16-256"
 threshold = 0.3
@@ -762,7 +760,7 @@ prompt = "a photograph of {}"
 [writeback]
 enabled = false
 
-# VLM image description settings (MAKI Pro).
+# VLM image description settings (Pro).
 [vlm]
 endpoint = "http://localhost:11434"
 model = "qwen2.5vl:3b"

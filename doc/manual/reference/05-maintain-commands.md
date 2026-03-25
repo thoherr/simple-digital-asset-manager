@@ -311,9 +311,7 @@ maki refresh /Volumes/Photos/Capture/2026-02-22 --log
 
 ---
 
-## maki sync-metadata
-
-> **MAKI Pro** — not available in the standard edition.
+## maki sync-metadata *(Pro)*
 
 ### NAME
 
@@ -394,9 +392,7 @@ maki sync-metadata --media --log --time
 
 ---
 
-## maki writeback
-
-> **MAKI Pro** — not available in the standard edition.
+## maki writeback *(Pro)*
 
 ### NAME
 
@@ -1236,7 +1232,7 @@ This command is useful when:
 - Schema changes require a full rebuild.
 - The catalog needs to be verified against sidecar files.
 
-After rebuilding, all denormalized columns (best variant hash, primary format, variant count) are recomputed. Collections are preserved via `collections.yaml`. Stacks are restored from `stacks.yaml`, re-populating the `stacks` table and the `stack_id`/`stack_position` columns on the `assets` table. With MAKI Pro: faces are restored from `faces.yaml`, people from `people.yaml`, ArcFace face embeddings from binary files in `embeddings/arcface/`, and SigLIP image embeddings from binary files in `embeddings/<model>/`. The `face_count` denormalized column is recomputed.
+After rebuilding, all denormalized columns (best variant hash, primary format, variant count) are recomputed. Collections are preserved via `collections.yaml`. Stacks are restored from `stacks.yaml`, re-populating the `stacks` table and the `stack_id`/`stack_position` columns on the `assets` table. In the Pro edition: faces are restored from `faces.yaml`, people from `people.yaml`, ArcFace face embeddings from binary files in `embeddings/arcface/`, and SigLIP image embeddings from binary files in `embeddings/<model>/`. The `face_count` denormalized column is recomputed.
 
 ### ARGUMENTS
 

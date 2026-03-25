@@ -1035,7 +1035,7 @@ maki stack from-tag "Bracket {}" --apply
 
 ---
 
-## maki faces detect
+## maki faces detect *(Pro)*
 
 ### NAME
 
@@ -1049,7 +1049,7 @@ maki [GLOBAL FLAGS] faces detect [--query <Q>] [--asset <id>] [--volume <label>]
 
 ### DESCRIPTION
 
-Detects faces in asset preview images using the YuNet ONNX model. For each detected face, computes a 512-dimensional ArcFace embedding and generates a 150×150 JPEG crop thumbnail. Requires MAKI Pro.
+Detects faces in asset preview images using the YuNet ONNX model. For each detected face, computes a 512-dimensional ArcFace embedding and generates a 150×150 JPEG crop thumbnail.
 
 Without `--apply`, runs in report-only mode showing how many faces would be detected. With `--apply`, stores face records in the catalog and generates crop thumbnails.
 
@@ -1104,7 +1104,7 @@ maki faces detect --volume "Photos" --apply --log
 
 ---
 
-## maki faces cluster
+## maki faces cluster *(Pro)*
 
 ### NAME
 
@@ -1172,7 +1172,7 @@ maki faces cluster --query "path:Capture/2026-03" --apply
 
 ---
 
-## maki faces people
+## maki faces people *(Pro)*
 
 ### NAME
 
@@ -1201,7 +1201,7 @@ maki faces people --json
 
 ---
 
-## maki faces name
+## maki faces name *(Pro)*
 
 ### NAME
 
@@ -1233,7 +1233,7 @@ maki faces name 550e8400-... "Alice"
 
 ---
 
-## maki faces merge
+## maki faces merge *(Pro)*
 
 ### NAME
 
@@ -1265,7 +1265,7 @@ maki faces merge 550e8400-... 661f9511-...
 
 ---
 
-## maki faces delete-person
+## maki faces delete-person *(Pro)*
 
 ### NAME
 
@@ -1294,7 +1294,7 @@ maki faces delete-person 550e8400-...
 
 ---
 
-## maki faces unassign
+## maki faces unassign *(Pro)*
 
 ### NAME
 
@@ -1323,7 +1323,7 @@ maki faces unassign a1b2c3d4-...
 
 ---
 
-## maki faces export
+## maki faces export *(Pro)*
 
 ### NAME
 
@@ -1368,7 +1368,7 @@ maki faces export --json
 
 ---
 
-## maki faces download
+## maki faces download *(Pro)*
 
 ### NAME
 
@@ -1392,7 +1392,7 @@ maki faces download
 
 ---
 
-## maki faces status
+## maki faces status *(Pro)*
 
 ### NAME
 

@@ -558,9 +558,9 @@ For the full command reference, see [export](../reference/04-retrieve-commands.m
 
 ---
 
-## Visual Similarity
+## Visual Similarity *(Pro)*
 
-With MAKI Pro and image embeddings generated (via `maki embed` or `maki import --embed`), you can find visually similar assets:
+With image embeddings generated (via `maki embed` or `maki import --embed`), you can find visually similar assets:
 
 ```
 maki search "similar:72a0bb4b"              # top 20 similar assets

@@ -270,7 +270,7 @@ maki refresh --log --time --json
 ```
 
 
-## Write Back *(MAKI Pro)*
+## Write Back *(Pro)*
 
 `maki writeback` replays pending metadata writes to XMP recipe files. When you edit metadata (rating, label, tags, description) while a volume is offline, the XMP write-back is skipped and the recipe is marked with a `pending_writeback` flag. The edits are safe in the YAML sidecar and SQLite catalog, but the `.xmp` files on disk still have old values. This command pushes those pending changes to XMP when the volume comes back online.
 
@@ -338,7 +338,7 @@ maki writeback --log --time --json
 ```
 
 
-## Sync Metadata *(MAKI Pro)*
+## Sync Metadata *(Pro)*
 
 `maki sync-metadata` performs bidirectional XMP metadata sync in a single command — combining the inbound (refresh) and outbound (writeback) steps with conflict detection.
 
@@ -549,8 +549,8 @@ Rebuild complete: 1847 assets, 2914 variants, 312 recipes, 3 collections, 45 sta
 - **Sidecar YAML files**: Untouched (they are the source, not the target).
 - **Collections**: Restored from `collections.yaml` at the catalog root.
 - **Stacks**: Restored from `stacks.yaml` at the catalog root (member order and pick assignments are preserved).
-- **Faces and people** *(MAKI Pro)*: Restored from `faces.yaml` and `people.yaml`. ArcFace face embeddings restored from binary files in `embeddings/arcface/`.
-- **Image embeddings** *(MAKI Pro)*: SigLIP embeddings restored from binary files in `embeddings/<model>/`.
+- **Faces and people** *(Pro)*: Restored from `faces.yaml` and `people.yaml`. ArcFace face embeddings restored from binary files in `embeddings/arcface/`.
+- **Image embeddings** *(Pro)*: SigLIP embeddings restored from binary files in `embeddings/<model>/`.
 - **Preview files**: Untouched (they are content-addressed by hash).
 - **Volumes**: Re-registered from `volumes.yaml`.
 

@@ -25,6 +25,8 @@ MAKI is available in two editions:
 
 Pre-built binaries for both editions are available on the [GitHub releases page](https://github.com/thoherr/maki/releases). The Pro edition includes ONNX Runtime for on-device AI inference. On macOS, GPU acceleration via CoreML (Neural Engine on Apple Silicon, Metal on Intel) is included automatically.
 
+Throughout this manual, Pro features are marked with *(Pro)* in section headings, table entries, and option descriptions.
+
 ## Core Concepts
 
 MAKI organizes your files around these core concepts.

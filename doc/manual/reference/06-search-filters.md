@@ -687,11 +687,11 @@ Pure assets-table filter, no JOIN required. Uses the composite index on `(latitu
 
 ---
 
-## faces
+## faces *(Pro)*
 
 **Syntax:** `faces:any` | `faces:none` | `faces:<N>` | `faces:<N>+`
 
-**Description:** Filters by the number of detected faces on an asset. Requires MAKI Pro and face detection to have been run.
+**Description:** Filters by the number of detected faces on an asset. Requires face detection to have been run.
 
 **Modes:**
 
@@ -734,11 +734,11 @@ maki search "-person:Alice"                 # exclude assets with Alice
 
 ---
 
-## similar *(MAKI Pro)*
+## similar *(Pro)*
 
 **Syntax:** `similar:<asset-id>` or `similar:<asset-id>:<limit>`
 
-**Description:** Finds visually similar assets using stored SigLIP embeddings. Returns the top N most similar assets (default 20). Requires MAKI Pro and embeddings to have been generated via `maki embed` or `maki import --embed`. The reference asset ID supports prefix matching (e.g. `similar:abc1` resolves like all other asset ID references).
+**Description:** Finds visually similar assets using stored SigLIP embeddings. Returns the top N most similar assets (default 20). Requires embeddings to have been generated via `maki embed` or `maki import --embed`. The reference asset ID supports prefix matching (e.g. `similar:abc1` resolves like all other asset ID references).
 
 **Examples:**
 
@@ -753,7 +753,7 @@ maki search -q "similar:72a0bb4b"                       # just IDs, for scriptin
 
 ---
 
-## min_sim *(MAKI Pro)*
+## min_sim *(Pro)*
 
 **Syntax:** `min_sim:<percent>`
 
@@ -770,11 +770,11 @@ maki search "similar:72a0bb4b min_sim:80 type:image"  # >= 80% AND images only
 
 ---
 
-## embed *(MAKI Pro)*
+## embed *(Pro)*
 
 **Syntax:** `embed:any` | `embed:true` | `embed:none` | `embed:false`
 
-**Description:** Filters by whether an asset has a stored AI embedding (SigLIP image embedding). Requires MAKI Pro and embeddings to have been generated via `maki embed` or `maki import --embed`.
+**Description:** Filters by whether an asset has a stored AI embedding (SigLIP image embedding). Requires embeddings to have been generated via `maki embed` or `maki import --embed`.
 
 **Examples:**
 
@@ -790,11 +790,11 @@ maki search "embed:none type:image"         # images that still need embeddings
 
 ---
 
-## text *(MAKI Pro)*
+## text *(Pro)*
 
 **Syntax:** `text:<query>`, `text:"<multi-word query>"`, or `text:"<query>":<limit>`
 
-**Description:** Natural language image search using SigLIP's text encoder. Encodes the query text into the same embedding space as image embeddings, then finds the most similar images via dot-product similarity. Requires MAKI Pro and embeddings to have been generated via `maki embed` or `maki import --embed`.
+**Description:** Natural language image search using SigLIP's text encoder. Encodes the query text into the same embedding space as image embeddings, then finds the most similar images via dot-product similarity. Requires embeddings to have been generated via `maki embed` or `maki import --embed`.
 
 The result limit defaults to 50 and can be configured at three levels (highest priority wins):
 
@@ -861,7 +861,7 @@ maki search "stacked:false rating:5 type:image"
 # Find stacked assets with a hierarchical tag
 maki search "stacked:true tag:animals/birds"
 
-# Visually similar assets, filtered to 4+ stars (MAKI Pro + embeddings)
+# Visually similar assets, filtered to 4+ stars (Pro + embeddings)
 maki search "similar:72a0bb4b rating:4+"
 
 # Geotagged photos within 5km of a location

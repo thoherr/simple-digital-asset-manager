@@ -25,7 +25,7 @@ cargo build --features pro
 cargo build --release --features pro
 ```
 
-Builds the **MAKI Pro** edition with SigLIP-based zero-shot image classification, face detection/recognition, and visual similarity search. The `pro` feature enables `ai` automatically. Adds ONNX Runtime (`ort`), `ndarray`, and `tokenizers` as dependencies. The ONNX Runtime shared library is downloaded automatically during build. Without `--features pro` (or `--features ai`), these dependencies are not compiled and AI commands (`auto-tag`, `embed`, `faces`) are not available.
+Builds the **Pro** edition with SigLIP-based zero-shot image classification, face detection/recognition, and visual similarity search. The `pro` feature enables `ai` automatically. Adds ONNX Runtime (`ort`), `ndarray`, and `tokenizers` as dependencies. The ONNX Runtime shared library is downloaded automatically during build. Without `--features pro` (or `--features ai`), these dependencies are not compiled and AI commands (`auto-tag`, `embed`, `faces`) are not available.
 
 ### Requirements
 
@@ -188,7 +188,7 @@ These tools are not Rust dependencies but are invoked as subprocesses for specif
 
 - **ffmpeg** -- Video thumbnail extraction. Used to capture a frame from video files (MP4, MOV, AVI, etc.) for preview generation.
 
-- **curl** -- Model file download for AI auto-tagging (MAKI Pro) and VLM image descriptions (`maki describe`). Used to download ONNX model files from HuggingFace. Available by default on macOS and most Linux distributions.
+- **curl** -- Model file download for AI auto-tagging *(Pro)* and VLM image descriptions (`maki describe`). Used to download ONNX model files from HuggingFace. Available by default on macOS and most Linux distributions.
 
 **Install on macOS** (Homebrew):
 
