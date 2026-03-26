@@ -345,7 +345,7 @@ pub struct AssetPage {
     pub is_video: bool,
     pub video_url: Option<String>,
     pub video_duration_display: Option<String>,
-    pub video_resolution: Option<String>,
+    pub media_resolution: Option<String>,
     pub video_codec: Option<String>,
 }
 
@@ -480,22 +480,29 @@ impl AssetPage {
             None
         };
 
-        // Extract video metadata from first variant's source_metadata
-        let (video_duration_display, video_resolution, video_codec) = if is_video {
-            let meta = details.variants.first().map(|v| &v.source_metadata);
-            let dur = meta.and_then(|m| m.get("video_duration"))
+        // Extract media metadata from best variant's source_metadata
+        let best_meta = details.variants.first().map(|v| &v.source_metadata);
+        let (video_duration_display, video_codec) = if is_video {
+            let dur = best_meta.and_then(|m| m.get("video_duration"))
                 .and_then(|d| d.parse::<f64>().ok())
                 .map(format_video_duration);
-            let res = meta.and_then(|m| {
-                let w = m.get("video_width")?;
-                let h = m.get("video_height")?;
-                Some(format!("{w} x {h}"))
-            });
-            let codec = meta.and_then(|m| m.get("video_codec")).cloned();
-            (dur, res, codec)
+            let codec = best_meta.and_then(|m| m.get("video_codec")).cloned();
+            (dur, codec)
         } else {
-            (None, None, None)
+            (None, None)
         };
+        // Resolution: works for both images (image_width/height) and videos (video_width/height)
+        let media_resolution = best_meta.and_then(|m| {
+            // Try video dimensions first, then image dimensions
+            let w = m.get("video_width").or_else(|| m.get("image_width"))?;
+            let h = m.get("video_height").or_else(|| m.get("image_height"))?;
+            let fps = m.get("video_framerate");
+            let mut res = format!("{w} x {h}");
+            if let Some(fps) = fps {
+                res.push_str(&format!("@{fps}"));
+            }
+            Some(res)
+        });
 
         // Check if the best variant has any online file location
         let best_idx = crate::models::variant::best_preview_index_details(&details.variants);
@@ -543,7 +550,7 @@ impl AssetPage {
             is_video,
             video_url: video_url_val,
             video_duration_display,
-            video_resolution,
+            media_resolution,
             video_codec,
         }
     }

@@ -24,19 +24,14 @@
 
         <table class="meta-table">
             <tr><th>ID</th><td>{{ asset_id }}</td></tr>
-            <tr><th>Type</th><td><span class="badge badge-type-{{ asset_type|lower }}">{{ asset_type }}</span></td></tr>
+            <tr><th>Type</th><td>
+                <span class="badge badge-type-{{ asset_type|lower }}">{{ asset_type }}</span>
+                <span class="badge">{{ primary_format }}</span>
+                {% if let Some(codec) = video_codec %}<span class="badge">{{ codec }}</span>{% endif %}
+                {% if let Some(res) = media_resolution %}<span class="badge">{{ res }}</span>{% endif %}
+                {% if let Some(dur) = video_duration_display %}<span class="badge">{{ dur }}</span>{% endif %}
+            </td></tr>
             <tr><th>Date</th><td id="date">{% include "date_fragment.html" %}</td></tr>
-            {% if is_video %}
-            {% if let Some(dur) = video_duration_display %}
-            <tr><th>Duration</th><td>{{ dur }}</td></tr>
-            {% endif %}
-            {% if let Some(res) = video_resolution %}
-            <tr><th>Resolution</th><td>{{ res }}</td></tr>
-            {% endif %}
-            {% if let Some(codec) = video_codec %}
-            <tr><th>Codec</th><td>{{ codec }}</td></tr>
-            {% endif %}
-            {% endif %}
         </table>
 
         <div class="description-wrapper">
