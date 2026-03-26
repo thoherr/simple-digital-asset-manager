@@ -6514,7 +6514,7 @@ fn is_embedded_xmp_extension(ext: &str) -> bool {
 }
 
 /// Determine the asset type from a file extension.
-pub(crate) fn determine_asset_type(ext: &str) -> AssetType {
+pub fn determine_asset_type(ext: &str) -> AssetType {
     match ext.to_lowercase().as_str() {
         // Images
         "jpg" | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "tif" | "webp" | "heic" | "heif"

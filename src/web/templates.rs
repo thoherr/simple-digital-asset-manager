@@ -344,6 +344,9 @@ pub struct AssetPage {
     pub all_people: Vec<PersonOption>,
     pub is_video: bool,
     pub video_url: Option<String>,
+    pub video_duration_display: Option<String>,
+    pub video_resolution: Option<String>,
+    pub video_codec: Option<String>,
 }
 
 /// A detected face on the asset detail page.
@@ -477,6 +480,23 @@ impl AssetPage {
             None
         };
 
+        // Extract video metadata from first variant's source_metadata
+        let (video_duration_display, video_resolution, video_codec) = if is_video {
+            let meta = details.variants.first().map(|v| &v.source_metadata);
+            let dur = meta.and_then(|m| m.get("video_duration"))
+                .and_then(|d| d.parse::<f64>().ok())
+                .map(format_video_duration);
+            let res = meta.and_then(|m| {
+                let w = m.get("video_width")?;
+                let h = m.get("video_height")?;
+                Some(format!("{w} x {h}"))
+            });
+            let codec = meta.and_then(|m| m.get("video_codec")).cloned();
+            (dur, res, codec)
+        } else {
+            (None, None, None)
+        };
+
         // Check if the best variant has any online file location
         let best_idx = crate::models::variant::best_preview_index_details(&details.variants);
         let has_online_source = best_idx.map_or(false, |idx| {
@@ -522,6 +542,9 @@ impl AssetPage {
             all_people: Vec::new(),
             is_video,
             video_url: video_url_val,
+            video_duration_display,
+            video_resolution,
+            video_codec,
         }
     }
 }

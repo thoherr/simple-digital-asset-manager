@@ -5275,6 +5275,23 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                         });
 
                         if let Some(path) = source_path {
+                            // Backfill video metadata if missing
+                            if maki::asset_service::determine_asset_type(&variant.format) == maki::models::AssetType::Video
+                                && !variant.source_metadata.contains_key("video_duration")
+                            {
+                                let video_meta = maki::preview::extract_video_metadata(&path);
+                                if !video_meta.is_empty() {
+                                    let uuid: uuid::Uuid = asset_data.id.to_string().parse().unwrap();
+                                    if let Ok(mut asset) = metadata_store.load(uuid) {
+                                        if let Some(v) = asset.variants.iter_mut().find(|v| v.content_hash == variant.content_hash) {
+                                            v.source_metadata.extend(video_meta);
+                                        }
+                                        let _ = metadata_store.save(&asset);
+                                        catalog.insert_asset(&asset).ok();
+                                    }
+                                }
+                            }
+
                             let file_start = std::time::Instant::now();
                             let rotation = asset_data.preview_rotation;
                             // Generate regular preview (always)
