@@ -2088,8 +2088,6 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             };
 
             // Post-import VLM describe phase
-            #[cfg(not(feature = "pro"))]
-            let describe_result: Option<maki::vlm::DescribeResult> = None;
             #[cfg(feature = "pro")]
             let describe_result = if !dry_run
                 && (describe || config.import.descriptions)
@@ -6654,6 +6652,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
 /// Merge trailing asset IDs (from shell variable expansion) into query/asset.
 /// Single ID → asset; multiple IDs → `id:xxx id:yyy` query.
+#[cfg(any(feature = "pro", feature = "ai"))]
 fn merge_trailing_ids(
     query: Option<String>,
     asset: Option<String>,
