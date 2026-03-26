@@ -358,6 +358,16 @@ pub struct VolumeSplitResult {
     pub errors: Vec<String>,
 }
 
+/// Result of face detection on a batch of assets.
+#[cfg(feature = "ai")]
+#[derive(Debug, serde::Serialize)]
+pub struct DetectFacesResult {
+    pub assets_processed: u32,
+    pub assets_skipped: u32,
+    pub faces_detected: u32,
+    pub errors: Vec<String>,
+}
+
 /// Status of a single recipe during refresh.
 pub enum RefreshStatus {
     Unchanged,
@@ -5972,6 +5982,143 @@ impl AssetService {
                 "jpg" | "jpeg" | "png" | "webp" | "tif" | "tiff" | "bmp" | "gif"
             )
         })
+    }
+
+    /// Detect faces in a batch of assets.
+    ///
+    /// Shared implementation used by both CLI `maki faces detect` and web batch detect.
+    /// `force`: if true, clears existing faces before re-detecting; if false, skips assets
+    /// that already have faces.
+    #[cfg(feature = "ai")]
+    pub fn detect_faces(
+        &self,
+        asset_ids: &[String],
+        detector: &mut crate::face::FaceDetector,
+        min_confidence: f32,
+        force: bool,
+        apply: bool,
+        on_asset: impl Fn(&str, u32, std::time::Duration),
+    ) -> Result<DetectFacesResult> {
+        let catalog = crate::catalog::Catalog::open(&self.catalog_root)?;
+        let _ = crate::face_store::FaceStore::initialize(catalog.conn());
+        let face_store = crate::face_store::FaceStore::new(catalog.conn());
+        let engine = crate::query::QueryEngine::new(&self.catalog_root);
+        let preview_gen = crate::preview::PreviewGenerator::new(&self.catalog_root, crate::Verbosity::quiet(), &self.preview_config);
+        let registry = crate::device_registry::DeviceRegistry::new(&self.catalog_root);
+        let volumes = registry.list()?;
+        let online_volumes: std::collections::HashMap<String, &crate::models::Volume> = volumes
+            .iter()
+            .filter(|v| v.is_online)
+            .map(|v| (v.id.to_string(), v))
+            .collect();
+
+        let mut result = DetectFacesResult {
+            assets_processed: 0,
+            assets_skipped: 0,
+            faces_detected: 0,
+            errors: Vec::new(),
+        };
+
+        for aid in asset_ids {
+            let t0 = std::time::Instant::now();
+            let short_id = &aid[..8.min(aid.len())];
+
+            // Skip if already detected (unless force)
+            if !force && face_store.has_faces(aid) {
+                result.assets_skipped += 1;
+                on_asset(aid, 0, t0.elapsed());
+                continue;
+            }
+
+            let details = match engine.show(aid) {
+                Ok(d) => d,
+                Err(e) => {
+                    result.errors.push(format!("{short_id}: {e:#}"));
+                    continue;
+                }
+            };
+
+            let image_path = match self.find_image_for_ai(&details, &preview_gen, &online_volumes) {
+                Some(p) => p,
+                None => {
+                    result.assets_skipped += 1;
+                    continue;
+                }
+            };
+
+            match detector.detect_and_embed(&image_path, min_confidence) {
+                Ok(face_results) => {
+                    let n = face_results.len() as u32;
+                    if apply {
+                        if force {
+                            let _ = face_store.delete_faces_for_asset(aid);
+                        }
+                        for (face, embedding) in &face_results {
+                            let face_id = uuid::Uuid::new_v4().to_string();
+                            if let Err(e) = face_store.store_face(
+                                &face_id, aid, face.bbox_x, face.bbox_y, face.bbox_w, face.bbox_h,
+                                embedding, face.confidence,
+                            ) {
+                                result.errors.push(format!("{short_id}: store error: {e:#}"));
+                            } else {
+                                let _ = crate::face::save_face_crop(&image_path, face, &face_id, &self.catalog_root);
+                                let _ = crate::face_store::write_arcface_binary(&self.catalog_root, &face_id, embedding);
+                            }
+                        }
+                        let _ = catalog.update_face_count(aid);
+                    }
+                    result.faces_detected += n;
+                    result.assets_processed += 1;
+                    on_asset(aid, n, t0.elapsed());
+                }
+                Err(e) => {
+                    result.errors.push(format!("{short_id}: {e:#}"));
+                }
+            }
+        }
+
+        // Persist faces/people YAML after all detections
+        if apply && result.faces_detected > 0 {
+            if let Err(e) = face_store.save_all_yaml(&self.catalog_root) {
+                result.errors.push(format!("Failed to save faces/people YAML: {e:#}"));
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Backfill video metadata (duration, codec, resolution, framerate) via ffprobe.
+    ///
+    /// Updates variant source_metadata in both the YAML sidecar and SQLite catalog.
+    /// Returns true if metadata was added.
+    pub fn backfill_video_metadata(
+        &self,
+        asset_id: &str,
+        variant_hash: &str,
+        source_path: &std::path::Path,
+    ) -> bool {
+        let video_meta = crate::preview::extract_video_metadata(source_path);
+        if video_meta.is_empty() {
+            return false;
+        }
+        let store = MetadataStore::new(&self.catalog_root);
+        let uuid = match asset_id.parse::<uuid::Uuid>() {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        if let Ok(mut asset) = store.load(uuid) {
+            if let Some(v) = asset.variants.iter_mut().find(|v| v.content_hash == variant_hash) {
+                v.source_metadata.extend(video_meta);
+                if let Ok(catalog) = crate::catalog::Catalog::open(&self.catalog_root) {
+                    catalog.insert_variant(v).ok();
+                    catalog.insert_asset(&asset).ok();
+                }
+            }
+            let _ = store.save(&asset);
+            true
+        } else {
+            false
+        }
     }
 
     /// Batch-describe assets using a VLM endpoint.

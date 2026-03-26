@@ -1792,19 +1792,8 @@ pub async fn generate_preview(
                 .map(|v| v.source_metadata.contains_key("video_duration"))
                 .unwrap_or(false);
             if !has_duration {
-                let video_meta = crate::preview::extract_video_metadata(&source_path);
-                if !video_meta.is_empty() {
-                    let store = crate::metadata_store::MetadataStore::new(&state.catalog_root);
-                    let uuid: uuid::Uuid = details.id.parse()?;
-                    if let Ok(mut asset) = store.load(uuid) {
-                        if let Some(v) = asset.variants.iter_mut().find(|v| v.content_hash == *content_hash) {
-                            v.source_metadata.extend(video_meta);
-                            catalog.insert_variant(v).ok();
-                        }
-                        let _ = store.save(&asset);
-                        catalog.insert_asset(&asset).ok();
-                    }
-                }
+                let service = state.asset_service();
+                service.backfill_video_metadata(&details.id, content_hash, &source_path);
             }
         }
 
@@ -4785,71 +4774,20 @@ fn detect_faces_inner(state: &AppState, asset_ids: &[String]) -> Result<serde_js
     let mut detector = crate::face::FaceDetector::load_with_provider(&face_model_dir, state.verbosity, &state.ai_config.execution_provider)
         .map_err(|e| format!("Failed to load face detector: {e:#}"))?;
 
-    let min_confidence = state.ai_config.face_min_confidence;
-    let catalog = state.catalog().map_err(|e| format!("{e:#}"))?;
-    let _ = crate::face_store::FaceStore::initialize(catalog.conn());
-    let face_store = crate::face_store::FaceStore::new(catalog.conn());
-    let engine = state.query_engine();
-    let preview_gen = state.preview_generator();
-    let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
-    let volumes = registry.list().map_err(|e| format!("{e:#}"))?;
-    let online_volumes: std::collections::HashMap<String, &crate::models::Volume> = volumes
-        .iter()
-        .filter(|v| v.is_online)
-        .map(|v| (v.id.to_string(), v))
-        .collect();
     let service = state.asset_service();
-
-    let mut total_faces = 0u32;
-    let mut total_assets = 0u32;
-    let mut errors: Vec<String> = Vec::new();
-
-    for aid in asset_ids {
-        let details = match engine.show(aid) {
-            Ok(d) => d,
-            Err(e) => { errors.push(format!("{}: {e:#}", &aid[..8.min(aid.len())])); continue; }
-        };
-
-        let image_path = match service.find_image_for_ai(&details, &preview_gen, &online_volumes) {
-            Some(p) => p,
-            None => continue,
-        };
-
-        match detector.detect_and_embed(&image_path, min_confidence) {
-            Ok(face_results) => {
-                // Clear existing faces for this asset
-                let _ = face_store.delete_faces_for_asset(aid);
-                for (face, embedding) in &face_results {
-                    let face_id = uuid::Uuid::new_v4().to_string();
-                    if let Err(e) = face_store.store_face(
-                        &face_id, aid, face.bbox_x, face.bbox_y, face.bbox_w, face.bbox_h,
-                        embedding, face.confidence,
-                    ) {
-                        errors.push(format!("{}: store error: {e:#}", &aid[..8.min(aid.len())]));
-                    } else {
-                        let _ = crate::face::save_face_crop(&image_path, face, &face_id, &state.catalog_root);
-                        let _ = crate::face_store::write_arcface_binary(&state.catalog_root, &face_id, embedding);
-                    }
-                }
-                let _ = catalog.update_face_count(aid);
-                total_faces += face_results.len() as u32;
-                total_assets += 1;
-            }
-            Err(e) => {
-                errors.push(format!("{}: {e:#}", &aid[..8.min(aid.len())]));
-            }
-        }
-    }
-
-    // Persist faces/people YAML
-    if total_faces > 0 {
-        let _ = face_store.save_all_yaml(&state.catalog_root);
-    }
+    let result = service.detect_faces(
+        asset_ids,
+        &mut detector,
+        state.ai_config.face_min_confidence,
+        true,  // force: web always re-detects
+        true,  // apply: web always applies
+        |_, _, _| {},
+    ).map_err(|e| format!("{e:#}"))?;
 
     Ok(serde_json::json!({
-        "succeeded": total_assets,
-        "faces_detected": total_faces,
-        "errors": errors,
+        "succeeded": result.assets_processed,
+        "faces_detected": result.faces_detected,
+        "errors": result.errors,
     }))
 }
 

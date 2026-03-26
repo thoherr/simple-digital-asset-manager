@@ -3618,23 +3618,11 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                         );
                     }
 
-                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
-                    let _ = maki::face_store::FaceStore::initialize(catalog.conn());
-                    let face_store = maki::face_store::FaceStore::new(catalog.conn());
-
                     let engine = QueryEngine::new(&catalog_root);
-                    let config_preview = &config.preview;
-                    let service = AssetService::new(&catalog_root, verbosity, config_preview);
-                    let preview_gen = maki::preview::PreviewGenerator::new(&catalog_root, maki::Verbosity::quiet(), config_preview);
-                    let registry = DeviceRegistry::new(&catalog_root);
-                    let volumes = registry.list()?;
-                    let online_volumes: std::collections::HashMap<String, &maki::models::Volume> = volumes
-                        .iter()
-                        .filter(|v| v.is_online)
-                        .map(|v| (v.id.to_string(), v))
-                        .collect();
+                    let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
                     // Resolve target assets
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
                     let asset_ids: Vec<String> = if let Some(ref aid) = asset {
                         let full_id = catalog
                             .resolve_asset_id(aid)?
@@ -3656,112 +3644,36 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                             .map(|r| r.asset_id)
                             .collect()
                     };
+                    drop(catalog);
 
                     let mut detector = maki::face::FaceDetector::load_with_provider(&face_model_dir, verbosity, &config.ai.execution_provider)?;
 
-                    let mut total_faces = 0u32;
-                    let mut total_assets = 0u32;
-                    let mut total_skipped = 0u32;
-                    let mut errors: Vec<String> = Vec::new();
-
-                    for aid in &asset_ids {
-                        let t0 = std::time::Instant::now();
-                        let short_id = &aid[..8.min(aid.len())];
-
-                        // Skip if already detected (unless --force)
-                        if !force && face_store.has_faces(aid) {
-                            if cli.log {
-                                eprintln!("  {short_id} — skipped (already detected)");
-                            }
-                            total_skipped += 1;
-                            continue;
-                        }
-
-                        let details = match engine.show(aid) {
-                            Ok(d) => d,
-                            Err(e) => {
-                                errors.push(format!("{short_id}: {e:#}"));
-                                continue;
-                            }
-                        };
-
-                        let image_path = match service.find_image_for_ai(&details, &preview_gen, &online_volumes) {
-                            Some(p) => p,
-                            None => {
-                                if cli.log {
-                                    eprintln!("  {short_id} — skipped (no image)");
-                                }
-                                total_skipped += 1;
-                                continue;
-                            }
-                        };
-
-                        match detector.detect_and_embed(&image_path, min_confidence) {
-                            Ok(face_results) => {
-                                let n = face_results.len();
-                                if apply {
-                                    // Clear existing faces if forcing
-                                    if force {
-                                        let _ = face_store.delete_faces_for_asset(aid);
-                                    }
-                                    for (face, embedding) in &face_results {
-                                        let face_id = uuid::Uuid::new_v4().to_string();
-                                        if let Err(e) = face_store.store_face(
-                                            &face_id,
-                                            aid,
-                                            face.bbox_x,
-                                            face.bbox_y,
-                                            face.bbox_w,
-                                            face.bbox_h,
-                                            embedding,
-                                            face.confidence,
-                                        ) {
-                                            errors.push(format!("{short_id}: store error: {e:#}"));
-                                        } else {
-                                            // Generate face crop thumbnail
-                                            if let Err(e) = maki::face::save_face_crop(&image_path, face, &face_id, &catalog_root) {
-                                                if verbosity.debug {
-                                                    eprintln!("  {short_id}: face crop error: {e:#}");
-                                                }
-                                            }
-                                            // Write ArcFace embedding binary
-                                            if let Err(e) = maki::face_store::write_arcface_binary(&catalog_root, &face_id, embedding) {
-                                                if verbosity.debug {
-                                                    eprintln!("  {short_id}: arcface binary error: {e:#}");
-                                                }
-                                            }
-                                        }
-                                    }
-                                    // Update denormalized face_count
-                                    let _ = catalog.update_face_count(aid);
-                                }
-                                total_faces += n as u32;
-                                total_assets += 1;
-                                if cli.log {
-                                    let elapsed = t0.elapsed();
+                    let show_log = cli.log;
+                    let result = service.detect_faces(
+                        &asset_ids,
+                        &mut detector,
+                        min_confidence,
+                        force,
+                        apply,
+                        |aid, n, elapsed| {
+                            if show_log {
+                                let short_id = &aid[..8.min(aid.len())];
+                                if n == 0 {
+                                    eprintln!("  {short_id} — skipped ({})", format_duration(elapsed));
+                                } else {
                                     eprintln!(
                                         "  {short_id} — {} face{} detected ({})",
-                                        n,
-                                        if n == 1 { "" } else { "s" },
-                                        format_duration(elapsed)
+                                        n, if n == 1 { "" } else { "s" }, format_duration(elapsed)
                                     );
                                 }
                             }
-                            Err(e) => {
-                                errors.push(format!("{short_id}: {e:#}"));
-                                if cli.log {
-                                    eprintln!("  {short_id} — error: {e:#}");
-                                }
-                            }
-                        }
-                    }
+                        },
+                    )?;
 
-                    // Persist faces/people YAML after all detections
-                    if apply && total_faces > 0 {
-                        if let Err(e) = face_store.save_all_yaml(&catalog_root) {
-                            eprintln!("  Warning: failed to save faces/people YAML: {e:#}");
-                        }
-                    }
+                    let total_faces = result.faces_detected;
+                    let total_assets = result.assets_processed;
+                    let total_skipped = result.assets_skipped;
+                    let errors = result.errors;
 
                     if cli.json {
                         let json = serde_json::json!({
@@ -5279,18 +5191,8 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                             if maki::asset_service::determine_asset_type(&variant.format) == maki::models::AssetType::Video
                                 && !variant.source_metadata.contains_key("video_duration")
                             {
-                                let video_meta = maki::preview::extract_video_metadata(&path);
-                                if !video_meta.is_empty() {
-                                    let uuid: uuid::Uuid = asset_data.id.to_string().parse().unwrap();
-                                    if let Ok(mut asset) = metadata_store.load(uuid) {
-                                        if let Some(v) = asset.variants.iter_mut().find(|v| v.content_hash == variant.content_hash) {
-                                            v.source_metadata.extend(video_meta);
-                                            catalog.insert_variant(v).ok();
-                                        }
-                                        let _ = metadata_store.save(&asset);
-                                        catalog.insert_asset(&asset).ok();
-                                    }
-                                }
+                                let service = AssetService::new(&catalog_root, verbosity, &config.preview);
+                                service.backfill_video_metadata(&asset_data.id.to_string(), &variant.content_hash, &path);
                             }
 
                             let file_start = std::time::Instant::now();
