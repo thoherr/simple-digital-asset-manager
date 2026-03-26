@@ -660,6 +660,29 @@ maki search "scattered:2+/2"                 # scattered at 2 directory levels
 
 ---
 
+## duration
+
+**Syntax:** `duration:<N>` | `duration:<N>+` | `duration:<min>-<max>` | `duration:<N>,<M>`
+
+**Values:** Duration in seconds. Supports all standard numeric filter forms: exact (`60`), minimum (`30+`), range (`10-120`), OR (`30,60`), OR+min (`30,60+`).
+
+**Description:** Filters by video duration. Duration is extracted from video files via ffprobe during import and stored as a denormalized `video_duration` column on the assets table. Non-video assets (images, audio) have no duration and will not match this filter.
+
+**Examples:**
+
+```
+maki search "duration:60"                       # exactly 60 seconds
+maki search "duration:30+"                      # 30 seconds or longer
+maki search "duration:10-120"                   # between 10s and 2 minutes
+maki search "duration:30,60"                    # exactly 30s or 60s
+maki search "type:video duration:60+"           # videos at least 1 minute
+maki search "duration:10-30 rating:4+"          # short clips, highly rated
+```
+
+**SQL behavior:** Direct filter on the denormalized `a.video_duration` column using `NumericFilter` (exact/min/range/values). No JOIN required.
+
+---
+
 ## geo
 
 **Syntax:** `geo:any` | `geo:none` | `geo:<lat>,<lng>,<radius_km>` | `geo:<south>,<west>,<north>,<east>`

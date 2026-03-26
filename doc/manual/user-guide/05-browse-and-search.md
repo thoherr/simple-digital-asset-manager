@@ -98,6 +98,7 @@ All filters can be combined in a single query. Remaining tokens become free-text
 | Copies | `copies:<N>`, `copies:<N>+` | `copies:1`, `copies:2+` |
 | Variants | `variants:<N>`, `variants:<N>+` | `variants:2+` |
 | Scattered | `scattered:<N>+`, `scattered:<N>+/<depth>` | `scattered:2+`, `scattered:2+/1` |
+| Duration (seconds) | `duration:<N>`, `duration:<N>+`, `duration:<min>-<max>` | `duration:60`, `duration:30+`, `duration:10-120` |
 | GPS | `geo:<south>,<west>,<north>,<east>` | `geo:47.5,11.0,48.5,13.0` |
 | Orphan assets | `orphan:true` | `orphan:true` |
 | Missing files | `missing:true` | `missing:true` |
