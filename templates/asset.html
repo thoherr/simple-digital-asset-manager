@@ -1323,6 +1323,11 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
                 rotated['{{ asset_id }}'] = Date.now();
                 sessionStorage.setItem('maki-previews-changed', JSON.stringify(rotated));
             } catch(ex) {}
+            // For video assets, reload the page to show updated metadata
+            // (duration, resolution, codec may have been backfilled by ffprobe)
+            {% if is_video %}
+            setTimeout(function() { window.location.reload(); }, 200);
+            {% endif %}
         }
     });
 })();
