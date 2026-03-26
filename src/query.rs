@@ -107,6 +107,7 @@ pub struct ParsedSearch {
     pub scattered_depth: Option<u32>,
     pub face_count: Option<NumericFilter>,
     pub duration: Option<NumericFilter>,
+    pub codec: Option<String>,
     pub stale_days: Option<NumericFilter>,
     pub meta_filters: Vec<(String, String)>,
     pub orphan: bool,
@@ -241,6 +242,7 @@ impl ParsedSearch {
             scattered_depth: self.scattered_depth,
             face_count: self.face_count.clone(),
             duration: self.duration.clone(),
+            codec: self.codec.clone(),
             stale_days: self.stale_days.clone(),
             meta_filters: self
                 .meta_filters
@@ -488,6 +490,8 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
             }
         } else if let Some(value) = token_body.strip_prefix("duration:") {
             parsed.duration = parse_numeric_filter(value);
+        } else if let Some(value) = token_body.strip_prefix("codec:") {
+            parsed.codec = Some(value.to_string());
         } else if let Some(value) = token_body.strip_prefix("faces:") {
             if value == "any" {
                 parsed.has_faces = Some(true);
@@ -3809,6 +3813,21 @@ mod tests {
         let p = parse_search_query("duration:60+ type:video");
         assert_eq!(p.duration, Some(NumericFilter::Min(60.0)));
         assert_eq!(p.asset_types, vec!["video"]);
+    }
+
+    // ── codec filter parse tests ──────────────────────────────────────
+
+    #[test]
+    fn parse_codec() {
+        let p = parse_search_query("codec:h264");
+        assert_eq!(p.codec, Some("h264".to_string()));
+    }
+
+    #[test]
+    fn parse_codec_with_duration() {
+        let p = parse_search_query("codec:hevc duration:60+");
+        assert_eq!(p.codec, Some("hevc".to_string()));
+        assert_eq!(p.duration, Some(NumericFilter::Min(60.0)));
     }
 
     #[test]

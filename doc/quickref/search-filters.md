@@ -33,6 +33,7 @@ Filters combine with **AND** — every filter must match. Free-text tokens that 
 | Variants | `variants:<N>+` | `variants:2+` |
 | Scattered | `scattered:<N>+`, `scattered:<N>+/<depth>` | `scattered:2+`, `scattered:2+/1` |
 | Duration (seconds) | `duration:<N>`, `duration:<N>+`, `duration:<min>-<max>` | `duration:60`, `duration:30+` |
+| Codec | `codec:<text>` | `codec:h264`, `codec:hevc` |
 | GPS | `geo:<S>,<W>,<N>,<E>` | `geo:47.5,11.0,48.5,13.0` |
 | GPS (any/none) | `geo:any`, `geo:none` | `geo:any` |
 | Orphan | `orphan:true` | `orphan:true` |

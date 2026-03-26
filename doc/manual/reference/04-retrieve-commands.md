@@ -50,6 +50,7 @@ Searches the catalog for assets matching the given query. The query string suppo
 | `variants:` | Variant count (exact or minimum) | `variants:2`, `variants:2+` |
 | `scattered:` | Variants in N+ distinct directories | `scattered:2+`, `scattered:2+/1` |
 | `duration:` | Video duration in seconds | `duration:60`, `duration:30+`, `duration:10-120` |
+| `codec:` | Video codec (partial match) | `codec:h264`, `codec:hevc`, `codec:prores` |
 | `orphan:true` | Assets with zero file locations | `orphan:true` |
 | `orphan:false` | Assets with at least one file location | `orphan:false` |
 | `missing:true` | Assets with files missing on disk | `missing:true` |

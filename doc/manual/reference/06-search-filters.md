@@ -683,6 +683,28 @@ maki search "duration:10-30 rating:4+"          # short clips, highly rated
 
 ---
 
+## codec
+
+**Syntax:** `codec:<text>`
+
+**Values:** Partial, case-insensitive string match against the video codec.
+
+**Description:** Filters by video codec. The codec is extracted from video files via ffprobe during import and stored as a denormalized `video_codec` column on the assets table. Common values include `h264`, `hevc` (H.265), `prores`, `av1`, `vp9`. Non-video assets have no codec and will not match this filter.
+
+**Examples:**
+
+```
+maki search "codec:h264"                        # H.264 encoded videos
+maki search "codec:hevc"                        # H.265/HEVC videos
+maki search "codec:prores"                      # ProRes videos
+maki search "type:video codec:h264 rating:4+"   # highly rated H.264 videos
+maki search "codec:hevc duration:60+"           # HEVC videos at least 1 minute
+```
+
+**SQL behavior:** `WHERE a.video_codec LIKE '%value%'` (case-insensitive via SQLite `COLLATE NOCASE`). Pure assets-table filter, no JOIN required.
+
+---
+
 ## geo
 
 **Syntax:** `geo:any` | `geo:none` | `geo:<lat>,<lng>,<radius_km>` | `geo:<south>,<west>,<north>,<east>`

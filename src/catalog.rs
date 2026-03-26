@@ -447,6 +447,7 @@ pub struct SearchOptions<'a> {
     pub scattered_depth: Option<u32>,
     pub face_count: Option<NumericFilter>,
     pub duration: Option<NumericFilter>,
+    pub codec: Option<String>,
     pub stale_days: Option<NumericFilter>,
     pub meta_filters: Vec<(&'a str, &'a str)>,
     pub orphan: bool,
@@ -510,6 +511,7 @@ impl<'a> Default for SearchOptions<'a> {
             scattered_depth: None,
             face_count: None,
             duration: None,
+            codec: None,
             stale_days: None,
             meta_filters: Vec::new(),
             orphan: false,
@@ -589,7 +591,7 @@ fn next_date_bound(s: &str) -> String {
 }
 
 /// Current schema version. Bump this whenever `run_migrations()` changes.
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 /// SQLite-backed local catalog for fast queries. This is a derived cache,
 /// not the source of truth (sidecar files are).
@@ -847,6 +849,19 @@ impl Catalog {
             );
         }
 
+        // ── v4 → v5: video codec denormalized column ──
+        if current < 5 {
+            let _ = self.conn.execute_batch("ALTER TABLE assets ADD COLUMN video_codec TEXT");
+            let _ = self.conn.execute_batch(
+                "UPDATE assets SET video_codec = ( \
+                    SELECT json_extract(v.source_metadata, '$.video_codec') \
+                    FROM variants v WHERE v.asset_id = assets.id \
+                    AND json_extract(v.source_metadata, '$.video_codec') IS NOT NULL \
+                    LIMIT 1 \
+                 ) WHERE video_codec IS NULL",
+            );
+        }
+
         // Stamp the new schema version
         let _ = self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -929,12 +944,14 @@ impl Catalog {
         // Compute video duration from first variant that has it
         let video_duration: Option<f64> = asset.variants.iter()
             .find_map(|v| v.source_metadata.get("video_duration")?.parse::<f64>().ok());
+        let video_codec: Option<String> = asset.variants.iter()
+            .find_map(|v| v.source_metadata.get("video_codec").cloned());
         // Use ON CONFLICT UPDATE instead of INSERT OR REPLACE to avoid
         // intermediate DELETE that triggers FK constraint violations on
         // variants/faces/collection_assets referencing this asset.
         self.conn.execute(
-            "INSERT INTO assets (id, name, created_at, asset_type, tags, description, rating, color_label, best_variant_hash, primary_variant_format, variant_count, latitude, longitude, preview_rotation, preview_variant, video_duration) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16) \
+            "INSERT INTO assets (id, name, created_at, asset_type, tags, description, rating, color_label, best_variant_hash, primary_variant_format, variant_count, latitude, longitude, preview_rotation, preview_variant, video_duration, video_codec) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17) \
              ON CONFLICT(id) DO UPDATE SET \
                name = excluded.name, \
                created_at = excluded.created_at, \
@@ -950,7 +967,8 @@ impl Catalog {
                longitude = excluded.longitude, \
                preview_rotation = excluded.preview_rotation, \
                preview_variant = excluded.preview_variant, \
-               video_duration = excluded.video_duration",
+               video_duration = excluded.video_duration, \
+               video_codec = excluded.video_codec",
             rusqlite::params![
                 asset.id.to_string(),
                 asset.name,
@@ -968,6 +986,7 @@ impl Catalog {
                 asset.preview_rotation.map(|r| r as i64),
                 asset.preview_variant,
                 video_duration,
+                video_codec,
             ],
         )?;
         Ok(())
@@ -3015,6 +3034,10 @@ impl Catalog {
         }
         if let Some(ref f) = opts.face_count { Self::numeric_clause(f, "a.face_count", &mut clauses, &mut params); }
         if let Some(ref f) = opts.duration { Self::numeric_clause(f, "a.video_duration", &mut clauses, &mut params); }
+        if let Some(ref c) = opts.codec {
+            clauses.push("a.video_codec LIKE ?".to_string());
+            params.push(Box::new(format!("%{c}%")));
+        }
 
         // Embedding presence filter
         if let Some(has_embed) = opts.has_embed {

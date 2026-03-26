@@ -411,7 +411,7 @@ enum Commands {
         /// Free-text keywords and filters. See 'maki help search' or the manual for the
         /// full list. Common filters: type:, tag:, format:, rating:, label:, camera:, lens:,
         /// iso:, focal:, f:, width:, height:, path:, collection:, date:, volume:, copies:,
-        /// variants:, scattered:, duration:, stacked:, geo:, faces: (Pro), person: (Pro), similar: (Pro),
+        /// variants:, scattered:, duration:, codec:, stacked:, geo:, faces: (Pro), person: (Pro), similar: (Pro),
         /// text: (Pro), embed: (Pro)
         query: String,
 
