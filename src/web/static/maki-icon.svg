@@ -1,7 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <!--
-    MAKI logo — cross-section of a maki roll (primary, full-color)
-    Filling pieces are irregular polygons with gaps between them.
+    MAKI logo — test: filling rotated 15° clockwise
   -->
 
   <!-- Nori (outer wrap) -->
@@ -10,18 +9,21 @@
   <!-- Rice layer -->
   <circle cx="256" cy="256" r="200" fill="#f0ebe3"/>
 
-  <!-- Salmon piece (top-right) -->
-  <polygon points="282,96 370,108 396,218 362,282 300,270 270,216" fill="#e8634a"/>
+  <!-- Filling + center dot, rotated 15° around center -->
+  <g transform="rotate(15, 256, 256)">
+    <!-- Salmon piece (top-right) -->
+    <polygon points="282,96 370,108 396,218 362,282 300,270 270,216" fill="#e8634a"/>
 
-  <!-- Amber/tamago piece (right-bottom) -->
-  <polygon points="340,302 404,262 396,370 314,400 274,356 306,310" fill="#f0a030"/>
+    <!-- Amber/tamago piece (right-bottom) -->
+    <polygon points="340,302 404,262 396,370 314,400 274,356 306,310" fill="#f0a030"/>
 
-  <!-- Teal piece (bottom-left) -->
-  <polygon points="186,306 252,296 256,368 204,410 116,362 148,310" fill="#2ea8a0"/>
+    <!-- Teal piece (bottom-left) -->
+    <polygon points="186,306 252,296 256,368 204,410 116,362 148,310" fill="#2ea8a0"/>
 
-  <!-- Blue piece (top-left) -->
-  <polygon points="112,206 168,112 240,124 244,222 208,278 120,270" fill="#3868c8"/>
+    <!-- Blue piece (top-left) -->
+    <polygon points="112,206 168,112 240,124 244,222 208,278 120,270" fill="#3868c8"/>
 
-  <!-- Center dot — the hash/core identity -->
-  <circle cx="256" cy="256" r="24" fill="#1a2332"/>
+    <!-- Center dot -->
+    <circle cx="256" cy="256" r="24" fill="#1a2332"/>
+  </g>
 </svg>
