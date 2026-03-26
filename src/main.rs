@@ -5285,6 +5285,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                                     if let Ok(mut asset) = metadata_store.load(uuid) {
                                         if let Some(v) = asset.variants.iter_mut().find(|v| v.content_hash == variant.content_hash) {
                                             v.source_metadata.extend(video_meta);
+                                            catalog.insert_variant(v).ok();
                                         }
                                         let _ = metadata_store.save(&asset);
                                         catalog.insert_asset(&asset).ok();

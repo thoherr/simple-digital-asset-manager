@@ -1785,6 +1785,29 @@ pub async fn generate_preview(
         preview_gen.regenerate(content_hash, &source_path, format)?;
         preview_gen.regenerate_smart(content_hash, &source_path, format)?;
 
+        // Backfill video metadata if this is a video variant missing duration
+        let is_video = details.asset_type == "video";
+        if is_video {
+            let has_duration = details.variants.get(best_idx)
+                .map(|v| v.source_metadata.contains_key("video_duration"))
+                .unwrap_or(false);
+            if !has_duration {
+                let video_meta = crate::preview::extract_video_metadata(&source_path);
+                if !video_meta.is_empty() {
+                    let store = crate::metadata_store::MetadataStore::new(&state.catalog_root);
+                    let uuid: uuid::Uuid = details.id.parse()?;
+                    if let Ok(mut asset) = store.load(uuid) {
+                        if let Some(v) = asset.variants.iter_mut().find(|v| v.content_hash == *content_hash) {
+                            v.source_metadata.extend(video_meta);
+                            catalog.insert_variant(v).ok();
+                        }
+                        let _ = store.save(&asset);
+                        catalog.insert_asset(&asset).ok();
+                    }
+                }
+            }
+        }
+
         // Cache-bust URLs so browser shows the newly generated images
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1813,8 +1836,8 @@ pub async fn generate_preview(
             has_smart_preview: has_smart,
             has_online_source: true,
             error: None,
-            is_video: false,
-            video_url: None,
+            is_video: details.asset_type == "video",
+            video_url: if details.asset_type == "video" { Some(super::templates::video_url(content_hash)) } else { None },
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
@@ -1947,8 +1970,8 @@ pub async fn set_rotation(
             has_smart_preview: has_smart,
             has_online_source: true,
             error: None,
-            is_video: false,
-            video_url: None,
+            is_video: details.asset_type == "video",
+            video_url: if details.asset_type == "video" { Some(super::templates::video_url(content_hash)) } else { None },
         };
         Ok::<_, anyhow::Error>(tmpl.render()?)
     })
