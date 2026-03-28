@@ -4,7 +4,7 @@ Audit of the MAKI user manual (user guide chapters 01–10) against the full CLI
 
 **Date:** 2026-03-28
 
-**Status:** Pass 1 implemented (2026-03-28). Pass 2 and 3 pending.
+**Status:** Pass 1 and 2 implemented (2026-03-28). Pass 3 pending.
 
 ---
 
@@ -406,15 +406,16 @@ Explain when to use `sync-metadata` (the combined command) vs. the separate `ref
 | 13 | Archive Lifecycle | Workflow | Medium | New ch. 11 | Done |
 | 15 | Drive Failure Recovery | Workflow | Medium | 07 | Done |
 
-### Pass 2 — Practical workflow improvements
+### Pass 2 — Practical workflow improvements (DONE 2026-03-28)
 
-| # | Topic | Type | Effort | Chapter |
-|---|-------|------|--------|---------|
-| 6 | Backup Status full workflow | Expand | Low | 07 |
-| 7 | Export full workflow | Expand | Low | 05 |
-| 9 | Relocate batch mode | Expand | Low | 07 |
-| 3 | Preview Management | Missing command | Low–Med | 07 |
-| 16 | Multi-tool Round-trips | Workflow | Medium | 07 |
+| # | Topic | Type | Effort | Chapter | Status |
+|---|-------|------|--------|---------|--------|
+| 6 | Backup Status full workflow | Expand | Low | 07 | Done |
+| 7 | Export full workflow | Expand | Low | 05 | Done |
+| 9 | Relocate batch mode | Expand | Low | 07 | Done |
+| 3 | Preview Management | Missing command | Low–Med | 07 | Done |
+| 16 | Multi-tool Round-trips | Workflow | Medium | 07 | Done |
+| 8 | Verify incremental | Expand | Low | 07 | Done (bonus) |
 
 ### Pass 3 — Completeness and polish
 
@@ -422,7 +423,6 @@ Explain when to use `sync-metadata` (the combined command) vs. the separate `ref
 |---|-------|------|--------|---------|
 | 4 | Volume Split/Rename | Missing command | Low | 02 |
 | 5 | Fix Recipes | Missing command | Low | 07 |
-| 8 | Verify incremental | Expand | Low | 07 |
 | 10 | Saved Search --favorite | Expand | Low | 04 |
 | 11 | Stack from-tag | Expand | Low | 04 |
 | 12 | Show --locations | Expand | Low | 05 |

@@ -99,6 +99,25 @@ If any files fail verification (FAILED status), MAKI exits with code 1. Scripts 
 maki verify --volume "Archive" || echo "Integrity check failed!"
 ```
 
+### Incremental verification
+
+On a large library, full verification can take hours. Use `--max-age` to skip files that were verified recently — this makes regular weekly or monthly runs practical:
+
+```bash
+# Skip files verified within the last 30 days
+maki verify --max-age 30 --log
+
+# Only verify files older than 7 days
+maki verify --max-age 7 --volume "Work SSD" --log
+```
+
+You can set a default in `maki.toml` with `[verify] max_age_days`, so `maki verify` always skips recently-checked files unless you override with `--force`:
+
+```bash
+# Ignore max_age and re-verify everything
+maki verify --force --log --time
+```
+
 ### Monitoring flags
 
 ```bash
@@ -386,6 +405,82 @@ Shows what would change without modifying any files.
 - **`writeback` + `refresh`**: Use separately when you want explicit control over direction (e.g., force MAKI edits to win with `writeback --all`, then pull external changes with `refresh`).
 
 
+## Working with External Tools
+
+MAKI is designed to coexist with tools like CaptureOne, Lightroom, RawTherapee, and DxO. Metadata flows between MAKI and these tools through XMP sidecar files. This section describes common round-trip scenarios.
+
+### "I rated and tagged in CaptureOne/Lightroom — how do I get those changes into MAKI?"
+
+External tools write ratings, keywords, descriptions, and color labels to `.xmp` sidecar files. Use `refresh` to read those changes:
+
+```bash
+maki refresh --volume "Work SSD" --log
+```
+
+This detects XMP files that changed since the last import or refresh, and updates the catalog with the new metadata. Tags from XMP are merged (union) with existing MAKI tags.
+
+If the external tool also modified embedded XMP in JPEG or TIFF files (e.g., Lightroom export with metadata), add `--media`:
+
+```bash
+maki refresh --media --volume "Work SSD" --log
+```
+
+### "I rated and tagged in MAKI — how do I get those changes into CaptureOne/Lightroom?"
+
+Use `writeback` to push MAKI metadata to XMP files on disk. The external tool picks up the changes when it re-reads the sidecar:
+
+```bash
+maki writeback --volume "Work SSD" --log
+```
+
+This writes rating, color label, tags, and description to every XMP recipe with pending changes. Requires `[writeback] enabled = true` in `maki.toml`.
+
+For an initial sync (pushing all MAKI metadata to XMP, not just pending changes):
+
+```bash
+maki writeback --all --volume "Work SSD" --log
+```
+
+### "I worked in both tools — how do I sync everything?"
+
+Use `sync-metadata` for bidirectional sync with conflict detection:
+
+```bash
+maki sync-metadata --volume "Work SSD" --log
+```
+
+This reads external XMP changes, writes pending MAKI edits, and reports conflicts (files where both MAKI and the external tool made changes). Conflicts are skipped — you can resolve them by choosing which direction should win:
+
+```bash
+# Force MAKI edits to win, then pull any remaining external changes
+maki writeback --all --volume "Work SSD"
+maki refresh --volume "Work SSD"
+```
+
+### "I imported old files that had XMP metadata I didn't capture"
+
+If files were imported before MAKI supported embedded XMP extraction (or before sidecar XMP files existed), you can retroactively pick up that metadata:
+
+```bash
+# Re-extract embedded XMP from JPEG/TIFF files
+maki refresh --media --log
+
+# Re-read all XMP sidecar files
+maki refresh --log
+```
+
+### Summary: which command when?
+
+| Scenario | Command |
+|----------|---------|
+| External tool edited XMP sidecars | `maki refresh` |
+| External tool edited embedded XMP in JPEG/TIFF | `maki refresh --media` |
+| Push MAKI edits to XMP for external tools | `maki writeback` |
+| Bidirectional sync with conflict detection | `maki sync-metadata` |
+| Force MAKI metadata to all XMP files | `maki writeback --all` |
+| Pick up metadata from old imports | `maki refresh --media` |
+
+
 ## Cleanup
 
 `maki cleanup` scans all file locations and recipes across online volumes, checking whether the referenced files still exist on disk. It removes stale records, locationless variants, and orphaned derived files in eight passes.
@@ -489,6 +584,36 @@ Dry run — no changes made:
   Copy Capture/2026-02-01/DSC_001.nef → Archive Drive:Capture/2026-02-01/DSC_001.nef
   Copy Capture/2026-02-01/DSC_001.xmp → Archive Drive:Capture/2026-02-01/DSC_001.xmp
 ```
+
+### Batch relocation with `--query`
+
+The single-asset examples above are useful for individual files, but the real power of `relocate` is moving entire shoots, years, or collections to another drive in one pass:
+
+```bash
+# Preview: migrate all 2025 images from the work SSD to archive
+maki relocate --query "date:2025 volume:Work SSD" --target "Archive 2025" --dry-run
+
+# Execute the copy
+maki relocate --query "date:2025 volume:Work SSD" --target "Archive 2025" --log
+
+# After verifying the archive, free the working drive
+maki relocate --query "date:2025 volume:Work SSD" --target "Archive 2025" --remove-source --log
+```
+
+The `--query` flag accepts the same search syntax as `maki search`, so you can combine any filters:
+
+```bash
+# Move a specific shoot to archive
+maki relocate --query "tag:johnson-wedding" --target "Archive 2026" --log
+
+# Copy all single-copy images to a backup drive
+maki backup-status --at-risk -q | maki relocate --target "Backup A" --log
+
+# Move all videos to a dedicated video drive
+maki relocate --query "type:video volume:Work SSD" --target "Video Archive" --remove-source --log
+```
+
+**Tip:** Always run without `--remove-source` first (copy), verify the result, then run again with `--remove-source` (move) in a second pass. This gives you a safety window before deleting source files.
 
 
 ## Updating File Locations
@@ -653,6 +778,61 @@ maki fix-roles --asset a1b2c3d4 --apply
 ```
 
 
+## Preview Management
+
+During import, MAKI generates preview thumbnails (800px by default) for every media file. Over time, previews can become stale or insufficient — after processing in external tools, after changing preview settings, or when you need offline zoom capabilities. The `maki generate-previews` command lets you regenerate and upgrade previews.
+
+### Upgrading previews after processing
+
+When you import RAW files, the auto-generated preview is rendered from the RAW data. If you later export a processed TIFF or JPEG from CaptureOne or Lightroom and import it as an additional variant, the preview still shows the original RAW rendering. Use `--upgrade` to regenerate previews from the better variant:
+
+```bash
+# Regenerate previews where a processed/export variant exists
+maki generate-previews --upgrade --log
+```
+
+This checks each asset for export or processed variants and regenerates the preview from the highest-quality one. Assets with only an original variant are skipped.
+
+### Smart previews for offline browsing
+
+Smart previews are high-resolution versions (2560px) that enable zoom and pan in the web UI — even when the original volume is offline. Generate them for assets you want to review without connecting the source drive:
+
+```bash
+# Generate smart previews for a volume before disconnecting it
+maki generate-previews --volume "Work SSD" --smart --log
+
+# Generate smart previews for your best images
+maki search -q "rating:4+" | maki generate-previews --smart --log
+```
+
+Smart previews are also generated during import with `maki import --smart` or when `[import] smart_previews = true` is set in `maki.toml`.
+
+### Force regeneration
+
+After changing preview settings in `maki.toml` (e.g., increasing `max_edge`, switching `format` from JPEG to WebP, or adjusting `quality`), existing previews still use the old settings. Use `--force` to regenerate all previews:
+
+```bash
+maki generate-previews --force --log --time
+```
+
+### Scoping
+
+Limit regeneration to a specific volume, asset, or path:
+
+```bash
+# Only regenerate previews for one volume
+maki generate-previews --volume "Archive 2025" --log
+
+# Only regenerate for a specific asset
+maki generate-previews --asset a1b2c3d4
+
+# Only process image files (skip video, audio)
+maki generate-previews --skip video --skip audio --log
+```
+
+For the full command reference, see [generate-previews](../reference/05-maintain-commands.md#maki-generate-previews).
+
+
 ## Storage Hygiene
 
 Over time, a multi-volume library accumulates duplicate files and uneven backup coverage. MAKI provides three commands that work together to answer the key storage questions: *Do I have unwanted copies wasting space?* and *Are my important files safely backed up?*
@@ -703,6 +883,41 @@ See the [Dedup Command Reference](../reference/05-maintain-commands.md#maki-dedu
 
 ```bash
 maki backup-status
+```
+
+#### Finding at-risk assets
+
+Use `--at-risk` to get a concrete list of under-backed-up assets:
+
+```bash
+# Assets with fewer than 2 copies (the default threshold)
+maki backup-status --at-risk
+
+# Stricter policy: require 3 copies
+maki backup-status --min-copies 3 --at-risk
+
+# Scope to rated images only
+maki backup-status --at-risk -q "rating:1+"
+```
+
+#### Checking coverage for a specific volume
+
+Use `--volume` to answer "which of my files aren't on this drive yet?":
+
+```bash
+# Which assets are missing from the backup drive?
+maki backup-status --volume "Backup A" --at-risk
+
+# Output as IDs for scripting
+maki backup-status --volume "Backup A" --at-risk -q
+```
+
+#### Fixing coverage gaps
+
+Pipe at-risk asset IDs directly into `relocate` to copy them to a backup drive:
+
+```bash
+maki backup-status --at-risk -q | maki relocate --target "Backup A" --log
 ```
 
 For a quick check from search, the `copies:` filter finds under-backed-up assets directly:

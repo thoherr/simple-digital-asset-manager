@@ -554,45 +554,65 @@ maki export "rating:5 tag:portfolio" /tmp/delivery/
 
 ### Layout Modes
 
-**Flat** (default) — all files in one directory:
+**Flat** (default) — all files in one directory. Best for client deliveries where folder structure doesn't matter:
 
-```
+```bash
 maki export "collection:Selects" /tmp/flat/
 ```
 
 Filename collisions from different assets are resolved by appending a hash suffix (e.g., `DSC_001_a1b2c3d4.jpg`).
 
-**Mirror** — preserves source directory structure:
+**Mirror** — preserves source directory structure. Best for handoff to other tools, archival exports, or when folder organization carries meaning:
 
-```
+```bash
 maki export "tag:landscape" /Volumes/USB/export --layout mirror
 ```
 
 When assets span multiple volumes, each volume's files are placed under a `<volume-label>/` prefix.
 
-### Options
+### ZIP export
 
-Export all variants (not just the best):
+For email or upload delivery, export directly to a ZIP archive instead of a directory:
 
-```
-maki export "tag:portfolio" /tmp/all/ --all-variants
-```
-
-Include sidecars (`.xmp`, `.cos`, etc.):
-
-```
-maki export "collection:Print" /tmp/handoff/ --include-sidecars
+```bash
+maki export "collection:Wedding Selects" delivery.zip --zip
 ```
 
-Create symlinks instead of copies:
+This creates a single file that's easy to share. Combines with all other options (`--all-variants`, `--include-sidecars`, etc.).
 
+### Common export scenarios
+
+**Client delivery** — flat layout, best variants only:
+
+```bash
+maki export "collection:Selects" /tmp/delivery/
 ```
-maki export "type:image" ~/links/ --symlink
+
+**Handoff to CaptureOne/Lightroom** — mirror layout with sidecar files, so the other tool picks up your folder structure and XMP metadata:
+
+```bash
+maki export "tag:project-x" /Volumes/USB/handoff --layout mirror --include-sidecars
 ```
+
+**Temporary working folder** — symlinks instead of copies, useful when you want to open files in Photoshop or another tool without copying gigabytes:
+
+```bash
+maki export "tag:retouch" ~/Desktop/retouch-batch/ --symlink
+```
+
+The symlinks point to the original files on your volumes. Delete the symlink folder when you're done — the originals are untouched.
+
+**Full archive export** — all variants (RAW + processed + exports) with sidecars:
+
+```bash
+maki export "date:2025" /Volumes/USB/archive-2025 --layout mirror --all-variants --include-sidecars
+```
+
+### Other options
 
 Preview without writing files:
 
-```
+```bash
 maki export "rating:4+" /tmp/test/ --dry-run
 ```
 
