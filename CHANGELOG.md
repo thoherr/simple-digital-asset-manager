@@ -2,6 +2,28 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.2.2 (2026-03-28)
+
+### New Features
+- **`duration:` search filter** — filter assets by duration in seconds. Supports exact (`duration:60`), minimum (`duration:30+`), and range (`duration:10-60`) syntax via the unified NumericFilter. Denormalized `duration` column on the assets table for efficient filtering.
+- **`codec:` search filter** — filter assets by video codec (e.g. `codec:h264`, `codec:hevc`). Denormalized `codec` column on the assets table. Schema v5.
+- **Video proxy generation** — hover-to-play proxy clips in the browse grid. Proxies generated automatically during import and preview generation when ffmpeg is available.
+
+### Documentation
+- **New chapter: The Archive Lifecycle** (ch 11) — complete storage strategy with lifecycle diagram, 6-stage workflow (import, cull, archive, backup, verify, export), 3-2-1 backup rule, and a concrete monthly workflow example.
+- **Contact sheets** (ch 05) — client proofing, shoot overviews, layout presets, grouping, copyright, and field selection.
+- **Deleting assets** (ch 04) — when to delete vs. cull, report-only default, catalog-only vs. physical deletion, batch deletion.
+- **Drive failure recovery** (ch 07) — step-by-step playbook from damage assessment through cleanup and backup rebuild.
+- **Working with video** (ch 03) — ffprobe metadata, video previews, duration/codec search filters, mixed photo+video shoots.
+- **Import strategies** (ch 03) — card reader, tethered shooting, migrating from other DAMs, cloud-synced folders, selective import.
+- **Multi-tool round-trips** (ch 07) — concrete CaptureOne/Lightroom scenarios with summary table of which sync command to use.
+- **Preview management** (ch 07) — upgrading after external processing, smart previews for offline zoom, force regeneration.
+- **Storage hygiene** (ch 07) — expanded duplicate analysis (same-volume vs. cross-volume), backup-status with `--at-risk`/`--min-copies`/`--volume`, piping into relocate.
+- **Batch relocate** (ch 07) — `--query` for migrating entire shoots or years, two-pass copy-then-move safety pattern.
+- **Export workflows** (ch 05) — ZIP delivery, mirror layout for tool handoff, symlinks for temp working folders.
+- **Incremental verification** (ch 07) — `--max-age` for practical weekly runs, `--force` override.
+- **Volume split and rename** (ch 02), **fix-recipes** (ch 07), **saved search `--favorite`** (ch 04), **stack `from-tag`** (ch 04), **show `--locations`** (ch 05).
+
 ## v4.2.1 (2026-03-26)
 
 ### New Features
