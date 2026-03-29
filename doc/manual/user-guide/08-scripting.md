@@ -148,38 +148,31 @@ maki refresh /Volumes/Photos --log
 
 ## Python Scripting
 
-Python scripts can call `maki` as a subprocess and parse the `--json` output. This is useful for more complex logic that would be unwieldy in bash.
+Python scripts can call `maki` as a subprocess and parse the `--json` output. This is useful for more complex logic that would be unwieldy in bash. The `scripts/` directory in the repository contains ready-to-use helper functions and example scripts.
 
 ### Helper Functions
 
-A minimal helper for calling maki from Python:
+The `scripts/maki_helpers.py` module provides two functions for calling maki from Python:
 
 ```python
-import json
-import subprocess
-import sys
+from maki_helpers import maki_json, maki_ids
 
-def maki_json(*args):
-    """Run a maki command with --json and return parsed output."""
-    cmd = ["maki", "--json"] + list(args)
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"Error: maki {' '.join(args)}: {result.stderr.strip()}", file=sys.stderr)
-        return None
-    return json.loads(result.stdout)
+# Get parsed JSON output from any maki command
+stats = maki_json("stats", "--tags")
 
-def maki_ids(*args):
-    """Run a maki search with -q and return a list of asset IDs."""
-    cmd = ["maki", "search", "-q"] + list(args)
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        return []
-    return [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
+# Get a list of asset IDs matching a search
+ids = maki_ids("rating:5 tag:landscape")
 ```
+
+The full source is at `scripts/maki_helpers.py`. Import it into your own scripts with `sys.path.insert(0, "scripts")` or copy the functions directly.
 
 ### Example: Tag Analysis Report
 
-Find tags that are only used once (potential typos or inconsistencies):
+Find tags that are only used once (potential typos or inconsistencies). Full script: `scripts/tag-analysis.py`.
+
+```bash
+python3 scripts/tag-analysis.py
+```
 
 ```python
 stats = maki_json("stats", "--tags")
@@ -191,7 +184,11 @@ if stats and stats.get("tags"):
 
 ### Example: Cross-Volume Backup Audit
 
-Check which assets exist on only one volume:
+Check which assets exist on only one volume. Full script: `scripts/backup-audit.py`.
+
+```bash
+python3 scripts/backup-audit.py --limit 20
+```
 
 ```python
 at_risk = maki_ids("copies:1")
@@ -206,7 +203,15 @@ for asset_id in at_risk[:10]:  # show first 10
 
 ### Example: Batch Operations with Progress
 
-Apply ratings based on an external CSV file:
+Apply ratings based on an external CSV file. Full script: `scripts/batch-rate-from-csv.py`.
+
+```bash
+# Dry run
+python3 scripts/batch-rate-from-csv.py ratings.csv
+
+# Apply
+python3 scripts/batch-rate-from-csv.py ratings.csv --apply
+```
 
 ```python
 import csv

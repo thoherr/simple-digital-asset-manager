@@ -11,8 +11,8 @@ Solution: This script finds all type:other format:xmp assets, locates the
 matching RAW file by filename stem (cross-directory within a search root),
 and moves the XMP file next to the RAW. After running this script, use:
 
-    dam sync <volume-path> --apply    # update catalog for moved files
-    dam fix-recipes --apply           # reattach XMPs as recipes
+    maki sync <volume-path> --apply    # update catalog for moved files
+    maki fix-recipes --apply           # reattach XMPs as recipes
 
 Usage:
     python3 scripts/fix-orphaned-xmp.py [--apply] [--remove] [--volume LABEL] [--path PREFIX]
@@ -40,23 +40,23 @@ import sys
 from pathlib import Path
 
 
-def run_dam(*args):
-    """Run a dam command and return parsed JSON output."""
-    cmd = ["dam", "--json"] + list(args)
+def run_maki(*args):
+    """Run a maki command and return parsed JSON output."""
+    cmd = ["maki", "--json"] + list(args)
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"  ERROR: dam {' '.join(args)}: {result.stderr.strip()}", file=sys.stderr)
+        print(f"  ERROR: maki {' '.join(args)}: {result.stderr.strip()}", file=sys.stderr)
         return None
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError:
-        print(f"  ERROR: failed to parse JSON from: dam {' '.join(args)}", file=sys.stderr)
+        print(f"  ERROR: failed to parse JSON from: maki {' '.join(args)}", file=sys.stderr)
         return None
 
 
-def run_dam_lines(*args):
-    """Run a dam command and return stdout lines."""
-    cmd = ["dam"] + list(args)
+def run_maki_lines(*args):
+    """Run a maki command and return stdout lines."""
+    cmd = ["maki"] + list(args)
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         return []
@@ -65,7 +65,7 @@ def run_dam_lines(*args):
 
 def get_volumes():
     """Get volume info: id -> {label, path, is_online}."""
-    data = run_dam("volume", "list")
+    data = run_maki("volume", "list")
     if not data:
         return {}
     volumes = {}
@@ -152,9 +152,9 @@ def main():
     if args.volume:
         query += " volume:" + args.volume
     if args.path:
-        # dam search handles path normalization (absolute -> volume-relative)
+        # maki search handles path normalization (absolute -> volume-relative)
         query += f" path:{args.path}"
-    ids = run_dam_lines("search", "-q", query)
+    ids = run_maki_lines("search", "-q", query)
     if not ids:
         print("No orphaned XMP assets found.")
         return
@@ -175,7 +175,7 @@ def main():
 
     for asset_id in ids:
         # Load full asset details
-        details = run_dam("show", asset_id)
+        details = run_maki("show", asset_id)
         if not details:
             errors += 1
             continue
@@ -299,18 +299,18 @@ def main():
     changes = moved + removed
     if changes > 0 and not args.apply:
         print(f"\nRe-run with --apply to move/remove files, then:")
-        print(f"  dam sync <volume-path> --apply    # update catalog for moved/removed files")
+        print(f"  maki sync <volume-path> --apply    # update catalog for moved/removed files")
         if moved > 0:
-            print(f"  dam fix-recipes --apply            # reattach moved XMPs as recipes")
+            print(f"  maki fix-recipes --apply            # reattach moved XMPs as recipes")
         if removed > 0:
-            print(f"  dam cleanup --apply                # remove stale records for deleted files")
+            print(f"  maki cleanup --apply                # remove stale records for deleted files")
     elif changes > 0 and args.apply:
         print(f"\nNext steps:")
-        print(f"  dam sync <volume-path> --apply    # update catalog for moved/removed files")
+        print(f"  maki sync <volume-path> --apply    # update catalog for moved/removed files")
         if moved > 0:
-            print(f"  dam fix-recipes --apply            # reattach moved XMPs as recipes")
+            print(f"  maki fix-recipes --apply            # reattach moved XMPs as recipes")
         if removed > 0:
-            print(f"  dam cleanup --apply                # remove stale records for deleted files")
+            print(f"  maki cleanup --apply                # remove stale records for deleted files")
 
 
 if __name__ == "__main__":
