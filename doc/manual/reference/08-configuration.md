@@ -274,6 +274,45 @@ Uses the VLM configured in `[vlm]` (endpoint, model, prompt, mode, temperature).
 descriptions = true
 ```
 
+### profiles
+
+- **Type:** table of named profiles
+- **Default:** (none)
+
+Named preset configurations for different import scenarios. Each profile is a sub-table under `[import.profiles]` that overrides the base `[import]` config. Unset fields inherit from the base. CLI flags override both the profile and base config.
+
+Profile fields (all optional):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `exclude` | string array | Override exclude patterns |
+| `auto_tags` | string array | Override auto-tags (replaces base, not merged) |
+| `smart_previews` | boolean | Override smart preview generation |
+| `embeddings` | boolean | Override embedding generation |
+| `descriptions` | boolean | Override VLM description generation |
+| `include` | string array | File type groups to include (e.g. `captureone`) |
+| `skip` | string array | File type groups to skip (e.g. `audio`) |
+
+```toml
+[import]
+exclude = [".DS_Store", "Thumbs.db"]
+auto_tags = ["inbox"]
+
+[import.profiles.card]
+auto_tags = ["from-card"]
+smart_previews = true
+
+[import.profiles.studio]
+auto_tags = ["studio"]
+smart_previews = true
+embeddings = true
+descriptions = true
+include = ["captureone"]
+skip = ["audio"]
+```
+
+Usage: `maki import --profile card /Volumes/CARD/DCIM`
+
 ---
 
 ## [dedup] Section

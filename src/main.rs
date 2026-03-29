@@ -66,6 +66,10 @@ enum Commands {
         #[arg(long, display_order = 10)]
         volume: Option<String>,
 
+        /// Use a named import profile from maki.toml [import.profiles.<name>]
+        #[arg(long, display_order = 11)]
+        profile: Option<String>,
+
         /// Include additional file type groups (e.g. captureone, documents)
         #[arg(long, display_order = 12)]
         include: Vec<String>,
@@ -1839,6 +1843,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
         Commands::Import {
             paths,
             volume,
+            profile,
             include,
             skip,
             add_tags,
@@ -1854,13 +1859,41 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
-            let smart = smart || config.import.smart_previews;
+
+            // Resolve import profile: profile overrides base [import], CLI flags override both
+            let import_config = if let Some(ref profile_name) = profile {
+                config.import.resolve_profile(profile_name)
+                    .ok_or_else(|| anyhow::anyhow!(
+                        "Unknown import profile '{}'. Available profiles: {}",
+                        profile_name,
+                        if config.import.profiles.is_empty() {
+                            "(none configured)".to_string()
+                        } else {
+                            config.import.profiles.keys().cloned().collect::<Vec<_>>().join(", ")
+                        }
+                    ))?
+            } else {
+                config.import.clone()
+            };
+
+            let smart = smart || import_config.smart_previews;
             let registry = DeviceRegistry::new(&catalog_root);
 
-            // Build file type filter
+            // Build file type filter: merge profile include/skip with CLI flags
             let mut filter = FileTypeFilter::default();
 
-            // Check for conflicts: same group in both --include and --skip
+            // Profile include/skip first (if a profile was selected)
+            let profile_ref = profile.as_deref().and_then(|name| config.import.profiles.get(name));
+            if let Some(p) = profile_ref {
+                for group in &p.include {
+                    filter.include(group)?;
+                }
+                for group in &p.skip {
+                    filter.skip(group)?;
+                }
+            }
+
+            // CLI flags override (check for conflicts)
             for group in &include {
                 if skip.contains(group) {
                     anyhow::bail!(
@@ -1898,7 +1931,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             };
 
             // Merge config auto_tags with CLI --add-tag values
-            let mut all_tags = config.import.auto_tags.clone();
+            let mut all_tags = import_config.auto_tags.clone();
             for tag in &add_tags {
                 if !all_tags.contains(tag) {
                     all_tags.push(tag.clone());
@@ -1907,8 +1940,11 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             if verbosity.verbose {
                 eprintln!("  Import: {} file(s) on volume \"{}\"", canonical_paths.len(), volume.label);
-                if !config.import.exclude.is_empty() {
-                    eprintln!("  Import: exclude patterns: {:?}", config.import.exclude);
+                if let Some(ref p) = profile {
+                    eprintln!("  Import: using profile \"{}\"", p);
+                }
+                if !import_config.exclude.is_empty() {
+                    eprintln!("  Import: exclude patterns: {:?}", import_config.exclude);
                 }
                 if !all_tags.is_empty() {
                     eprintln!("  Import: auto-tags: {}", all_tags.join(", "));
@@ -1921,7 +1957,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let result = if cli.log {
                 use maki::asset_service::FileStatus;
-                service.import_with_callback(&canonical_paths, &volume, &filter, &config.import.exclude, &all_tags, dry_run, smart, |path, status, elapsed| {
+                service.import_with_callback(&canonical_paths, &volume, &filter, &import_config.exclude, &all_tags, dry_run, smart, |path, status, elapsed| {
                     let label = match status {
                         FileStatus::Imported => "imported",
                         FileStatus::LocationAdded => "location added",
@@ -1935,7 +1971,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
                 })?
             } else {
-                service.import_with_callback(&canonical_paths, &volume, &filter, &config.import.exclude, &all_tags, dry_run, smart, |_, _, _| {})?
+                service.import_with_callback(&canonical_paths, &volume, &filter, &import_config.exclude, &all_tags, dry_run, smart, |_, _, _| {})?
             };
 
             // Post-import auto-group phase
@@ -1994,7 +2030,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             // Post-import embedding phase (AI feature)
             #[cfg(feature = "ai")]
             let embed_result = if !dry_run
-                && (embed || config.import.embeddings)
+                && (embed || import_config.embeddings)
                 && !result.new_asset_ids.is_empty()
             {
                 use maki::model_manager::ModelManager;
@@ -2094,7 +2130,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             // Post-import VLM describe phase
             #[cfg(feature = "pro")]
             let describe_result = if !dry_run
-                && (describe || config.import.descriptions)
+                && (describe || import_config.descriptions)
                 && !result.new_asset_ids.is_empty()
             {
                 // Check VLM endpoint availability first

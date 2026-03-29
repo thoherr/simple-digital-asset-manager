@@ -29,9 +29,9 @@ The idea: let MAKI import directly from the memory card, generate previews, and 
 # 1. Mount card, register as transient volume
 maki volume add "Card-2026-03-29" /Volumes/CARD --purpose media
 
-# 2. Import from card (hash + preview generation, no file copy)
-maki import /Volumes/CARD/DCIM \
-  --add-tag "shoot:johnson-wedding" --auto-group --smart --log
+# 2. Import from card using a profile (hash + preview generation, no file copy)
+maki import --profile card /Volumes/CARD/DCIM \
+  --add-tag "shoot:johnson-wedding" --auto-group --log
 
 # 3. Eject card — previews and smart previews are local, culling works offline
 

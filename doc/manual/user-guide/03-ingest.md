@@ -382,6 +382,7 @@ Auto-tags are merged with any tags extracted from XMP metadata (deduplicated).
 | Flag | Effect |
 |---|---|
 | `--volume <label>` | Use a specific volume instead of auto-detecting from the file path |
+| `--profile <name>` | Use a named import profile from `maki.toml` (see [Configuration](../reference/08-configuration.md#profiles)) |
 | `--dry-run` | Show what would happen without writing to catalog, sidecar, or disk |
 | `--auto-group` | After import, group new assets with nearby catalog assets by filename stem |
 | `--include <group>` | Enable an additional file type group (repeatable) |

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -155,6 +156,44 @@ pub struct ImportConfig {
     pub embeddings: bool,
     #[serde(default)]
     pub descriptions: bool,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub profiles: HashMap<String, ImportProfile>,
+}
+
+/// A named import profile that overrides `[import]` defaults.
+/// Fields are optional — unset fields inherit from the base `[import]` config.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ImportProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exclude: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_tags: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smart_previews: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embeddings: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub descriptions: Option<bool>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub include: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skip: Vec<String>,
+}
+
+impl ImportConfig {
+    /// Resolve a profile by name, merging it with the base config.
+    /// Profile values override base values; unset profile fields inherit from base.
+    pub fn resolve_profile(&self, name: &str) -> Option<ImportConfig> {
+        let profile = self.profiles.get(name)?;
+        Some(ImportConfig {
+            exclude: profile.exclude.clone().unwrap_or_else(|| self.exclude.clone()),
+            auto_tags: profile.auto_tags.clone().unwrap_or_else(|| self.auto_tags.clone()),
+            smart_previews: profile.smart_previews.unwrap_or(self.smart_previews),
+            embeddings: profile.embeddings.unwrap_or(self.embeddings),
+            descriptions: profile.descriptions.unwrap_or(self.descriptions),
+            profiles: HashMap::new(),
+        })
+    }
 }
 
 fn is_default_preview(p: &PreviewConfig) -> bool {
@@ -959,5 +998,74 @@ max_edge = 1000
         let input = "[verify]\nmax_age_days = 30\n";
         let config: CatalogConfig = toml::from_str(input).unwrap();
         assert_eq!(config.verify.max_age_days, Some(30));
+    }
+
+    #[test]
+    fn parse_import_profiles() {
+        let input = r#"
+[import]
+auto_tags = ["inbox"]
+smart_previews = true
+
+[import.profiles.card]
+auto_tags = ["from-card"]
+include = ["captureone"]
+
+[import.profiles.studio]
+smart_previews = true
+embeddings = true
+descriptions = true
+skip = ["audio"]
+"#;
+        let config: CatalogConfig = toml::from_str(input).unwrap();
+        assert_eq!(config.import.profiles.len(), 2);
+        assert!(config.import.profiles.contains_key("card"));
+        assert!(config.import.profiles.contains_key("studio"));
+
+        let card = config.import.profiles.get("card").unwrap();
+        assert_eq!(card.auto_tags, Some(vec!["from-card".to_string()]));
+        assert_eq!(card.smart_previews, None); // inherits from base
+        assert_eq!(card.include, vec!["captureone".to_string()]);
+
+        let studio = config.import.profiles.get("studio").unwrap();
+        assert_eq!(studio.smart_previews, Some(true));
+        assert_eq!(studio.embeddings, Some(true));
+        assert_eq!(studio.descriptions, Some(true));
+        assert_eq!(studio.skip, vec!["audio".to_string()]);
+    }
+
+    #[test]
+    fn resolve_import_profile_inherits_base() {
+        let config = ImportConfig {
+            exclude: vec![".DS_Store".to_string()],
+            auto_tags: vec!["inbox".to_string()],
+            smart_previews: false,
+            embeddings: false,
+            descriptions: false,
+            profiles: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("card".to_string(), ImportProfile {
+                    auto_tags: Some(vec!["from-card".to_string()]),
+                    smart_previews: Some(true),
+                    ..Default::default()
+                });
+                m
+            },
+        };
+
+        let resolved = config.resolve_profile("card").unwrap();
+        // Overridden by profile
+        assert_eq!(resolved.auto_tags, vec!["from-card".to_string()]);
+        assert!(resolved.smart_previews);
+        // Inherited from base
+        assert_eq!(resolved.exclude, vec![".DS_Store".to_string()]);
+        assert!(!resolved.embeddings);
+        assert!(!resolved.descriptions);
+    }
+
+    #[test]
+    fn resolve_unknown_profile_returns_none() {
+        let config = ImportConfig::default();
+        assert!(config.resolve_profile("nonexistent").is_none());
     }
 }

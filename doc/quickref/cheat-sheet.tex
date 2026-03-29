@@ -104,7 +104,7 @@ Rename a volume.
 
 \subsection{maki import \textit{PATHS...}}
 Import files into the catalog. \\
-\opt{--volume} \opt{--auto-group} \opt{--smart} \\
+\opt{--volume} \opt{--profile NAME} \opt{--auto-group} \opt{--smart} \\
 \opt{--embed} \pro{} \opt{--describe} \pro{} \opt{--dry-run} \\
 \opt{--include GROUP} \opt{--skip GROUP}
 
@@ -403,7 +403,7 @@ Placeholders: \cmd{\{id\}}, \cmd{\{name\}}, \cmd{\{filename\}}, \cmd{\{type\}}, 
 \begin{tabularx}{\columnwidth}{@{}lX@{}}
 \cmd{[preview]} & max\_edge, format, quality, smart\_max\_edge \\
 \cmd{[serve]} & port, bind, per\_page \\
-\cmd{[import]} & exclude, auto\_tags, smart\_previews \\
+\cmd{[import]} & exclude, auto\_tags, smart\_previews, profiles \\
 \cmd{[browse]} & default\_filter \\
 \cmd{[writeback]} & enabled (default: false) \pro \\
 \cmd{[dedup]} & prefer \\

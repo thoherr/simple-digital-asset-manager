@@ -128,10 +128,7 @@ The ZIP export modal shows "Preparing..." with no progress feedback.
 
 Named preset configurations for different import scenarios (studio shoot, travel, phone backup).
 
-**Scope:**
-- `[import.profiles.<name>]` sections in `maki.toml`
-- `maki import --profile studio <PATHS...>` selects a profile
-- Profiles inherit from `[import]` defaults, override specific fields
+**Status:** Implemented (v4.2.x). Profiles in `[import.profiles.<name>]`, selected via `--profile`. Override exclude, auto_tags, smart_previews, embeddings, descriptions, include/skip file type groups.
 
 **Complexity:** Low.
 

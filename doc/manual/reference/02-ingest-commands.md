@@ -65,6 +65,9 @@ The volume is auto-detected from the first path by matching against registered v
 **--dry-run**
 : Show what would be imported without writing to catalog, sidecar, or disk. Files are still hashed to detect duplicates. Reports the same counters as a real import (imported, skipped, locations added, recipes attached/updated).
 
+**--profile \<NAME\>**
+: Use a named import profile from `[import.profiles.<name>]` in `maki.toml`. The profile overrides the base `[import]` config — unset profile fields inherit from the base. CLI flags (`--smart`, `--add-tag`, etc.) override both the profile and base config. The profile can also specify `include` and `skip` file type groups. See the [Configuration Reference](08-configuration.md#profiles) for profile syntax.
+
 **--auto-group**
 : After importing, automatically group newly imported assets with nearby catalog assets by filename stem. "Nearby" means assets on the same volume whose files are under sibling directories of the imported files (one level up from each import directory). This handles the common CaptureOne/Lightroom pattern where RAW originals live in `Capture/` and exports in `Output/` under a shared session folder. Uses the same fuzzy prefix matching as `maki auto-group`. When combined with `--dry-run`, the auto-group phase also runs in dry-run mode.
 
