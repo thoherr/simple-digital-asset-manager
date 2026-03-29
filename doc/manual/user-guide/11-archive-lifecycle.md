@@ -42,9 +42,11 @@ Each MAKI volume can be assigned a **purpose** (`media`, `working`, `archive`, `
 
 ## Stage 1: Import to Working Storage
 
-A fast local SSD is the ideal landing zone for new files. Speed matters during import, culling, and preview generation.
+A fast local SSD is the ideal landing zone for new files. Speed matters during import, culling, and preview generation. There are two approaches to getting files from a memory card into MAKI.
 
-The first step is getting files off the memory card and onto your working drive. Use your preferred method — Finder drag-and-drop, a card reader app, or a simple `rsync` script. Then import into MAKI:
+### Traditional: copy first, then import
+
+Copy everything to the working SSD using your preferred method, then import:
 
 ```bash
 # Register the working drive
@@ -54,23 +56,65 @@ maki volume add "Work SSD" /Volumes/FastSSD --purpose working
 rsync -av /Volumes/CARD/DCIM/ /Volumes/FastSSD/Capture/2026-03-15/
 
 # Import into MAKI
-maki import /Volumes/FastSSD/Capture/2026-03-15/ --auto-group --smart --log
-```
-
-The `--smart` flag generates high-resolution previews (2560px) alongside regular thumbnails, enabling zoom and pan in the web UI even after the files move to a slower drive.
-
-**Tip:** Use `--add-tag` to stamp each import session for easy retrieval later:
-
-```bash
 maki import /Volumes/FastSSD/Capture/2026-03-15/ \
   --add-tag "shoot:johnson-wedding" --auto-group --smart --log
+```
+
+This is simple and reliable. The downside: you copy *everything* — including the 70% of shots you may reject during culling.
+
+### Card-first: cull before copying
+
+Import directly from the memory card, cull on smart previews, and copy only keepers to the working drive:
+
+```bash
+# Register the card as a media volume (label auto-derived from mount path)
+maki volume add /Volumes/EOS_DIGITAL --purpose media
+
+# Import from card using a profile with smart previews enabled
+maki import --profile card /Volumes/EOS_DIGITAL/DCIM \
+  --add-tag "shoot:johnson-wedding" --auto-group --log
+
+# Eject the card — previews are local, culling works offline
+```
+
+After import, cull in the web UI (Stage 2 below). Then copy only the keepers:
+
+```bash
+# Copy rated images to working drive, with XMP sidecars for CaptureOne/Lightroom
+maki relocate --query "volume:EOS_DIGITAL rating:1+" \
+  --target "Work SSD" --create-sidecars --log
+
+# Clean up the card volume
+maki volume remove "EOS_DIGITAL" --apply
+```
+
+The card-first approach skips copying rejects entirely. On a 1000-shot wedding day where you keep 300 images, that's 70% less data transferred to your SSD. It also lets you start reviewing immediately after inserting the card.
+
+**Tip:** Set up an import profile in `maki.toml` to avoid repeating flags:
+
+```toml
+[import.profiles.card]
+smart_previews = true
+auto_tags = ["from-card"]
+```
+
+Then use `maki import --profile card /Volumes/EOS_DIGITAL/DCIM --add-tag "shoot:wedding"`.
+
+**Finding stale card volumes:** After ejecting cards, old media volumes accumulate. Find and clean them up:
+
+```bash
+# List offline card volumes
+maki volume list --purpose media --offline
+
+# Remove a stale card volume
+maki volume remove "EOS_DIGITAL" --apply
 ```
 
 ---
 
 ## Stage 2: Cull and Organize
 
-While files are on fast storage, do your creative work: rate, tag, describe, and build collections. This is the stage covered in [Organizing Assets](04-organize.md) and [Organizing & Culling](10-organizing-and-culling.md).
+While files are on fast storage (or while working from smart previews in the card-first approach), do your creative work: rate, tag, describe, and build collections. This is the stage covered in [Organizing Assets](04-organize.md) and [Organizing & Culling](10-organizing-and-culling.md).
 
 A typical post-import session:
 

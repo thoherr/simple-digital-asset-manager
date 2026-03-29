@@ -753,7 +753,7 @@ The way you import differs depending on the source. Here are patterns for common
 
 ### Card reader / memory card
 
-Copy the card contents to your working drive first, then import. This avoids slow reads from the card during culling and preview generation, and frees the card for reuse:
+**Traditional approach** — copy first, then import:
 
 ```bash
 # Copy card to working SSD (using rsync, Finder, or your preferred tool)
@@ -764,6 +764,29 @@ maki import /Volumes/FastSSD/Capture/Johnson-Wedding/ \
   --add-tag "shoot:johnson-wedding" \
   --auto-group --smart --log
 ```
+
+**Card-first approach** — import from the card, cull on previews, copy only keepers:
+
+```bash
+# Register the card (label auto-derived from mount path)
+maki volume add /Volumes/EOS_DIGITAL --purpose media
+
+# Import from card — generates previews but doesn't copy files
+maki import --profile card /Volumes/EOS_DIGITAL/DCIM \
+  --add-tag "shoot:johnson-wedding" --auto-group --log
+
+# Eject card, cull in web UI on smart previews, rate keepers
+maki serve
+
+# Copy only rated images to working drive (with XMP sidecars for CaptureOne)
+maki relocate --query "volume:EOS_DIGITAL rating:1+" \
+  --target "Work SSD" --create-sidecars --log
+
+# Clean up the card volume
+maki volume remove "EOS_DIGITAL" --apply
+```
+
+The card-first approach avoids copying rejects to your SSD entirely. On a 1000-shot day where you keep 300, that's 70% less data to copy. See [The Archive Lifecycle](11-archive-lifecycle.md) for the full storage strategy.
 
 The `--add-tag` flag stamps every imported asset with a session tag for easy retrieval later. `--auto-group` pairs RAW+JPEG files automatically.
 

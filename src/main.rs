@@ -1032,13 +1032,11 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum VolumeCommands {
-    /// Register a new volume
+    /// Register a new volume (LABEL PATH or just PATH to auto-derive label)
     Add {
-        /// Human-readable label for the volume
-        label: String,
-
-        /// Mount point path
-        path: String,
+        /// Label and path: "LABEL PATH" or just "PATH" (label derived from path)
+        #[arg(required = true, num_args = 1..=2)]
+        args: Vec<String>,
 
         /// Volume purpose (media, working, archive, backup, cloud)
         #[arg(long)]
@@ -1046,7 +1044,19 @@ enum VolumeCommands {
     },
 
     /// List all volumes and their status
-    List,
+    List {
+        /// Filter by volume purpose (media, working, archive, backup, cloud)
+        #[arg(long)]
+        purpose: Option<String>,
+
+        /// Show only offline volumes
+        #[arg(long)]
+        offline: bool,
+
+        /// Show only online volumes
+        #[arg(long)]
+        online: bool,
+    },
 
     /// Set or clear the purpose of a volume
     SetPurpose {
@@ -1567,7 +1577,20 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             Ok(())
         }
         Commands::Volume(cmd) => match cmd {
-            VolumeCommands::Add { label, path, purpose } => {
+            VolumeCommands::Add { args, purpose } => {
+                // Two positional args: LABEL PATH. One arg: PATH (label derived).
+                let (label, path) = if args.len() == 2 {
+                    (args[0].clone(), args[1].clone())
+                } else {
+                    let path = &args[0];
+                    let label = std::path::Path::new(path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("Volume")
+                        .to_string();
+                    (label, path.clone())
+                };
+
                 let catalog_root = maki::config::find_catalog_root()?;
                 let registry = DeviceRegistry::new(&catalog_root);
                 let parsed_purpose = if let Some(ref p) = purpose {
@@ -1601,10 +1624,31 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 }
                 Ok(())
             }
-            VolumeCommands::List => {
+            VolumeCommands::List { purpose, offline, online } => {
+                if offline && online {
+                    anyhow::bail!("--offline and --online are mutually exclusive");
+                }
+                let purpose_filter = if let Some(ref p) = purpose {
+                    Some(maki::models::VolumePurpose::parse(p).ok_or_else(|| {
+                        anyhow::anyhow!("Invalid purpose '{}'. Valid values: media, working, archive, backup, cloud", p)
+                    })?)
+                } else {
+                    None
+                };
+
                 let catalog_root = maki::config::find_catalog_root()?;
                 let registry = DeviceRegistry::new(&catalog_root);
-                let volumes = registry.list()?;
+                let volumes: Vec<_> = registry.list()?.into_iter().filter(|v| {
+                    if let Some(ref pf) = purpose_filter {
+                        if v.purpose.as_ref() != Some(pf) {
+                            return false;
+                        }
+                    }
+                    if offline && v.is_online { return false; }
+                    if online && !v.is_online { return false; }
+                    true
+                }).collect();
+
                 if cli.json {
                     let json_volumes: Vec<serde_json::Value> = volumes.iter().map(|v| {
                         serde_json::json!({
@@ -1618,7 +1662,11 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     }).collect();
                     println!("{}", serde_json::to_string_pretty(&json_volumes)?);
                 } else if volumes.is_empty() {
-                    println!("No volumes registered.");
+                    if purpose.is_some() || offline || online {
+                        println!("No matching volumes.");
+                    } else {
+                        println!("No volumes registered.");
+                    }
                 } else {
                     for v in &volumes {
                         let status = if v.is_online { "online" } else { "offline" };

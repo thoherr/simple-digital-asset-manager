@@ -83,13 +83,14 @@ maki-volume-add -- register a new storage volume with the catalog
 
 ```
 maki [GLOBAL FLAGS] volume add <LABEL> <PATH> [--purpose <PURPOSE>]
+maki [GLOBAL FLAGS] volume add <PATH> [--purpose <PURPOSE>]
 ```
 
 ### DESCRIPTION
 
 Registers a storage volume (a directory tree containing media files) with the catalog. Each volume is assigned a UUID and tracked by its label and mount point path. Volumes allow MAKI to manage files spread across multiple disks, external drives, and network mounts.
 
-The label is a human-readable name for the volume (e.g., "Photos2026", "Archive", "ExternalSSD"). The path is the mount point or root directory of the volume. The path must exist at the time of registration.
+When two positional arguments are given, the first is the label and the second is the path. When only one argument is given, it is treated as the path and the label is auto-derived from the last component of the path (e.g., `/Volumes/EOS_DIGITAL` becomes `"EOS_DIGITAL"`). This is convenient for transient volumes like memory cards.
 
 An optional `--purpose` flag assigns a logical role to the volume in the storage hierarchy. This metadata is used by duplicate analysis and backup coverage commands to distinguish between unwanted duplicates (same file on the same working volume) and wanted backups (same file on an archive or backup volume). The purpose can be changed later with `maki volume set-purpose`.
 
@@ -97,8 +98,8 @@ After registration, files under the volume's path can be imported and tracked. I
 
 ### ARGUMENTS
 
-**LABEL** (required)
-: Human-readable name for the volume. Used in `--volume` flags across commands.
+**LABEL** (optional)
+: Human-readable name for the volume. Used in `--volume` flags across commands. Auto-derived from the path if omitted.
 
 **PATH** (required)
 : Absolute path to the volume's mount point or root directory.
@@ -155,12 +156,12 @@ maki-volume-list -- list all registered volumes and their online/offline status
 ### SYNOPSIS
 
 ```
-maki [GLOBAL FLAGS] volume list
+maki [GLOBAL FLAGS] volume list [--purpose <PURPOSE>] [--offline] [--online]
 ```
 
 ### DESCRIPTION
 
-Displays all storage volumes registered with the catalog, along with their UUIDs, labels, mount point paths, and current status.
+Displays all storage volumes registered with the catalog, along with their UUIDs, labels, mount point paths, and current status. Optional filters narrow the output by purpose and online status.
 
 A volume is reported as **online** if its mount point path exists on disk, and **offline** if the path is not accessible (e.g., the drive is disconnected or the network share is unmounted). Offline volumes are silently skipped by commands that access files on disk (import, verify, sync, cleanup, etc.).
 
@@ -170,9 +171,16 @@ None.
 
 ### OPTIONS
 
-This command only accepts [global flags](00-cli-conventions.md#global-flags).
+**--purpose \<PURPOSE\>**
+: Filter by volume purpose. Valid values: `media`, `working`, `archive`, `backup`, `cloud`.
 
-`--json` outputs an array of `{"id", "label", "path", "volume_type", "purpose", "is_online"}` objects.
+**--offline**
+: Show only offline volumes. Mutually exclusive with `--online`.
+
+**--online**
+: Show only online volumes. Mutually exclusive with `--offline`.
+
+`--json` outputs an array of `{"id", "label", "path", "volume_type", "purpose", "is_online"}` objects. Filters are applied before JSON output.
 
 ### EXAMPLES
 
@@ -186,6 +194,12 @@ maki volume list
 #   Path: /Volumes/MediaDrive
 # Backup A (f1234567-...) [offline] [backup]
 #   Path: /Volumes/BackupDisk
+```
+
+Find stale card volumes:
+
+```bash
+maki volume list --purpose media --offline
 ```
 
 List volumes as JSON for scripting:

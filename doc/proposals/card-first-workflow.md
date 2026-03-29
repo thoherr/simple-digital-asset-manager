@@ -4,7 +4,7 @@ Enable MAKI to manage the complete lifecycle from memory card to archive, elimin
 
 **Date:** 2026-03-29
 
-**Status:** Phase 1–2 implemented (2026-03-29). Phase 3 (convenience) pending.
+**Status:** All phases implemented (2026-03-29). Proposal complete.
 
 ---
 
@@ -26,11 +26,11 @@ The idea: let MAKI import directly from the memory card, generate previews, and 
 ## Proposed Workflow
 
 ```bash
-# 1. Mount card, register as transient volume
-maki volume add "Card-2026-03-29" /Volumes/CARD --purpose media
+# 1. Mount card, register as transient volume (label auto-derived from path)
+maki volume add /Volumes/EOS_DIGITAL --purpose media
 
 # 2. Import from card using a profile (hash + preview generation, no file copy)
-maki import --profile card /Volumes/CARD/DCIM \
+maki import --profile card /Volumes/EOS_DIGITAL/DCIM \
   --add-tag "shoot:johnson-wedding" --auto-group --log
 
 # 3. Eject card — previews and smart previews are local, culling works offline
@@ -39,12 +39,11 @@ maki import --profile card /Volumes/CARD/DCIM \
 maki serve
 
 # 5. Copy only keepers to working drive
-maki relocate --query "volume:Card-2026-03-29 rating:1+" \
+maki relocate --query "volume:EOS_DIGITAL rating:1+" \
   --target "Work SSD" --create-sidecars --log
 
-# 6. Clean up card volume
-maki cleanup --volume "Card-2026-03-29" --apply
-maki volume remove "Card-2026-03-29" --apply
+# 6. Clean up card volume (removes records and orphaned assets)
+maki volume remove "EOS_DIGITAL" --apply
 
 # 7. Open in CaptureOne — files + XMP sidecars with MAKI ratings/tags are on the SSD
 ```

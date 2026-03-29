@@ -77,13 +77,13 @@
 \subsection{maki init}
 Create a new catalog in the current directory.
 
-\subsection{maki volume add \textit{LABEL PATH}}
-Register a storage volume. \\
+\subsection{maki volume add \textit{[LABEL] PATH}}
+Register a storage volume (label auto-derived from path if omitted). \\
 \opt{--purpose media|working|archive|backup|cloud}
 
 \subsection{maki volume list}
 Show registered volumes with online/offline status. \\
-\opt{--json} \opt{--verbose}
+\opt{--purpose PURPOSE} \opt{--offline} \opt{--online}
 
 \subsection{maki volume set-purpose \textit{LABEL PURPOSE}}
 Change a volume's logical role.

@@ -133,6 +133,13 @@ Registered volume 'Photos 2024' (a1b2c3d4-e5f6-7890-abcd-ef1234567890)
 
 Each volume gets a UUID that stays constant even if the drive letter or mount point changes. The label is a human-readable name you choose.
 
+If you omit the label, it is auto-derived from the last component of the path. This is handy for transient volumes like memory cards:
+
+```bash
+# Auto-label: derives "EOS_DIGITAL" from the path
+maki volume add /Volumes/EOS_DIGITAL --purpose media
+```
+
 A few more examples:
 
 ```bash
