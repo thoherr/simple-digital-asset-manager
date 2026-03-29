@@ -8,6 +8,14 @@ Current version: **v4.1.3** (2026-03-25)
 
 ## Active Proposals
 
+### Card-First Workflow
+
+Import directly from memory cards, cull on smart previews, and copy only keepers to the working drive — eliminating wasted copies of rejects. Requires `media` volume purpose, XMP sidecar creation on relocate, and documentation. See `doc/proposals/card-first-workflow.md`.
+
+**Status:** Proposal written, open for discussion.
+
+**Complexity:** Low (phase 1: media purpose), Medium (phase 2: sidecar creation).
+
 ### Manual Translation (i18n)
 
 Produce the MAKI user manual in English and German from a single source using inline language markers. See `doc/proposals/manual-i18n.md`.

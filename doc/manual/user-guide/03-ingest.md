@@ -731,14 +731,14 @@ maki search "type:video codec:hevc"
 Modern cameras produce both photos and videos in the same shoot. MAKI handles this naturally — `--auto-group` groups by filename stem regardless of file type, and you can filter by type when needed:
 
 ```bash
-# Import a mixed shoot
-maki import /Volumes/Card/DCIM --auto-group --log
+# Import a mixed shoot from your working drive
+maki import /Volumes/FastSSD/Capture/2026-03-28/ --auto-group --log
 
 # Browse only the photos
-maki search "path:DCIM type:image"
+maki search "path:Capture/2026-03-28 type:image"
 
 # Browse only the videos
-maki search "path:DCIM type:video"
+maki search "path:Capture/2026-03-28 type:video"
 
 # Rate and tag both together in the web UI
 maki serve
@@ -752,10 +752,14 @@ The way you import differs depending on the source. Here are patterns for common
 
 ### Card reader / memory card
 
-The most common import: plug in a card, import everything, tag the session:
+Copy the card contents to your working drive first, then import. This avoids slow reads from the card during culling and preview generation, and frees the card for reuse:
 
 ```bash
-maki import /Volumes/CARD/DCIM \
+# Copy card to working SSD (using rsync, Finder, or your preferred tool)
+rsync -av /Volumes/CARD/DCIM/ /Volumes/FastSSD/Capture/Johnson-Wedding/
+
+# Import from the fast local copy
+maki import /Volumes/FastSSD/Capture/Johnson-Wedding/ \
   --add-tag "shoot:johnson-wedding" \
   --auto-group --smart --log
 ```
@@ -810,10 +814,10 @@ Skip file types you don't need, or include types that are off by default:
 
 ```bash
 # Photos only — skip video and audio
-maki import /Volumes/Card/DCIM --skip video --skip audio --log
+maki import /Volumes/FastSSD/Capture/2026-03/ --skip video --skip audio --log
 
 # Include documents alongside media
-maki import /Volumes/Projects/ --include documents --log
+maki import /Volumes/FastSSD/Projects/ --include documents --log
 ```
 
 ---

@@ -44,11 +44,16 @@ Each MAKI volume can be assigned a **purpose** (`working`, `archive`, `backup`, 
 
 A fast local SSD is the ideal landing zone for new files. Speed matters during import, culling, and preview generation.
 
+The first step is getting files off the memory card and onto your working drive. Use your preferred method — Finder drag-and-drop, a card reader app, or a simple `rsync` script. Then import into MAKI:
+
 ```bash
 # Register the working drive
 maki volume add "Work SSD" /Volumes/FastSSD --purpose working
 
-# Import a shoot
+# Copy files from card to working drive (outside MAKI)
+rsync -av /Volumes/CARD/DCIM/ /Volumes/FastSSD/Capture/2026-03-15/
+
+# Import into MAKI
 maki import /Volumes/FastSSD/Capture/2026-03-15/ --auto-group --smart --log
 ```
 
@@ -57,7 +62,8 @@ The `--smart` flag generates high-resolution previews (2560px) alongside regular
 **Tip:** Use `--add-tag` to stamp each import session for easy retrieval later:
 
 ```bash
-maki import /Volumes/Card/DCIM --add-tag "shoot:johnson-wedding" --auto-group --log
+maki import /Volumes/FastSSD/Capture/2026-03-15/ \
+  --add-tag "shoot:johnson-wedding" --auto-group --smart --log
 ```
 
 ---
@@ -228,9 +234,14 @@ Here is a concrete example of how these stages play out over a typical month:
 ### Week 1–2: Shoot and import
 
 ```bash
-# Import each shoot with a descriptive tag
-maki import /Volumes/Card/DCIM --add-tag "shoot:corporate-2026-03" --auto-group --smart --log
-maki import /Volumes/Card/DCIM --add-tag "shoot:landscape-spring" --auto-group --smart --log
+# Copy files from card to working SSD, then import
+rsync -av /Volumes/CARD/DCIM/ /Volumes/FastSSD/Capture/Corporate-2026-03/
+maki import /Volumes/FastSSD/Capture/Corporate-2026-03/ \
+  --add-tag "shoot:corporate-2026-03" --auto-group --smart --log
+
+rsync -av /Volumes/CARD/DCIM/ /Volumes/FastSSD/Capture/Landscape-Spring/
+maki import /Volumes/FastSSD/Capture/Landscape-Spring/ \
+  --add-tag "shoot:landscape-spring" --auto-group --smart --log
 ```
 
 ### Week 2–3: Cull and deliver
