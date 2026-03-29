@@ -1008,7 +1008,7 @@ enum VolumeCommands {
         /// Mount point path
         path: String,
 
-        /// Volume purpose (working, archive, backup, cloud)
+        /// Volume purpose (media, working, archive, backup, cloud)
         #[arg(long)]
         purpose: Option<String>,
     },
@@ -1021,7 +1021,7 @@ enum VolumeCommands {
         /// Volume label or UUID
         volume: String,
 
-        /// Purpose (working, archive, backup, cloud) or "none" to clear
+        /// Purpose (media, working, archive, backup, cloud) or "none" to clear
         purpose: String,
     },
 
@@ -1060,7 +1060,7 @@ enum VolumeCommands {
         #[arg(long)]
         path: String,
 
-        /// Volume purpose for the new volume (working, archive, backup, cloud)
+        /// Volume purpose for the new volume (media, working, archive, backup, cloud)
         #[arg(long)]
         purpose: Option<String>,
 
@@ -1540,7 +1540,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 let registry = DeviceRegistry::new(&catalog_root);
                 let parsed_purpose = if let Some(ref p) = purpose {
                     Some(maki::models::VolumePurpose::parse(p).ok_or_else(|| {
-                        anyhow::anyhow!("Invalid purpose '{}'. Valid values: working, archive, backup, cloud", p)
+                        anyhow::anyhow!("Invalid purpose '{}'. Valid values: media, working, archive, backup, cloud", p)
                     })?)
                 } else {
                     None
@@ -1564,7 +1564,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     if let Some(ref p) = volume.purpose {
                         println!("  Purpose: {}", p);
                     } else {
-                        eprintln!("  Hint: use --purpose <working|archive|backup|cloud> to set the volume's role");
+                        eprintln!("  Hint: use --purpose <media|working|archive|backup|cloud> to set the volume's role");
                     }
                 }
                 Ok(())
@@ -1606,7 +1606,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     None
                 } else {
                     Some(maki::models::VolumePurpose::parse(&purpose).ok_or_else(|| {
-                        anyhow::anyhow!("Invalid purpose '{}'. Valid values: working, archive, backup, cloud, none", purpose)
+                        anyhow::anyhow!("Invalid purpose '{}'. Valid values: media, working, archive, backup, cloud, none", purpose)
                     })?)
                 };
                 let vol = registry.set_purpose(&volume, parsed_purpose)?;
@@ -5984,8 +5984,10 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             let registry = DeviceRegistry::new(&catalog_root);
             let vol_list = registry.list()?;
 
+            // Exclude media volumes from backup coverage (transient sources like memory cards)
             let volumes_info: Vec<(String, String, bool, Option<String>)> = vol_list
                 .iter()
+                .filter(|v| v.purpose.as_ref() != Some(&maki::models::VolumePurpose::Media))
                 .map(|v| (v.label.clone(), v.id.to_string(), v.is_online, v.purpose.as_ref().map(|p| p.as_str().to_string())))
                 .collect();
 

@@ -106,7 +106,7 @@ After registration, files under the volume's path can be imported and tracked. I
 ### OPTIONS
 
 `--purpose <PURPOSE>`
-: Logical role of the volume. Valid values: `working` (active editing drive), `archive` (long-term primary storage), `backup` (redundancy copy), `cloud` (cloud sync folder). Optional — volumes without a purpose are treated as unclassified.
+: Logical role of the volume. Valid values: `media` (transient source — memory cards, card readers), `working` (active editing drive), `archive` (long-term primary storage), `backup` (redundancy copy), `cloud` (cloud sync folder). Optional — volumes without a purpose are treated as unclassified. Media volumes are excluded from `backup-status` coverage calculations.
 
 `--json` outputs `{"id": "<uuid>", "label": "<label>", "path": "<path>", "purpose": "<purpose>"}`.
 
@@ -231,7 +231,7 @@ Changes the purpose of an existing volume. The purpose describes the volume's ro
 : Volume label or UUID.
 
 **PURPOSE** (required)
-: One of `working`, `archive`, `backup`, `cloud`, or `none` (to clear the purpose).
+: One of `media`, `working`, `archive`, `backup`, `cloud`, or `none` (to clear the purpose).
 
 ### OPTIONS
 

@@ -4,7 +4,7 @@ Enable MAKI to manage the complete lifecycle from memory card to archive, elimin
 
 **Date:** 2026-03-29
 
-**Status:** Proposal. Open for discussion.
+**Status:** Phase 1 implemented (2026-03-29). Phase 2–3 pending.
 
 ---
 

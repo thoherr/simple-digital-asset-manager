@@ -17,6 +17,7 @@ pub enum VolumeType {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VolumePurpose {
+    Media,
     Working,
     Archive,
     Backup,
@@ -27,6 +28,7 @@ impl VolumePurpose {
     /// Parse a purpose string (case-insensitive).
     pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
+            "media" => Some(Self::Media),
             "working" => Some(Self::Working),
             "archive" => Some(Self::Archive),
             "backup" => Some(Self::Backup),
@@ -37,6 +39,7 @@ impl VolumePurpose {
 
     pub fn as_str(&self) -> &'static str {
         match self {
+            Self::Media => "media",
             Self::Working => "working",
             Self::Archive => "archive",
             Self::Backup => "backup",

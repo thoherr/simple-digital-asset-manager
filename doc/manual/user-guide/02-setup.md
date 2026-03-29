@@ -186,12 +186,14 @@ Each volume can optionally be assigned a **purpose** that describes its role in 
 
 | Purpose     | Meaning |
 |-------------|---------|
+| `media`     | Transient source media — memory cards, card readers, camera USB |
 | `working`   | Active editing drive — fast SSD with current projects |
 | `archive`   | Long-term primary storage — the "master" copy |
 | `backup`    | Redundancy copy — exists purely for safety |
 | `cloud`     | Cloud-synced folder (Dropbox, iCloud, Google Drive) |
 
 ```bash
+maki volume add "Card"       /Volumes/CARD         --purpose media
 maki volume add "Laptop SSD" /Volumes/MacintoshHD --purpose working
 maki volume add "Archive"    /Volumes/MediaDrive   --purpose archive
 maki volume add "Backup A"   /Volumes/BackupDisk   --purpose backup
@@ -201,7 +203,7 @@ maki volume add "Dropbox"    ~/Dropbox/Photos      --purpose cloud
 Purpose metadata drives two features:
 
 - **Duplicate analysis** (`maki duplicates`): Distinguishes unwanted duplicates (same file twice on the same working drive) from wanted redundancy (same file on an archive and a backup).
-- **Backup coverage** (`maki backup-status`): Reports which assets lack copies on archive or backup volumes and flags at-risk assets.
+- **Backup coverage** (`maki backup-status`): Reports which assets lack copies on archive or backup volumes and flags at-risk assets. Media volumes are excluded from coverage calculations — a file only on a memory card is not considered backed up.
 
 You can set or change a purpose at any time:
 

@@ -1322,8 +1322,10 @@ pub async fn backup_page(State(state): State<Arc<AppState>>) -> Response {
         let catalog = state.catalog()?;
         let registry = DeviceRegistry::new(&state.catalog_root);
         let vol_list = registry.list()?;
+        // Exclude media volumes from backup coverage (transient sources like memory cards)
         let volumes_info: Vec<(String, String, bool, Option<String>)> = vol_list
             .iter()
+            .filter(|v| v.purpose.as_ref() != Some(&crate::models::VolumePurpose::Media))
             .map(|v| {
                 (
                     v.label.clone(),

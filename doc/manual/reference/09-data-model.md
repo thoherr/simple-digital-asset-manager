@@ -113,7 +113,7 @@ A registered storage device. Volumes give MAKI a stable reference to storage tha
 | `label` | String | Human-readable name (e.g. "Photos SSD", "Archive NAS"). |
 | `mount_point` | PathBuf | Filesystem path where the volume is mounted (e.g. `/Volumes/Photos`). |
 | `volume_type` | VolumeType | One of: `local`, `external`, `network`. |
-| `purpose` | Option\<VolumePurpose\> | Logical role: `working` (active editing), `archive` (long-term primary), `backup` (redundancy), `cloud` (sync folder). Optional — unclassified if not set. Used by duplicate analysis and backup coverage commands. |
+| `purpose` | Option\<VolumePurpose\> | Logical role: `media` (transient source — memory cards), `working` (active editing), `archive` (long-term primary), `backup` (redundancy), `cloud` (sync folder). Optional — unclassified if not set. Used by duplicate analysis and backup coverage commands. Media volumes excluded from backup coverage. |
 | `is_online` | bool | Computed at runtime -- `true` if `mount_point` exists on disk. Not persisted. |
 
 ### Collection

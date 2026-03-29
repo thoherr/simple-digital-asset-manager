@@ -412,6 +412,7 @@ mod tests {
         assert_eq!(VolumePurpose::parse("Archive"), Some(VolumePurpose::Archive));
         assert_eq!(VolumePurpose::parse("BACKUP"), Some(VolumePurpose::Backup));
         assert_eq!(VolumePurpose::parse("cloud"), Some(VolumePurpose::Cloud));
+        assert_eq!(VolumePurpose::parse("Media"), Some(VolumePurpose::Media));
         assert_eq!(VolumePurpose::parse("invalid"), None);
     }
 }

@@ -36,7 +36,7 @@ The flow is:
 5. **Verify and maintain** on a regular schedule
 6. **Export and deliver** from any stage
 
-Each MAKI volume can be assigned a **purpose** (`working`, `archive`, `backup`, `cloud`) that reflects its role in this lifecycle. These purposes drive `maki backup-status` and `maki duplicates` analysis. See [Volume Purposes](02-setup.md#volume-purposes) for setup details.
+Each MAKI volume can be assigned a **purpose** (`media`, `working`, `archive`, `backup`, `cloud`) that reflects its role in this lifecycle. These purposes drive `maki backup-status` and `maki duplicates` analysis. See [Volume Purposes](02-setup.md#volume-purposes) for setup details.
 
 ---
 
