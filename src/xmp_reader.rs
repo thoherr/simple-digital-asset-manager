@@ -623,6 +623,59 @@ fn xml_escape(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// Create a new XMP sidecar file from scratch with the given metadata.
+///
+/// Generates a well-formed XMP document suitable for CaptureOne, Lightroom,
+/// and other tools that read `.xmp` sidecar files.
+pub fn create_xmp(
+    keywords: &[String],
+    rating: Option<u8>,
+    label: Option<&str>,
+    description: Option<&str>,
+) -> String {
+    let mut parts = Vec::new();
+    parts.push(r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/""#.to_string());
+    if let Some(r) = rating {
+        parts.push(format!("\n    xmp:Rating=\"{r}\""));
+    }
+    if let Some(l) = label {
+        parts.push(format!("\n    xmp:Label=\"{}\"", xml_escape(l)));
+    }
+    parts.push(">".to_string());
+    if !keywords.is_empty() {
+        parts.push("   <dc:subject>\n    <rdf:Bag>".to_string());
+        for kw in keywords {
+            parts.push(format!("     <rdf:li>{}</rdf:li>", xml_escape(kw)));
+        }
+        parts.push("    </rdf:Bag>\n   </dc:subject>".to_string());
+        // Also write lr:hierarchicalSubject for tags with hierarchy
+        let hier_tags: Vec<&String> = keywords.iter().filter(|t| t.contains('/')).collect();
+        if !hier_tags.is_empty() {
+            parts.push("   <lr:hierarchicalSubject>\n    <rdf:Bag>".to_string());
+            for kw in &hier_tags {
+                parts.push(format!("     <rdf:li>{}</rdf:li>", xml_escape(&kw.replace('/', "|"))));
+            }
+            parts.push("    </rdf:Bag>\n   </lr:hierarchicalSubject>".to_string());
+        }
+    }
+    if let Some(desc) = description {
+        if !desc.is_empty() {
+            parts.push(format!(
+                "   <dc:description>\n    <rdf:Alt>\n     <rdf:li xml:lang=\"x-default\">{}</rdf:li>\n    </rdf:Alt>\n   </dc:description>",
+                xml_escape(desc)
+            ));
+        }
+    }
+    parts.push("  </rdf:Description>\n </rdf:RDF>\n</x:xmpmeta>".to_string());
+    parts.join("\n")
+}
+
 /// Parse XMP metadata from an XML string.
 pub(crate) fn parse_xmp(xml: &str) -> XmpData {
     let mut data = XmpData::empty();

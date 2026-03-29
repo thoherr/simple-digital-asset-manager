@@ -1344,6 +1344,7 @@ impl AssetService {
         asset_id: &str,
         target_volume_label: &str,
         remove_source: bool,
+        create_sidecars: bool,
         dry_run: bool,
     ) -> Result<RelocateResult> {
         let catalog = Catalog::open(&self.catalog_root)?;
@@ -1543,6 +1544,74 @@ impl AssetService {
                         &target_volume.id.to_string(),
                         &entry.source_relative_path.to_string_lossy(),
                     )?;
+                }
+            }
+        }
+
+        // Phase 2.5: Create XMP sidecars for variants without recipes (if requested)
+        if create_sidecars {
+            let has_metadata = !asset.tags.is_empty()
+                || asset.rating.is_some()
+                || asset.color_label.is_some()
+                || asset.description.is_some();
+
+            if has_metadata {
+                for variant in &asset.variants {
+                    // Skip if variant already has an XMP recipe on the target volume
+                    let has_xmp_on_target = asset.recipes.iter().any(|r| {
+                        r.variant_hash == variant.content_hash
+                            && r.location.volume_id == target_volume.id
+                            && r.recipe_type == crate::models::recipe::RecipeType::Sidecar
+                    });
+                    if has_xmp_on_target {
+                        continue;
+                    }
+
+                    // Check if variant has a location on the target volume
+                    let target_loc = match variant.locations.iter().find(|l| l.volume_id == target_volume.id) {
+                        Some(loc) => loc,
+                        None => continue,
+                    };
+
+                    // Build XMP sidecar path: variant filename + .xmp extension
+                    let variant_relative = &target_loc.relative_path;
+                    let xmp_relative = variant_relative.with_extension(
+                        format!("{}.xmp", variant_relative.extension().unwrap_or_default().to_string_lossy())
+                    );
+                    let xmp_path = target_volume.mount_point.join(&xmp_relative);
+
+                    if let Some(parent) = xmp_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+
+                    let xmp_content = crate::xmp_reader::create_xmp(
+                        &asset.tags,
+                        asset.rating,
+                        asset.color_label.as_deref(),
+                        asset.description.as_deref(),
+                    );
+
+                    std::fs::write(&xmp_path, &xmp_content)?;
+                    let xmp_hash = content_store.hash_file(&xmp_path)?;
+
+                    let recipe = crate::models::recipe::Recipe {
+                        id: Uuid::new_v4(),
+                        variant_hash: variant.content_hash.clone(),
+                        software: "MAKI".to_string(),
+                        recipe_type: crate::models::recipe::RecipeType::Sidecar,
+                        content_hash: xmp_hash,
+                        location: crate::models::FileLocation {
+                            volume_id: target_volume.id,
+                            relative_path: xmp_relative.clone(),
+                            verified_at: None,
+                        },
+                        pending_writeback: false,
+                    };
+                    catalog.insert_recipe(&recipe)?;
+                    asset.recipes.push(recipe);
+
+                    actions.push(format!("Created sidecar {}", xmp_relative.display()));
+                    copied += 1;
                 }
             }
         }
@@ -7610,7 +7679,7 @@ mod tests {
         let asset_id = summaries[0].id.to_string();
 
         // Relocate to vol2
-        let result = service.relocate(&asset_id, "vol2", false, false).unwrap();
+        let result = service.relocate(&asset_id, "vol2", false, false, false).unwrap();
         assert_eq!(result.copied, 1);
         assert_eq!(result.removed, 0);
 
@@ -7643,7 +7712,7 @@ mod tests {
         let summaries = metadata_store.list().unwrap();
         let asset_id = summaries[0].id.to_string();
 
-        let result = service.relocate(&asset_id, "vol2", true, false).unwrap();
+        let result = service.relocate(&asset_id, "vol2", true, false, false).unwrap();
         assert_eq!(result.copied, 1);
         assert_eq!(result.removed, 1);
 
@@ -7675,7 +7744,7 @@ mod tests {
         let summaries = metadata_store.list().unwrap();
         let asset_id = summaries[0].id.to_string();
 
-        let result = service.relocate(&asset_id, "vol2", false, false).unwrap();
+        let result = service.relocate(&asset_id, "vol2", false, false, false).unwrap();
         // Should copy both variant and recipe
         assert_eq!(result.copied, 2);
 
@@ -7704,11 +7773,11 @@ mod tests {
         let asset_id = summaries[0].id.to_string();
 
         // First relocate
-        service.relocate(&asset_id, "vol2", false, false).unwrap();
+        service.relocate(&asset_id, "vol2", false, false, false).unwrap();
 
         // Second relocate — vol1 location still generates a plan entry,
         // but the file already exists on vol2 with matching hash, so it's skipped
-        let result = service.relocate(&asset_id, "vol2", false, false).unwrap();
+        let result = service.relocate(&asset_id, "vol2", false, false, false).unwrap();
         assert_eq!(result.copied, 0);
         assert_eq!(result.skipped, 1);
         assert!(result.actions[0].contains("already exists"));
@@ -7733,7 +7802,7 @@ mod tests {
         let summaries = metadata_store.list().unwrap();
         let asset_id = summaries[0].id.to_string();
 
-        let result = service.relocate(&asset_id, "vol2", false, true).unwrap();
+        let result = service.relocate(&asset_id, "vol2", false, false, true).unwrap();
         assert_eq!(result.copied, 1);
 
         // File should NOT exist on vol2
@@ -7764,7 +7833,7 @@ mod tests {
         let asset_id = summaries[0].id.to_string();
 
         // Relocate to same volume
-        let result = service.relocate(&asset_id, "vol1", false, false).unwrap();
+        let result = service.relocate(&asset_id, "vol1", false, false, false).unwrap();
         assert_eq!(result.copied, 0);
         assert_eq!(result.skipped, 0);
         assert!(result.actions[0].contains("already on target"));
@@ -7801,7 +7870,7 @@ mod tests {
             .unwrap();
 
         let err = service
-            .relocate(&asset_id, "offline-vol", false, false)
+            .relocate(&asset_id, "offline-vol", false, false, false)
             .unwrap_err();
         assert!(err.to_string().contains("offline"));
     }
@@ -7812,7 +7881,7 @@ mod tests {
 
         let service = AssetService::new(catalog_dir.path(), crate::Verbosity::quiet(), &crate::config::PreviewConfig::default());
         let err = service
-            .relocate("nonexistent-id", "vol2", false, false)
+            .relocate("nonexistent-id", "vol2", false, false, false)
             .unwrap_err();
         assert!(err.to_string().contains("No asset found"));
     }
@@ -7837,7 +7906,7 @@ mod tests {
         let asset_id = summaries[0].id.to_string();
 
         let err = service
-            .relocate(&asset_id, "nonexistent-vol", false, false)
+            .relocate(&asset_id, "nonexistent-vol", false, false, false)
             .unwrap_err();
         assert!(err.to_string().contains("No volume found"));
     }

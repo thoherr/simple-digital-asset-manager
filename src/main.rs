@@ -852,6 +852,10 @@ enum Commands {
         #[arg(long)]
         remove_source: bool,
 
+        /// Create XMP sidecar files at the destination for assets with metadata but no existing recipe
+        #[arg(long)]
+        create_sidecars: bool,
+
         /// Show what would happen without making changes
         #[arg(long)]
         dry_run: bool,
@@ -4027,6 +4031,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             target,
             query,
             remove_source,
+            create_sidecars,
             dry_run,
         } => {
             let catalog_root = maki::config::find_catalog_root()?;
@@ -4061,7 +4066,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                         let vol = ids[1].clone();
                         // Treat as single-asset mode: first arg is asset, second is volume
                         let single_id = ids[0].clone();
-                        let result = service.relocate(&single_id, &vol, remove_source, dry_run)?;
+                        let result = service.relocate(&single_id, &vol, remove_source, create_sidecars, dry_run)?;
 
                         if cli.json {
                             println!("{}", serde_json::to_string_pretty(&result)?);
@@ -4108,7 +4113,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             }
 
             for (i, id) in ids.iter().enumerate() {
-                match service.relocate(id, &target_volume, remove_source, dry_run) {
+                match service.relocate(id, &target_volume, remove_source, create_sidecars, dry_run) {
                     Ok(result) => {
                         total_copied += result.copied;
                         total_skipped += result.skipped;

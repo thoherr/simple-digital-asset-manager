@@ -615,6 +615,16 @@ maki relocate --query "type:video volume:Work SSD" --target "Video Archive" --re
 
 **Tip:** Always run without `--remove-source` first (copy), verify the result, then run again with `--remove-source` (move) in a second pass. This gives you a safety window before deleting source files.
 
+### Creating XMP sidecars on relocate
+
+When copying files to a working drive where you'll open them in CaptureOne or Lightroom, use `--create-sidecars` to generate `.xmp` files with your MAKI metadata (ratings, tags, labels, descriptions):
+
+```bash
+maki relocate --query "rating:3+" --target "Work SSD" --create-sidecars --log
+```
+
+This creates an XMP sidecar alongside each variant that doesn't already have one on the target volume. The external tool picks up your ratings and tags immediately on import.
+
 
 ## Updating File Locations
 

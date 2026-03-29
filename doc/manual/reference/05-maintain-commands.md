@@ -726,6 +726,9 @@ Asset IDs support unique prefix matching. Batch mode reports per-asset progress 
 **--remove-source**
 : Delete source files after successful copy and SHA-256 verification.
 
+**--create-sidecars**
+: After copying, create `.xmp` sidecar files at the destination for variants that have metadata (ratings, tags, labels, descriptions) but no existing XMP recipe on the target volume. The generated XMP files include `dc:subject` (tags), `lr:hierarchicalSubject` (hierarchical tags), `xmp:Rating`, `xmp:Label`, and `dc:description`. Each sidecar is registered as a recipe in the catalog and YAML sidecar. This enables CaptureOne, Lightroom, and other XMP-aware tools to pick up MAKI metadata immediately.
+
 **--dry-run**
 : Show what would happen without making any changes.
 
