@@ -10,7 +10,7 @@ Current version: **v4.1.3** (2026-03-25)
 
 ### Card-First Workflow
 
-Import directly from memory cards, cull on smart previews, and copy only keepers to the working drive — eliminating wasted copies of rejects. See `doc/proposals/card-first-workflow.md`.
+Import directly from memory cards, cull on smart previews, and copy only keepers to the working drive — eliminating wasted copies of rejects. See `doc/proposals/archive/card-first-workflow.md`.
 
 **Status:** Complete. All 3 phases implemented (v4.2.x): `media` volume purpose, `--create-sidecars` on relocate + standalone command, auto-label on volume add, volume list filters.
 
