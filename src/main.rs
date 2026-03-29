@@ -2092,6 +2092,47 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                     let engine = QueryEngine::new(&catalog_root);
                     let ag_result = engine.auto_group(&all_ids, dry_run)?;
                     if !ag_result.groups.is_empty() {
+                        // Upgrade previews for grouped assets (use Export/Processed variant)
+                        if !dry_run {
+                            let grouped_ids: Vec<String> = ag_result.groups.iter()
+                                .map(|g| g.target_id.clone())
+                                .collect();
+                            let metadata_store = MetadataStore::new(&catalog_root);
+                            let preview_gen = maki::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
+                            let volumes = registry.list()?;
+                            let mut upgraded = 0usize;
+                            for gid in &grouped_ids {
+                                if let Ok(uuid) = gid.parse::<uuid::Uuid>() {
+                                    if let Ok(asset) = metadata_store.load(uuid) {
+                                        if let Some(idx) = maki::models::variant::best_preview_index(&asset.variants) {
+                                            if idx > 0 {
+                                                // A better variant exists — upgrade the preview
+                                                let v = &asset.variants[idx];
+                                                if let Some(loc) = v.locations.first() {
+                                                    if let Some(vol) = volumes.iter().find(|vl| vl.id == loc.volume_id && vl.is_online) {
+                                                        let file_path = vol.mount_point.join(&loc.relative_path);
+                                                        if file_path.exists() {
+                                                            let _ = preview_gen.generate(&v.content_hash, &file_path, &v.format);
+                                                            if smart {
+                                                                let _ = preview_gen.generate_smart(&v.content_hash, &file_path, &v.format);
+                                                            }
+                                                            upgraded += 1;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        // Update denormalized best_variant_hash
+                                        if let Ok(cat) = Catalog::open(&catalog_root) {
+                                            let _ = cat.update_denormalized_variant_columns(&asset);
+                                        }
+                                    }
+                                }
+                            }
+                            if upgraded > 0 && verbosity.verbose {
+                                eprintln!("  Auto-group: upgraded {} preview(s) from export variants", upgraded);
+                            }
+                        }
                         Some(ag_result)
                     } else {
                         None

@@ -4867,12 +4867,17 @@ impl AssetService {
                 continue;
             }
 
-            // Find non-RAW variants with role == Original
+            // Find non-RAW variants that should be Export but aren't
             let fixable: Vec<usize> = asset
                 .variants
                 .iter()
                 .enumerate()
-                .filter(|(_, v)| !is_raw_extension(&v.format) && v.role == VariantRole::Original)
+                .filter(|(_, v)| {
+                    !is_raw_extension(&v.format)
+                        && v.role != VariantRole::Export
+                        && v.role != VariantRole::Processed
+                        && v.role != VariantRole::Sidecar
+                })
                 .map(|(i, _)| i)
                 .collect();
 
@@ -4887,10 +4892,10 @@ impl AssetService {
 
             if apply {
                 for &idx in &fixable {
-                    asset.variants[idx].role = VariantRole::Alternate;
+                    asset.variants[idx].role = VariantRole::Export;
                     catalog.update_variant_role(
                         &asset.variants[idx].content_hash,
-                        "alternate",
+                        "export",
                     )?;
                 }
                 metadata_store.save(&asset)?;
@@ -8059,10 +8064,10 @@ mod tests {
         assert_eq!(result.already_correct, 0);
         assert!(!result.dry_run);
 
-        // Verify the JPG variant is now Alternate in sidecar
+        // Verify the JPG variant is now Export in sidecar
         let asset = metadata_store.load(summaries[0].id).unwrap();
         let jpg = asset.variants.iter().find(|v| v.format == "jpg").unwrap();
-        assert_eq!(jpg.role, VariantRole::Alternate);
+        assert_eq!(jpg.role, VariantRole::Export);
         // RAW should still be Original
         let raw = asset.variants.iter().find(|v| v.format == "nef").unwrap();
         assert_eq!(raw.role, VariantRole::Original);

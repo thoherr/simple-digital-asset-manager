@@ -1308,13 +1308,23 @@ impl QueryEngine {
         let existing_tags: HashSet<String> = target.tags.iter().cloned().collect();
         let mut all_tags = existing_tags;
 
+        // Check if the target asset has RAW variants (for smart role assignment)
+        let target_has_raw = target.variants.iter().any(|v| {
+            crate::asset_service::is_raw_extension(&v.format)
+        });
+
         for donor in &donors {
             for variant in &donor.variants {
                 let mut moved_variant = variant.clone();
                 moved_variant.asset_id = target_id;
-                // Donor's "original" variants become alternates in the target asset
+                // Smart role assignment: in RAW+non-RAW groups, non-RAW donors
+                // become Export (processed output). Otherwise Alternate.
                 if moved_variant.role == crate::models::VariantRole::Original {
-                    moved_variant.role = crate::models::VariantRole::Alternate;
+                    if target_has_raw && !crate::asset_service::is_raw_extension(&moved_variant.format) {
+                        moved_variant.role = crate::models::VariantRole::Export;
+                    } else {
+                        moved_variant.role = crate::models::VariantRole::Alternate;
+                    }
                 }
                 target.variants.push(moved_variant);
                 variants_moved += 1;
@@ -1453,12 +1463,20 @@ impl QueryEngine {
         let mut variants_moved = 0;
         let mut all_tags: HashSet<String> = target.tags.iter().cloned().collect();
 
+        let target_has_raw = target.variants.iter().any(|v| {
+            crate::asset_service::is_raw_extension(&v.format)
+        });
+
         for donor in &donors {
             for variant in &donor.variants {
                 let mut moved_variant = variant.clone();
                 moved_variant.asset_id = target_uuid;
                 if moved_variant.role == crate::models::VariantRole::Original {
-                    moved_variant.role = crate::models::VariantRole::Alternate;
+                    if target_has_raw && !crate::asset_service::is_raw_extension(&moved_variant.format) {
+                        moved_variant.role = crate::models::VariantRole::Export;
+                    } else {
+                        moved_variant.role = crate::models::VariantRole::Alternate;
+                    }
                 }
                 target.variants.push(moved_variant);
                 variants_moved += 1;
