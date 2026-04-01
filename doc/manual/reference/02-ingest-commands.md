@@ -7,6 +7,7 @@ Commands for importing files, applying metadata, and merging asset variants. Imp
 | [import](#maki-import) | Import files into the catalog |
 | [delete](#maki-delete) | Remove assets from the catalog |
 | [tag](#maki-tag) | Add or remove tags |
+| [tag rename](#maki-tag-rename) | Rename a tag across all assets |
 | [edit](#maki-edit) | Edit metadata (name, rating, label, description, date) |
 | [group](#maki-group) | Merge variants into one asset |
 | [split](#maki-split) | Extract variants into standalone assets |
@@ -334,6 +335,70 @@ done
 [edit](#maki-edit) -- set asset name, description, rating, or label.
 [search](04-retrieve-commands.md#maki-search) -- `tag:` filter for finding tagged assets.
 [stats](04-retrieve-commands.md#maki-stats) -- `--tags` shows tag usage frequencies.
+
+---
+
+## maki tag rename
+
+### NAME
+
+maki-tag-rename -- rename a tag across all assets that have it
+
+### SYNOPSIS
+
+    maki [GLOBAL FLAGS] tag rename <OLD_TAG> <NEW_TAG> [--apply]
+
+### DESCRIPTION
+
+Finds all assets tagged with OLD_TAG and replaces that tag with NEW_TAG. This is an atomic bulk operation — every affected asset is updated in the catalog, YAML sidecar, and XMP recipe files (if writeback is enabled) in a single pass.
+
+Useful for reorganizing a flat tag vocabulary into a hierarchy, fixing typos, or consolidating synonyms. If an asset already has NEW_TAG, the old tag is removed without creating a duplicate.
+
+Without `--apply`, runs in report-only mode showing which assets would be affected.
+
+### ARGUMENTS
+
+**OLD_TAG** (required)
+: The tag to rename. Uses the same input conventions as `maki tag`: `/` for hierarchy, `\/` for literal slashes.
+
+**NEW_TAG** (required)
+: The replacement tag.
+
+### OPTIONS
+
+**--apply**
+: Execute the rename. Without this flag, only reports what would change.
+
+### EXAMPLES
+
+Rename a flat tag to a hierarchical one:
+
+```bash
+maki tag rename "concert" "Subject/Performing Arts/Concert" --apply
+```
+
+Fix a typo:
+
+```bash
+maki tag rename "lanscape" "landscape" --apply
+```
+
+Consolidate synonyms:
+
+```bash
+maki tag rename "street-photography" "street" --apply
+```
+
+Preview what would change:
+
+```bash
+maki tag rename "old-tag" "new-tag"
+```
+
+### SEE ALSO
+
+[tag](#maki-tag) -- add or remove tags on a single asset.
+[search](04-retrieve-commands.md#maki-search) -- `tag:` filter for finding tagged assets.
 
 ---
 

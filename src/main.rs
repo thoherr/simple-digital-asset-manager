@@ -118,11 +118,11 @@ enum Commands {
         remove_files: bool,
     },
 
-    /// Add or remove tags on an asset
-    #[command(display_order = 12)]
+    /// Add, remove, or rename tags
+    #[command(display_order = 12, args_conflicts_with_subcommands = true)]
     Tag {
         /// Asset ID
-        asset_id: String,
+        asset_id: Option<String>,
 
         /// Remove the specified tags instead of adding them
         #[arg(long)]
@@ -130,6 +130,9 @@ enum Commands {
 
         /// Tags to add or remove
         tags: Vec<String>,
+
+        #[command(subcommand)]
+        subcmd: Option<TagCommands>,
     },
 
     /// Edit asset metadata (name, description, rating)
@@ -1027,6 +1030,22 @@ enum Commands {
         /// Exit on first error (scripts only)
         #[arg(long)]
         strict: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum TagCommands {
+    /// Rename a tag across all assets
+    Rename {
+        /// Current tag name
+        old_tag: String,
+
+        /// New tag name
+        new_tag: String,
+
+        /// Apply changes (default: report-only)
+        #[arg(long)]
+        apply: bool,
     },
 }
 
@@ -2692,43 +2711,87 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             Ok(())
         }
-        Commands::Tag { asset_id, remove, tags } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let engine = QueryEngine::new(&catalog_root);
-            // Convert user-facing tag input to storage form:
-            // `/` → `|` (hierarchy), `\/` → `/` (literal slash)
-            let storage_tags: Vec<String> = tags.iter()
-                .map(|t| maki::tag_util::tag_input_to_storage(t))
-                .collect();
-            let result = engine.tag(&asset_id, &storage_tags, remove)?;
+        Commands::Tag { asset_id, remove, tags, subcmd } => {
+            match subcmd {
+                Some(TagCommands::Rename { old_tag, new_tag, apply }) => {
+                    let catalog_root = maki::config::find_catalog_root()?;
+                    let engine = QueryEngine::new(&catalog_root);
+                    let old_storage = maki::tag_util::tag_input_to_storage(&old_tag);
+                    let new_storage = maki::tag_util::tag_input_to_storage(&new_tag);
+                    let show_log = cli.log;
 
-            if cli.json {
-                println!("{}", serde_json::json!({
-                    "changed": result.changed,
-                    "tags": result.current_tags,
-                }));
-            } else {
-                // Display tags with `/` for hierarchy, `\/` for literal slashes
-                let display_changed: Vec<String> = result.changed.iter()
-                    .map(|t| maki::tag_util::tag_storage_to_display(t))
-                    .collect();
-                let display_tags: Vec<String> = result.current_tags.iter()
-                    .map(|t| maki::tag_util::tag_storage_to_display(t))
-                    .collect();
-                if !display_changed.is_empty() {
-                    if remove {
-                        println!("Removed tags: {}", display_changed.join(", "));
+                    let result = engine.tag_rename(&old_storage, &new_storage, apply, |name, _changed| {
+                        if show_log {
+                            let verb = if apply { "renamed" } else { "would rename" };
+                            eprintln!("  {} — {}", name, verb);
+                        }
+                    })?;
+
+                    if cli.json {
+                        println!("{}", serde_json::to_string_pretty(&result)?);
                     } else {
-                        println!("Added tags: {}", display_changed.join(", "));
+                        let old_display = maki::tag_util::tag_storage_to_display(&old_storage);
+                        let new_display = maki::tag_util::tag_storage_to_display(&new_storage);
+                        if result.matched == 0 {
+                            println!("No assets found with tag \"{}\".", old_display);
+                        } else {
+                            if !apply {
+                                eprint!("Dry run — ");
+                            }
+                            println!(
+                                "Tag rename: \"{}\" → \"{}\": {} asset(s) {}",
+                                old_display, new_display,
+                                result.renamed,
+                                if apply { "renamed" } else { "would rename" },
+                            );
+                            if !apply && result.renamed > 0 {
+                                println!("  Run with --apply to rename tags.");
+                            }
+                        }
                     }
+                    Ok(())
                 }
-                if display_tags.is_empty() {
-                    println!("Tags: (none)");
-                } else {
-                    println!("Tags: {}", display_tags.join(", "));
+                None => {
+                    // Direct tag add/remove: maki tag <asset> <tags> [--remove]
+                    let asset_id = asset_id.ok_or_else(|| anyhow::anyhow!("Asset ID is required for tag add/remove"))?;
+                    if tags.is_empty() {
+                        anyhow::bail!("No tags specified.");
+                    }
+                    let catalog_root = maki::config::find_catalog_root()?;
+                    let engine = QueryEngine::new(&catalog_root);
+                    let storage_tags: Vec<String> = tags.iter()
+                        .map(|t| maki::tag_util::tag_input_to_storage(t))
+                        .collect();
+                    let result = engine.tag(&asset_id, &storage_tags, remove)?;
+
+                    if cli.json {
+                        println!("{}", serde_json::json!({
+                            "changed": result.changed,
+                            "tags": result.current_tags,
+                        }));
+                    } else {
+                        let display_changed: Vec<String> = result.changed.iter()
+                            .map(|t| maki::tag_util::tag_storage_to_display(t))
+                            .collect();
+                        let display_tags: Vec<String> = result.current_tags.iter()
+                            .map(|t| maki::tag_util::tag_storage_to_display(t))
+                            .collect();
+                        if !display_changed.is_empty() {
+                            if remove {
+                                println!("Removed tags: {}", display_changed.join(", "));
+                            } else {
+                                println!("Added tags: {}", display_changed.join(", "));
+                            }
+                        }
+                        if display_tags.is_empty() {
+                            println!("Tags: (none)");
+                        } else {
+                            println!("Tags: {}", display_tags.join(", "));
+                        }
+                    }
+                    Ok(())
                 }
             }
-            Ok(())
         }
         Commands::Edit { asset_id, name, clear_name, description, clear_description, rating, clear_rating, label, clear_label, clear_tags, date, clear_date, role, variant } => {
             use maki::query::{EditFields, parse_date_input};

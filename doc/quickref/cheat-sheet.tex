@@ -34,8 +34,8 @@
 % Section styling — salmon header, thin rule below
 \titleformat{\section}{\small\bfseries\color{maki-salmon}}{}{0em}{}[\vspace{-2pt}{\color{maki-salmon!40}\hrule height 0.3pt}\vspace{2pt}]
 \titleformat{\subsection}{\footnotesize\ttfamily\bfseries\color{maki-nori}}{}{0em}{}
-\titlespacing{\section}{0pt}{5pt}{1pt}
-\titlespacing{\subsection}{0pt}{3pt}{0pt}
+\titlespacing{\section}{0pt}{4pt}{1pt}
+\titlespacing{\subsection}{0pt}{2pt}{0pt}
 
 % Compact list
 \setlist{nosep, leftmargin=1.2em, itemsep=0pt, parsep=0pt, topsep=0pt}
@@ -113,6 +113,9 @@ Delete assets. \opt{--apply} \opt{--remove-files}
 
 \subsection{maki tag \textit{ASSET\_ID TAGS...}}
 Add or remove tags. \opt{--remove}
+
+\subsection{maki tag rename \textit{OLD NEW}}
+Rename a tag across all assets. \opt{--apply}
 
 \subsection{maki edit \textit{ASSET\_ID}}
 Edit metadata fields. \\

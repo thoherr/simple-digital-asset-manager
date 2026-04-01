@@ -69,6 +69,20 @@ deltas, not full replacement.
 If the volume containing the `.xmp` file is offline, the write-back is skipped
 with a warning.
 
+### Renaming tags
+
+To rename a tag across all assets that have it — for example, reorganizing a flat tag into a hierarchy or fixing a typo:
+
+```bash
+# Preview what would change
+maki tag rename "concert" "Subject/Performing Arts/Concert"
+
+# Apply the rename
+maki tag rename "concert" "Subject/Performing Arts/Concert" --apply --log
+```
+
+This updates every affected asset's catalog entry, YAML sidecar, and XMP recipe files in a single pass. Assets that already have the new tag just get the old one removed.
+
 ### Browsing tags in the web UI
 
 The web UI provides a dedicated tags page at `/tags` with:

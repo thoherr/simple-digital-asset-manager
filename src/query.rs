@@ -776,6 +776,15 @@ pub struct TagResult {
     pub current_tags: Vec<String>,
 }
 
+/// Result of a `maki tag-rename` operation.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct TagRenameResult {
+    pub dry_run: bool,
+    pub matched: usize,
+    pub renamed: usize,
+    pub skipped: usize,
+}
+
 /// Result of a `maki writeback` operation.
 #[derive(Debug, Default, serde::Serialize)]
 pub struct WritebackResult {
@@ -1865,6 +1874,67 @@ impl QueryEngine {
         Ok(TagResult {
             changed,
             current_tags: asset.tags.clone(),
+        })
+    }
+
+    /// Rename a tag across all assets that have it.
+    pub fn tag_rename(
+        &self,
+        old_tag: &str,
+        new_tag: &str,
+        apply: bool,
+        mut on_asset: impl FnMut(&str, bool),
+    ) -> Result<TagRenameResult> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let store = MetadataStore::new(&self.catalog_root);
+        let online = Self::load_online_volumes(&self.catalog_root);
+        let content_store = ContentStore::new(&self.catalog_root);
+
+        let matches = catalog.assets_with_exact_tag(old_tag)?;
+        let mut renamed = 0usize;
+        let mut skipped = 0usize;
+
+        for (asset_id, _stack_id) in &matches {
+            let uuid: uuid::Uuid = asset_id.parse()?;
+            let mut asset = store.load(uuid)?;
+
+            // Replace old tag with new tag
+            let had_old = asset.tags.contains(&old_tag.to_string());
+            let has_new = asset.tags.contains(&new_tag.to_string());
+            if !had_old {
+                skipped += 1;
+                continue;
+            }
+
+            let name = asset.name.clone().unwrap_or_else(|| asset_id[..8.min(asset_id.len())].to_string());
+            on_asset(&name, true);
+
+            if apply {
+                asset.tags.retain(|t| t != old_tag);
+                if !has_new {
+                    asset.tags.push(new_tag.to_string());
+                }
+                store.save(&asset)?;
+                catalog.insert_asset(&asset)?;
+
+                // Writeback: remove old tag, add new tag in XMP
+                if self.is_writeback_enabled() {
+                    let to_add = if has_new { vec![] } else { vec![new_tag.to_string()] };
+                    let to_remove = vec![old_tag.to_string()];
+                    self.write_back_tags_to_xmp_inner(
+                        &mut asset, &to_add, &to_remove,
+                        &catalog, &store, &online, &content_store,
+                    );
+                }
+            }
+            renamed += 1;
+        }
+
+        Ok(TagRenameResult {
+            dry_run: !apply,
+            matched: matches.len(),
+            renamed,
+            skipped,
         })
     }
 
