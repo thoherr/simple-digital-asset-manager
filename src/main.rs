@@ -4485,7 +4485,16 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
                 if parts.is_empty() {
                     println!("Sync: nothing to sync");
                 } else {
+                    if !apply && (result.moved > 0 || result.modified > 0 || result.missing > 0) {
+                        eprint!("Dry run — ");
+                    }
                     println!("Sync complete: {}", parts.join(", "));
+                }
+                if !apply && (result.moved > 0 || result.modified > 0) {
+                    println!("  Run with --apply to apply changes.");
+                }
+                if result.missing > 0 && !remove_stale {
+                    println!("  Run with --apply --remove-stale to remove missing file records.");
                 }
                 if result.new_files > 0 {
                     println!("  Tip: run 'maki import' to import new files.");
