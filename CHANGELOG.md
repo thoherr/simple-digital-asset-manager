@@ -2,6 +2,20 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.3.1 (2026-04-02)
+
+### New Features
+- **`maki tag rename`** — rename a tag across all assets in a single pass. Updates catalog, YAML sidecars, and XMP recipe files atomically. Useful for reorganizing flat tags into hierarchies, fixing typos, or consolidating synonyms.
+
+### Enhancements
+- **Sync dry-run feedback** — `maki sync` without `--apply` now shows "Dry run —" prefix and hints for `--apply` and `--remove-stale` when changes or missing files are detected.
+
+### Documentation
+- **New chapter: Tagging Guide** (ch 11) — tagging principles, recommended vocabulary structure with five facets (subject, location, person, technique, project), auto-tagging label design, catalog cleanup workflow, IPTC standards, and a quick-start checklist.
+- **Volume split and rename reference sections** added to Setup Commands reference.
+- **Zero undefined cross-references** in PDF — added explicit pandoc anchor IDs to all headings with `*(Pro)*` suffix or bracket notation.
+- **Python scripts** — fixed `dam` → `maki` in `fix-orphaned-xmp.py`; extracted manual examples into standalone scripts (`maki_helpers.py`, `tag-analysis.py`, `backup-audit.py`, `batch-rate-from-csv.py`).
+
 ## v4.3.0 (2026-03-29)
 
 ### New Features
