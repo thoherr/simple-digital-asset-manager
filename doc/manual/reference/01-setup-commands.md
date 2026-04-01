@@ -435,4 +435,69 @@ done
 
 ---
 
+## maki volume split {#maki-volume-split}
+
+### NAME
+
+maki-volume-split -- split a subdirectory from an existing volume into a new volume
+
+### SYNOPSIS
+
+    maki [GLOBAL FLAGS] volume split <SOURCE> <NEW_LABEL> --path <SUBDIR> [--purpose <PURPOSE>] [--apply]
+
+### DESCRIPTION
+
+Inverse of `volume combine`: creates a new volume from a subdirectory of an existing volume. All file locations and recipes under the specified path are moved to the new volume, with path prefixes stripped. The source volume is preserved with the remaining locations.
+
+Without `--apply`, runs in report-only mode showing what would be moved.
+
+### OPTIONS
+
+**--path \<SUBDIR\>** (required)
+: Subdirectory path (relative to source volume mount point) to split off.
+
+**--purpose \<PURPOSE\>**
+: Assign a purpose to the new volume.
+
+**--apply**
+: Execute the split.
+
+### EXAMPLES
+
+```bash
+maki volume split "Photos" "Archive 2024" --path "Archive/2024" --purpose archive --apply
+```
+
+---
+
+## maki volume rename {#maki-volume-rename}
+
+### NAME
+
+maki-volume-rename -- change a volume's label
+
+### SYNOPSIS
+
+    maki [GLOBAL FLAGS] volume rename <VOLUME> <NEW_LABEL>
+
+### DESCRIPTION
+
+Changes the label of a registered volume. The volume's UUID, mount point, and all tracked file locations remain unchanged. Only the human-readable label is updated in the volume registry and YAML sidecars.
+
+### ARGUMENTS
+
+**VOLUME** (required)
+: Current volume label or UUID.
+
+**NEW_LABEL** (required)
+: New label.
+
+### EXAMPLES
+
+```bash
+maki volume rename "Old Drive" "Archive 2025"
+```
+
+---
+
 Next: [Ingest Commands](02-ingest-commands.md) -- `import`, `tag`, `edit`, `group`, `auto-group`.

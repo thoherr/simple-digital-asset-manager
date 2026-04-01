@@ -695,7 +695,7 @@ On the asset detail page, a "Faces" section appears when faces have been detecte
 - **Query filters**: `faces:any`, `faces:none`, `faces:N`, `faces:N+`, `person:<name>` work in the query input.
 
 
-## Stroll Page *(Pro)*
+## Stroll Page *(Pro)* {#stroll-page}
 
 ![Stroll page with center image and similar neighbors](../screenshots/stroll-page.png)
 

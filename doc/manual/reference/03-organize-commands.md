@@ -1042,7 +1042,7 @@ maki stack from-tag "Bracket {}" --apply
 
 ---
 
-## maki faces detect *(Pro)*
+## maki faces detect *(Pro)* {#maki-faces-detect}
 
 ### NAME
 
@@ -1111,7 +1111,7 @@ maki faces detect --volume "Photos" --apply --log
 
 ---
 
-## maki faces cluster *(Pro)*
+## maki faces cluster *(Pro)* {#maki-faces-cluster}
 
 ### NAME
 
@@ -1208,7 +1208,7 @@ maki faces people --json
 
 ---
 
-## maki faces name *(Pro)*
+## maki faces name *(Pro)* {#maki-faces-name}
 
 ### NAME
 
@@ -1375,7 +1375,7 @@ maki faces export --json
 
 ---
 
-## maki faces download *(Pro)*
+## maki faces download *(Pro)* {#maki-faces-download}
 
 ### NAME
 

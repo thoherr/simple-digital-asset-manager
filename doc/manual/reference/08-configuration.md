@@ -377,7 +377,7 @@ copyright = "© 2026 Thomas Herrmann"
 
 ---
 
-## [ai] Section *(Pro)*
+## [ai] Section *(Pro)* {#ai-section}
 
 Controls AI auto-tagging behavior for `maki auto-tag`.
 
@@ -461,7 +461,7 @@ text_limit = 50
 
 ---
 
-## [vlm] Section *(Pro)*
+## [vlm] Section *(Pro)* {#vlm-section}
 
 Controls the VLM (vision-language model) integration for `maki describe`.
 

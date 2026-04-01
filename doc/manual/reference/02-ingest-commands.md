@@ -758,7 +758,7 @@ maki auto-group --apply --json | jq '{merged: .total_donors_merged, moved: .tota
 
 ---
 
-## maki auto-tag *(Pro)*
+## maki auto-tag *(Pro)* {#maki-auto-tag}
 
 ### NAME
 
@@ -924,7 +924,7 @@ maki auto-tag "tag:unreviewed" --json | jq '.suggestions[] | {asset: .asset_id, 
 
 ---
 
-## maki embed *(Pro)*
+## maki embed *(Pro)* {#maki-embed}
 
 ### NAME
 
@@ -1026,7 +1026,7 @@ maki embed --export
 
 ---
 
-## maki describe *(Pro)*
+## maki describe *(Pro)* {#maki-describe}
 
 ### NAME
 

@@ -497,7 +497,7 @@ This runs embedding generation as a post-import phase using the preview image fo
 
 See the [auto-tag reference](../reference/02-ingest-commands.md#maki-auto-tag) for all options and the [configuration reference](../reference/08-configuration.md#ai-section) for `[ai]` settings in `maki.toml`.
 
-## VLM Image Descriptions *(Pro)*
+## VLM Image Descriptions *(Pro)* {#vlm-image-descriptions}
 
 While SigLIP auto-tagging classifies images against a fixed vocabulary (~100 labels), vision-language models (VLMs) generate free-form text descriptions that capture scene context, spatial relationships, lighting, and mood. The `maki describe` command sends preview images to a VLM server and stores the generated text as the asset's description.
 

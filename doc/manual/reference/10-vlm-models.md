@@ -1,4 +1,4 @@
-# VLM Model Guide *(Pro)*
+# VLM Model Guide *(Pro)* {#vlm-model-guide}
 
 This document covers vision-language models (VLMs) compatible with `maki describe`. It lists tested models, hardware requirements, quality notes, and setup instructions for each inference backend.
 

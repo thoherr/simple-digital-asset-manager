@@ -330,7 +330,7 @@ maki refresh /Volumes/Photos/Capture/2026-02-22 --log
 
 ---
 
-## maki sync-metadata *(Pro)*
+## maki sync-metadata *(Pro)* {#maki-sync-metadata}
 
 ### NAME
 
@@ -411,7 +411,7 @@ maki sync-metadata --media --log --time
 
 ---
 
-## maki writeback *(Pro)*
+## maki writeback *(Pro)* {#maki-writeback}
 
 ### NAME
 

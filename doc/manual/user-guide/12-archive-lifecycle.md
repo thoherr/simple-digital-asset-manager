@@ -1,4 +1,4 @@
-# The Archive Lifecycle
+# The Archive Lifecycle {#archive-lifecycle}
 
 Most photography tools focus on individual tasks — importing, tagging, exporting. But the harder challenge is the long game: managing a growing library across multiple drives over years and decades. This chapter ties together the commands you've learned into a coherent storage strategy.
 
