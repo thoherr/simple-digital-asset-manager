@@ -510,7 +510,7 @@ The eight passes:
 2. **Locationless variants**: Removes variants with zero remaining file locations from assets that still have other located variants. Prevents ghost variants from accumulating after file moves or reimports.
 3. **Orphaned assets**: Deletes assets where all variants have zero file locations remaining. Their recipes, variants, faces, embeddings, previews, smart previews, face crops, embedding binaries, catalog rows, and sidecar YAML files are removed.
 4. **Orphaned previews**: Removes preview JPEG files whose content hash no longer matches any variant in the catalog.
-5. **Orphaned smart previews**: Same for the `smart_previews/` directory.
+5. **Orphaned smart previews**: Same for the `smart-previews/` directory.
 6. **Orphaned embeddings**: Removes SigLIP embedding binaries whose asset ID no longer exists.
 7. **Orphaned face crops**: Removes face crop thumbnails whose face ID no longer exists.
 8. **Orphaned ArcFace embeddings**: Removes face embedding binaries whose face ID no longer exists.
@@ -1077,6 +1077,74 @@ maki backup-status
 # 8. Confirm everything looks good
 maki stats --volumes
 ```
+
+---
+
+## Backing Up Your Catalog with Git
+
+MAKI's source of truth is the YAML sidecar files in the `metadata/` directory. The SQLite database, previews, and embeddings are all derived and can be regenerated. This makes the catalog an ideal candidate for git version control — you get full history, easy rollback, and protection against accidental bulk operations.
+
+### Setup
+
+`maki init` creates a `.gitignore` that excludes derived files. To start tracking your catalog:
+
+```bash
+cd /path/to/your/catalog   # the directory containing maki.toml
+git init
+git add -A
+git commit -m "Initial catalog snapshot"
+```
+
+The `.gitignore` excludes:
+
+- `catalog.db` (rebuilt via `maki rebuild-catalog`)
+- `previews/` and `smart-previews/` (regenerated via `maki generate-previews`)
+- `embeddings/` and `faces/` (regenerated via `maki embed`, `maki faces detect`)
+
+What gets tracked: `metadata/**/*.yaml` (all asset metadata), `volumes.yaml`, `collections.yaml`, `stacks.yaml`, `searches.toml`, and `maki.toml`.
+
+### Snapshotting before bulk operations
+
+Before running bulk operations like `tag rename`, `fix-roles`, `dedup`, or `cleanup`, create a snapshot:
+
+```bash
+# Using the provided script
+bash scripts/backup-catalog.sh "Before tag cleanup"
+
+# Or manually
+cd /path/to/your/catalog
+git add -A && git commit -m "Before tag cleanup"
+```
+
+### Recovering from mistakes
+
+If a bulk operation goes wrong:
+
+```bash
+cd /path/to/your/catalog
+
+# See what changed
+git log --oneline
+git diff HEAD~1 -- metadata/
+
+# Restore all metadata to a previous state
+git checkout HEAD~1 -- metadata/
+maki rebuild-catalog
+
+# Or restore just specific assets
+git checkout HEAD~1 -- metadata/a1/a1b2c3d4-*.yaml
+maki rebuild-catalog
+```
+
+The `maki rebuild-catalog` step regenerates the SQLite database from the restored YAML files.
+
+### What this protects against
+
+- Accidental bulk tag renames or deletions
+- Metadata lost during `cleanup` or `dedup`
+- Any operation that modifies YAML sidecars
+
+What it does NOT protect against: file deletions on disk (`maki delete --remove-files`), or XMP writeback changes (those modify files on your volumes, not in the catalog).
 
 ---
 

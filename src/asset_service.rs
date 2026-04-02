@@ -3102,7 +3102,7 @@ impl AssetService {
 
         // Pass 5: Orphaned smart previews (same logic, different directory)
         scan_orphaned_sharded_files(
-            &self.catalog_root.join("smart_previews"),
+            &self.catalog_root.join("smart-previews"),
             |stem| {
                 let content_hash = format!("sha256:{stem}");
                 variant_hashes.contains(&content_hash)
@@ -3617,7 +3617,7 @@ impl AssetService {
             &on_file,
         );
         scan_orphaned_sharded_files(
-            &self.catalog_root.join("smart_previews"),
+            &self.catalog_root.join("smart-previews"),
             |stem| {
                 let content_hash = format!("sha256:{stem}");
                 variant_hashes.contains(&content_hash)

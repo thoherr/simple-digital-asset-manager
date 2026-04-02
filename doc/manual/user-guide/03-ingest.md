@@ -313,7 +313,7 @@ When a file has no visual preview (audio files, documents) or when external tool
 
 ### Storage and Failure
 
-Previews are stored under the catalog's `previews/` and `smart_previews/` directories:
+Previews are stored under the catalog's `previews/` and `smart-previews/` directories:
 
 ```
 previews/
@@ -321,7 +321,7 @@ previews/
     ab3f7c9e2d...1a4b.jpg
   f2/
     f29a4bc81e...7d3c.jpg
-smart_previews/
+smart-previews/
   ab/
     ab3f7c9e2d...1a4b.jpg
   f2/

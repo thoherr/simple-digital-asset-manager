@@ -1573,7 +1573,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             // Create directories
             std::fs::create_dir_all(catalog_root.join("metadata"))?;
             std::fs::create_dir_all(catalog_root.join("previews"))?;
-            std::fs::create_dir_all(catalog_root.join("smart_previews"))?;
+            std::fs::create_dir_all(catalog_root.join("smart-previews"))?;
 
             // Write config
             CatalogConfig::default().save(&catalog_root)?;
@@ -1584,6 +1584,26 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
 
             // Write empty volumes registry
             DeviceRegistry::init(&catalog_root)?;
+
+            // Write .gitignore for optional git-based backup
+            let gitignore_path = catalog_root.join(".gitignore");
+            if !gitignore_path.exists() {
+                std::fs::write(&gitignore_path, "\
+# Derived cache — rebuilt from YAML sidecars via 'maki rebuild-catalog'\n\
+catalog.db\n\
+catalog.db-journal\n\
+catalog.db-wal\n\
+catalog.db-shm\n\
+\n\
+# Generated thumbnails — regenerated via 'maki generate-previews'\n\
+previews/\n\
+smart-previews/\n\
+\n\
+# AI artifacts — regenerated via 'maki embed' / 'maki faces detect'\n\
+embeddings/\n\
+faces/\n\
+")?;
+            }
 
             if cli.json {
                 println!("{}", serde_json::json!({

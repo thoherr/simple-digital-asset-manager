@@ -229,7 +229,7 @@ Additional modules handle EXIF extraction, XMP reading/writing, configuration pa
 - `catalog.db` -- SQLite database (derived index, rebuildable)
 - `metadata/` -- YAML sidecar files (source of truth)
 - `previews/` -- JPEG thumbnails for offline browsing (800px)
-- `smart_previews/` -- high-resolution previews for zoom/pan (2560px)
+- `smart-previews/` -- high-resolution previews for zoom/pan (2560px)
 - `volumes.yaml` -- registered volume definitions
 - `searches.toml` -- saved searches
 - `collections.yaml` -- static album definitions

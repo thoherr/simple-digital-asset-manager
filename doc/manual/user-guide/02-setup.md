@@ -81,12 +81,15 @@ This creates the following structure:
 ```
 ~/Photos/
   maki.toml          # Configuration file
-  catalog.db        # SQLite database (cache/index)
-  volumes.yaml      # Registered storage volumes
-  metadata/         # YAML sidecar files (source of truth)
-  previews/         # Preview thumbnails (800px)
-  smart_previews/   # High-resolution previews for zoom/pan (2560px)
+  .gitignore         # Excludes derived files for optional git backup
+  catalog.db         # SQLite database (cache/index)
+  volumes.yaml       # Registered storage volumes
+  metadata/          # YAML sidecar files (source of truth)
+  previews/          # Preview thumbnails (800px)
+  smart-previews/    # High-resolution previews for zoom/pan (2560px)
 ```
+
+The `.gitignore` is set up so you can optionally track the catalog with git for backup and history. See [Backing Up Your Catalog with Git](07-maintenance.md#backing-up-your-catalog-with-git) for details.
 
 ### How catalog detection works
 
@@ -111,7 +114,7 @@ Error: No maki catalog found. Run `maki init` to create one.
 
 ### Reinitializing
 
-`maki init` refuses to overwrite an existing catalog. If you need to start fresh, delete the catalog files first (`maki.toml`, `catalog.db`, `metadata/`, `previews/`, `smart_previews/`, `volumes.yaml`) and run `maki init` again.
+`maki init` refuses to overwrite an existing catalog. If you need to start fresh, delete the catalog files first (`maki.toml`, `catalog.db`, `metadata/`, `previews/`, `smart-previews/`, `volumes.yaml`) and run `maki init` again.
 
 
 ## Registering Volumes
