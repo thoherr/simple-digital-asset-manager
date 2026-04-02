@@ -263,6 +263,80 @@ Key patterns demonstrated in the script:
 
 ---
 
+## Bulk Operations on a List of IDs
+
+A common pattern: you have a file of asset IDs (one per line) and want to apply the same operation to all of them. There are several approaches, from simple to fast.
+
+### xargs (simple, one process per asset)
+
+```bash
+# Tag all assets in the list
+cat ids.txt | xargs -I{} maki tag {} livestream
+
+# Rate all assets
+cat ids.txt | xargs -I{} maki edit {} --rating 3
+
+# Delete (preview first, then apply)
+cat ids.txt | xargs -I{} maki delete {}
+cat ids.txt | maki delete --apply
+```
+
+This spawns a new `maki` process per line. Fine for hundreds of assets, slow for thousands.
+
+### Shell loop (simple, slightly faster)
+
+```bash
+while read id; do
+    maki tag "$id" livestream
+done < ids.txt
+```
+
+Same speed as xargs (one process per asset), but easier to add conditional logic.
+
+### maki shell script (fast, single process)
+
+The interactive shell keeps the catalog open across commands. Generate a script file and run it in one shot:
+
+```bash
+# Generate a shell script from the ID list
+awk '{print "tag " $0 " livestream"}' ids.txt > /tmp/retag.maki
+
+# Execute all commands in a single maki process
+maki shell /tmp/retag.maki
+```
+
+This is significantly faster for large batches (thousands of assets) because it avoids the overhead of opening the catalog for every command.
+
+### Commands that read IDs from stdin
+
+Some commands accept asset IDs on stdin when no positional IDs are given:
+
+```bash
+# Delete assets from a list
+cat ids.txt | maki delete --apply
+
+# Relocate assets from a list
+cat ids.txt | maki relocate --target "Archive" --log
+```
+
+### Where do ID lists come from?
+
+```bash
+# Search results
+maki search -q "tag:landscape rating:4+" > landscape-ids.txt
+
+# Backup audit
+maki backup-status --at-risk -q > at-risk-ids.txt
+
+# External sources (CSV, spreadsheet, other tools)
+cut -d, -f1 ratings.csv | tail -n +2 > ids.txt
+
+# Saved from a previous session
+maki shell -c 'search tag:concert' > concert-ids.txt
+```
+
+---
+
 ## Tips
 
 **Avoid quoting pitfalls.** When search queries contain inner quotes (e.g., `tag:"Fools Theater"`), use single quotes for the outer shell argument:
