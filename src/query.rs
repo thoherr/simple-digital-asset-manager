@@ -1913,9 +1913,17 @@ impl QueryEngine {
             let old_lower = old_tag.to_lowercase();
             let had_old = asset.tags.iter().any(|t| t.to_lowercase() == old_lower);
             let new_lower = new_tag.to_lowercase();
-            // Check for exact match (same string) vs case-insensitive match
+            // Check if asset has the new tag as a SEPARATE tag from the old one.
+            // When old and new differ only in case ("Livestream" → "livestream"),
+            // the old tag must not count as "already having the target".
             let has_exact_new = asset.tags.contains(&new_tag.to_string());
-            let has_new_ci = asset.tags.iter().any(|t| t.to_lowercase() == new_lower);
+            let has_new_separately = if old_lower == new_lower {
+                // Case-only rename: the old tag doesn't count as having the new tag
+                false
+            } else {
+                // Different tags: check if asset has the target (case-insensitive)
+                asset.tags.iter().any(|t| t.to_lowercase() == new_lower)
+            };
             if !had_old {
                 result.skipped += 1;
                 on_asset(&asset_id[..8.min(asset_id.len())], TagRenameAction::Skipped);
@@ -1928,12 +1936,13 @@ impl QueryEngine {
             // - Otherwise → rename
             let actual_old = asset.tags.iter().find(|t| t.to_lowercase() == old_lower).cloned();
             let action = if actual_old.as_deref() == Some(new_tag) {
-                // Already has the exact target — no-op
+                // Already has the exact target string — no-op
                 TagRenameAction::Skipped
-            } else if has_exact_new || has_new_ci {
-                // Has target (possibly different case) — just remove old
+            } else if has_exact_new || has_new_separately {
+                // Has target as a separate tag — just remove old (merge)
                 TagRenameAction::Removed
             } else {
+                // Replace old with new
                 TagRenameAction::Renamed
             };
 
