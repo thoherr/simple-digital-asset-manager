@@ -1590,10 +1590,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             if !gitignore_path.exists() {
                 std::fs::write(&gitignore_path, "\
 # Derived cache — rebuilt from YAML sidecars via 'maki rebuild-catalog'\n\
-catalog.db\n\
-catalog.db-journal\n\
-catalog.db-wal\n\
-catalog.db-shm\n\
+catalog.db*\n\
 \n\
 # Generated thumbnails — regenerated via 'maki generate-previews'\n\
 previews/\n\
