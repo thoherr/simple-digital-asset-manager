@@ -1910,19 +1910,43 @@ impl QueryEngine {
             on_asset(&name, true);
 
             if apply {
-                asset.tags.retain(|t| t != old_tag);
+                // Collect ancestor components of the new tag that are now redundant.
+                // E.g., renaming "Munich" to "location|Germany|Bavaria|Munich" makes
+                // standalone "Germany", "Bavaria", "location" tags redundant because
+                // hierarchical search matches ancestors automatically.
+                let new_parts: Vec<&str> = new_tag.split('|').collect();
+                let mut redundant = vec![old_tag.to_string()];
+                if new_parts.len() > 1 {
+                    // Build all ancestor paths: "location", "location|Germany", etc.
+                    let mut ancestors = Vec::new();
+                    for i in 1..new_parts.len() {
+                        ancestors.push(new_parts[..i].join("|"));
+                    }
+                    // Also check bare component names (e.g., "Germany" without prefix)
+                    for part in &new_parts[..new_parts.len() - 1] {
+                        if !part.is_empty() {
+                            ancestors.push(part.to_string());
+                        }
+                    }
+                    for ancestor in &ancestors {
+                        if asset.tags.contains(ancestor) && !redundant.contains(ancestor) {
+                            redundant.push(ancestor.clone());
+                        }
+                    }
+                }
+
+                asset.tags.retain(|t| !redundant.contains(t));
                 if !has_new {
                     asset.tags.push(new_tag.to_string());
                 }
                 store.save(&asset)?;
                 catalog.insert_asset(&asset)?;
 
-                // Writeback: remove old tag, add new tag in XMP
+                // Writeback: remove old + redundant tags, add new tag in XMP
                 if self.is_writeback_enabled() {
                     let to_add = if has_new { vec![] } else { vec![new_tag.to_string()] };
-                    let to_remove = vec![old_tag.to_string()];
                     self.write_back_tags_to_xmp_inner(
-                        &mut asset, &to_add, &to_remove,
+                        &mut asset, &to_add, &redundant,
                         &catalog, &store, &online, &content_store,
                     );
                 }
