@@ -1898,9 +1898,11 @@ impl QueryEngine {
             let uuid: uuid::Uuid = asset_id.parse()?;
             let mut asset = store.load(uuid)?;
 
-            // Replace old tag with new tag
-            let had_old = asset.tags.contains(&old_tag.to_string());
-            let has_new = asset.tags.contains(&new_tag.to_string());
+            // Case-insensitive match: find the old tag as stored (may differ in case)
+            let old_lower = old_tag.to_lowercase();
+            let had_old = asset.tags.iter().any(|t| t.to_lowercase() == old_lower);
+            let new_lower = new_tag.to_lowercase();
+            let has_new = asset.tags.iter().any(|t| t.to_lowercase() == new_lower);
             if !had_old {
                 skipped += 1;
                 continue;
@@ -1912,30 +1914,35 @@ impl QueryEngine {
             if apply {
                 // Collect ancestor components of the new tag that are now redundant.
                 // E.g., renaming "Munich" to "location|Germany|Bavaria|Munich" makes
-                // standalone "Germany", "Bavaria", "location" tags redundant because
+                // standalone "germany", "bavaria", "location" tags redundant because
                 // hierarchical search matches ancestors automatically.
+                // All matching is case-insensitive (consistent with tag search).
                 let new_parts: Vec<&str> = new_tag.split('|').collect();
-                let mut redundant = vec![old_tag.to_string()];
+                let mut redundant_lower: Vec<String> = vec![old_lower.clone()];
                 if new_parts.len() > 1 {
-                    // Build all ancestor paths: "location", "location|Germany", etc.
-                    let mut ancestors = Vec::new();
+                    // Build all ancestor paths: "location", "location|germany", etc.
                     for i in 1..new_parts.len() {
-                        ancestors.push(new_parts[..i].join("|"));
-                    }
-                    // Also check bare component names (e.g., "Germany" without prefix)
-                    for part in &new_parts[..new_parts.len() - 1] {
-                        if !part.is_empty() {
-                            ancestors.push(part.to_string());
+                        let ancestor = new_parts[..i].join("|").to_lowercase();
+                        if !redundant_lower.contains(&ancestor) {
+                            redundant_lower.push(ancestor);
                         }
                     }
-                    for ancestor in &ancestors {
-                        if asset.tags.contains(ancestor) && !redundant.contains(ancestor) {
-                            redundant.push(ancestor.clone());
+                    // Also check bare component names (e.g., "germany" without prefix)
+                    for part in &new_parts[..new_parts.len() - 1] {
+                        let bare = part.to_lowercase();
+                        if !bare.is_empty() && !redundant_lower.contains(&bare) {
+                            redundant_lower.push(bare);
                         }
                     }
                 }
 
-                asset.tags.retain(|t| !redundant.contains(t));
+                // Collect actual tag strings being removed (for XMP writeback)
+                let redundant: Vec<String> = asset.tags.iter()
+                    .filter(|t| redundant_lower.contains(&t.to_lowercase()))
+                    .cloned()
+                    .collect();
+
+                asset.tags.retain(|t| !redundant_lower.contains(&t.to_lowercase()));
                 if !has_new {
                     asset.tags.push(new_tag.to_string());
                 }

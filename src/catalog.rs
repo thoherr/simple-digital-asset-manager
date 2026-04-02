@@ -3839,7 +3839,7 @@ impl Catalog {
         let mut stmt = self.conn.prepare(
             "SELECT a.id, a.stack_id \
              FROM assets a, json_each(a.tags) AS je \
-             WHERE je.value = ?1 \
+             WHERE je.value = ?1 COLLATE NOCASE \
              ORDER BY a.created_at ASC",
         )?;
         let rows = stmt.query_map(rusqlite::params![tag], |r| {

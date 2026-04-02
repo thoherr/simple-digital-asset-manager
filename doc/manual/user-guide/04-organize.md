@@ -71,17 +71,19 @@ with a warning.
 
 ### Renaming tags
 
-To rename a tag across all assets that have it — for example, reorganizing a flat tag into a hierarchy or fixing a typo:
+To rename a tag across all assets that have it — for example, reorganizing a flat tag into a hierarchy, normalizing casing, or fixing a typo:
 
 ```bash
 # Preview what would change
-maki tag rename "concert" "Subject/Performing Arts/Concert"
+maki tag rename "Munich" "location/Germany/Bavaria/Munich"
 
 # Apply the rename
-maki tag rename "concert" "Subject/Performing Arts/Concert" --apply --log
+maki tag rename "Munich" "location/Germany/Bavaria/Munich" --apply --log
 ```
 
-This updates every affected asset's catalog entry, YAML sidecar, and XMP recipe files in a single pass. Assets that already have the new tag just get the old one removed.
+Matching is case-insensitive: `maki tag rename "Concert" "concert"` finds "Concert", "CONCERT", and "concert" and normalizes them all.
+
+When renaming to a hierarchical tag, standalone tags that are now ancestors of the new tag are automatically removed. For example, renaming "Munich" to "location/Germany/Bavaria/Munich" also removes standalone "Germany" and "Bavaria" tags — since `tag:Germany` now matches via the hierarchy, keeping them separately would be redundant.
 
 ### Browsing tags in the web UI
 

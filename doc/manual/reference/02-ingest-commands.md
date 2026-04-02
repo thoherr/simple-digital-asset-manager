@@ -352,17 +352,21 @@ maki-tag-rename -- rename a tag across all assets that have it
 
 Finds all assets tagged with OLD_TAG and replaces that tag with NEW_TAG. This is an atomic bulk operation — every affected asset is updated in the catalog, YAML sidecar, and XMP recipe files (if writeback is enabled) in a single pass.
 
-Useful for reorganizing a flat tag vocabulary into a hierarchy, fixing typos, or consolidating synonyms. If an asset already has NEW_TAG, the old tag is removed without creating a duplicate.
+Matching is **case-insensitive**, consistent with tag search. `maki tag rename "Concert" "concert"` finds and renames "Concert", "CONCERT", and "concert" variants. The stored result uses the exact case specified in NEW_TAG.
+
+**Hierarchy-aware cleanup:** When renaming a flat tag to a hierarchical one (e.g., "Munich" to "location/Germany/Bavaria/Munich"), standalone tags that are now ancestors of the new tag are automatically removed. Since hierarchical search matches ancestors, keeping "Germany" or "Bavaria" as separate tags would be redundant. This cleanup is also case-insensitive — "bavaria" is removed when "Bavaria" appears in the hierarchy.
+
+If an asset already has NEW_TAG (in any case variant), the old tag is simply removed without creating a duplicate.
 
 Without `--apply`, runs in report-only mode showing which assets would be affected.
 
 ### ARGUMENTS
 
 **OLD_TAG** (required)
-: The tag to rename. Uses the same input conventions as `maki tag`: `/` for hierarchy, `\/` for literal slashes.
+: The tag to rename. Uses the same input conventions as `maki tag`: `/` for hierarchy, `\/` for literal slashes. Matched case-insensitively.
 
 **NEW_TAG** (required)
-: The replacement tag.
+: The replacement tag. Stored with the exact case given.
 
 ### OPTIONS
 
@@ -371,22 +375,28 @@ Without `--apply`, runs in report-only mode showing which assets would be affect
 
 ### EXAMPLES
 
-Rename a flat tag to a hierarchical one:
+Rename a flat tag to a hierarchical one (also removes standalone "Germany" and "Bavaria"):
 
 ```bash
-maki tag rename "concert" "Subject/Performing Arts/Concert" --apply
+maki tag rename "Munich" "location/Germany/Bavaria/Munich" --apply
+```
+
+Normalize casing:
+
+```bash
+maki tag rename "Concert" "concert" --apply
+```
+
+Consolidate synonyms across languages:
+
+```bash
+maki tag rename "Konzert" "concert" --apply
 ```
 
 Fix a typo:
 
 ```bash
 maki tag rename "lanscape" "landscape" --apply
-```
-
-Consolidate synonyms:
-
-```bash
-maki tag rename "street-photography" "street" --apply
 ```
 
 Preview what would change:

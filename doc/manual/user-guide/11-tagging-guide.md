@@ -328,22 +328,26 @@ Fix the mechanical issues first -- these can be done in bulk:
 3. **Remove dead workflow tags** -- bulk-import markers, migration artifacts, tags from previous tools that no longer serve a purpose.
 
 ```bash
-# Rename a tag across the entire catalog
+# Rename a tag across the entire catalog (case-insensitive matching)
 maki tag rename "Concert" "concert"
 maki tag rename "Konzert" "concert"
 maki tag rename "München" "Munich"
 ```
+
+All matching is case-insensitive — `maki tag rename "Concert" "concert"` catches "Concert", "CONCERT", and "concert".
 
 ### Phase 3: Structure
 
 Once the duplicates are resolved, introduce hierarchy:
 
 ```bash
-# Move flat tags into hierarchy
+# Move flat tags into hierarchy (redundant ancestors are auto-removed)
 maki tag rename "concert" "subject/performing arts/concert"
 maki tag rename "landscape" "subject/nature/landscape"
 maki tag rename "Munich" "location/Germany/Bavaria/Munich"
 ```
+
+When renaming to a hierarchical tag, standalone tags that match ancestor components are removed automatically. For example, the last command also removes standalone "Germany" and "Bavaria" tags since they're now matched by the hierarchy.
 
 Do this for your most-used tags first (the top 50-100 tags cover most of your catalog). The long tail can be restructured gradually.
 
