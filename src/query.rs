@@ -1844,11 +1844,30 @@ impl QueryEngine {
 
         let changed;
         if remove {
-            let to_remove: std::collections::HashSet<&str> =
-                tags.iter().map(|s| s.as_str()).collect();
+            // Collect tags to remove, including orphaned ancestors
+            let mut all_to_remove = Vec::new();
+            for tag in tags {
+                if asset.tags.iter().any(|t| t == tag) {
+                    all_to_remove.push(tag.clone());
+                }
+            }
+            // After removing the requested tags, check for orphaned ancestors
+            let remaining_after: Vec<String> = asset.tags.iter()
+                .filter(|t| !all_to_remove.contains(t))
+                .cloned()
+                .collect();
+            for tag in tags {
+                for orphan in crate::tag_util::orphaned_ancestors(tag, &remaining_after) {
+                    if !all_to_remove.contains(&orphan) && asset.tags.iter().any(|t| t == &orphan) {
+                        all_to_remove.push(orphan);
+                    }
+                }
+            }
+            let remove_set: std::collections::HashSet<&str> =
+                all_to_remove.iter().map(|s| s.as_str()).collect();
             let mut actually_removed = Vec::new();
             asset.tags.retain(|t| {
-                if to_remove.contains(t.as_str()) {
+                if remove_set.contains(t.as_str()) {
                     actually_removed.push(t.clone());
                     false
                 } else {
@@ -1857,10 +1876,12 @@ impl QueryEngine {
             });
             changed = actually_removed;
         } else {
+            // Expand hierarchical tags to include all ancestor paths
+            let expanded = crate::tag_util::expand_all_ancestors(tags);
             let existing: std::collections::HashSet<String> =
                 asset.tags.iter().cloned().collect();
             let mut added = Vec::new();
-            for tag in tags {
+            for tag in &expanded {
                 if !existing.contains(tag) {
                     asset.tags.push(tag.clone());
                     added.push(tag.clone());
@@ -1985,31 +2006,28 @@ impl QueryEngine {
                     }
                 }
 
-                // Also collect ancestor components that are now redundant
-                let new_effective = new_tag;
-                let new_parts: Vec<&str> = new_effective.split('|').collect();
-                if new_parts.len() > 1 {
-                    for i in 1..new_parts.len() {
-                        let ancestor = new_parts[..i].join("|").to_lowercase();
-                        if let Some(existing) = asset.tags.iter().find(|t| t.to_lowercase() == ancestor) {
-                            if !tags_to_remove.contains(existing) {
-                                tags_to_remove.push(existing.clone());
-                            }
-                        }
-                    }
-                    for part in &new_parts[..new_parts.len() - 1] {
-                        let bare = part.to_lowercase();
-                        if let Some(existing) = asset.tags.iter().find(|t| t.to_lowercase() == bare) {
-                            if !tags_to_remove.contains(existing) {
-                                tags_to_remove.push(existing.clone());
-                            }
+                // Expand tags_to_add to include all ancestor paths
+                let expanded_adds = crate::tag_util::expand_all_ancestors(&tags_to_add);
+
+                // Also remove old standalone ancestors that are now covered by
+                // the expanded new tags (e.g., standalone "Germany" when we're
+                // adding "location|Germany|Bayern|München" which includes "location|Germany")
+                for existing_tag in &asset.tags {
+                    let el = existing_tag.to_lowercase();
+                    if !tags_to_remove.contains(existing_tag) {
+                        // Check if this existing tag is a bare component name that's
+                        // now covered by one of the expanded adds
+                        let covered = expanded_adds.iter().any(|a| a.to_lowercase() == el);
+                        if covered && !expanded_adds.iter().any(|a| a == existing_tag) {
+                            // Same content but different case — will be replaced by the expanded version
+                            tags_to_remove.push(existing_tag.clone());
                         }
                     }
                 }
 
-                // Deduplicate adds (case-insensitive against remaining tags)
+                // Apply removals, then add expanded tags (dedup case-insensitive)
                 asset.tags.retain(|t| !tags_to_remove.iter().any(|r| r == t));
-                for add in &tags_to_add {
+                for add in &expanded_adds {
                     let add_lower = add.to_lowercase();
                     if !asset.tags.iter().any(|t| t.to_lowercase() == add_lower) {
                         asset.tags.push(add.clone());
@@ -5093,7 +5111,58 @@ mod tests {
     }
 
     #[test]
-    fn tag_rename_ancestor_cleanup() {
+    fn tag_add_expands_ancestors() {
+        let (dir, asset_id) = setup_tag_rename_catalog(&["sunset"]);
+        let engine = QueryEngine::new(dir.path());
+        // Adding a hierarchical tag should expand ancestors
+        let result = engine.tag(&asset_id, &["subject|nature|landscape|mountain".to_string()], false).unwrap();
+        // Should add: subject, subject|nature, subject|nature|landscape, subject|nature|landscape|mountain
+        assert!(result.changed.len() >= 4, "should add tag + 3 ancestors, got: {:?}", result.changed);
+        assert!(result.current_tags.contains(&"subject".to_string()));
+        assert!(result.current_tags.contains(&"subject|nature".to_string()));
+        assert!(result.current_tags.contains(&"subject|nature|landscape".to_string()));
+        assert!(result.current_tags.contains(&"subject|nature|landscape|mountain".to_string()));
+        assert!(result.current_tags.contains(&"sunset".to_string()), "existing tag should be preserved");
+    }
+
+    #[test]
+    fn tag_remove_cleans_orphaned_ancestors() {
+        let (dir, asset_id) = setup_tag_rename_catalog(&[
+            "subject|nature|landscape|mountain",
+            "subject|nature|landscape",
+            "subject|nature",
+            "subject",
+        ]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag(&asset_id, &["subject|nature|landscape|mountain".to_string()], true).unwrap();
+        // All ancestors should be removed (no other descendants keep them alive)
+        assert!(!result.current_tags.contains(&"subject|nature|landscape|mountain".to_string()));
+        assert!(!result.current_tags.contains(&"subject|nature|landscape".to_string()));
+        assert!(!result.current_tags.contains(&"subject|nature".to_string()));
+        assert!(!result.current_tags.contains(&"subject".to_string()));
+    }
+
+    #[test]
+    fn tag_remove_keeps_shared_ancestors() {
+        let (dir, asset_id) = setup_tag_rename_catalog(&[
+            "subject|nature|landscape|mountain",
+            "subject|nature|landscape|beach",
+            "subject|nature|landscape",
+            "subject|nature",
+            "subject",
+        ]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag(&asset_id, &["subject|nature|landscape|mountain".to_string()], true).unwrap();
+        // mountain removed, but ancestors stay because beach keeps them alive
+        assert!(!result.current_tags.contains(&"subject|nature|landscape|mountain".to_string()));
+        assert!(result.current_tags.contains(&"subject|nature|landscape|beach".to_string()));
+        assert!(result.current_tags.contains(&"subject|nature|landscape".to_string()));
+        assert!(result.current_tags.contains(&"subject|nature".to_string()));
+        assert!(result.current_tags.contains(&"subject".to_string()));
+    }
+
+    #[test]
+    fn tag_rename_with_ancestor_expansion() {
         let (dir, asset_id) = setup_tag_rename_catalog(&["München", "Germany", "Bayern"]);
         let engine = QueryEngine::new(dir.path());
         let result = engine.tag_rename("München", "location|Germany|Bayern|München", true, |_, _| {}).unwrap();
@@ -5101,8 +5170,13 @@ mod tests {
 
         let store = crate::metadata_store::MetadataStore::new(dir.path());
         let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        // Full tag + all ancestors should be present
         assert!(asset.tags.contains(&"location|Germany|Bayern|München".to_string()));
-        assert!(!asset.tags.contains(&"Germany".to_string()), "ancestor should be removed");
-        assert!(!asset.tags.contains(&"Bayern".to_string()), "ancestor should be removed");
+        assert!(asset.tags.contains(&"location|Germany|Bayern".to_string()));
+        assert!(asset.tags.contains(&"location|Germany".to_string()));
+        assert!(asset.tags.contains(&"location".to_string()));
+        // Standalone flat tags remain (they're separate concepts)
+        assert!(asset.tags.contains(&"Germany".to_string()));
+        assert!(asset.tags.contains(&"Bayern".to_string()));
     }
 }
