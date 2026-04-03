@@ -1053,6 +1053,26 @@ enum TagCommands {
         /// Asset ID (or unique prefix)
         asset_id: String,
     },
+
+    /// Expand all hierarchical tags to include ancestor paths
+    #[command(name = "expand-ancestors")]
+    ExpandAncestors {
+        /// Search query to select assets (same syntax as `maki search`)
+        #[arg(display_order = 1)]
+        query: Option<String>,
+
+        /// Limit to a specific asset
+        #[arg(long, display_order = 10)]
+        asset: Option<String>,
+
+        /// Apply changes (default: report-only)
+        #[arg(long, display_order = 20)]
+        apply: bool,
+
+        /// Asset IDs (for shell variable expansion)
+        #[arg(hide = true, trailing_var_arg = true)]
+        asset_ids: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2823,6 +2843,84 @@ faces/\n\
                             .map(|t| maki::tag_util::tag_storage_to_display(t))
                             .collect();
                         println!("Cleared {} tag(s): {}", display_removed.len(), display_removed.join(", "));
+                    }
+                    Ok(())
+                }
+                Some(TagCommands::ExpandAncestors { query, asset, apply, asset_ids }) => {
+                    let catalog_root = maki::config::find_catalog_root()?;
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let metadata_store = maki::metadata_store::MetadataStore::new(&catalog_root);
+                    let engine = maki::query::QueryEngine::new(&catalog_root);
+
+                    let scope = engine.resolve_scope(query.as_deref(), asset.as_deref(), &asset_ids)?;
+                    let summaries = metadata_store.list()?;
+                    let ids: Vec<uuid::Uuid> = match scope {
+                        Some(set) => set.iter().filter_map(|id| id.parse().ok()).collect(),
+                        None => summaries.iter().map(|s| s.id).collect(),
+                    };
+
+                    let mut checked = 0usize;
+                    let mut expanded = 0usize;
+                    let mut tags_added = 0usize;
+
+                    for asset_id in &ids {
+                        let mut asset_obj = match metadata_store.load(*asset_id) {
+                            Ok(a) => a,
+                            Err(_) => continue,
+                        };
+                        checked += 1;
+
+                        let full = maki::tag_util::expand_all_ancestors(&asset_obj.tags);
+                        let existing: std::collections::HashSet<&str> = asset_obj.tags.iter().map(|s| s.as_str()).collect();
+                        let missing: Vec<String> = full.iter()
+                            .filter(|t| !existing.contains(t.as_str()))
+                            .cloned()
+                            .collect();
+
+                        if missing.is_empty() {
+                            continue;
+                        }
+
+                        if cli.log {
+                            let id_str = asset_id.to_string();
+                            let name = asset_obj.name.as_deref().unwrap_or(&id_str[..8]);
+                            if apply {
+                                eprintln!("  {} — {} ancestor(s) added", name, missing.len());
+                            } else {
+                                eprintln!("  {} — {} ancestor(s) would add", name, missing.len());
+                            }
+                        }
+
+                        if apply {
+                            for tag in &missing {
+                                asset_obj.tags.push(tag.clone());
+                            }
+                            metadata_store.save(&asset_obj)?;
+                            catalog.insert_asset(&asset_obj)?;
+                        }
+
+                        expanded += 1;
+                        tags_added += missing.len();
+                    }
+
+                    if cli.json {
+                        println!("{}", serde_json::json!({
+                            "dry_run": !apply,
+                            "checked": checked,
+                            "expanded": expanded,
+                            "tags_added": tags_added,
+                        }));
+                    } else {
+                        if !apply && expanded > 0 {
+                            eprint!("Dry run — ");
+                        }
+                        println!("Expand ancestors: {} checked, {} assets with missing ancestors, {} tags {}",
+                            checked, expanded, tags_added,
+                            if apply { "added" } else { "would add" },
+                        );
+                        if !apply && expanded > 0 {
+                            println!("  Run with --apply to expand ancestor tags.");
+                        }
                     }
                     Ok(())
                 }

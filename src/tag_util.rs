@@ -118,7 +118,6 @@ pub fn expand_all_ancestors(tags: &[String]) -> Vec<String> {
 /// ancestor alive. Returns the list of ancestor tags that should also be removed.
 pub fn orphaned_ancestors(tag_to_remove: &str, all_tags: &[String]) -> Vec<String> {
     let ancestors = expand_ancestors(tag_to_remove);
-    let tag_lower = tag_to_remove.to_lowercase();
     let mut orphaned = Vec::new();
 
     let ancestors_lower: std::collections::HashSet<String> = ancestors.iter()
