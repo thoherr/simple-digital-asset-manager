@@ -71,7 +71,7 @@ Filters combine with **AND** — every filter must match. Free-text tokens that 
 
     type:image,video -tag:rejected rating:3+
 
-**Hierarchical tags** — `tag:animals` matches `animals`, `animals/birds`, `animals/birds/eagles`.
+**Hierarchical tags** — `tag:animals` matches `animals`, `animals|birds`, `animals|birds|eagles`.
 
 **Numeric filters** — all support: exact (`3`), minimum (`3+`), range (`3-5`), OR (`2,4`), OR+min (`2,4+`).
 

@@ -40,7 +40,7 @@ Searches the catalog for assets matching the given query. The query string suppo
 | Filter | Description | Examples |
 |--------|-------------|----------|
 | `type:` | Asset type | `type:image`, `type:video`, `type:audio` |
-| `tag:` | Tag name (hierarchical: matches descendants) | `tag:landscape`, `tag:"golden hour"`, `tag:animals/birds` |
+| `tag:` | Tag name (hierarchical: matches descendants) | `tag:landscape`, `tag:"golden hour"`, `tag:animals|birds` |
 | `format:` | File format | `format:jpg`, `format:nef`, `format:mp4` |
 | `rating:` | Star rating (exact, range, OR) | `rating:5`, `rating:3+`, `rating:3-5`, `rating:2,4` |
 | `label:` | Color label | `label:Red`, `label:Green` |

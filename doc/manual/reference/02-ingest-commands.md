@@ -354,7 +354,7 @@ Finds all assets tagged with OLD_TAG and replaces that tag with NEW_TAG. This is
 
 Matching is **case-insensitive**, consistent with tag search. `maki tag rename "Concert" "concert"` finds and renames "Concert", "CONCERT", and "concert" variants. The stored result uses the exact case specified in NEW_TAG.
 
-**Hierarchy-aware cleanup:** When renaming a flat tag to a hierarchical one (e.g., "Munich" to "location/Germany/Bavaria/Munich"), standalone tags that are now ancestors of the new tag are automatically removed. Since hierarchical search matches ancestors, keeping "Germany" or "Bavaria" as separate tags would be redundant. This cleanup is also case-insensitive — "bavaria" is removed when "Bavaria" appears in the hierarchy.
+**Hierarchy-aware cleanup:** When renaming a flat tag to a hierarchical one (e.g., "Munich" to "location|Germany|Bavaria|Munich"), standalone tags that are now ancestors of the new tag are automatically removed. Since hierarchical search matches ancestors, keeping "Germany" or "Bavaria" as separate tags would be redundant. This cleanup is also case-insensitive — "bavaria" is removed when "Bavaria" appears in the hierarchy.
 
 If an asset already has NEW_TAG (in any case variant), the old tag is simply removed without creating a duplicate.
 
@@ -363,7 +363,7 @@ Without `--apply`, runs in report-only mode showing which assets would be affect
 ### ARGUMENTS
 
 **OLD_TAG** (required)
-: The tag to rename. Uses the same input conventions as `maki tag`: `/` for hierarchy, `\/` for literal slashes. Matched case-insensitively.
+: The tag to rename. Uses the same input conventions as `maki tag`: `|` (or `>`) for hierarchy. Matched case-insensitively.
 
 **NEW_TAG** (required)
 : The replacement tag. Stored with the exact case given.
@@ -378,7 +378,7 @@ Without `--apply`, runs in report-only mode showing which assets would be affect
 Rename a flat tag to a hierarchical one (also removes standalone "Germany" and "Bavaria"):
 
 ```bash
-maki tag rename "Munich" "location/Germany/Bavaria/Munich" --apply
+maki tag rename "Munich" "location|Germany|Bavaria|Munich" --apply
 ```
 
 Normalize casing:

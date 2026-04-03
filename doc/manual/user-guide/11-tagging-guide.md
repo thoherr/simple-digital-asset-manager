@@ -26,7 +26,7 @@ Primary tags should describe the visible content of the image: *sunset*, *concer
 
 ### Be specific and general at the same time
 
-Hierarchical tags handle this naturally. Tagging an image `subject/animal/bird/heron` means it will match searches for `tag:subject/animal`, `tag:subject/animal/bird`, and `tag:subject/animal/bird/heron`. You don't need to manually add parent tags -- MAKI's search engine matches ancestors automatically.
+Hierarchical tags handle this naturally. Tagging an image `subject|animal|bird|heron` means it will match searches for `tag:subject|animal`, `tag:subject|animal|bird`, and `tag:subject|animal|bird|heron`. You don't need to manually add parent tags -- MAKI's search engine matches ancestors automatically.
 
 ### Use one language consistently
 
@@ -53,10 +53,10 @@ Pick a convention and stay consistent:
 
 The one exception is **proper nouns**: place names, person names, venue names, and project names keep their natural capitalization. This follows normal language rules that everyone already knows -- no ambiguity about what gets capitalized:
 
-- `location/Germany/Bayern/Gelting` -- country in English, local names below
-- `subject/nature/landscape/mountain` -- generic terms lowercase
-- `person/artist/Peter Schneider` -- person name capitalized
-- `project/Focus on Music` -- project name capitalized
+- `location|Germany|Bayern|Gelting` -- country in English, local names below
+- `subject|nature|landscape|mountain` -- generic terms lowercase
+- `person|artist|Peter Schneider` -- person name capitalized
+- `project|Focus on Music` -- project name capitalized
 
 MAKI's tag search is case-insensitive for queries, but the stored tags should be consistent. A canonical form prevents duplicates from creeping in.
 
@@ -82,11 +82,11 @@ A well-structured tag vocabulary has two layers:
 ### The facets
 
 ```
-subject/         what is in the image?
-location/        where was it taken?
-person/          who is in it? (named individuals)
-technique/       how was it made?
-project/         what project or assignment does it belong to?
+subject          what is in the image?
+location         where was it taken?
+person           who is in it? (named individuals)
+technique        how was it made?
+project          what project or assignment does it belong to?
 ```
 
 These five facets cover most tagging needs. Not every image needs all five -- a landscape might only need subject and location; a studio portrait might need subject, person, and technique.
@@ -96,46 +96,46 @@ These five facets cover most tagging needs. Not every image needs all five -- a 
 Subject is the largest facet. A starting structure for photography:
 
 ```
-subject/
-├── nature/
-│   ├── landscape/    (mountain, forest, beach, desert, valley, ...)
-│   ├── flora/        (flowers, trees, leaves, moss, mushroom, ...)
-│   ├── sky/          (sunset, sunrise, clouds, fog, storm, aurora, ...)
-│   └── water/        (ocean, river, lake, waterfall, ...)
-├── animal/
-│   ├── mammal/       (deer, fox, bear, seal, whale, ...)
-│   ├── bird/         (eagle, owl, heron, kingfisher, swan, ...)
-│   ├── reptile/      (lizard, snake, turtle, frog, ...)
-│   ├── invertebrate/ (butterfly, dragonfly, bee, spider, snail, ...)
-│   ├── aquatic/      (fish, jellyfish, coral, crab, ...)
-│   └── domestic/     (dog, cat, horse, cow, sheep, ...)
-├── urban/
-│   ├── architecture/ (building, bridge, skyscraper, tower, facade, ...)
-│   ├── street/       (road, alley, graffiti, neon sign, shop front, ...)
-│   └── transport/    (car, bicycle, train, airplane, boat, ...)
-├── person/
-│   ├── portrait/     (headshot, environmental portrait, candid, ...)
-│   ├── group/        (family, couple, crowd, ...)
-│   └── activity/     (dance, sports, hiking, cooking, ...)
-├── performing arts/
-│   ├── concert/      (live music, musician, singer, guitarist, ...)
-│   ├── theatre/      (actor, stage set, rehearsal, costume, ...)
-│   └── dance/        (ballet, contemporary, ...)
-├── event/
-│   ├── festival/     (music festival, cultural festival, ...)
-│   ├── exhibition/   (art exhibition, photo exhibition, ...)
-│   ├── wedding/
-│   ├── workshop/     (photo workshop, ...)
-│   └── sports event/ (marathon, match, tournament, ...)
-├── object/
-│   ├── food/         (coffee, wine, cake, cooking, restaurant, ...)
-│   ├── instrument/   (guitar, piano, drums, saxophone, ...)
-│   └── other/        (book, camera, flag, candle, sculpture, ...)
-└── concept/
-    ├── travel/
-    ├── fashion/
-    ├── documentary/
-    └── abstract/
+subject
+├── nature
+│   ├── landscape    (mountain, forest, beach, desert, valley, ...)
+│   ├── flora        (flowers, trees, leaves, moss, mushroom, ...)
+│   ├── sky          (sunset, sunrise, clouds, fog, storm, aurora, ...)
+│   └── water        (ocean, river, lake, waterfall, ...)
+├── animal
+│   ├── mammal       (deer, fox, bear, seal, whale, ...)
+│   ├── bird         (eagle, owl, heron, kingfisher, swan, ...)
+│   ├── reptile      (lizard, snake, turtle, frog, ...)
+│   ├── invertebrate (butterfly, dragonfly, bee, spider, snail, ...)
+│   ├── aquatic      (fish, jellyfish, coral, crab, ...)
+│   └── domestic     (dog, cat, horse, cow, sheep, ...)
+├── urban
+│   ├── architecture (building, bridge, skyscraper, tower, facade, ...)
+│   ├── street       (road, alley, graffiti, neon sign, shop front, ...)
+│   └── transport    (car, bicycle, train, airplane, boat, ...)
+├── person
+│   ├── portrait     (headshot, environmental portrait, candid, ...)
+│   ├── group        (family, couple, crowd, ...)
+│   └── activity     (dance, sports, hiking, cooking, ...)
+├── performing arts
+│   ├── concert      (live music, musician, singer, guitarist, ...)
+│   ├── theatre      (actor, stage set, rehearsal, costume, ...)
+│   └── dance        (ballet, contemporary, ...)
+├── event
+│   ├── festival     (music festival, cultural festival, ...)
+│   ├── exhibition   (art exhibition, photo exhibition, ...)
+│   ├── wedding
+│   ├── workshop     (photo workshop, ...)
+│   └── sports event (marathon, match, tournament, ...)
+├── object
+│   ├── food         (coffee, wine, cake, cooking, restaurant, ...)
+│   ├── instrument   (guitar, piano, drums, saxophone, ...)
+│   └── other        (book, camera, flag, candle, sculpture, ...)
+└── concept
+    ├── travel
+    ├── fashion
+    ├── documentary
+    └── abstract
 ```
 
 You don't need all of these on day one. Start with the top two levels and add
@@ -144,16 +144,16 @@ leaf nodes as your collection demands them.
 ### location hierarchy
 
 ```
-location/
-└── country/
-    └── region/
-        └── city/
-            └── venue/   (optional, for recurring locations)
+location
+└── country
+    └── region
+        └── city
+            └── venue   (optional, for recurring locations)
 ```
 
 The structural levels are generic terms and lowercase. The actual values are proper nouns and capitalized:
 
-Example: `location/Germany/Bayern/Gelting/Kulturbühne Hinterhalt`
+Example: `location|Germany|Bayern|Gelting|Kulturbühne Hinterhalt`
 
 Note how `location` (generic category) is lowercase, while `Germany` (country in English), `Bayern`, `Gelting`, and `Kulturbühne Hinterhalt` (local names) keep their natural capitalization.
 
@@ -166,11 +166,11 @@ Keep location tags for *significant* or *recurring* places. Don't tag every stre
 ### person hierarchy
 
 ```
-person/
-├── family/
-├── friend/
-├── artist/         (musicians, performers, models)
-└── public figure/
+person
+├── family
+├── friend
+├── artist         (musicians, performers, models)
+└── public figure
 ```
 
 For collections with many named individuals, consider using MAKI's face recognition system instead of (or alongside) person tags. Face recognition scales better and doesn't require manual tagging. Use person tags for individuals who don't appear in photos (event organizers, clients) or as a complement to face recognition for search flexibility.
@@ -178,18 +178,18 @@ For collections with many named individuals, consider using MAKI's face recognit
 ### technique hierarchy
 
 ```
-technique/
-├── style/       (black and white, high key, low key, infrared, ...)
-├── exposure/    (long exposure, double exposure, HDR, ...)
-├── lighting/    (natural light, flash, studio, golden hour, blue hour, ...)
-├── composition/ (minimalist, symmetry, leading lines, ...)
-└── effect/      (bokeh, motion blur, silhouette, reflection, lens flare, ...)
+technique
+├── style       (black and white, high key, low key, infrared, ...)
+├── exposure    (long exposure, double exposure, HDR, ...)
+├── lighting    (natural light, flash, studio, golden hour, blue hour, ...)
+├── composition (minimalist, symmetry, leading lines, ...)
+└── effect      (bokeh, motion blur, silhouette, reflection, lens flare, ...)
 ```
 
 ### project hierarchy
 
 ```
-project/
+project
 ├── 365 pictures 2018
 ├── Bricking Bavaria
 ├── Guido Karp Workshop LA 2019
@@ -212,7 +212,7 @@ Aim for **5-15 tags per image**:
 - 1-2 technique tags (how, if noteworthy)
 - 0-1 project/event tag
 
-Example: a concert photo might carry `subject/performing arts/concert`, `subject/performing arts/concert/guitarist`, `location/Germany/Bayern/Gelting/Kulturbühne Hinterhalt`, `technique/lighting/stage lighting` -- four tags, good discoverability.
+Example: a concert photo might carry `subject|performing arts|concert`, `subject|performing arts|concert|guitarist`, `location|Germany|Bayern|Gelting|Kulturbühne Hinterhalt`, `technique|lighting|stage lighting` -- four tags, good discoverability.
 
 Fewer than 5 means poor discoverability. More than 20 per image usually means you're tagging noise or duplicating information that belongs elsewhere.
 
@@ -273,7 +273,7 @@ A higher threshold (0.3-0.5) produces fewer but more confident suggestions. A lo
 ### Label design tips
 
 - Use **short, concrete phrases**: `mountain` works better than `mountainous terrain`
-- Match the prompt template: with the default `"a photograph of {}"`, labels should read naturally after "a photograph of" -- "a photograph of a sunset" (good), "a photograph of a subject/nature/sky/sunset" (bad)
+- Match the prompt template: with the default `"a photograph of {}"`, labels should read naturally after "a photograph of" -- "a photograph of a sunset" (good), "a photograph of a subject|nature|sky|sunset" (bad)
 - **Don't use hierarchy in labels** -- the model sees text, not structure. Use flat terms
 - Include **genre labels** that vision models handle well: `concert`, `portrait`, `landscape`, `macro`, `street photography`, `architecture`
 - Include **compositional labels**: `silhouette`, `reflection`, `bokeh`, `long exposure`
@@ -286,7 +286,7 @@ Auto-tagging produces flat labels (`concert`, `sunset`). You can manually place 
 
 ```bash
 # Rename flat tags into hierarchy (example)
-maki tag rename "concert" "subject/performing arts/concert"
+maki tag rename "concert" "subject|performing arts|concert"
 ```
 
 ---
@@ -355,9 +355,9 @@ Once the duplicates are resolved, introduce hierarchy:
 
 ```bash
 # Move flat tags into hierarchy (redundant ancestors are auto-removed)
-maki tag rename "concert" "subject/performing arts/concert"
-maki tag rename "landscape" "subject/nature/landscape"
-maki tag rename "München" "location/Germany/Bayern/München"
+maki tag rename "concert" "subject|performing arts|concert"
+maki tag rename "landscape" "subject|nature|landscape"
+maki tag rename "München" "location|Germany|Bayern|München"
 ```
 
 When renaming to a hierarchical tag, standalone tags that match ancestor components are removed automatically. For example, the last command also removes standalone "Germany" and "Bayern" tags since they're now matched by the hierarchy.

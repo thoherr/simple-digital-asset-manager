@@ -6802,10 +6802,10 @@ fn tag_hierarchy_search() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let short_id = stdout.split_whitespace().next().unwrap();
 
-    // Add hierarchical tag
+    // Add hierarchical tag (using | as hierarchy separator)
     maki()
         .current_dir(&root)
-        .args(["tag", short_id, "animals/birds/eagles"])
+        .args(["tag", short_id, "animals|birds|eagles"])
         .assert()
         .success();
 
@@ -6820,7 +6820,7 @@ fn tag_hierarchy_search() {
     // Search for intermediate tag should match
     maki()
         .current_dir(&root)
-        .args(["search", "tag:animals/birds"])
+        .args(["search", "tag:animals|birds"])
         .assert()
         .success()
         .stdout(predicate::str::contains("eagle"));
@@ -6828,7 +6828,7 @@ fn tag_hierarchy_search() {
     // Search for exact tag should match
     maki()
         .current_dir(&root)
-        .args(["search", "tag:animals/birds/eagles"])
+        .args(["search", "tag:animals|birds|eagles"])
         .assert()
         .success()
         .stdout(predicate::str::contains("eagle"));
@@ -6865,10 +6865,10 @@ fn tag_hierarchy_add_remove() {
     // Add hierarchical tag
     maki()
         .current_dir(&root)
-        .args(["tag", short_id, "animals/birds/hawks"])
+        .args(["tag", short_id, "animals|birds|hawks"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("animals/birds/hawks"));
+        .stdout(predicate::str::contains("animals|birds|hawks"));
 
     // Verify in show
     maki()
@@ -6876,12 +6876,12 @@ fn tag_hierarchy_add_remove() {
         .args(["show", short_id])
         .assert()
         .success()
-        .stdout(predicate::str::contains("animals/birds/hawks"));
+        .stdout(predicate::str::contains("animals|birds|hawks"));
 
     // Remove hierarchical tag
     maki()
         .current_dir(&root)
-        .args(["tag", short_id, "--remove", "animals/birds/hawks"])
+        .args(["tag", short_id, "--remove", "animals|birds|hawks"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Removed tags:"));
@@ -6892,7 +6892,7 @@ fn tag_hierarchy_add_remove() {
         .args(["show", short_id])
         .assert()
         .success()
-        .stdout(predicate::str::contains("animals/birds/hawks").not());
+        .stdout(predicate::str::contains("animals|birds|hawks").not());
 }
 
 #[test]
@@ -6954,7 +6954,7 @@ fn import_xmp_hierarchical_subject() {
     let show_stdout = String::from_utf8_lossy(&show_output.stdout);
 
     assert!(
-        show_stdout.contains("animals/birds/eagles"),
+        show_stdout.contains("animals|birds|eagles"),
         "should contain hierarchical tag: {show_stdout}"
     );
     assert!(

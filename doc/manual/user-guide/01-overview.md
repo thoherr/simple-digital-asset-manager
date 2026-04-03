@@ -45,7 +45,7 @@ flowchart LR
 
 ### Asset
 
-The central entity. An Asset represents a single logical image or media item -- "photo of sunset at the beach" -- regardless of how many files exist for it. An Asset has a deterministic UUID derived from the content hash of its first variant, plus optional metadata: name, description, tags (keywords), rating (1--5 stars), and color label (Red, Orange, Yellow, Green, Blue, Pink, Purple -- a superset of Lightroom's palette that matches CaptureOne). Tags support hierarchy using `/` as a separator (e.g., `animals/birds/eagles`); searching for a parent tag matches all descendants.
+The central entity. An Asset represents a single logical image or media item -- "photo of sunset at the beach" -- regardless of how many files exist for it. An Asset has a deterministic UUID derived from the content hash of its first variant, plus optional metadata: name, description, tags (keywords), rating (1--5 stars), and color label (Red, Orange, Yellow, Green, Blue, Pink, Purple -- a superset of Lightroom's palette that matches CaptureOne). Tags support hierarchy using `|` as a separator (e.g., `animals|birds|eagles`), aligned with Lightroom and CaptureOne conventions; searching for a parent tag matches all descendants.
 
 ### Variant
 

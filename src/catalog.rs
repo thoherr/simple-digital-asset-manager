@@ -5070,13 +5070,13 @@ mod tests {
         let results = catalog.search_assets(None, None, Some("animals"), None, None, None).unwrap();
         assert_eq!(results.len(), 1, "tag:animals should match animals|birds|eagles");
 
-        // Search for intermediate tag (user types `/` which converts to `|` in build_search_where)
-        let results = catalog.search_assets(None, None, Some("animals/birds"), None, None, None).unwrap();
-        assert_eq!(results.len(), 1, "tag:animals/birds should match animals|birds|eagles");
+        // Search for intermediate tag (user types `|` or `>` for hierarchy)
+        let results = catalog.search_assets(None, None, Some("animals|birds"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:animals|birds should match animals|birds|eagles");
 
         // Search for exact tag
-        let results = catalog.search_assets(None, None, Some("animals/birds/eagles"), None, None, None).unwrap();
-        assert_eq!(results.len(), 1, "tag:animals/birds/eagles should match exactly");
+        let results = catalog.search_assets(None, None, Some("animals|birds|eagles"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:animals|birds|eagles should match exactly");
 
         // Search for non-matching parent
         let results = catalog.search_assets(None, None, Some("cats"), None, None, None).unwrap();
@@ -5099,8 +5099,8 @@ mod tests {
         catalog.insert_asset(&asset2).unwrap();
         catalog.insert_variant(&variant2).unwrap();
 
-        let results = catalog.search_assets(None, None, Some("animals/birds"), None, None, None).unwrap();
-        assert_eq!(results.len(), 1, "tag:animals/birds should not match plain 'animals'");
+        let results = catalog.search_assets(None, None, Some("animals|birds"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:animals|birds should not match plain 'animals'");
 
         // Search tag:animals should match both
         let results = catalog.search_assets(None, None, Some("animals"), None, None, None).unwrap();

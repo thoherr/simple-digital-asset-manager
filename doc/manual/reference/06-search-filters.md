@@ -97,9 +97,9 @@ maki search "type:video rating:3+"
 
 **Description:** Filters to assets that have a specific tag. Supports quoted values for multi-word tags.
 
-**Hierarchical matching:** Tags can be organized hierarchically using `/` as a separator (e.g., `animals/birds/eagles`). Searching for a parent tag matches all descendants: `tag:animals` finds assets tagged `animals`, `animals/birds`, and `animals/birds/eagles`. Searching for an intermediate level also works: `tag:animals/birds` matches both `animals/birds` and `animals/birds/eagles`.
+**Hierarchical matching:** Tags can be organized hierarchically using `|` as a separator (e.g., `animals|birds|eagles`), aligned with Lightroom and CaptureOne conventions. `>` is also accepted as an alternative separator. Searching for a parent tag matches all descendants: `tag:animals` finds assets tagged `animals`, `animals|birds`, and `animals|birds|eagles`. Searching for an intermediate level also works: `tag:animals|birds` matches both `animals|birds` and `animals|birds|eagles`.
 
-Internally, hierarchical tags are stored with `|` as the separator (to avoid conflicts with literal slashes in tag names like `f/1.4`). The search system handles the conversion transparently -- users always type `/` in queries.
+`/` is treated as a literal character in tag names (e.g., `f/1.4` works naturally without escaping).
 
 **Examples:**
 
@@ -107,11 +107,11 @@ Internally, hierarchical tags are stored with `|` as the separator (to avoid con
 maki search "tag:landscape"
 maki search 'tag:"Fools Theater"'
 maki search 'tag:"Black and White" rating:4+'
-maki search "tag:animals"                   # matches animals, animals/birds, animals/birds/eagles
-maki search "tag:animals/birds"             # matches animals/birds and animals/birds/eagles
+maki search "tag:animals"                   # matches animals, animals|birds, animals|birds|eagles
+maki search "tag:animals|birds"             # matches animals|birds and animals|birds|eagles
 ```
 
-**SQL behavior:** `WHERE (a.tags LIKE '%"stored"%' OR a.tags LIKE '%"stored|%')`. The second LIKE clause enables parent-matches-children semantics. Tags containing literal `/` get an additional raw fallback clause.
+**SQL behavior:** `WHERE (a.tags LIKE '%"stored"%' OR a.tags LIKE '%"stored|%')`. The second LIKE clause enables parent-matches-children semantics.
 
 ---
 
@@ -913,7 +913,7 @@ maki search "date:2026-02"
 maki search "stacked:false rating:5 type:image"
 
 # Find stacked assets with a hierarchical tag
-maki search "stacked:true tag:animals/birds"
+maki search "stacked:true tag:animals|birds"
 
 # Visually similar assets, filtered to 4+ stars (Pro + embeddings)
 maki search "similar:72a0bb4b rating:4+"

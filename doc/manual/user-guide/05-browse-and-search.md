@@ -112,7 +112,7 @@ All filters can be combined in a single query. Remaining tokens become free-text
 | Text search *(Pro)* | `text:<query>` | `text:sunset beach` |
 | Embedding status *(Pro)* | `embed:any`, `embed:none` | `embed:none type:image` |
 
-**Hierarchical tag matching**: The `tag:` filter matches hierarchically. Searching for `tag:animals` finds assets tagged `animals`, `animals/birds`, `animals/birds/eagles`, and any other descendant of `animals`. To match only the exact tag, use the full path (e.g., `tag:animals/birds/eagles`).
+**Hierarchical tag matching**: The `tag:` filter matches hierarchically. Searching for `tag:animals` finds assets tagged `animals`, `animals|birds`, `animals|birds|eagles`, and any other descendant of `animals`. To match only the exact tag, use the full path (e.g., `tag:animals|birds|eagles`).
 
 For the complete filter reference with detailed syntax and behavior, see [Search Filters](../reference/06-search-filters.md).
 

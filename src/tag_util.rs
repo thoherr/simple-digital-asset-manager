@@ -1,70 +1,50 @@
 /// Tag utility functions for hierarchical tag support.
 ///
-/// Internal convention:
+/// Internal storage convention:
 /// - `|` is the hierarchy separator: `animals|birds|eagles`
-/// - `/` in a stored tag is a literal slash: `AF Nikkor 85mm f/1.4`
+/// - `/` is a literal character: `AF Nikkor 85mm f/1.4`
 ///
-/// User-facing convention:
-/// - `/` means hierarchy: `animals/birds/eagles` → stored as `animals|birds|eagles`
-/// - `\/` means literal slash: `f\/1.4` → stored as `f/1.4`
+/// User-facing input convention (aligned with Lightroom/CaptureOne):
+/// - `|` means hierarchy: `animals|birds|eagles`
+/// - `>` also means hierarchy: `animals>birds>eagles`
+/// - `/` is a literal character (no escaping needed)
 
 /// Convert user-facing tag input to internal storage form.
 ///
-/// - `\/` (escaped slash) becomes literal `/` in storage
-/// - Unescaped `/` becomes `|` (hierarchy separator)
+/// - `>` becomes `|` (hierarchy separator, CaptureOne/Lightroom convention)
+/// - `|` stays as `|` (already the internal separator)
+/// - `/` stays as `/` (literal character)
 ///
 /// # Examples
 ///
 /// ```
 /// use maki::tag_util::tag_input_to_storage;
 ///
-/// assert_eq!(tag_input_to_storage("animals/birds"), "animals|birds");
-/// assert_eq!(tag_input_to_storage("f\\/1.4"), "f/1.4");
+/// assert_eq!(tag_input_to_storage("animals|birds"), "animals|birds");
+/// assert_eq!(tag_input_to_storage("animals>birds>eagles"), "animals|birds|eagles");
+/// assert_eq!(tag_input_to_storage("f/1.4"), "f/1.4");
 /// assert_eq!(tag_input_to_storage("plain tag"), "plain tag");
 /// ```
 pub fn tag_input_to_storage(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\\' && chars.peek() == Some(&'/') {
-            result.push('/');
-            chars.next();
-        } else if c == '/' {
-            result.push('|');
-        } else {
-            result.push(c);
-        }
-    }
-    result
+    input.replace('>', "|")
 }
 
 /// Convert internal storage form to user-facing display form.
 ///
-/// - `|` becomes `/` (hierarchy separator shown as slash)
-/// - Literal `/` becomes `\/` (escaped for round-trip clarity)
+/// Tags are displayed as stored — `|` is the visible hierarchy separator,
+/// matching the Lightroom/CaptureOne convention.
 ///
 /// # Examples
 ///
 /// ```
 /// use maki::tag_util::tag_storage_to_display;
 ///
-/// assert_eq!(tag_storage_to_display("animals|birds"), "animals/birds");
-/// assert_eq!(tag_storage_to_display("f/1.4"), "f\\/1.4");
+/// assert_eq!(tag_storage_to_display("animals|birds"), "animals|birds");
+/// assert_eq!(tag_storage_to_display("f/1.4"), "f/1.4");
 /// assert_eq!(tag_storage_to_display("plain tag"), "plain tag");
 /// ```
 pub fn tag_storage_to_display(stored: &str) -> String {
-    let mut result = String::with_capacity(stored.len() + 4);
-    for c in stored.chars() {
-        match c {
-            '|' => result.push('/'),
-            '/' => {
-                result.push('\\');
-                result.push('/');
-            }
-            _ => result.push(c),
-        }
-    }
-    result
+    stored.to_string()
 }
 
 /// Check if a stored tag is hierarchical (contains `|`).
@@ -100,41 +80,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn input_to_storage_hierarchy() {
-        assert_eq!(tag_input_to_storage("animals/birds/eagles"), "animals|birds|eagles");
+    fn input_to_storage_pipe() {
+        assert_eq!(tag_input_to_storage("animals|birds|eagles"), "animals|birds|eagles");
     }
 
     #[test]
-    fn input_to_storage_escaped_slash() {
-        assert_eq!(tag_input_to_storage(r"AF Nikkor 85mm f\/1.4"), "AF Nikkor 85mm f/1.4");
+    fn input_to_storage_greater_than() {
+        assert_eq!(tag_input_to_storage("animals>birds>eagles"), "animals|birds|eagles");
     }
 
     #[test]
-    fn input_to_storage_mixed() {
-        assert_eq!(
-            tag_input_to_storage(r"gear\/lenses/nikkor"),
-            "gear/lenses|nikkor"
-        );
+    fn input_to_storage_slash_is_literal() {
+        assert_eq!(tag_input_to_storage("AF Nikkor 85mm f/1.4"), "AF Nikkor 85mm f/1.4");
     }
 
     #[test]
-    fn input_to_storage_no_slashes() {
+    fn input_to_storage_no_special() {
         assert_eq!(tag_input_to_storage("landscape"), "landscape");
     }
 
     #[test]
     fn storage_to_display_hierarchy() {
-        assert_eq!(tag_storage_to_display("animals|birds|eagles"), "animals/birds/eagles");
+        assert_eq!(tag_storage_to_display("animals|birds|eagles"), "animals|birds|eagles");
     }
 
     #[test]
     fn storage_to_display_literal_slash() {
-        assert_eq!(tag_storage_to_display("AF Nikkor 85mm f/1.4"), r"AF Nikkor 85mm f\/1.4");
-    }
-
-    #[test]
-    fn storage_to_display_mixed() {
-        assert_eq!(tag_storage_to_display("gear/lenses|nikkor"), r"gear\/lenses/nikkor");
+        assert_eq!(tag_storage_to_display("AF Nikkor 85mm f/1.4"), "AF Nikkor 85mm f/1.4");
     }
 
     #[test]
@@ -143,18 +115,20 @@ mod tests {
     }
 
     #[test]
-    fn round_trip() {
-        let inputs = [
-            "animals/birds/eagles",
-            r"AF Nikkor 85mm f\/1.4",
-            r"gear\/lenses/nikkor",
-            "landscape",
-        ];
-        for input in inputs {
-            let stored = tag_input_to_storage(input);
-            let displayed = tag_storage_to_display(&stored);
-            assert_eq!(displayed, input, "round-trip failed for: {input}");
-        }
+    fn round_trip_pipe() {
+        let input = "animals|birds|eagles";
+        let stored = tag_input_to_storage(input);
+        let displayed = tag_storage_to_display(&stored);
+        assert_eq!(displayed, input);
+    }
+
+    #[test]
+    fn round_trip_greater_than() {
+        // > on input becomes | in storage and display
+        let stored = tag_input_to_storage("animals>birds>eagles");
+        assert_eq!(stored, "animals|birds|eagles");
+        let displayed = tag_storage_to_display(&stored);
+        assert_eq!(displayed, "animals|birds|eagles");
     }
 
     #[test]
