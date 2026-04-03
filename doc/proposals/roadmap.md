@@ -16,6 +16,14 @@ Import directly from memory cards, cull on smart previews, and copy only keepers
 
 **Complexity:** Low (phase 1: media purpose), Medium (phase 2: sidecar creation).
 
+### Tag Hierarchy Expansion
+
+Ensure consistency between CaptureOne/Lightroom-imported tags (which expand all ancestor paths) and MAKI-created/renamed tags (which currently store only the leaf). Recommended approach: always expand ancestors on write, matching the industry convention. See `doc/proposals/tag-hierarchy-expansion.md`.
+
+**Status:** Proposal written, under investigation.
+
+**Complexity:** Medium (touches tag add, rename, remove, writeback, and import merge logic).
+
 ### Manual Translation (i18n)
 
 Produce the MAKI user manual in English and German from a single source using inline language markers. See `doc/proposals/manual-i18n.md`.
