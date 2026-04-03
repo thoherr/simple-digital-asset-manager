@@ -1047,6 +1047,12 @@ enum TagCommands {
         #[arg(long)]
         apply: bool,
     },
+
+    /// Remove all tags from an asset
+    Clear {
+        /// Asset ID (or unique prefix)
+        asset_id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2780,6 +2786,43 @@ faces/\n\
                                 println!("  Run with --apply to rename tags.");
                             }
                         }
+                    }
+                    Ok(())
+                }
+                Some(TagCommands::Clear { asset_id }) => {
+                    let catalog_root = maki::config::find_catalog_root()?;
+                    let engine = QueryEngine::new(&catalog_root);
+
+                    // Load asset to get current tags, then remove all
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let full_id = catalog.resolve_asset_id(&asset_id)?
+                        .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+                    let uuid: uuid::Uuid = full_id.parse()?;
+                    let metadata_store = maki::metadata_store::MetadataStore::new(&catalog_root);
+                    let asset = metadata_store.load(uuid)?;
+
+                    if asset.tags.is_empty() {
+                        if cli.json {
+                            println!("{}", serde_json::json!({ "changed": [], "tags": [] }));
+                        } else {
+                            println!("Tags: (none)");
+                        }
+                        return Ok(());
+                    }
+
+                    let tags_to_remove = asset.tags.clone();
+                    let result = engine.tag(&asset_id, &tags_to_remove, true)?;
+
+                    if cli.json {
+                        println!("{}", serde_json::json!({
+                            "changed": result.changed,
+                            "tags": result.current_tags,
+                        }));
+                    } else {
+                        let display_removed: Vec<String> = result.changed.iter()
+                            .map(|t| maki::tag_util::tag_storage_to_display(t))
+                            .collect();
+                        println!("Cleared {} tag(s): {}", display_removed.len(), display_removed.join(", "));
                     }
                     Ok(())
                 }

@@ -8,6 +8,7 @@ Commands for importing files, applying metadata, and merging asset variants. Imp
 | [delete](#maki-delete) | Remove assets from the catalog |
 | [tag](#maki-tag) | Add or remove tags |
 | [tag rename](#maki-tag-rename) | Rename a tag across all assets |
+| [tag clear](#maki-tag-clear) | Remove all tags from an asset |
 | [edit](#maki-edit) | Edit metadata (name, rating, label, description, date) |
 | [group](#maki-group) | Merge variants into one asset |
 | [split](#maki-split) | Extract variants into standalone assets |
@@ -408,7 +409,42 @@ maki tag rename "old-tag" "new-tag"
 ### SEE ALSO
 
 [tag](#maki-tag) -- add or remove tags on a single asset.
+[tag clear](#maki-tag-clear) -- remove all tags from an asset.
 [search](04-retrieve-commands.md#maki-search) -- `tag:` filter for finding tagged assets.
+
+---
+
+## maki tag clear
+
+### NAME
+
+maki-tag-clear -- remove all tags from an asset
+
+### SYNOPSIS
+
+    maki [GLOBAL FLAGS] tag clear <ASSET_ID>
+
+### DESCRIPTION
+
+Removes all tags from the specified asset. This is equivalent to running `maki tag <id> --remove` with every tag the asset currently has, but without having to list them.
+
+If writeback is enabled, the tag removal is written back to XMP recipe files on disk.
+
+### ARGUMENTS
+
+**ASSET_ID** (required)
+: Asset ID or unique prefix.
+
+### EXAMPLES
+
+```bash
+maki tag clear a1b2c3d4
+```
+
+### SEE ALSO
+
+[tag](#maki-tag) -- add or remove individual tags.
+[tag rename](#maki-tag-rename) -- rename a tag across all assets.
 
 ---
 
