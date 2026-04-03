@@ -882,10 +882,10 @@ mod filters {
         Ok(out)
     }
 
-    /// Convert tag from storage form (`|` separator) to display form (`/` separator).
-    /// Uses simple replacement (no `\/` escaping) since web display is read-only.
+    /// Display a tag as-is — `|` is the visible hierarchy separator,
+    /// aligned with Lightroom/CaptureOne conventions.
     pub fn tag_display(tag: &str) -> ::askama::Result<String> {
-        Ok(tag.replace('|', "/"))
+        Ok(tag.to_string())
     }
 
     /// Hash a stack ID to an HSL color for visual grouping.

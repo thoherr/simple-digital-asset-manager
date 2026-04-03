@@ -1216,7 +1216,7 @@ fn build_tag_tree(flat_tags: &[(String, u64)]) -> Vec<TagTreeEntry> {
                 .next()
                 .unwrap_or(name)
                 .to_string();
-            let display_name = name.replace('|', "/");
+            let display_name = name.clone();
             TagTreeEntry {
                 name: name.clone(),
                 display_name,

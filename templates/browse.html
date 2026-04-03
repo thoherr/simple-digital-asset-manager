@@ -147,7 +147,7 @@ window.triggerSearch = onFilterChange;
         var container = document.getElementById('tag-chips');
         if (container) {
             container.innerHTML = '';
-            if (tagParam) tagParam.split(',').forEach(function(t) { t = t.trim(); if (t) { /* re-add chip without triggering search */ var chip = document.createElement('span'); chip.className = 'tag-chip'; chip.setAttribute('data-tag', t); chip.textContent = t.replace(/\|/g, '/'); var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'remove-tag'; btn.innerHTML = '&times;'; btn.onclick = function() { chip.remove(); onFilterChange(); }; chip.appendChild(btn); container.appendChild(chip); } });
+            if (tagParam) tagParam.split(',').forEach(function(t) { t = t.trim(); if (t) { /* re-add chip without triggering search */ var chip = document.createElement('span'); chip.className = 'tag-chip'; chip.setAttribute('data-tag', t); chip.textContent = t; var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'remove-tag'; btn.innerHTML = '&times;'; btn.onclick = function() { chip.remove(); onFilterChange(); }; chip.appendChild(btn); container.appendChild(chip); } });
         }
         // Rating, label
         if (window.setRatingFilter) window.setRatingFilter(params.get('rating') || '');
@@ -555,7 +555,7 @@ window.triggerSearch = onFilterChange;
             if (!window.damTags) return;
             var tags = window.damTags.allTags();
             query = query.toLowerCase();
-            var queryStorage = query.replace(/\//g, '|');
+            var queryStorage = query.replace(/>/g, '|');
             var matches = tags.filter(function(t) {
                 var tl = t.toLowerCase();
                 return tl.indexOf(query) !== -1 || tl.indexOf(queryStorage) !== -1;

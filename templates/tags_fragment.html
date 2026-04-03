@@ -49,11 +49,11 @@
         if (!input || !ac) return;
         var acIndex = -1;
 
-        function tagToDisplay(t) { return t.replace(/\|/g, '/'); }
+        function tagToDisplay(t) { return t; }
 
         function showSuggestions(query) {
             query = query.toLowerCase();
-            var queryStorage = query.replace(/\//g, '|');
+            var queryStorage = query.replace(/>/g, '|');
             var matches = allTags.filter(function(t) {
                 var tl = t.toLowerCase();
                 return tl.indexOf(query) !== -1 || tl.indexOf(queryStorage) !== -1;

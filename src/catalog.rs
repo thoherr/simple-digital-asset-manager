@@ -3647,8 +3647,7 @@ impl Catalog {
             })?;
             for row in rows {
                 let (tag_name, count) = row?;
-                // Convert internal | separator to / for display
-                tags.push((tag_name.replace('|', "/"), count));
+                tags.push((tag_name, count));
             }
         }
 

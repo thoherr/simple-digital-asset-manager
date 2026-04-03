@@ -13,8 +13,8 @@
             });
     }
 
-    function tagToDisplay(t) { return t.replace(/\|/g, '/'); }
-    function tagToStorage(t) { return t.replace(/\//g, '|'); }
+    function tagToDisplay(t) { return t; }
+    function tagToStorage(t) { return t.replace(/>/g, '|'); }
 
     function getSelectedTags() {
         var chips = document.querySelectorAll('#tag-chips .tag-chip');
@@ -60,7 +60,7 @@
         var ac = document.getElementById('tag-autocomplete');
         var selected = getSelectedTags();
         query = query.toLowerCase();
-        var queryStorage = query.replace(/\//g, '|');
+        var queryStorage = query.replace(/>/g, '|');
         var matches = allTags.filter(function(t) {
             var tl = t.toLowerCase();
             return (tl.indexOf(query) !== -1 || tl.indexOf(queryStorage) !== -1) && selected.indexOf(t) === -1;
