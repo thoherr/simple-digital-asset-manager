@@ -927,7 +927,9 @@ maki search "geo:any tag:landscape type:image"
 
 ---
 
-## Quoted Values
+## Quoting and Special Characters
+
+### Values with spaces
 
 Use double quotes around filter values that contain spaces. When typing at the shell, wrap the entire query in single quotes to prevent the shell from stripping the inner double quotes.
 
@@ -939,12 +941,42 @@ maki search 'collection:"My Favorites" rating:4+'
 maki search 'path:"Photos/Family Trip" type:image'
 ```
 
-Unquoted single-word values continue to work without quotes:
+Single-word values work without quotes:
 
 ```bash
 maki search "tag:landscape"
 maki search "camera:fuji"
 ```
+
+### Values with dashes
+
+Without quotes, a leading `-` is interpreted as negation (`-tag:rejected` means "not tagged rejected"). When a dash appears *inside* a value (like a project name), quoting prevents misinterpretation:
+
+```bash
+# Wrong: "Geflüchtete" is parsed as negated free-text, not part of the tag
+maki search "tag:project/Angekommen im Stadtbild - Geflüchtete im Portait"
+
+# Correct: inner quotes keep the entire value together
+maki search 'tag:"project/Angekommen im Stadtbild - Geflüchtete im Portait"'
+```
+
+### Hierarchy separators
+
+Tags use `|` as the hierarchy separator. In the shell, `|` is the pipe operator, so always quote tag values containing `|`:
+
+```bash
+maki search 'tag:"subject|performing arts|concert"'
+maki search 'tag:subject'  # matches all descendants — no | needed
+```
+
+### Quick reference
+
+| Character | In filter value | Solution |
+|-----------|----------------|----------|
+| Space | Splits into multiple tokens | `tag:"golden hour"` |
+| `-` | Interpreted as negation | `tag:"my - project"` |
+| `\|` | Shell pipe | `'tag:"subject\|nature"'` |
+| `"` | Ends quoted value | `tag:"say \"hello\""` (rare) |
 
 ---
 
