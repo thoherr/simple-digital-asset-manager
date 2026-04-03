@@ -54,9 +54,13 @@
         function showSuggestions(query) {
             query = query.toLowerCase();
             var queryStorage = query.replace(/>/g, '|');
-            var matches = allTags.filter(function(t) {
+            var rawMatches = allTags.filter(function(t) {
                 var tl = t.toLowerCase();
                 return tl.indexOf(query) !== -1 || tl.indexOf(queryStorage) !== -1;
+            });
+            var matches = rawMatches.filter(function(t) {
+                var prefix = t + '|';
+                return !rawMatches.some(function(other) { return other.indexOf(prefix) === 0; });
             }).slice(0, 10);
 
             if (matches.length === 0) {
