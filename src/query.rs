@@ -1902,105 +1902,126 @@ impl QueryEngine {
         let online = Self::load_online_volumes(&self.catalog_root);
         let content_store = ContentStore::new(&self.catalog_root);
 
-        let matches = catalog.assets_with_exact_tag(old_tag)?;
+        // Find assets that have the exact tag OR any descendant (prefix match)
+        let matches = catalog.assets_with_tag_or_prefix(old_tag)?;
         let mut result = TagRenameResult { dry_run: !apply, matched: matches.len(), ..Default::default() };
+
+        let old_lower = old_tag.to_lowercase();
+        let old_prefix_lower = format!("{}|", old_lower);
+        let new_lower = new_tag.to_lowercase();
+        let new_prefix = format!("{}|", new_tag);
 
         for (asset_id, _stack_id) in &matches {
             let uuid: uuid::Uuid = asset_id.parse()?;
             let mut asset = store.load(uuid)?;
 
-            // Case-insensitive match: find the old tag as stored (may differ in case)
-            let old_lower = old_tag.to_lowercase();
-            let had_old = asset.tags.iter().any(|t| t.to_lowercase() == old_lower);
-            let new_lower = new_tag.to_lowercase();
-            // Check if asset has the new tag as a SEPARATE tag from the old one.
-            // When old and new differ only in case ("Livestream" → "livestream"),
-            // the old tag must not count as "already having the target".
-            let has_exact_new = asset.tags.contains(&new_tag.to_string());
-            let has_new_separately = if old_lower == new_lower {
-                // Case-only rename: the old tag doesn't count as having the new tag
-                false
-            } else {
-                // Different tags: check if asset has the target (case-insensitive)
-                asset.tags.iter().any(|t| t.to_lowercase() == new_lower)
-            };
-            if !had_old {
+            // Find all tags that match: exact match OR prefix match (descendants)
+            let has_exact = asset.tags.iter().any(|t| t.to_lowercase() == old_lower);
+            let has_descendants = asset.tags.iter().any(|t| t.to_lowercase().starts_with(&old_prefix_lower));
+
+            if !has_exact && !has_descendants {
                 result.skipped += 1;
                 on_asset(&asset_id[..8.min(asset_id.len())], TagRenameAction::Skipped);
                 continue;
             }
 
-            // Determine action:
-            // - If the old tag IS the new tag (exact match) → skip (already correct)
-            // - If asset already has target tag (case-insensitive) → remove old (merge)
-            // - Otherwise → rename
-            let actual_old = asset.tags.iter().find(|t| t.to_lowercase() == old_lower).cloned();
-            let action = if actual_old.as_deref() == Some(new_tag) {
-                // Already has the exact target string — no-op
-                TagRenameAction::Skipped
-            } else if has_exact_new || has_new_separately {
-                // Has target as a separate tag — just remove old (merge)
+            // Check if the rename would be a no-op (already correct)
+            // For exact match: check if old tag is already the new tag
+            // For descendants: check if all descendant prefixes are already correct
+            let exact_already_correct = if has_exact {
+                let actual = asset.tags.iter().find(|t| t.to_lowercase() == old_lower);
+                actual.map(|t| t == new_tag).unwrap_or(false)
+            } else {
+                true
+            };
+            let descendants_already_correct = !has_descendants || asset.tags.iter()
+                .filter(|t| t.to_lowercase().starts_with(&old_prefix_lower))
+                .all(|t| t.to_lowercase().starts_with(&format!("{}|", new_lower)));
+
+            if exact_already_correct && descendants_already_correct {
+                result.skipped += 1;
+                on_asset(&asset_id[..8.min(asset_id.len())], TagRenameAction::Skipped);
+                continue;
+            }
+
+            // Check if asset already has the new exact tag (for merge detection)
+            let has_new_separately = if old_lower == new_lower {
+                false
+            } else {
+                asset.tags.iter().any(|t| t.to_lowercase() == new_lower)
+            };
+            let has_exact_new = asset.tags.contains(&new_tag.to_string());
+
+            let action = if has_exact && (has_exact_new || has_new_separately) && !has_descendants {
                 TagRenameAction::Removed
             } else {
-                // Replace old with new
                 TagRenameAction::Renamed
             };
 
             let name = asset.name.clone().unwrap_or_else(|| asset_id[..8.min(asset_id.len())].to_string());
             on_asset(&name, action);
 
-            if action == TagRenameAction::Skipped {
-                result.skipped += 1;
-                continue;
-            }
-
             if apply {
-                // Collect ancestor components of the new tag that are now redundant.
-                // E.g., renaming "Munich" to "location|Germany|Bavaria|Munich" makes
-                // standalone "germany", "bavaria", "location" tags redundant because
-                // hierarchical search matches ancestors automatically.
-                // All matching is case-insensitive (consistent with tag search).
-                let new_parts: Vec<&str> = new_tag.split('|').collect();
-                let mut redundant_lower: Vec<String> = vec![old_lower.clone()];
+                // Build the list of tags to remove and tags to add.
+                // For each tag in the asset:
+                // - Exact match (case-insensitive): remove, add new_tag (unless merged)
+                // - Prefix match (starts with old|): remove, add with prefix replaced
+                let mut tags_to_remove = Vec::new();
+                let mut tags_to_add = Vec::new();
+
+                for tag in &asset.tags {
+                    let tag_lower = tag.to_lowercase();
+                    if tag_lower == old_lower {
+                        // Exact match
+                        tags_to_remove.push(tag.clone());
+                        if action == TagRenameAction::Renamed {
+                            tags_to_add.push(new_tag.to_string());
+                        }
+                    } else if tag_lower.starts_with(&old_prefix_lower) {
+                        // Descendant: replace prefix
+                        tags_to_remove.push(tag.clone());
+                        let new_descendant = format!("{}{}", new_prefix, &tag[old_prefix_lower.len()..]);
+                        tags_to_add.push(new_descendant);
+                    }
+                }
+
+                // Also collect ancestor components that are now redundant
+                let new_effective = new_tag;
+                let new_parts: Vec<&str> = new_effective.split('|').collect();
                 if new_parts.len() > 1 {
-                    // Build all ancestor paths: "location", "location|germany", etc.
                     for i in 1..new_parts.len() {
                         let ancestor = new_parts[..i].join("|").to_lowercase();
-                        if !redundant_lower.contains(&ancestor) {
-                            redundant_lower.push(ancestor);
+                        if let Some(existing) = asset.tags.iter().find(|t| t.to_lowercase() == ancestor) {
+                            if !tags_to_remove.contains(existing) {
+                                tags_to_remove.push(existing.clone());
+                            }
                         }
                     }
-                    // Also check bare component names (e.g., "germany" without prefix)
                     for part in &new_parts[..new_parts.len() - 1] {
                         let bare = part.to_lowercase();
-                        if !bare.is_empty() && !redundant_lower.contains(&bare) {
-                            redundant_lower.push(bare);
+                        if let Some(existing) = asset.tags.iter().find(|t| t.to_lowercase() == bare) {
+                            if !tags_to_remove.contains(existing) {
+                                tags_to_remove.push(existing.clone());
+                            }
                         }
                     }
                 }
 
-                // Collect actual tag strings being removed (for XMP writeback)
-                let redundant: Vec<String> = asset.tags.iter()
-                    .filter(|t| redundant_lower.contains(&t.to_lowercase()))
-                    .cloned()
-                    .collect();
-
-                asset.tags.retain(|t| !redundant_lower.contains(&t.to_lowercase()));
-                if action == TagRenameAction::Renamed {
-                    asset.tags.push(new_tag.to_string());
+                // Deduplicate adds (case-insensitive against remaining tags)
+                asset.tags.retain(|t| !tags_to_remove.iter().any(|r| r == t));
+                for add in &tags_to_add {
+                    let add_lower = add.to_lowercase();
+                    if !asset.tags.iter().any(|t| t.to_lowercase() == add_lower) {
+                        asset.tags.push(add.clone());
+                    }
                 }
                 store.save(&asset)?;
                 catalog.insert_asset(&asset)?;
 
-                // Writeback: remove old + redundant tags, add new tag in XMP
+                // Writeback: remove old tags, add new tags in XMP
                 if self.is_writeback_enabled() {
-                    let to_add = if action == TagRenameAction::Renamed {
-                        vec![new_tag.to_string()]
-                    } else {
-                        vec![]
-                    };
                     self.write_back_tags_to_xmp_inner(
-                        &mut asset, &to_add, &redundant,
+                        &mut asset, &tags_to_add, &tags_to_remove,
                         &catalog, &store, &online, &content_store,
                     );
                 }
@@ -4949,5 +4970,139 @@ mod tests {
         base.merge_from(&default);
         assert_eq!(base.tags_exclude, vec!["rest".to_string()]);
         assert_eq!(base.asset_types, vec!["image".to_string()]);
+    }
+
+    // ── tag rename tests ───────────────────────────────────
+
+    fn setup_tag_rename_catalog(tags: &[&str]) -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("metadata")).unwrap();
+        crate::config::CatalogConfig::default().save(root).unwrap();
+        crate::device_registry::DeviceRegistry::init(root).unwrap();
+        let catalog = crate::catalog::Catalog::open(root).unwrap();
+        catalog.initialize().unwrap();
+
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:rename_test");
+        asset.tags = tags.iter().map(|t| t.to_string()).collect();
+        let variant = crate::models::Variant {
+            content_hash: "sha256:rename_test".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 100,
+            original_filename: "test.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        asset.variants.push(variant.clone());
+        catalog.insert_asset(&asset).unwrap();
+        catalog.insert_variant(&variant).unwrap();
+        let store = crate::metadata_store::MetadataStore::new(root);
+        store.save(&asset).unwrap();
+
+        let asset_id = asset.id.to_string();
+        (dir, asset_id)
+    }
+
+    #[test]
+    fn tag_rename_cascades_to_descendants() {
+        let (dir, asset_id) = setup_tag_rename_catalog(&[
+            "localtion|Germany|Bayern|München",
+            "localtion|Germany|Bayern|Wolfratshausen",
+            "localtion|Germany",
+            "sunset",
+        ]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_rename("localtion", "location", true, |_, _| {}).unwrap();
+        assert_eq!(result.renamed, 1);
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        assert!(asset.tags.contains(&"location|Germany|Bayern|München".to_string()));
+        assert!(asset.tags.contains(&"location|Germany|Bayern|Wolfratshausen".to_string()));
+        assert!(asset.tags.contains(&"location|Germany".to_string()));
+        assert!(asset.tags.contains(&"sunset".to_string()));
+        // Old prefix must be gone
+        assert!(!asset.tags.iter().any(|t| t.starts_with("localtion")));
+    }
+
+    #[test]
+    fn tag_rename_does_not_match_similar_prefix() {
+        // "localtionvenue" should NOT be renamed when renaming "localtion"
+        let (dir, asset_id) = setup_tag_rename_catalog(&[
+            "localtion|Germany",
+            "localtionvenue",
+        ]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_rename("localtion", "location", true, |_, _| {}).unwrap();
+        assert_eq!(result.renamed, 1);
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        assert!(asset.tags.contains(&"location|Germany".to_string()));
+        assert!(asset.tags.contains(&"localtionvenue".to_string()), "similar prefix should not be renamed");
+    }
+
+    #[test]
+    fn tag_rename_case_insensitive_cascade() {
+        let (dir, asset_id) = setup_tag_rename_catalog(&[
+            "Localtion|Germany|Bayern",
+        ]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_rename("localtion", "location", true, |_, _| {}).unwrap();
+        assert_eq!(result.renamed, 1);
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        assert!(asset.tags.contains(&"location|Germany|Bayern".to_string()));
+        assert!(!asset.tags.iter().any(|t| t.to_lowercase().starts_with("localtion")));
+    }
+
+    #[test]
+    fn tag_rename_case_only_no_deletion() {
+        let (dir, asset_id) = setup_tag_rename_catalog(&["Livestream"]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_rename("Livestream", "livestream", true, |_, _| {}).unwrap();
+        assert_eq!(result.renamed, 1);
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        assert!(asset.tags.contains(&"livestream".to_string()));
+    }
+
+    #[test]
+    fn tag_rename_merge_when_target_exists() {
+        let (dir, asset_id) = setup_tag_rename_catalog(&["Konzert", "concert"]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_rename("Konzert", "concert", true, |_, _| {}).unwrap();
+        assert_eq!(result.removed, 1);
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        assert_eq!(asset.tags, vec!["concert".to_string()]);
+    }
+
+    #[test]
+    fn tag_rename_skip_when_already_correct() {
+        let (dir, _) = setup_tag_rename_catalog(&["concert"]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_rename("concert", "concert", true, |_, _| {}).unwrap();
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.renamed, 0);
+    }
+
+    #[test]
+    fn tag_rename_ancestor_cleanup() {
+        let (dir, asset_id) = setup_tag_rename_catalog(&["München", "Germany", "Bayern"]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_rename("München", "location|Germany|Bayern|München", true, |_, _| {}).unwrap();
+        assert_eq!(result.renamed, 1);
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        assert!(asset.tags.contains(&"location|Germany|Bayern|München".to_string()));
+        assert!(!asset.tags.contains(&"Germany".to_string()), "ancestor should be removed");
+        assert!(!asset.tags.contains(&"Bayern".to_string()), "ancestor should be removed");
     }
 }

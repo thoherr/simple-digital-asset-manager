@@ -3847,6 +3847,23 @@ impl Catalog {
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    /// Find assets that have a tag matching exactly or starting with `tag|` (prefix match).
+    /// Used by tag rename to cascade renames to descendant tags.
+    pub fn assets_with_tag_or_prefix(&self, tag: &str) -> Result<Vec<(String, Option<String>)>> {
+        let prefix = format!("{}|", tag);
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT a.id, a.stack_id \
+             FROM assets a, json_each(a.tags) AS je \
+             WHERE je.value = ?1 COLLATE NOCASE \
+                OR je.value LIKE ?2 COLLATE NOCASE \
+             ORDER BY a.created_at ASC",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![tag, format!("{}%", prefix)], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     /// List all distinct variant formats.
     pub fn list_all_formats(&self) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare(
