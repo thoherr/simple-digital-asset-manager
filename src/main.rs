@@ -4785,6 +4785,9 @@ faces/\n\
                 if result.stale_removed > 0 {
                     parts.push(format!("{} stale removed", result.stale_removed));
                 }
+                if result.orphaned_cleaned > 0 {
+                    parts.push(format!("{} orphaned assets cleaned", result.orphaned_cleaned));
+                }
                 if parts.is_empty() {
                     println!("Sync: nothing to sync");
                 } else {

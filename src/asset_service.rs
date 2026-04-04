@@ -261,6 +261,7 @@ pub struct SyncResult {
     pub modified: usize,
     pub missing: usize,
     pub stale_removed: usize,
+    pub orphaned_cleaned: usize,
     pub errors: Vec<String>,
 }
 
@@ -2356,6 +2357,7 @@ impl AssetService {
             modified: 0,
             missing: 0,
             stale_removed: 0,
+            orphaned_cleaned: 0,
             errors: Vec::new(),
         };
 
@@ -2596,6 +2598,21 @@ impl AssetService {
             let file_start = Instant::now();
             result.new_files += 1;
             on_file(full_path, SyncStatus::New, file_start.elapsed());
+        }
+
+        // Clean up assets that became locationless after stale removal
+        if apply && remove_stale && result.stale_removed > 0 {
+            let orphaned = catalog.list_orphaned_asset_ids()?;
+            for asset_id in &orphaned {
+                if let Ok(uuid) = asset_id.parse::<uuid::Uuid>() {
+                    // Delete sidecar
+                    let _ = metadata_store.delete(uuid);
+                    // Delete from catalog (variants, recipes, etc.)
+                    let _ = catalog.delete_recipes_for_asset(asset_id);
+                    let _ = catalog.delete_asset(asset_id);
+                    result.orphaned_cleaned += 1;
+                }
+            }
         }
 
         Ok(result)
