@@ -562,7 +562,10 @@ window.triggerSearch = onFilterChange;
             });
             var matches = rawMatches.filter(function(t) {
                 var prefix = t + '|';
-                return !rawMatches.some(function(other) { return other.indexOf(prefix) === 0; });
+                var hasChild = rawMatches.some(function(other) { return other.indexOf(prefix) === 0; });
+                if (!hasChild) return true;
+                var lastPart = t.split('|').pop().toLowerCase();
+                return lastPart.indexOf(query) !== -1 || lastPart.indexOf(queryStorage) !== -1;
             }).slice(0, 10);
 
             if (matches.length === 0) {

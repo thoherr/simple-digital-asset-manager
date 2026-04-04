@@ -297,6 +297,19 @@ maki tag rename "concert" "subject|performing arts|concert"
 
 The [IPTC Photo Metadata Standard](https://iptc.org/standards/photo-metadata/) defines the `dc:subject` field (keywords) and `lr:hierarchicalSubject` (hierarchical keywords). MAKI reads and writes both. Staying within this framework ensures your tags survive export to any IPTC-aware tool.
 
+### How MAKI stores hierarchical tags (the roundtrip)
+
+CaptureOne and Lightroom write two representations of the same hierarchy to XMP:
+
+- **`dc:subject`**: flat individual components — `location`, `Germany`, `Bayern`, `Wolfratshausen`
+- **`lr:hierarchicalSubject`**: all ancestor paths — `location`, `location|Germany`, `location|Germany|Bayern`, `location|Germany|Bayern|Wolfratshausen`
+
+On import, MAKI keeps only the `lr:hierarchicalSubject` entries (the pipe-separated paths) and discards the flat `dc:subject` components that are part of any hierarchy. This avoids storing redundant standalone tags like `Germany` alongside `location|Germany`.
+
+On writeback, MAKI regenerates both formats: flat components for `dc:subject`, ancestor paths for `lr:hierarchicalSubject`. CaptureOne and Lightroom see exactly what they expect — no data loss in the roundtrip.
+
+Internally, MAKI stores: `location`, `location|Germany`, `location|Germany|Bayern`, `location|Germany|Bayern|Wolfratshausen`. Searching `tag:Germany` matches `location|Germany` via prefix matching. Standalone `Germany` is not stored because it's redundant.
+
 ### Controlled vocabularies
 
 Several controlled vocabularies exist for photo tagging:

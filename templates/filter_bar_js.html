@@ -65,10 +65,15 @@
             var tl = t.toLowerCase();
             return (tl.indexOf(query) !== -1 || tl.indexOf(queryStorage) !== -1) && selected.indexOf(t) === -1;
         });
-        // Prefer leaf tags: suppress entries that are prefixes of other matches
+        // Prefer leaf tags: suppress entries that are prefixes of other matches,
+        // UNLESS the query directly matches the last component (user is targeting that level)
         var matches = rawMatches.filter(function(t) {
             var prefix = t + '|';
-            return !rawMatches.some(function(other) { return other.indexOf(prefix) === 0; });
+            var hasChild = rawMatches.some(function(other) { return other.indexOf(prefix) === 0; });
+            if (!hasChild) return true;
+            // Keep if query matches the last component of this tag
+            var lastPart = t.split('|').pop().toLowerCase();
+            return lastPart.indexOf(query) !== -1 || lastPart.indexOf(queryStorage) !== -1;
         }).slice(0, 10);
 
         if (matches.length === 0) {
