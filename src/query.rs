@@ -2162,14 +2162,35 @@ impl QueryEngine {
         store.save(&asset)?;
         catalog.insert_asset(&asset)?;
 
-        // Re-insert all variants and file locations to fix SQLite sync gaps
+        // Re-sync SQLite with sidecar: delete stale rows and re-insert all
+        // variants, file locations, and recipes from the sidecar YAML.
+        let variant_hashes: Vec<String> = asset.variants.iter()
+            .map(|v| v.content_hash.clone())
+            .collect();
+        for hash in &variant_hashes {
+            // Delete file locations for this variant (will re-insert from sidecar)
+            catalog.conn().execute(
+                "DELETE FROM file_locations WHERE content_hash = ?1",
+                rusqlite::params![hash],
+            )?;
+        }
+        // Delete recipes for this asset (will re-insert from sidecar)
+        let recipe_ids: Vec<String> = asset.recipes.iter()
+            .map(|r| r.id.to_string())
+            .collect();
+        for rid in &recipe_ids {
+            catalog.conn().execute(
+                "DELETE FROM recipes WHERE id = ?1",
+                rusqlite::params![rid],
+            )?;
+        }
+        // Re-insert all variants, file locations, and recipes
         for variant in &asset.variants {
             catalog.insert_variant(variant)?;
             for loc in &variant.locations {
                 catalog.insert_file_location(&variant.content_hash, loc)?;
             }
         }
-        // Re-insert all recipes
         for recipe in &asset.recipes {
             catalog.insert_recipe(recipe)?;
         }

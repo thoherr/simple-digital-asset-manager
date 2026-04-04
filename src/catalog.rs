@@ -1139,6 +1139,15 @@ impl Catalog {
 
     /// Insert a file location for a variant.
     pub fn insert_file_location(&self, content_hash: &str, loc: &FileLocation) -> Result<()> {
+        // Check if this exact location already exists (no unique constraint on table)
+        let exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) > 0 FROM file_locations WHERE content_hash = ?1 AND volume_id = ?2 AND relative_path = ?3",
+            rusqlite::params![content_hash, loc.volume_id.to_string(), loc.relative_path_str()],
+            |r| r.get(0),
+        )?;
+        if exists {
+            return Ok(());
+        }
         self.conn.execute(
             "INSERT INTO file_locations (content_hash, volume_id, relative_path, verified_at) \
              VALUES (?1, ?2, ?3, ?4)",
