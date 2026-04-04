@@ -2182,8 +2182,9 @@ impl QueryEngine {
         catalog.insert_asset(&asset)?;
 
         // Re-sync SQLite with sidecar: the sidecar YAML is the source of truth.
-        // Delete ALL variant/location/recipe rows for this asset from SQLite,
-        // then re-insert from sidecar.
+        // Temporarily disable FK checks for the delete-and-reinsert cycle.
+        let _ = catalog.conn().execute_batch("PRAGMA foreign_keys = OFF");
+        let resync_result = (|| -> anyhow::Result<()> {
         let full_id_str = full_id.to_string();
 
         // Find all variant hashes currently in SQLite for this asset (may include stale ones)
@@ -2231,6 +2232,10 @@ impl QueryEngine {
         for recipe in &asset.recipes {
             catalog.insert_recipe(recipe)?;
         }
+        Ok(())
+        })();
+        let _ = catalog.conn().execute_batch("PRAGMA foreign_keys = ON");
+        resync_result?;
 
         catalog.update_denormalized_variant_columns(&asset)?;
 
