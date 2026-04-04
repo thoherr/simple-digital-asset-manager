@@ -729,6 +729,10 @@ enum Commands {
         /// Also re-extract embedded XMP from JPEG/TIFF media files
         #[arg(long, display_order = 21)]
         media: bool,
+
+        /// Clear and re-extract all metadata from source files (XMP + EXIF)
+        #[arg(long, display_order = 22)]
+        reimport: bool,
     },
 
     /// Bidirectional metadata sync: read external XMP changes and write back pending DAM edits
@@ -4904,7 +4908,47 @@ faces/\n\
 
             Ok(())
         }
-        Commands::Refresh { paths, volume, asset, dry_run, media } => {
+        Commands::Refresh { paths, volume, asset, dry_run, media, reimport } => {
+            if reimport {
+                // --reimport: clear and re-extract all metadata from source files
+                let catalog_root = maki::config::find_catalog_root()?;
+                let engine = QueryEngine::new(&catalog_root);
+
+                if asset.is_none() && paths.is_empty() {
+                    anyhow::bail!("--reimport requires --asset <ID> or asset IDs as arguments");
+                }
+
+                let asset_ids: Vec<String> = if let Some(ref id) = asset {
+                    vec![id.clone()]
+                } else {
+                    // Treat paths as asset IDs
+                    paths.clone()
+                };
+
+                let mut reimported = 0usize;
+                for id in &asset_ids {
+                    match engine.reimport_metadata(id) {
+                        Ok(tags) => {
+                            reimported += 1;
+                            if cli.log {
+                                let short = if id.len() > 8 { &id[..8] } else { id };
+                                eprintln!("  {} — reimported ({} tags)", short, tags.len());
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("  {} — error: {e}", if id.len() > 8 { &id[..8] } else { id.as_str() });
+                        }
+                    }
+                }
+
+                if cli.json {
+                    println!("{}", serde_json::json!({ "reimported": reimported }));
+                } else {
+                    println!("Reimport metadata: {} asset(s) refreshed", reimported);
+                }
+                return Ok(());
+            }
+
             let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let registry = DeviceRegistry::new(&catalog_root);
