@@ -2159,6 +2159,25 @@ impl QueryEngine {
             asset.created_at = dt;
         }
 
+        // Deduplicate recipes by location (volume_id + relative_path).
+        // Can happen when auto-group merges two assets that both had the same XMP recipe.
+        {
+            let mut seen = std::collections::HashSet::new();
+            asset.recipes.retain(|r| {
+                let key = format!("{}:{}", r.location.volume_id, r.location.relative_path_str());
+                seen.insert(key)
+            });
+        }
+
+        // Deduplicate variant locations
+        for variant in &mut asset.variants {
+            let mut seen = std::collections::HashSet::new();
+            variant.locations.retain(|l| {
+                let key = format!("{}:{}", l.volume_id, l.relative_path_str());
+                seen.insert(key)
+            });
+        }
+
         store.save(&asset)?;
         catalog.insert_asset(&asset)?;
 
