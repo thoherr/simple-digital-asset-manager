@@ -25,9 +25,10 @@ maki tag a1b2c3d4 "animals|birds|eagles"
 maki tag a1b2c3d4 "location|europe|germany"
 ```
 
-Parent tag searches match all descendants -- searching for `tag:animals` will
-find assets tagged `animals|birds|eagles`. This works in both CLI and web UI
-searches.
+Adding a hierarchical tag automatically stores all ancestor paths -- tagging with
+`animals|birds|eagles` also adds `animals` and `animals|birds`. Searching for
+`tag:animals` matches because the asset has `animals` as a tag. This works in
+both CLI and web UI searches.
 
 Hierarchical tags interoperate with Lightroom's `lr:hierarchicalSubject` XMP
 field. When importing XMP files that contain `lr:hierarchicalSubject` entries,
@@ -83,7 +84,7 @@ maki tag rename "Munich" "location|Germany|Bavaria|Munich" --apply --log
 
 Matching is case-insensitive: `maki tag rename "Concert" "concert"` finds "Concert", "CONCERT", and "concert" and normalizes them all.
 
-When renaming to a hierarchical tag, standalone tags that are now ancestors of the new tag are automatically removed. For example, renaming "Munich" to "location|Germany|Bavaria|Munich" also removes standalone "Germany" and "Bavaria" tags — since `tag:Germany` now matches via the hierarchy, keeping them separately would be redundant.
+When renaming to a hierarchical tag, all ancestor paths are automatically added. For example, renaming "Munich" to "location|Germany|Bavaria|Munich" also adds `location`, `location|Germany`, and `location|Germany|Bavaria`. Removing a hierarchical tag also cleans up orphaned ancestor tags (ancestors no longer needed by any other descendant).
 
 ### Browsing tags in the web UI
 

@@ -4,7 +4,7 @@ How hierarchical tags should be stored and searched — ensuring consistency bet
 
 **Date:** 2026-04-03
 
-**Status:** Investigation. Open for discussion.
+**Status:** Complete. All 4 phases implemented (v4.3.5).
 
 ---
 

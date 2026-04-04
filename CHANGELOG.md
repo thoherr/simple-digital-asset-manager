@@ -2,6 +2,16 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.3.5 (2026-04-04)
+
+### New Features
+- **Tag hierarchy ancestor expansion** — adding a hierarchical tag (e.g., `person|artist|musician|Peter`) now automatically stores all ancestor paths (`person`, `person|artist`, `person|artist|musician`), matching CaptureOne/Lightroom conventions. Removing a tag cleans up orphaned ancestors (ancestors no longer needed by any other descendant).
+- **`maki tag expand-ancestors`** — retroactive cleanup command that expands ancestor paths for existing tags created before this feature. Run once to align your catalog with the new convention.
+- **XMP writeback matches CaptureOne format** — `dc:subject` now writes flat individual component names (not pipe-separated paths), `lr:hierarchicalSubject` writes all ancestor paths. Matches what CaptureOne/Lightroom produce.
+
+### Enhancements
+- **Web UI autocomplete** — filters to show only leaf tags, suppressing intermediate ancestor entries that would clutter the dropdown.
+
 ## v4.3.4 (2026-04-03)
 
 ### New Features

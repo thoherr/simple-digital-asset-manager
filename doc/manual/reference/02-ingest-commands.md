@@ -355,7 +355,7 @@ Finds all assets tagged with OLD_TAG and replaces that tag with NEW_TAG. This is
 
 Matching is **case-insensitive**, consistent with tag search. `maki tag rename "Concert" "concert"` finds and renames "Concert", "CONCERT", and "concert" variants. The stored result uses the exact case specified in NEW_TAG.
 
-**Hierarchy-aware cleanup:** When renaming a flat tag to a hierarchical one (e.g., "Munich" to "location|Germany|Bavaria|Munich"), standalone tags that are now ancestors of the new tag are automatically removed. Since hierarchical search matches ancestors, keeping "Germany" or "Bavaria" as separate tags would be redundant. This cleanup is also case-insensitive — "bavaria" is removed when "Bavaria" appears in the hierarchy.
+**Ancestor expansion:** When renaming a flat tag to a hierarchical one (e.g., "Munich" to "location|Germany|Bavaria|Munich"), all ancestor paths are automatically added (`location`, `location|Germany`, `location|Germany|Bavaria`). This matches the CaptureOne/Lightroom convention. The rename also cascades to descendant tags — renaming a parent renames all children.
 
 If an asset already has NEW_TAG (in any case variant), the old tag is simply removed without creating a duplicate.
 

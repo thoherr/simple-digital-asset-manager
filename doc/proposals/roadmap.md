@@ -2,7 +2,7 @@
 
 Living document tracking planned enhancements. Previous proposals (all implemented or deferred) are in `archive/`. Active proposals are in `doc/proposals/`.
 
-Current version: **v4.3.4** (2026-04-03)
+Current version: **v4.3.5** (2026-04-04)
 
 ---
 
@@ -20,7 +20,7 @@ Import directly from memory cards, cull on smart previews, and copy only keepers
 
 Ensure consistency between CaptureOne/Lightroom-imported tags (which expand all ancestor paths) and MAKI-created/renamed tags (which currently store only the leaf). Recommended approach: always expand ancestors on write, matching the industry convention. See `doc/proposals/tag-hierarchy-expansion.md`.
 
-**Status:** Proposal written, under investigation.
+**Status:** Complete. All 4 phases implemented (v4.3.5).
 
 **Complexity:** Medium (touches tag add, rename, remove, writeback, and import merge logic).
 

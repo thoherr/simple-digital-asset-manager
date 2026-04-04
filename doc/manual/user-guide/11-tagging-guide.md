@@ -26,7 +26,7 @@ Primary tags should describe the visible content of the image: *sunset*, *concer
 
 ### Be specific and general at the same time
 
-Hierarchical tags handle this naturally. Tagging an image `subject|animal|bird|heron` means it will match searches for `tag:subject|animal`, `tag:subject|animal|bird`, and `tag:subject|animal|bird|heron`. You don't need to manually add parent tags -- MAKI's search engine matches ancestors automatically.
+Hierarchical tags handle this naturally. Tagging an image `subject|animal|bird|heron` automatically stores all ancestor paths (`subject`, `subject|animal`, `subject|animal|bird`) alongside the full tag -- matching the CaptureOne/Lightroom convention. This means the image will match searches for `tag:subject`, `tag:subject|animal`, `tag:subject|animal|bird`, and `tag:subject|animal|bird|heron`.
 
 ### Use one language consistently
 
@@ -354,13 +354,15 @@ All matching is case-insensitive — `maki tag rename "Concert" "concert"` catch
 Once the duplicates are resolved, introduce hierarchy:
 
 ```bash
-# Move flat tags into hierarchy (redundant ancestors are auto-removed)
+# Move flat tags into hierarchy (ancestors are auto-expanded)
 maki tag rename "concert" "subject|performing arts|concert"
 maki tag rename "landscape" "subject|nature|landscape"
 maki tag rename "München" "location|Germany|Bayern|München"
 ```
 
-When renaming to a hierarchical tag, standalone tags that match ancestor components are removed automatically. For example, the last command also removes standalone "Germany" and "Bayern" tags since they're now matched by the hierarchy.
+When renaming to a hierarchical tag, all ancestor paths are automatically added. For example, the last command replaces "München" with `location|Germany|Bayern|München` and also adds `location`, `location|Germany`, and `location|Germany|Bayern`.
+
+If you have existing tags that were created before ancestor expansion was added, run `maki tag expand-ancestors --apply` to retroactively add the missing ancestor paths.
 
 Do this for your most-used tags first (the top 50-100 tags cover most of your catalog). The long tail can be restructured gradually.
 
