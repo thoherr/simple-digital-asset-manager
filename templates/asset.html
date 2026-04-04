@@ -428,7 +428,7 @@
                         <td>{{ v.size }}</td>
                         <td>
                             {% for loc in v.locations %}
-                            <div>{{ loc.volume_label }}: {{ loc.relative_path }}{% if loc.is_online %}
+                            <div><span class="badge volume-badge">{{ loc.volume_label }}</span> {{ loc.relative_path }}{% if loc.is_online %}
                                 <button class="reveal-btn" title="Reveal in file manager"
                                     onclick="fetch('/api/open-location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume_id:'{{ loc.volume_id }}',relative_path:'{{ loc.relative_path }}'})}).then(function(r){if(!r.ok)r.text().then(function(t){alert(t)})})">&#128194;</button><button class="reveal-btn" title="Open terminal here"
                                     onclick="fetch('/api/open-terminal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume_id:'{{ loc.volume_id }}',relative_path:'{{ loc.relative_path }}'})}).then(function(r){if(!r.ok)r.text().then(function(t){alert(t)})})">&gt;_</button>{% endif %}</div>
@@ -538,7 +538,7 @@
                     <tr>
                         <td><span class="badge">{{ r.recipe_type }}</span>{% if r.pending_writeback %} <span title="Metadata changes not yet written to this XMP file" style="color:#e67e22;cursor:help;">&#x21bb;</span>{% endif %}</td>
                         <td>{{ r.software }}</td>
-                        <td>{{ r.volume_label }}: {{ r.relative_path }}{% if r.is_online %}
+                        <td><span class="badge volume-badge">{{ r.volume_label }}</span> {{ r.relative_path }}{% if r.is_online %}
                             <button class="reveal-btn" title="Reveal in file manager"
                                 onclick="fetch('/api/open-location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume_id:'{{ r.volume_id }}',relative_path:'{{ r.relative_path }}'})}).then(function(r){if(!r.ok)r.text().then(function(t){alert(t)})})">&#128194;</button><button class="reveal-btn" title="Open terminal here"
                                 onclick="fetch('/api/open-terminal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume_id:'{{ r.volume_id }}',relative_path:'{{ r.relative_path }}'})}).then(function(r){if(!r.ok)r.text().then(function(t){alert(t)})})">&gt;_</button>{% endif %}</td>

@@ -422,6 +422,13 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     background: var(--badge-bg);
     color: var(--text-muted);
 }
+.volume-badge {
+    background: var(--badge-bg);
+    color: var(--text);
+    font-weight: 500;
+    text-transform: none;
+    margin-right: 0.25rem;
+}
 .badge-type-image { background: var(--type-image); color: #fff; }
 .badge-type-video { background: var(--type-video); color: #fff; }
 .badge-type-audio { background: var(--type-audio); color: #fff; }
