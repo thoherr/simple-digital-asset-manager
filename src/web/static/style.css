@@ -648,9 +648,21 @@ select.badge {
 /* Asset detail page */
 .asset-detail {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(300px, 1fr) minmax(0, 1fr);
     gap: 2rem;
     margin-top: 1rem;
+}
+.asset-detail > :nth-child(2) {
+    overflow-x: auto;
+    min-width: 0;
+}
+.variants-table {
+    table-layout: fixed;
+    width: 100%;
+}
+.variants-table td {
+    word-break: break-all;
+    overflow-wrap: anywhere;
 }
 @media (max-width: 768px) {
     .asset-detail { grid-template-columns: 1fr; }
