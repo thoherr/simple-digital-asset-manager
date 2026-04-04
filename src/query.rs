@@ -2181,29 +2181,49 @@ impl QueryEngine {
         store.save(&asset)?;
         catalog.insert_asset(&asset)?;
 
-        // Re-sync SQLite with sidecar: delete stale rows and re-insert all
-        // variants, file locations, and recipes from the sidecar YAML.
-        let variant_hashes: Vec<String> = asset.variants.iter()
-            .map(|v| v.content_hash.clone())
+        // Re-sync SQLite with sidecar: the sidecar YAML is the source of truth.
+        // Delete ALL variant/location/recipe rows for this asset from SQLite,
+        // then re-insert from sidecar.
+        let full_id_str = full_id.to_string();
+
+        // Find all variant hashes currently in SQLite for this asset (may include stale ones)
+        let sqlite_hashes: Vec<String> = catalog.conn()
+            .prepare("SELECT content_hash FROM variants WHERE asset_id = ?1")?
+            .query_map(rusqlite::params![&full_id_str], |r| r.get(0))?
+            .filter_map(|r| r.ok())
             .collect();
-        for hash in &variant_hashes {
-            // Delete file locations for this variant (will re-insert from sidecar)
+
+        // Delete file locations for ALL variants (sidecar + stale SQLite-only ones)
+        for hash in &sqlite_hashes {
             catalog.conn().execute(
                 "DELETE FROM file_locations WHERE content_hash = ?1",
                 rusqlite::params![hash],
             )?;
         }
-        // Delete recipes for this asset (will re-insert from sidecar)
-        let recipe_ids: Vec<String> = asset.recipes.iter()
-            .map(|r| r.id.to_string())
+        // Delete stale variant rows not in sidecar
+        let sidecar_hashes: std::collections::HashSet<&str> = asset.variants.iter()
+            .map(|v| v.content_hash.as_str())
             .collect();
-        for rid in &recipe_ids {
+        for hash in &sqlite_hashes {
+            if !sidecar_hashes.contains(hash.as_str()) {
+                catalog.conn().execute(
+                    "DELETE FROM variants WHERE content_hash = ?1",
+                    rusqlite::params![hash],
+                )?;
+            }
+        }
+        // Delete all recipes for this asset's variants
+        let all_hashes: Vec<&str> = sqlite_hashes.iter().map(|s| s.as_str())
+            .chain(sidecar_hashes.iter().copied())
+            .collect();
+        for hash in &all_hashes {
             catalog.conn().execute(
-                "DELETE FROM recipes WHERE id = ?1",
-                rusqlite::params![rid],
+                "DELETE FROM recipes WHERE variant_hash = ?1",
+                rusqlite::params![hash],
             )?;
         }
-        // Re-insert all variants, file locations, and recipes
+
+        // Re-insert from sidecar (source of truth)
         for variant in &asset.variants {
             catalog.insert_variant(variant)?;
             for loc in &variant.locations {
