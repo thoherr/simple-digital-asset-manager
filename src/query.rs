@@ -2126,8 +2126,42 @@ impl QueryEngine {
             }
         }
 
+        // Re-extract EXIF from media files to refresh source_metadata and date
+        let mut earliest_date: Option<chrono::DateTime<chrono::Utc>> = None;
+        for (content_hash, relative_path, volume_id) in &locations {
+            let vol = match vol_map.get(volume_id) {
+                Some(v) if v.is_online => *v,
+                _ => continue,
+            };
+            let full_path = vol.mount_point.join(relative_path);
+            if !full_path.exists() {
+                continue;
+            }
+            let exif = crate::exif_reader::extract(&full_path);
+            if let Some(variant) = asset.variants.iter_mut().find(|v| v.content_hash == *content_hash) {
+                // Update source_metadata from EXIF (overwrite with fresh data)
+                for (key, val) in &exif.source_metadata {
+                    variant.source_metadata.insert(key.to_string(), val.to_string());
+                }
+            }
+            // Track earliest date for created_at
+            if let Some(date_str) = exif.source_metadata.get("date_taken") {
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(date_str) {
+                    let utc = dt.with_timezone(&chrono::Utc);
+                    if earliest_date.is_none() || utc < earliest_date.unwrap() {
+                        earliest_date = Some(utc);
+                    }
+                }
+            }
+        }
+        // Update created_at to earliest date from EXIF
+        if let Some(dt) = earliest_date {
+            asset.created_at = dt;
+        }
+
         store.save(&asset)?;
         catalog.insert_asset(&asset)?;
+        catalog.update_denormalized_variant_columns(&asset)?;
 
         Ok(asset.tags.clone())
     }
