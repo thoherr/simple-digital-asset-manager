@@ -488,23 +488,27 @@ maki-tag-export-vocabulary -- export the current tag tree as a vocabulary file
 
 ### SYNOPSIS
 
-    maki [GLOBAL FLAGS] tag export-vocabulary [--output <FILE>]
+    maki [GLOBAL FLAGS] tag export-vocabulary [--output <FILE>] [--prune]
 
 ### DESCRIPTION
 
-Generates a `vocabulary.yaml` file from the current catalog's tag tree. Tags are grouped into a nested YAML hierarchy — the inverse of the flat pipe-separated storage format.
+Generates a `vocabulary.yaml` file by merging the current catalog's tags with any existing vocabulary entries. Tags are grouped into a nested YAML hierarchy.
 
-Use this to bootstrap a vocabulary file from an existing catalog. Edit the generated file to add planned categories, remove unwanted entries, and organize your tag structure.
+By default, planned-but-unused entries from the existing `vocabulary.yaml` are preserved in the export — the command adds new tags from usage without destroying your planned structure. Use `--prune` to remove unused entries and keep only tags that exist on at least one asset.
 
 ### OPTIONS
 
 **--output \<FILE\>**
 : Output file path. Defaults to `vocabulary.yaml` in the catalog root.
 
+**--prune**
+: Remove vocabulary entries that have no assets. Only keep tags from actual usage.
+
 ### EXAMPLES
 
 ```bash
-maki tag export-vocabulary                         # writes vocabulary.yaml
+maki tag export-vocabulary                          # merge: keep planned + add used
+maki tag export-vocabulary --prune                  # only used tags
 maki tag export-vocabulary --output ~/my-vocab.yaml  # custom path
 ```
 

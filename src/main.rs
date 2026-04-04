@@ -1080,6 +1080,10 @@ enum TagCommands {
         /// Output file (default: vocabulary.yaml in catalog root)
         #[arg(long)]
         output: Option<String>,
+
+        /// Remove vocabulary entries that have no assets (only keep used tags)
+        #[arg(long)]
+        prune: bool,
     },
 }
 
@@ -2938,16 +2942,36 @@ faces/\n\
                     }
                     Ok(())
                 }
-                Some(TagCommands::ExportVocabulary { output }) => {
+                Some(TagCommands::ExportVocabulary { output, prune }) => {
                     let catalog_root = maki::config::find_catalog_root()?;
                     let catalog = maki::catalog::Catalog::open(&catalog_root)?;
-                    let tags = catalog.list_all_tags()?;
-                    let yaml = maki::vocabulary::tags_to_vocabulary_yaml(&tags);
+                    let catalog_tags = catalog.list_all_tags()?;
 
+                    // Merge with existing vocabulary (preserve planned-but-unused entries)
+                    let mut all_tags = catalog_tags;
+                    if !prune {
+                        let vocab = maki::vocabulary::load_vocabulary(&catalog_root);
+                        let existing: std::collections::HashSet<String> = all_tags.iter().map(|(name, _)| name.clone()).collect();
+                        for vt in vocab {
+                            if !existing.contains(&vt) {
+                                all_tags.push((vt, 0));
+                            }
+                        }
+                    }
+                    all_tags.sort_by(|a, b| a.0.cmp(&b.0));
+
+                    let yaml = maki::vocabulary::tags_to_vocabulary_yaml(&all_tags);
                     let out_path = output.map(std::path::PathBuf::from)
                         .unwrap_or_else(|| catalog_root.join("vocabulary.yaml"));
                     std::fs::write(&out_path, &yaml)?;
-                    println!("Exported {} tags to {}", tags.len(), out_path.display());
+
+                    let used = all_tags.iter().filter(|(_, c)| *c > 0).count();
+                    let planned = all_tags.len() - used;
+                    if prune {
+                        println!("Exported {} tags to {} (pruned, unused entries removed)", used, out_path.display());
+                    } else {
+                        println!("Exported {} tags to {} ({} used, {} planned)", all_tags.len(), out_path.display(), used, planned);
+                    }
                     Ok(())
                 }
                 None => {
