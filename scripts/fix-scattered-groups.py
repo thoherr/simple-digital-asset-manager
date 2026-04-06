@@ -4,20 +4,25 @@ Fix accidentally over-grouped assets by splitting them based on directory struct
 
 Finds assets with scattered variants (files in different directories) and splits
 them so each directory-group becomes its own asset. After splitting, reimports
-metadata and re-groups by filename stem within each directory.
+metadata and re-groups by filename stem within each session.
+
+Uses the same session root detection as `maki auto-group`: the deepest directory
+component matching the [group] session_root_pattern regex (default: ^\d{4}-\d{2})
+defines the session boundary. Variants in the same session root stay together;
+variants in different session roots are split apart.
 
 Usage:
     # Preview what would be split (dry run)
     python3 scripts/fix-scattered-groups.py --min-scattered 4
-
-    # Preview with day-level grouping (default is month-level)
-    python3 scripts/fix-scattered-groups.py --min-scattered 4 --depth 3
 
     # Apply the fixes
     python3 scripts/fix-scattered-groups.py --min-scattered 4 --apply
 
     # Process a specific asset
     python3 scripts/fix-scattered-groups.py --asset a1b2c3d4
+
+    # Custom session root pattern (overrides maki.toml)
+    python3 scripts/fix-scattered-groups.py --min-scattered 4 --pattern '^(shoot|project)-'
 
     # Start with the worst offenders, review, then widen
     python3 scripts/fix-scattered-groups.py --min-scattered 10 --apply
@@ -27,6 +32,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from collections import defaultdict
@@ -63,47 +69,77 @@ def maki_run(*args):
     return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
 
 
-def dir_at_depth(path, depth):
-    """Extract directory prefix at a given depth from a relative path.
+DEFAULT_SESSION_ROOT_PATTERN = r"^\d{4}-\d{2}"
 
-    depth=2: yyyy/yyyy-mm       (month level)
-    depth=3: yyyy/yyyy-mm/yyyy-mm-dd  (day level)
 
-    Example: Pictures/Masters/2019/2019-11/2019-11-30/Selects/file.RAF
-    After stripping the volume-relative prefix, the year/month/day structure
-    is detected by looking for YYYY patterns.
+def load_session_root_pattern():
+    """Load session_root_pattern from maki.toml if available."""
+    try:
+        import tomllib
+    except ImportError:
+        try:
+            import tomli as tomllib
+        except ImportError:
+            return DEFAULT_SESSION_ROOT_PATTERN
+
+    # Walk up from cwd to find maki.toml
+    path = os.getcwd()
+    while True:
+        toml_path = os.path.join(path, "maki.toml")
+        if os.path.isfile(toml_path):
+            with open(toml_path, "rb") as f:
+                config = tomllib.load(f)
+            return config.get("group", {}).get("session_root_pattern", DEFAULT_SESSION_ROOT_PATTERN)
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    return DEFAULT_SESSION_ROOT_PATTERN
+
+
+def find_session_root(path, pattern):
+    """Find the session root for a file path, matching maki's find_session_root().
+
+    Walks directory components and finds the deepest one matching the pattern.
+    Falls back to parent directory if no component matches.
     """
     parts = PurePosixPath(path).parts[:-1]  # remove filename
-    # Find the first YYYY-like component (4 digits starting with 19 or 20)
-    year_idx = None
+    if not parts:
+        return "(root)"
+
+    dir_path = "/".join(parts)
+
+    if not pattern:
+        # No pattern = fall back to parent directory
+        return "/".join(parts[:-1]) if len(parts) > 1 else dir_path
+
+    regex = re.compile(pattern)
+    session_idx = None
     for i, part in enumerate(parts):
-        if len(part) == 4 and part.isdigit() and part[:2] in ("19", "20"):
-            year_idx = i
-            break
+        if regex.search(part):
+            session_idx = i
 
-    if year_idx is not None and year_idx + depth <= len(parts):
-        return "/".join(parts[:year_idx + depth])
+    if session_idx is not None:
+        return "/".join(parts[:session_idx + 1])
 
-    # Fallback: use first N directory components
-    if len(parts) >= depth:
-        return "/".join(parts[:depth])
-    return "/".join(parts) if parts else "(root)"
+    # No match — fall back to parent directory
+    return "/".join(parts[:-1]) if len(parts) > 1 else dir_path
 
 
-def analyze_asset(asset_id, depth):
-    """Analyze an asset and return variant groups by directory."""
+def analyze_asset(asset_id, pattern):
+    """Analyze an asset and return variant groups by session root."""
     details = maki_json("show", asset_id)
     if not details or "variants" not in details:
         return None, None
 
-    # Group variants by directory prefix
+    # Group variants by session root
     groups = defaultdict(list)
     for variant in details["variants"]:
         content_hash = variant["content_hash"]
         for loc in variant.get("locations", []):
             path = loc.get("relative_path", "")
-            dir_key = dir_at_depth(path, depth)
-            groups[dir_key].append({
+            session = find_session_root(path, pattern)
+            groups[session].append({
                 "content_hash": content_hash,
                 "filename": variant["original_filename"],
                 "format": variant["format"],
@@ -119,8 +155,8 @@ def main():
     )
     parser.add_argument("--min-scattered", type=int, default=4,
                         help="Minimum scattered level to process (default: 4)")
-    parser.add_argument("--depth", type=int, default=2,
-                        help="Directory depth for grouping: 2=month, 3=day (default: 2)")
+    parser.add_argument("--pattern", type=str, default=None,
+                        help="Session root regex pattern (overrides maki.toml; default: ^\\d{4}-\\d{2})")
     parser.add_argument("--asset", type=str,
                         help="Process a specific asset ID instead of searching")
     parser.add_argument("--apply", action="store_true",
@@ -132,6 +168,9 @@ def main():
     parser.add_argument("--limit", type=int, default=0,
                         help="Process at most N assets (0 = unlimited)")
     args = parser.parse_args()
+
+    # Resolve session root pattern
+    pattern = args.pattern if args.pattern is not None else load_session_root_pattern()
 
     # Find affected assets
     if args.asset:
@@ -152,7 +191,7 @@ def main():
 
     # Phase 1: Analyze
     print(f"\n{'=' * 60}")
-    print(f"{'DRY RUN' if not args.apply else 'APPLYING'} — depth={args.depth} ({'month' if args.depth == 2 else 'day' if args.depth == 3 else f'{args.depth} levels'})")
+    print(f"{'DRY RUN' if not args.apply else 'APPLYING'} — session root pattern: {pattern or '(none, parent-dir fallback)'}")
     print(f"{'=' * 60}\n")
 
     total_splits = 0
@@ -160,7 +199,7 @@ def main():
 
     for i, asset_id in enumerate(asset_ids):
         short_id = asset_id[:8]
-        details, groups = analyze_asset(asset_id, args.depth)
+        details, groups = analyze_asset(asset_id, pattern)
         if not details or not groups:
             print(f"  [{i+1}/{len(asset_ids)}] {short_id} — skipped (could not load)")
             continue
@@ -265,16 +304,19 @@ def main():
             else:
                 print(f"  FAILED reimport {aid[:8]}: {stderr}")
 
-    # Phase 4: Re-group by stem
-    # TODO: THIS IS TOTALLY WRONG, SINCE IT REGROUPS THE WHOLE CATALOG SIMPLY BY STEM
-    # We have to regroup by the found directory names that we splitted....
-    #if not args.skip_regroup:
-    #    print(f"\nRe-grouping by filename stem...")
-    #    ok, stdout, stderr = maki_run("auto-group", "--apply")
-    #    if ok:
-    #        print(f"  {stdout}")
-    #    else:
-    #        print(f"  Auto-group: {stderr}")
+    # Phase 4: Re-group by stem (scoped to affected assets)
+    # auto-group is directory-local by default (uses session_root_pattern),
+    # so it's safe to run on the affected assets without cross-session merging.
+    if not args.skip_regroup and new_asset_ids:
+        unique_ids = sorted(set(new_asset_ids))
+        # Build an id: query to scope auto-group to affected assets only
+        id_query = " ".join(f"id:{aid}" for aid in unique_ids)
+        print(f"\nRe-grouping {len(unique_ids)} affected asset(s) by filename stem...")
+        ok, stdout, stderr = maki_run("auto-group", "--apply", "--log", id_query)
+        if ok:
+            print(f"  {stdout}")
+        else:
+            print(f"  Auto-group: {stderr}")
 
     print("\nDone.")
     print("Review the results in the web UI and run 'maki generate-previews --upgrade' if needed.")
