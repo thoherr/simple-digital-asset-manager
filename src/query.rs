@@ -678,6 +678,50 @@ fn stem_prefix_matches(short: &str, long: &str) -> bool {
     }
 }
 
+/// Find the session/shoot root directory from a file's directory path.
+///
+/// Walks up from the file's directory looking for the deepest component that
+/// starts with a date pattern (YYYY-MM-DD or YYYY-MM). Everything below that
+/// level (Capture/, Selects/, Output/ and their subdirectories) belongs to
+/// the same session.
+///
+/// Examples:
+/// - `Pictures/Masters/2024/2024-10/2024-10-05-jazz-band/Capture` → `Pictures/Masters/2024/2024-10/2024-10-05-jazz-band`
+/// - `Pictures/Masters/2024/2024-10/2024-10-05-jazz-band/Output/Web` → `Pictures/Masters/2024/2024-10/2024-10-05-jazz-band`
+/// - `Photos/2024-10-05/RAW` → `Photos/2024-10-05`
+/// - `Unsorted/photos` → `Unsorted/photos` (no date found, falls back to full path)
+fn find_session_root(dir: &str) -> String {
+    let parts: Vec<&str> = dir.split('/').collect();
+    // Regex: starts with YYYY-MM-DD or YYYY-MM (4 digits, dash, 2 digits)
+    let date_prefix = |s: &str| -> bool {
+        let bytes = s.as_bytes();
+        bytes.len() >= 7
+            && bytes[0..4].iter().all(|b| b.is_ascii_digit())
+            && bytes[4] == b'-'
+            && bytes[5..7].iter().all(|b| b.is_ascii_digit())
+    };
+
+    // Find the deepest (rightmost) component that starts with a date
+    let mut session_idx = None;
+    for (i, part) in parts.iter().enumerate() {
+        if date_prefix(part) {
+            session_idx = Some(i);
+        }
+    }
+
+    match session_idx {
+        Some(idx) => parts[..=idx].join("/"),
+        None => {
+            // No date pattern found — fall back to parent directory
+            // (one level up from the file's directory)
+            std::path::Path::new(dir)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| dir.to_string())
+        }
+    }
+}
+
 /// Result of a group operation.
 #[derive(Debug)]
 pub struct GroupResult {
@@ -1762,22 +1806,20 @@ impl QueryEngine {
             entries.push(StemEntry { stem, dir, asset_id: id.clone(), details });
         }
 
-        // Partition by directory neighborhood: group entries whose directories
-        // share a common parent (sibling directories under the same session root).
-        // This prevents DSC_0001 from 2019 being grouped with DSC_0001 from 2024.
+        // Partition by directory neighborhood: group entries whose files share
+        // a common shoot/session root. This prevents DSC_0001 from a 2019 shoot
+        // being grouped with DSC_0001 from a 2024 shoot.
+        //
+        // The session root is detected by finding the deepest directory component
+        // that looks like a date (YYYY-MM-DD or YYYY-MM) or a shoot name starting
+        // with a date. Everything below that level (Capture/, Selects/, Output/
+        // and their subdirectories) belongs to the same session.
         let neighborhoods: Vec<Vec<StemEntry>> = if global_scope {
             vec![entries]
         } else {
-            // Group by "session root" = parent of the variant's directory.
-            // e.g., for "Pictures/Masters/2024/2024-03/2024-03-15/Capture/file.nef"
-            // the directory is "Pictures/Masters/2024/2024-03/2024-03-15/Capture"
-            // and the session root is "Pictures/Masters/2024/2024-03/2024-03-15".
             let mut dir_groups: HashMap<String, Vec<StemEntry>> = HashMap::new();
             for entry in entries {
-                let session_root = std::path::Path::new(&entry.dir)
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| entry.dir.clone());
+                let session_root = find_session_root(&entry.dir);
                 dir_groups.entry(session_root).or_default().push(entry);
             }
             dir_groups.into_values().collect()
@@ -5490,5 +5532,48 @@ mod tests {
 
         let expected_id = crate::models::Asset::id_for_hash("sha256:bbb");
         assert_eq!(result.new_assets[0].asset_id, expected_id.to_string());
+    }
+
+    // ── find_session_root tests ─────────────────────────
+
+    #[test]
+    fn session_root_date_dir() {
+        assert_eq!(
+            find_session_root("Pictures/Masters/2024/2024-10/2024-10-05-jazz-band/Capture"),
+            "Pictures/Masters/2024/2024-10/2024-10-05-jazz-band"
+        );
+    }
+
+    #[test]
+    fn session_root_deep_output() {
+        assert_eq!(
+            find_session_root("Pictures/Masters/2025/2025-05/2025-05-09-wedding/Output/Final/Web"),
+            "Pictures/Masters/2025/2025-05/2025-05-09-wedding"
+        );
+    }
+
+    #[test]
+    fn session_root_selects_subdir() {
+        assert_eq!(
+            find_session_root("Pictures/Masters/2025/2025-05/2025-05-09-wedding/Selects/Goettweig"),
+            "Pictures/Masters/2025/2025-05/2025-05-09-wedding"
+        );
+    }
+
+    #[test]
+    fn session_root_no_date() {
+        // Falls back to parent directory
+        assert_eq!(
+            find_session_root("Unsorted/photos/batch1"),
+            "Unsorted/photos"
+        );
+    }
+
+    #[test]
+    fn session_root_different_shoots_same_camera() {
+        // Different dates produce different session roots
+        let root_2023 = find_session_root("Pictures/Masters/2023/2023-10/2023-10-26-red-bird/Capture");
+        let root_2024 = find_session_root("Pictures/Masters/2024/2024-10/2024-10-05-jazz-band/Capture");
+        assert_ne!(root_2023, root_2024);
     }
 }
