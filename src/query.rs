@@ -2125,6 +2125,16 @@ impl QueryEngine {
     /// Clear asset-level metadata and re-extract from variant source files (XMP recipes + embedded XMP).
     /// Returns the updated tags list.
     pub fn reimport_metadata(&self, asset_id_prefix: &str) -> Result<Vec<String>> {
+        self.reimport_metadata_inner(asset_id_prefix, false)
+    }
+
+    /// Reimport only EXIF/source_metadata from media files, leaving tags,
+    /// description, rating, and label untouched.
+    pub fn reimport_exif_only(&self, asset_id_prefix: &str) -> Result<Vec<String>> {
+        self.reimport_metadata_inner(asset_id_prefix, true)
+    }
+
+    fn reimport_metadata_inner(&self, asset_id_prefix: &str, exif_only: bool) -> Result<Vec<String>> {
         let catalog = Catalog::open(&self.catalog_root)?;
         let store = MetadataStore::new(&self.catalog_root);
         let registry = DeviceRegistry::new(&self.catalog_root);
@@ -2136,19 +2146,21 @@ impl QueryEngine {
         let uuid: uuid::Uuid = full_id.parse()?;
         let mut asset = store.load(uuid)?;
 
-        // Clear asset-level metadata that comes from XMP sources
-        asset.tags.clear();
-        asset.description = None;
-        asset.rating = None;
-        asset.color_label = None;
+        if !exif_only {
+            // Clear asset-level metadata that comes from XMP sources
+            asset.tags.clear();
+            asset.description = None;
+            asset.rating = None;
+            asset.color_label = None;
+        }
 
         // Build volume lookup (id string -> Volume)
         let volumes = registry.list().unwrap_or_default();
         let vol_map: HashMap<String, &crate::models::volume::Volume> =
             volumes.iter().map(|v| (v.id.to_string(), v)).collect();
 
-        // Re-extract from XMP recipe files
-        let recipes = catalog.list_recipes_for_asset(&full_id)?;
+        // Re-extract from XMP recipe files (skip in exif_only mode)
+        let recipes = if exif_only { vec![] } else { catalog.list_recipes_for_asset(&full_id)? };
         for (_recipe_id, _content_hash, variant_hash, relative_path, volume_id) in &recipes {
             let vol = match vol_map.get(volume_id) {
                 Some(v) if v.is_online => *v,
@@ -2168,8 +2180,9 @@ impl QueryEngine {
             }
         }
 
-        // Re-extract from embedded XMP in JPEG/TIFF media files
+        // Re-extract from embedded XMP in JPEG/TIFF media files (skip in exif_only mode)
         let locations = catalog.list_file_locations_for_asset(&full_id)?;
+        if !exif_only {
         for (content_hash, relative_path, volume_id) in &locations {
             let vol = match vol_map.get(volume_id) {
                 Some(v) if v.is_online => *v,
@@ -2193,6 +2206,7 @@ impl QueryEngine {
                 }
             }
         }
+        } // end if !exif_only
 
         // Re-extract EXIF from media files to refresh source_metadata and date
         let mut earliest_date: Option<chrono::DateTime<chrono::Utc>> = None;

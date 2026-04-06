@@ -736,6 +736,10 @@ enum Commands {
         /// Clear and re-extract all metadata from source files (XMP + EXIF)
         #[arg(long, display_order = 22)]
         reimport: bool,
+
+        /// Re-extract only EXIF/source metadata from media files, leaving tags/description/rating/label untouched
+        #[arg(long, display_order = 23)]
+        exif_only: bool,
     },
 
     /// Bidirectional metadata sync: read external XMP changes and write back pending DAM edits
@@ -4934,26 +4938,31 @@ faces/\n\
 
             Ok(())
         }
-        Commands::Refresh { paths, volume, asset, dry_run, media, reimport } => {
-            if reimport {
+        Commands::Refresh { paths, volume, asset, dry_run, media, reimport, exif_only } => {
+            if reimport || exif_only {
                 // --reimport: clear and re-extract all metadata from source files
+                // --exif-only: re-extract only EXIF, leave tags/description/rating/label
                 let catalog_root = maki::config::find_catalog_root()?;
                 let engine = QueryEngine::new(&catalog_root);
 
                 if asset.is_none() && paths.is_empty() {
-                    anyhow::bail!("--reimport requires --asset <ID> or asset IDs as arguments");
+                    anyhow::bail!("--reimport/--exif-only requires --asset <ID> or asset IDs as arguments");
                 }
 
                 let asset_ids: Vec<String> = if let Some(ref id) = asset {
                     vec![id.clone()]
                 } else {
-                    // Treat paths as asset IDs
                     paths.clone()
                 };
 
                 let mut reimported = 0usize;
                 for id in &asset_ids {
-                    match engine.reimport_metadata(id) {
+                    let result = if exif_only {
+                        engine.reimport_exif_only(id)
+                    } else {
+                        engine.reimport_metadata(id)
+                    };
+                    match result {
                         Ok(tags) => {
                             reimported += 1;
                             if cli.log {
