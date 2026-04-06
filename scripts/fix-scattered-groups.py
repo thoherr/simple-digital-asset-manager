@@ -7,7 +7,7 @@ them so each directory-group becomes its own asset. After splitting, reimports
 metadata and re-groups by filename stem within each session.
 
 Uses the same session root detection as `maki auto-group`: the deepest directory
-component matching the [group] session_root_pattern regex (default: ^\d{4}-\d{2})
+component matching the [group] session_root_pattern regex (default: ^\\d{4}-\\d{2})
 defines the session boundary. Variants in the same session root stay together;
 variants in different session roots are split apart.
 
@@ -69,7 +69,20 @@ def maki_run(*args):
     return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
 
 
+import uuid
+
+# Must match DAM_NAMESPACE in src/models/asset.rs — never change this.
+DAM_NAMESPACE = uuid.UUID(bytes=bytes([
+    0x8a, 0x3b, 0x7e, 0x01, 0x4f, 0xd2, 0x4a, 0x6b,
+    0x9c, 0x1d, 0xe7, 0x5a, 0x0b, 0xf3, 0x28, 0x4c,
+]))
+
 DEFAULT_SESSION_ROOT_PATTERN = r"^\d{4}-\d{2}"
+
+
+def asset_id_from_hash(content_hash):
+    """Compute deterministic asset UUID from a content hash (UUID v5)."""
+    return str(uuid.uuid5(DAM_NAMESPACE, content_hash))
 
 
 def load_session_root_pattern():
@@ -289,6 +302,13 @@ def main():
             if ok:
                 print(f"  Split {short_id}: {len(hashes)} variant(s) from {entry['dir']}/")
                 new_asset_ids.append(asset_id)
+                # New asset IDs are deterministic (UUID v5 from variant hash).
+                # Compute them so reimport and regroup cover split-off assets too.
+                for h in hashes:
+                    new_id = asset_id_from_hash(h)
+                    if new_id:
+                        print(f"    New asset: {new_id[:8]}")
+                        new_asset_ids.append(new_id)
             else:
                 print(f"  FAILED split {short_id}: {stderr}")
 
