@@ -99,8 +99,8 @@ Subject is the largest facet. A starting structure for photography:
 subject
 ├── nature
 │   ├── landscape    (mountain, forest, beach, desert, valley, ...)
-│   ├── flora        (flowers, trees, leaves, moss, mushroom, ...)
-│   ├── sky          (sunset, sunrise, clouds, fog, storm, aurora, ...)
+│   ├── flora        (flower, tree, leaf, moss, mushroom, ...)
+│   ├── sky          (sunset, sunrise, cloud, fog, storm, aurora, ...)
 │   └── water        (ocean, river, lake, waterfall, ...)
 ├── animal
 │   ├── mammal       (deer, fox, bear, seal, whale, ...)
@@ -129,7 +129,7 @@ subject
 │   └── sports event (marathon, match, tournament, ...)
 ├── object
 │   ├── food         (coffee, wine, cake, cooking, restaurant, ...)
-│   ├── instrument   (guitar, piano, drums, saxophone, ...)
+│   ├── instrument   (guitar, piano, drum, saxophone, ...)
 │   └── other        (book, camera, flag, candle, sculpture, ...)
 └── concept
     ├── travel
