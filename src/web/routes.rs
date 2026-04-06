@@ -1115,7 +1115,8 @@ pub async fn tags_api(State(state): State<Arc<AppState>>) -> Response {
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
         let catalog = state.catalog()?;
-        let mut tags = state.dropdown_cache.get_tags(&catalog);
+        // Always query fresh (not cached) so CLI tag changes are reflected
+        let mut tags = catalog.list_all_tags().unwrap_or_default();
         // Merge vocabulary tags (with count 0 for unused entries)
         let vocab = crate::vocabulary::load_vocabulary(&state.catalog_root);
         let existing: std::collections::HashSet<String> = tags.iter().map(|(name, _)| name.clone()).collect();

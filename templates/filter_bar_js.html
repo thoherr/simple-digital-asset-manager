@@ -185,6 +185,7 @@
     tagInput.addEventListener('keyup', function(e) { e.stopPropagation(); });
     tagInput.addEventListener('blur', function() { setTimeout(hideAutocomplete, 150); });
     tagInput.addEventListener('focus', function() {
+        fetchTags(); // refresh tag list on focus (picks up CLI changes)
         var val = this.value.trim();
         if (val.length > 0) showSuggestions(val);
     });
