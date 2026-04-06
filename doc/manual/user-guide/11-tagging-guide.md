@@ -227,9 +227,11 @@ Aim for **5-15 tags per image**:
 - 1-2 technique tags (how, if noteworthy)
 - 0-1 project/event tag
 
-Example: a concert photo might carry `subject|performing arts|concert`, `subject|performing arts|concert|guitarist`, `location|Germany|Bayern|Gelting|Kulturbühne Hinterhalt`, `technique|lighting|stage lighting` -- four tags, good discoverability.
+Example: a concert photo might carry `subject|performing arts|concert`, `subject|performing arts|concert|guitarist`, `location|Germany|Bayern|Gelting|Kulturbühne Hinterhalt`, `technique|lighting|stage lighting` — four intentional tags that you choose.
 
-Fewer tags means poor discoverability. More than 20 per image usually means you're tagging noise or duplicating information that belongs elsewhere.
+These counts refer to the **leaf-level tags you consciously assign**, not the total number of tags stored. MAKI automatically expands each hierarchical tag to include all ancestor paths (e.g., `subject|performing arts|concert|guitarist` also stores `subject`, `subject|performing arts`, and `subject|performing arts|concert`). The four tags in the example produce 14 stored entries — but you only think about the four leaves.
+
+Fewer intentional tags means poor discoverability. More than 20 usually means you're tagging noise or duplicating information that belongs elsewhere.
 
 ### Total vocabulary
 
