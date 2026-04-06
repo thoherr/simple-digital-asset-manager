@@ -162,7 +162,15 @@
 
     searchInput.addEventListener('input', function() {
         filterTags(this.value);
+        sessionStorage.setItem('maki-tags-filter', this.value);
     });
+
+    // Restore filter from session (persists across navigation)
+    var saved = sessionStorage.getItem('maki-tags-filter');
+    if (saved) {
+        searchInput.value = saved;
+        filterTags(saved);
+    }
 })();
 </script>
 {% endif %}
