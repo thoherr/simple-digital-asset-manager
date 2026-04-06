@@ -159,6 +159,11 @@ person:
     - actor
     - model
   public figure:
+  ensemble:
+    - band
+    - choir
+    - orchestra
+    - team
 
 technique:
   style:

@@ -169,9 +169,20 @@ Keep location tags for *significant* or *recurring* places. Don't tag every stre
 person
 ├── family
 ├── friend
-├── artist         (musicians, performers, models)
-└── public figure
+├── artist         (musician, performer, model)
+├── public figure
+└── ensemble       (named groups of people)
+    ├── band
+    ├── choir
+    ├── orchestra
+    └── team
 ```
+
+The `person` facet covers both individuals and named groups. Individual names go under their relationship category: `person|artist|musician|Peter Schneider`. Named groups go under `ensemble`: `person|ensemble|band|Alice Viola Trio`, `person|ensemble|choir|Vocalitas München`.
+
+This distinction matters: a concert photo might be tagged both `person|ensemble|band|Alice Viola Trio` (the group) and `person|artist|musician|Alice Viola` (an individual member, possibly via face recognition).
+
+Note: `subject|person` is a separate facet that describes *what the photo shows* (portrait, group, activity), not *who is in it*. An image can be `subject|person|portrait` AND `person|artist|musician|Peter Schneider`.
 
 For collections with many named individuals, consider using MAKI's face recognition system instead of (or alongside) person tags. Face recognition scales better and doesn't require manual tagging. Use person tags for individuals who don't appear in photos (event organizers, clients) or as a complement to face recognition for search flexibility.
 
