@@ -2,6 +2,26 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.3.11 (2026-04-07)
+
+### New Features
+- **`[group] session_root_pattern`** — configurable regex for auto-group session root detection. Default `^\d{4}-\d{2}` matches date-prefixed directories (e.g., `2024-10-05-wedding`). Users with different directory naming can customize via `maki.toml`. Empty string falls back to parent-directory grouping.
+
+### Bug Fixes
+- **Auto-group session root detection** — fixed nested output directories (`Output/Final/Web`) producing wrong session roots. Now correctly finds the deepest date-prefixed directory component.
+- **Auto-group directory-local safety** *(critical)* — auto-group now restricts stem matching to files within the same session root by default. Prevents catastrophic cross-shoot merging (e.g., `DSC_0001` from unrelated shoots). Use `--global` to opt into cross-directory matching.
+
+### Enhancements
+- **`refresh --exif-only`** — selective EXIF re-extraction without full metadata reimport. Useful for re-reading camera data after parser improvements.
+- **Auto-group progress logging** — `--log` shows per-group details in real time during processing.
+- **Tag count in detail page** — section header shows the number of tags on the asset.
+- **fix-scattered-groups.py** — rewritten to use session root detection (matching maki's Rust implementation), with working Phase 4 re-grouping scoped to affected assets. Computes split-off asset IDs via UUID v5.
+
+### Documentation
+- **`[group]` configuration** — new section in configuration reference documenting `session_root_pattern` with examples.
+- **Auto-group command reference** — updated to explain session root detection, configurable pattern, and link to config docs.
+- Auto-group safety fix, `--global`, `--exif-only`, and progress logging documented across manual, cheat sheet, and CLAUDE.md.
+
 ## v4.3.10 (2026-04-06)
 
 ### Enhancements
