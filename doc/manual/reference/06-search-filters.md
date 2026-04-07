@@ -355,10 +355,10 @@ maki search "meta:color_space=sRGB"
 
 | Pattern | Meaning | Speed |
 |---------|---------|-------|
-| `path:Pictures/2026` | Prefix from root: matches `Pictures/2026...` | ⚡ index scan |
-| `path:Pictures/*/Capture` | Anything between `Pictures/` and `/Capture` | ⚡ index scan (left-anchored) |
-| `path:*/2026/*/party` | Slash-anchored substring search | 🐢 full scan |
-| `path:*party` | Substring match anywhere | 🐢 full scan |
+| `path:Pictures/2026` | Prefix from root: matches `Pictures/2026...` | fast (index scan) |
+| `path:Pictures/*/Capture` | Anything between `Pictures/` and `/Capture` | fast (left-anchored) |
+| `path:*/2026/*/party` | Slash-anchored substring search | slow (full scan) |
+| `path:*party` | Substring match anywhere | slow (full scan) |
 
 A trailing `*` is implicit — `path:Pictures/2026` and `path:Pictures/2026*` are equivalent.
 

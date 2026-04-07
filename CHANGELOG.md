@@ -2,6 +2,26 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.3.12 (2026-04-08)
+
+### New Features
+- **Volumes page in web UI** — manage registered volumes from the browser at `/volumes`. List with status badges, register/rename/set-purpose/remove inline, and an Import button on online volumes that opens a modal with profile, tags, auto-group, and smart-preview options. Live progress streamed via Server-Sent Events as files are imported. Plug in a card, register, import, browse — all without dropping into the CLI.
+- **`*` wildcards in `path:` filter** — `path:Pictures/*/Capture` matches any year/month folder; `path:*/2026/*/wedding` finds wedding shoots anywhere; `path:*party` does substring search. Patterns without leading `*` stay fast (index scan); leading `*` opts into a full-table scan with the slowdown documented inline. Backward-compatible: existing `path:Pictures/2026` queries behave identically.
+- **SigLIP 2 multilingual models** *(Pro)* — two new model variants enable `text:` search in German, French, Spanish, Italian, Japanese, Chinese, and many other languages:
+  - `siglip2-base-256-multi` (~410 MB, 768-dim)
+  - `siglip2-large-256-multi` (~920 MB, 1024-dim)
+
+  Set `[ai] model = "siglip2-base-256-multi"` in `maki.toml` and run `maki embed '' --force` to re-embed your catalog. Image embeddings are stored per `(asset_id, model_id)`, so the old English embeddings remain available if you switch back. See [AI Models](doc/manual/user-guide/02-setup.md#ai-models-pro) in the setup guide.
+
+### Bug Fixes
+- **`auto-tag --download <model>` positional argument** — previously `maki auto-tag --download siglip2-large-256-multi` parsed the model name as the search query and silently downloaded the model from `[ai] model` in config instead. Now positional model ids are accepted when `--download` or `--remove-model` is set.
+
+### Documentation
+- New **AI Models** section in setup guide explaining the four SigLIP variants (English/multilingual × base/large), when to switch, and how to migrate.
+- New **Volumes Page** section in web UI guide describing the page layout, register form, and import dialog with live progress.
+- `path:` filter reference rewritten to document the wildcard syntax with examples and performance notes.
+- `text:` filter reference includes a multilingual subsection with the config snippet.
+
 ## v4.3.11 (2026-04-07)
 
 ### New Features

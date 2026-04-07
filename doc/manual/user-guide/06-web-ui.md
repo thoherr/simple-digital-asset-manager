@@ -777,6 +777,34 @@ The backup status page displays:
 
 This is the web equivalent of `maki backup-status` on the command line. See [Maintenance](07-maintenance.md) for the CLI backup-status command.
 
+## Volumes Page
+
+Navigate to `/volumes` or click "Volumes" in the navigation bar to manage registered volumes from the browser. This page is the web equivalent of `maki volume add/list/rename/set-purpose/remove` and is designed for users who don't want to drop into the CLI for routine volume management.
+
+The page shows a table of all registered volumes with:
+
+- **Label** and **mount point**
+- **Purpose** badge (media, working, archive, backup, cloud, or none)
+- **Status** badge (online/offline) — computed live from whether the mount point currently exists
+- **Inline actions** per row: rename, set purpose, remove (with confirmation), and **Import** (only on online volumes)
+
+A **Register Volume** button at the top opens an inline form: enter the path, the label is auto-derived from the directory name (editable), pick an optional purpose, and submit. This is the web equivalent of `maki volume add`.
+
+### Importing from a volume
+
+Click **Import** on any online volume row to open the import dialog. The dialog lets you:
+
+- Specify an optional **subfolder** within the volume (e.g. `DCIM/100CANON` for a memory card)
+- Choose an **import profile** from `[import.profiles.*]` in `maki.toml` (or default)
+- Add **tags** to apply to every imported asset
+- Toggle **auto-group variants** and **smart previews**
+- Run a **dry run** first to see how many files would be imported
+- Click **Import** to start the actual import
+
+While importing, the dialog switches to a live progress view: a progress bar, running counts of imported/skipped/locations/recipes, and a scrolling log of the most recent files. Progress is streamed via Server-Sent Events, so you can keep the page open and watch in real time. You can also navigate away and come back — only one import runs at a time, and the import continues in the background.
+
+When the import finishes, the dialog shows a summary and a **Browse imported** link to view the new assets in the browse grid. This is the web equivalent of `maki import` for the most common workflow: plug in a card, register it (if needed), import to your media volume.
+
 ---
 
 Next: [Maintenance](07-maintenance.md) -- verification, sync, refresh, cleanup, and file relocation.

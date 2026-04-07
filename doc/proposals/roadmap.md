@@ -18,13 +18,6 @@ Produce the MAKI user manual in English and German from a single source using in
 
 ---
 
-### Multilingual `text:` Search *(Pro)*
-
-SigLIP 2 multilingual model variant for `text:` queries in German, French, Spanish, etc. See `doc/proposals/german-text-search.md`.
-
-**Status:** ✅ Implemented in v4.3.12. Model `siglip2-base-256-multi` available; requires re-embedding catalog after switching.
-
----
 
 ## Tier 1 — High Value
 
@@ -199,4 +192,5 @@ Design documents for completed features are in `doc/proposals/archive/`. Key mil
 - **v4.1.x (Video Playback)**: HTML5 video player on detail page and lightbox, duration badges on browse cards, video metadata extraction via ffprobe (duration, codec, resolution, framerate) at import time, `generate-previews --force` backfills video metadata for existing assets. Phase 2 `duration:` and `codec:` search filters implemented (duration uses denormalized `video_duration` column with full `NumericFilter` support; codec uses denormalized `video_codec` column with LIKE matching). Remaining Phase 2 filter: `resolution:` (but `width:`/`height:` already cover this).
 - **v4.1.x**: MAKI Pro edition (`pro` feature flag, `-pro` release artifacts), VLM/writeback/sync-metadata gated behind Pro, search filter reference card, `volume split`/`rename`, `edit --clear-tags`, improved `scattered:` filter with `/N` depth, star rating filter UX, consistent *(Pro)* markers in manual, repo cleanup (`doc/images/`, `doc/quickref/`)
 - **v4.2.x**: Card-first workflow (media volume purpose, create-sidecars, auto-label, volume list filters), import profiles, video proxy generation with hover-to-play, user guide improvements (17 items across 3 passes)
-- **v4.3.x**: Tag hierarchy separator aligned with LR/C1 (`|` and `>`), tag rename/clear/expand-ancestors/export-vocabulary subcommands, ancestor expansion matching CaptureOne convention, vocabulary.yaml for planned tag hierarchy with autocomplete integration, git-based catalog backup, BTreeMap for deterministic YAML, Tagging Guide chapter
+- **v4.3.x**: Tag hierarchy separator aligned with LR/C1 (`|` and `>`), tag rename/clear/expand-ancestors/export-vocabulary subcommands, ancestor expansion matching CaptureOne convention, vocabulary.yaml for planned tag hierarchy with autocomplete integration, git-based catalog backup, BTreeMap for deterministic YAML, Tagging Guide chapter, configurable `[group] session_root_pattern` regex
+- **v4.3.12**: Volumes page in web UI with register/rename/purpose/remove and import dialog with live SSE progress, `*` wildcards in `path:` filter (full pattern matching with leading-`*` opt-in for slow scans), SigLIP 2 multilingual model variants (`siglip2-base-256-multi`, `siglip2-large-256-multi`) for `text:` search in German, French, Spanish, Italian, Japanese, Chinese, etc. — see `archive/proposal-multilingual-text-search.md`
