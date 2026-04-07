@@ -116,12 +116,28 @@ pub const MODEL_SPECS: &[ModelSpec] = &[
         // logit_scale / logit_bias are only used by auto-tag (multi-label
         // classification). The values from SigLIP 1 base are reasonable
         // approximations for similarity ranking but should be replaced with
-        // the actual SigLIP 2 base values from google/siglip2-base-patch16-256
-        // if precise auto-tag confidence calibration is needed.
+        // the actual SigLIP 2 values if precise auto-tag confidence calibration
+        // is needed.
         logit_scale: 4.7129,
         logit_bias: -12.9283,
         max_text_len: 64,
         // Gemma tokenizer uses pad_token_id = 0 (vs 1 for SigLIP 1's tokenizer)
+        pad_token_id: 0,
+    },
+    ModelSpec {
+        // SigLIP 2 multilingual large — same multilingual capabilities as the
+        // base variant, but with a larger model (1024-dim embeddings) for
+        // higher quality at the cost of more memory and slower inference.
+        // Drop-in replacement for siglip-vit-l16-256 in dimensions.
+        id: "siglip2-large-256-multi",
+        display_name: "SigLIP 2 Large 256 (multilingual)",
+        hf_repo: "onnx-community/siglip2-large-patch16-256-ONNX",
+        embedding_dim: 1024,
+        image_size: 256,
+        // Reasonable approximations from SigLIP 1 large; refine if needed.
+        logit_scale: 4.7007,
+        logit_bias: -12.6546,
+        max_text_len: 64,
         pad_token_id: 0,
     },
 ];

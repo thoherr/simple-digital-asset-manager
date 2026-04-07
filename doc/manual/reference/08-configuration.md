@@ -422,6 +422,7 @@ Which SigLIP model to use. Available models:
 | `siglip-vit-b16-256` | ~207 MB | 768 | English-only, good balance (default) |
 | `siglip-vit-l16-256` | ~670 MB | 1024 | English-only, higher accuracy |
 | `siglip2-base-256-multi` | ~410 MB | 768 | **Multilingual** (German, French, Spanish, Italian, Japanese, Chinese, etc.) |
+| `siglip2-large-256-multi` | ~920 MB | 1024 | **Multilingual**, higher accuracy, slower |
 
 The CLI `--model` flag overrides this value. Embeddings are stored per `(asset_id, model_id)`, so switching models doesn't corrupt existing data — but the new model has its own empty embedding store and you must run `maki embed --force` to populate it before `text:` or `auto-tag` will return results with the new model.
 

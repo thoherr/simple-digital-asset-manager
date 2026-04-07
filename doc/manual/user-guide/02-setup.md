@@ -383,11 +383,12 @@ MAKI Pro uses SigLIP vision-language models for `text:` search (find images by t
 
 ### Available models
 
-| Model ID | Size | Languages | Use case |
-|----------|------|-----------|----------|
-| `siglip-vit-b16-256` *(default)* | ~207 MB | English only | Fast, good quality, English queries |
-| `siglip-vit-l16-256` | ~670 MB | English only | Higher accuracy, slower |
-| `siglip2-base-256-multi` | ~410 MB | **Multilingual** | German, French, Spanish, Italian, Japanese, Chinese, and many more |
+| Model ID | Size | Embedding dim | Languages | Use case |
+|----------|------|---------------|-----------|----------|
+| `siglip-vit-b16-256` *(default)* | ~207 MB | 768 | English only | Fast, good quality, English queries |
+| `siglip-vit-l16-256` | ~670 MB | 1024 | English only | English, higher accuracy, slower |
+| `siglip2-base-256-multi` | ~410 MB | 768 | **Multilingual** | German, French, Spanish, Italian, Japanese, Chinese, etc. |
+| `siglip2-large-256-multi` | ~920 MB | 1024 | **Multilingual** | Same languages, higher accuracy, slower |
 
 All models produce embeddings stored per `(asset_id, model_id)`, so you can switch back and forth without losing data — but each model has its own embedding store and you must run `maki embed '' --force` to populate it after switching.
 
