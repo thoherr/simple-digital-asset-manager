@@ -15,7 +15,7 @@
             <input type="text" class="tag-filter-input" id="tag-input" placeholder="Filter by tags..." autocomplete="off">
             <div class="tag-autocomplete" id="tag-autocomplete"></div>
         </div>
-        <input type="text" name="path" placeholder="Path prefix..." value="{{ path }}" class="path-filter-input" autocomplete="off">
+        <input type="text" name="path" placeholder="Path (e.g. Pictures/2026 or */2026/*/party)" value="{{ path }}" class="path-filter-input" autocomplete="off" title="Use * as wildcard. Patterns with leading * trigger a full table scan and are slower.">
     </div>
     <div class="filter-row-bottom">
         <div class="filter-row-left">

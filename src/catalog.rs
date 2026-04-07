@@ -556,6 +556,36 @@ pub struct SearchPage {
 /// - `"2026-02"` → `"2026-03"` (next month)
 /// - `"2026"` → `"2027"` (next year)
 /// Falls back to appending a high character if parsing fails.
+/// Convert a path pattern (with `*` wildcards) to a SQL LIKE pattern.
+///
+/// Rules:
+/// - `*` becomes `%` (match any sequence)
+/// - Literal `%`, `_`, and `\` are escaped via `ESCAPE '\'`
+/// - A trailing `%` is appended if not already present, so `path:Pictures/2026`
+///   keeps prefix semantics
+///
+/// Examples:
+/// - `Pictures/2026`        → `Pictures/2026%`
+/// - `Pictures/*/Capture`   → `Pictures/%/Capture%`
+/// - `*/2026/*/party`       → `%/2026/%/party%`
+/// - `*party`               → `%party%`
+fn path_pattern_to_like(pat: &str) -> String {
+    let mut out = String::with_capacity(pat.len() + 2);
+    for c in pat.chars() {
+        match c {
+            '\\' => { out.push('\\'); out.push('\\'); }
+            '%'  => { out.push('\\'); out.push('%'); }
+            '_'  => { out.push('\\'); out.push('_'); }
+            '*'  => out.push('%'),
+            c    => out.push(c),
+        }
+    }
+    if !out.ends_with('%') {
+        out.push('%');
+    }
+    out
+}
+
 fn next_date_bound(s: &str) -> String {
     match s.len() {
         // Year: "2026" → "2027"
@@ -1823,9 +1853,9 @@ impl Catalog {
         }
 
         if let Some(prefix) = path_prefix {
-            let like = format!("{prefix}%");
+            let like = path_pattern_to_like(prefix);
             sql.push_str(
-                " AND v.content_hash IN (SELECT content_hash FROM file_locations WHERE relative_path LIKE ?)",
+                " AND v.content_hash IN (SELECT content_hash FROM file_locations WHERE relative_path LIKE ? ESCAPE '\\')",
             );
             params.push(Box::new(like));
         }
@@ -2824,7 +2854,10 @@ impl Catalog {
         // --- Color label (equality on a.color_label) ---
         Self::add_equality_filter(&mut clauses, &mut params, opts.color_labels, opts.color_labels_exclude, "a.color_label", &mut false, false);
 
-        // --- Path prefix (LIKE on fl.relative_path) ---
+        // --- Path pattern (LIKE on fl.relative_path) ---
+        // Supports `*` as a wildcard anywhere in the pattern. A trailing `%`
+        // is appended automatically so `path:Pictures/2026` keeps prefix
+        // semantics. Literal `%` and `_` are escaped via `ESCAPE '\'`.
         {
             let include: Vec<&str> = opts.path_prefixes.iter()
                 .flat_map(|e| e.split(',').map(|s| s.trim()))
@@ -2838,19 +2871,19 @@ impl Catalog {
                 needs_fl_join = true;
             }
             if include.len() == 1 {
-                clauses.push("fl.relative_path LIKE ?".to_string());
-                params.push(Box::new(format!("{}%", include[0])));
+                clauses.push("fl.relative_path LIKE ? ESCAPE '\\'".to_string());
+                params.push(Box::new(path_pattern_to_like(include[0])));
             } else if include.len() > 1 {
                 let mut or_parts = Vec::new();
                 for v in &include {
-                    or_parts.push("fl.relative_path LIKE ?".to_string());
-                    params.push(Box::new(format!("{v}%")));
+                    or_parts.push("fl.relative_path LIKE ? ESCAPE '\\'".to_string());
+                    params.push(Box::new(path_pattern_to_like(v)));
                 }
                 clauses.push(format!("({})", or_parts.join(" OR ")));
             }
             for v in &exclude {
-                clauses.push("fl.relative_path NOT LIKE ?".to_string());
-                params.push(Box::new(format!("{v}%")));
+                clauses.push("fl.relative_path NOT LIKE ? ESCAPE '\\'".to_string());
+                params.push(Box::new(path_pattern_to_like(v)));
             }
         }
 
@@ -7382,6 +7415,58 @@ mod tests {
     #[test]
     fn next_date_bound_year() {
         assert_eq!(next_date_bound("2026"), "2027");
+    }
+
+    // ── path_pattern_to_like tests ────────────────────────────────
+
+    #[test]
+    fn path_pattern_plain_prefix() {
+        assert_eq!(path_pattern_to_like("Pictures/2026"), "Pictures/2026%");
+    }
+
+    #[test]
+    fn path_pattern_star_in_middle() {
+        assert_eq!(path_pattern_to_like("Pictures/*/Capture"), "Pictures/%/Capture%");
+    }
+
+    #[test]
+    fn path_pattern_leading_star() {
+        assert_eq!(path_pattern_to_like("*party"), "%party%");
+    }
+
+    #[test]
+    fn path_pattern_complex() {
+        assert_eq!(path_pattern_to_like("*/2026/*/party"), "%/2026/%/party%");
+    }
+
+    #[test]
+    fn path_pattern_escapes_sql_wildcards() {
+        // Literal % and _ in user input must be escaped
+        assert_eq!(path_pattern_to_like("foo%bar"), "foo\\%bar%");
+        assert_eq!(path_pattern_to_like("foo_bar"), "foo\\_bar%");
+    }
+
+    #[test]
+    fn path_pattern_escapes_backslash() {
+        assert_eq!(path_pattern_to_like("foo\\bar"), "foo\\\\bar%");
+    }
+
+    #[test]
+    fn path_pattern_double_star_collapses() {
+        // ** is harmless: %% in SQL behaves like %
+        assert_eq!(path_pattern_to_like("**foo"), "%%foo%");
+    }
+
+    #[test]
+    fn path_pattern_only_star() {
+        // Just `*` matches everything (becomes `%`, no trailing % appended since already ends in %)
+        assert_eq!(path_pattern_to_like("*"), "%");
+    }
+
+    #[test]
+    fn path_pattern_trailing_star_no_double() {
+        // Trailing * already produces trailing %, so we don't append another
+        assert_eq!(path_pattern_to_like("foo*"), "foo%");
     }
 
     // ── calendar_counts / calendar_years tests ────────────────────

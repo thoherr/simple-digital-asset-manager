@@ -22,7 +22,7 @@ Filters combine with **AND** — every filter must match. Free-text tokens that 
 | Width | `width:<N>+` | `width:4000+` |
 | Height | `height:<N>+` | `height:2000+` |
 | Source metadata | `meta:<key>=<value>` | `meta:software=CaptureOne` |
-| Path prefix | `path:<prefix>` | `path:Capture/2026-02-22` |
+| Path pattern | `path:<pattern>` (`*` = wildcard) | `path:*/2026/*/party` |
 | Collection | `collection:<name>` | `collection:Favorites` |
 | Date | `date:<prefix>` | `date:2026`, `date:2026-02` |
 | Date from | `dateFrom:<date>` | `dateFrom:2026-01-01` |

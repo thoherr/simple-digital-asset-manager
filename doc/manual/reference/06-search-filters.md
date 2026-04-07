@@ -347,9 +347,22 @@ maki search "meta:color_space=sRGB"
 
 ## path
 
-**Syntax:** `path:<prefix>` or `path:"<prefix with spaces>"`
+**Syntax:** `path:<pattern>` or `path:"<pattern with spaces>"`
 
-**Description:** Restricts results to assets that have at least one file location whose volume-relative path starts with the given prefix. Useful for finding everything imported from a specific directory.
+**Description:** Restricts results to assets that have at least one file location whose volume-relative path matches the given pattern. Without wildcards, this is a fast prefix match. The `*` character is a wildcard that matches any sequence of characters (including slashes).
+
+**Wildcards:**
+
+| Pattern | Meaning | Speed |
+|---------|---------|-------|
+| `path:Pictures/2026` | Prefix from root: matches `Pictures/2026...` | ⚡ index scan |
+| `path:Pictures/*/Capture` | Anything between `Pictures/` and `/Capture` | ⚡ index scan (left-anchored) |
+| `path:*/2026/*/party` | Slash-anchored substring search | 🐢 full scan |
+| `path:*party` | Substring match anywhere | 🐢 full scan |
+
+A trailing `*` is implicit — `path:Pictures/2026` and `path:Pictures/2026*` are equivalent.
+
+**Performance note:** Patterns with no leading `*` use the SQLite index on `relative_path` and are fast even on large catalogs. Patterns starting with `*` force a full table scan and are noticeably slower on catalogs with hundreds of thousands of assets.
 
 **Automatic normalization** (CLI only, not in web UI or saved searches):
 
@@ -361,7 +374,7 @@ maki search "meta:color_space=sRGB"
 | `path:../other` | Resolved relative to current working directory |
 | `path:/Volumes/Photos/Capture/2026` | Stripped to `Capture/2026` with implicit `volume:` filter for the Photos volume |
 
-An explicit `volume:` filter in the same query takes precedence over the auto-detected volume from path normalization.
+Patterns containing `*` skip the absolute-path / volume normalization (they pass through unchanged). An explicit `volume:` filter in the same query takes precedence over the auto-detected volume from path normalization.
 
 **Examples:**
 
@@ -369,10 +382,12 @@ An explicit `volume:` filter in the same query takes precedence over the auto-de
 maki search "path:Capture/2026-02-22"
 maki search 'path:"Photos/Family Trip"'
 maki search "path:Capture/2026 rating:3+ tag:landscape"
-maki search "path:/Volumes/Photos/Capture/2026"    # auto-normalized
+maki search "path:/Volumes/Photos/Capture/2026"     # auto-normalized
+maki search "path:*/2026/*/wedding"                  # find any wedding shoot in 2026
+maki search "path:*party"                            # any path containing "party"
 ```
 
-**SQL behavior:** `WHERE fl.relative_path LIKE 'prefix%'`. Triggers a JOIN to the file_locations table.
+**SQL behavior:** `WHERE fl.relative_path LIKE 'pattern%' ESCAPE '\'`. The user's `*` is translated to SQL `%`; literal `%` and `_` in the user input are escaped. Triggers a JOIN to the file_locations table.
 
 ---
 
