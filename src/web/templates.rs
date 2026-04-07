@@ -688,6 +688,25 @@ pub struct DuplicatesPage {
     pub vlm_enabled: bool,
 }
 
+/// A volume row for the volumes page.
+pub struct VolumeRow {
+    pub id: String,
+    pub label: String,
+    pub mount_point: String,
+    pub volume_type: String,
+    pub purpose: Option<String>,
+    pub is_online: bool,
+}
+
+#[derive(Template)]
+#[template(path = "volumes.html")]
+pub struct VolumesPage {
+    pub volumes: Vec<VolumeRow>,
+    pub profile_names: Vec<String>,
+    pub ai_enabled: bool,
+    pub vlm_enabled: bool,
+}
+
 /// Pre-computed asset data for the compare page.
 pub struct CompareAsset {
     pub asset_id: String,

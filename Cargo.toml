@@ -27,7 +27,7 @@ glob-match = "0.2"
 rustyline = { version = "15", features = ["derive"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["sync"] }
 axum = "0.8"
 tower-http = { version = "0.6", features = ["fs"] }
 askama = "0.12"

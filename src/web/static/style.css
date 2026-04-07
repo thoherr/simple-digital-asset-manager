@@ -3882,3 +3882,149 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     margin-left: 0.5rem;
 }
 .export-all-link:hover { color: var(--accent, #e8634a); text-decoration: underline; }
+
+/* ── Volumes page ────────────────────────────────────── */
+.volumes-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.volumes-header h1 { margin: 0; }
+.volumes-table td { vertical-align: middle; }
+.volumes-table code { font-size: 0.82rem; color: var(--text-muted); }
+.volume-actions {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+}
+
+/* Register form */
+.register-form {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+.register-form-inner {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+.register-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+.form-input {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--text);
+    font-size: 0.88rem;
+    min-width: 160px;
+}
+.register-actions {
+    display: flex;
+    gap: 0.3rem;
+    align-self: flex-end;
+}
+
+/* ── Import modal ────────────────────────────────────── */
+.import-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.import-modal {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    padding: 1.5rem;
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+.import-modal h2 {
+    margin: 0 0 1rem 0;
+    font-size: 1.1rem;
+}
+.import-modal label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+}
+.import-checkboxes {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.88rem;
+}
+.import-checkboxes label {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.3rem;
+    margin-bottom: 0;
+}
+.import-form-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+.import-dry-result {
+    margin-top: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--badge-bg);
+    border-radius: 4px;
+    font-size: 0.88rem;
+}
+.import-progress-bar {
+    height: 8px;
+    background: var(--badge-bg);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+}
+.import-progress-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+.import-status-text {
+    font-size: 0.88rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+.import-log {
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.5rem;
+    line-height: 1.4;
+}
+.import-result-text {
+    font-size: 1rem;
+    margin-bottom: 1rem;
+}

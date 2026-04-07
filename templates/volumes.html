@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+
+{% block title %}Volumes - MAKI{% endblock %}
+
+{% block nav_explore %}{% if ai_enabled %}<a href="/stroll">Stroll</a>{% endif %}{% endblock %}
+{% block nav_organize %}{% if ai_enabled %}<a href="/people">People</a>{% endif %}{% endblock %}
+
+{% block content %}
+<div class="volumes-header">
+    <h1>Volumes</h1>
+    <button class="batch-btn batch-btn-primary" id="register-btn">+ Register Volume</button>
+</div>
+
+<!-- Register form (hidden by default) -->
+<div class="register-form" id="register-form" style="display:none">
+    <div class="register-form-inner">
+        <label>Path <input type="text" id="reg-path" placeholder="/Volumes/NIKON Z9" class="form-input"></label>
+        <label>Label <input type="text" id="reg-label" placeholder="(auto-derived from path)" class="form-input"></label>
+        <label>Purpose
+            <select id="reg-purpose" class="form-input">
+                <option value="">(none)</option>
+                <option value="media">Media</option>
+                <option value="working">Working</option>
+                <option value="archive">Archive</option>
+                <option value="backup">Backup</option>
+                <option value="cloud">Cloud</option>
+            </select>
+        </label>
+        <div class="register-actions">
+            <button class="batch-btn batch-btn-primary" id="reg-submit">Register</button>
+            <button class="batch-btn" id="reg-cancel">Cancel</button>
+        </div>
+    </div>
+</div>
+
+{% if volumes.is_empty() %}
+<p class="empty-message">No volumes registered. Click "+ Register Volume" to add one.</p>
+{% else %}
+<table class="stats-table volumes-table">
+    <thead>
+        <tr>
+            <th>Label</th>
+            <th>Mount Point</th>
+            <th>Purpose</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for v in volumes %}
+        <tr data-id="{{ v.id }}">
+            <td class="vol-label">{{ v.label }}</td>
+            <td class="vol-path"><code>{{ v.mount_point }}</code></td>
+            <td>
+                {% match v.purpose %}
+                    {% when Some with (p) %}
+                    <span class="badge badge-purpose">{{ p }}</span>
+                    {% when None %}
+                    <span class="badge">none</span>
+                    {% endmatch %}
+            </td>
+            <td>
+                {% if v.is_online %}
+                <span class="badge badge-online">online</span>
+                {% else %}
+                <span class="badge badge-offline">offline</span>
+                {% endif %}
+            </td>
+            <td class="volume-actions">
+                <button class="batch-btn vol-rename" data-id="{{ v.id }}" data-label="{{ v.label }}">Rename</button>
+                <button class="batch-btn vol-purpose" data-id="{{ v.id }}">Purpose</button>
+                {% if v.is_online %}
+                <button class="batch-btn batch-btn-primary vol-import" data-id="{{ v.id }}" data-label="{{ v.label }}">Import</button>
+                {% endif %}
+                <button class="batch-btn batch-btn-danger vol-remove" data-id="{{ v.id }}" data-label="{{ v.label }}">Remove</button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<!-- Import modal -->
+<div class="import-overlay" id="import-overlay" style="display:none">
+    <div class="import-modal">
+        <!-- Form phase -->
+        <div id="import-form-phase">
+            <h2>Import from <span id="import-vol-label"></span></h2>
+            <input type="hidden" id="import-vol-id">
+
+            <label>Subfolder (optional)
+                <input type="text" id="import-subfolder" placeholder="e.g. DCIM" class="form-input">
+            </label>
+
+            {% if !profile_names.is_empty() %}
+            <label>Profile
+                <select id="import-profile" class="form-input">
+                    <option value="">(default)</option>
+                    {% for p in profile_names %}
+                    <option value="{{ p }}">{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            {% endif %}
+
+            <label>Additional tags
+                <input type="text" id="import-tags" placeholder="Comma-separated tags" class="form-input">
+            </label>
+
+            <div class="import-checkboxes">
+                <label><input type="checkbox" id="import-auto-group" checked> Auto-group variants</label>
+                <label><input type="checkbox" id="import-smart"> Smart previews</label>
+            </div>
+
+            <div class="import-form-actions">
+                <button class="batch-btn" id="import-dry-run">Dry Run</button>
+                <button class="batch-btn batch-btn-primary" id="import-start">Import</button>
+                <button class="batch-btn" id="import-cancel">Cancel</button>
+            </div>
+            <div id="import-dry-result" style="display:none" class="import-dry-result"></div>
+        </div>
+
+        <!-- Progress phase -->
+        <div id="import-progress-phase" style="display:none">
+            <h2>Importing...</h2>
+            <div class="import-progress-bar">
+                <div class="import-progress-fill" id="import-fill"></div>
+            </div>
+            <div id="import-status-text" class="import-status-text">Starting...</div>
+            <div id="import-log" class="import-log"></div>
+        </div>
+
+        <!-- Result phase -->
+        <div id="import-result-phase" style="display:none">
+            <h2>Import Complete</h2>
+            <div id="import-result-text" class="import-result-text"></div>
+            <div class="import-form-actions">
+                <a id="import-browse-link" href="/" class="batch-btn batch-btn-primary">Browse imported</a>
+                <button class="batch-btn" id="import-close">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Register volume ──────────────────────────────────────
+var regForm = document.getElementById('register-form');
+document.getElementById('register-btn').addEventListener('click', function() {
+    regForm.style.display = regForm.style.display === 'none' ? 'block' : 'none';
+});
+document.getElementById('reg-cancel').addEventListener('click', function() {
+    regForm.style.display = 'none';
+});
+
+// Auto-derive label from path
+document.getElementById('reg-path').addEventListener('input', function() {
+    var path = this.value.trim();
+    var label = document.getElementById('reg-label');
+    if (!label.dataset.manual) {
+        var parts = path.replace(/\/+$/, '').split('/');
+        label.value = parts[parts.length - 1] || '';
+    }
+});
+document.getElementById('reg-label').addEventListener('input', function() {
+    this.dataset.manual = this.value ? '1' : '';
+});
+
+document.getElementById('reg-submit').addEventListener('click', function() {
+    var path = document.getElementById('reg-path').value.trim();
+    if (!path) { alert('Path is required'); return; }
+    var label = document.getElementById('reg-label').value.trim() || path.replace(/\/+$/, '').split('/').pop();
+    var purpose = document.getElementById('reg-purpose').value || null;
+
+    fetch('/api/volumes', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path: path, label: label, purpose: purpose})
+    })
+    .then(function(r) {
+        if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+        return r.json();
+    })
+    .then(function() { window.location.reload(); })
+    .catch(function(err) { alert('Failed to register volume: ' + err.message); });
+});
+
+// ── Inline actions ───────────────────────────────────────
+document.querySelectorAll('.vol-rename').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var id = this.dataset.id;
+        var current = this.dataset.label;
+        var name = prompt('New label:', current);
+        if (!name || !name.trim() || name.trim() === current) return;
+        fetch('/api/volumes/' + id + '/rename', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({label: name.trim()})
+        })
+        .then(function(r) {
+            if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+            window.location.reload();
+        })
+        .catch(function(err) { alert('Rename failed: ' + err.message); });
+    });
+});
+
+document.querySelectorAll('.vol-purpose').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var id = this.dataset.id;
+        var purpose = prompt('Purpose (media, working, archive, backup, cloud, or empty to clear):');
+        if (purpose === null) return;
+        purpose = purpose.trim().toLowerCase() || null;
+        fetch('/api/volumes/' + id + '/purpose', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({purpose: purpose})
+        })
+        .then(function(r) {
+            if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+            window.location.reload();
+        })
+        .catch(function(err) { alert('Set purpose failed: ' + err.message); });
+    });
+});
+
+document.querySelectorAll('.vol-remove').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var id = this.dataset.id;
+        var label = this.dataset.label;
+        if (!confirm('Remove volume "' + label + '"? This removes all location and recipe records for this volume from the catalog.')) return;
+        fetch('/api/volumes/' + id, {method: 'DELETE'})
+        .then(function(r) {
+            if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+            window.location.reload();
+        })
+        .catch(function(err) { alert('Remove failed: ' + err.message); });
+    });
+});
+
+// ── Import modal ─────────────────────────────────────────
+var overlay = document.getElementById('import-overlay');
+var formPhase = document.getElementById('import-form-phase');
+var progressPhase = document.getElementById('import-progress-phase');
+var resultPhase = document.getElementById('import-result-phase');
+var eventSource = null;
+
+function showImportModal(volId, volLabel) {
+    document.getElementById('import-vol-id').value = volId;
+    document.getElementById('import-vol-label').textContent = volLabel;
+    document.getElementById('import-subfolder').value = '';
+    document.getElementById('import-tags').value = '';
+    document.getElementById('import-dry-result').style.display = 'none';
+    formPhase.style.display = 'block';
+    progressPhase.style.display = 'none';
+    resultPhase.style.display = 'none';
+    overlay.style.display = 'flex';
+}
+
+function closeImportModal() {
+    overlay.style.display = 'none';
+    if (eventSource) { eventSource.close(); eventSource = null; }
+}
+
+function getImportParams(dryRun) {
+    var tags = document.getElementById('import-tags').value.trim();
+    var tagList = tags ? tags.split(',').map(function(t) { return t.trim(); }).filter(Boolean) : [];
+    var profileEl = document.getElementById('import-profile');
+    return {
+        volume_id: document.getElementById('import-vol-id').value,
+        subfolder: document.getElementById('import-subfolder').value.trim() || null,
+        profile: profileEl ? (profileEl.value || null) : null,
+        tags: tagList.length > 0 ? tagList : null,
+        auto_group: document.getElementById('import-auto-group').checked,
+        smart: document.getElementById('import-smart').checked,
+        dry_run: dryRun
+    };
+}
+
+document.querySelectorAll('.vol-import').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        showImportModal(this.dataset.id, this.dataset.label);
+    });
+});
+
+document.getElementById('import-cancel').addEventListener('click', closeImportModal);
+document.getElementById('import-close').addEventListener('click', function() {
+    closeImportModal();
+    window.location.reload();
+});
+
+// Dry run
+document.getElementById('import-dry-run').addEventListener('click', function() {
+    var params = getImportParams(true);
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+    fetch('/api/import', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(params)
+    })
+    .then(function(r) {
+        if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+        return r.json();
+    })
+    .then(function(data) {
+        var el = document.getElementById('import-dry-result');
+        el.textContent = 'Would import ' + (data.imported || 0) + ' file(s), ' +
+            (data.skipped || 0) + ' skipped, ' +
+            (data.recipes_attached || 0) + ' recipe(s).';
+        el.style.display = 'block';
+    })
+    .catch(function(err) { alert('Dry run failed: ' + err.message); })
+    .finally(function() { btn.disabled = false; btn.textContent = 'Dry Run'; });
+});
+
+// Start import
+document.getElementById('import-start').addEventListener('click', function() {
+    var params = getImportParams(false);
+    var btn = this;
+    btn.disabled = true;
+
+    fetch('/api/import', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(params)
+    })
+    .then(function(r) {
+        if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+        return r.json();
+    })
+    .then(function(data) {
+        if (data.dry_run) {
+            // Dry-run response returned directly
+            showImportResult(data);
+            return;
+        }
+        // Switch to progress phase and connect SSE
+        formPhase.style.display = 'none';
+        progressPhase.style.display = 'block';
+        document.getElementById('import-log').innerHTML = '';
+        document.getElementById('import-fill').style.width = '0%';
+        document.getElementById('import-status-text').textContent = 'Starting import...';
+
+        eventSource = new EventSource('/api/import/progress');
+        eventSource.onmessage = function(e) {
+            var evt = JSON.parse(e.data);
+            if (evt.done) {
+                eventSource.close();
+                eventSource = null;
+                showImportResult(evt);
+                return;
+            }
+            var total = evt.imported + evt.skipped + evt.locations_added + evt.recipes;
+            document.getElementById('import-status-text').textContent =
+                evt.imported + ' imported, ' + evt.skipped + ' skipped';
+            // Append to log (keep last 50 lines)
+            var log = document.getElementById('import-log');
+            var line = document.createElement('div');
+            line.textContent = evt.status + ' ' + evt.file;
+            log.appendChild(line);
+            if (log.children.length > 50) log.removeChild(log.firstChild);
+            log.scrollTop = log.scrollHeight;
+        };
+        eventSource.onerror = function() {
+            if (eventSource) { eventSource.close(); eventSource = null; }
+            document.getElementById('import-status-text').textContent = 'Connection lost. Check terminal for import status.';
+        };
+    })
+    .catch(function(err) {
+        alert('Import failed: ' + err.message);
+        btn.disabled = false;
+    });
+});
+
+function showImportResult(data) {
+    progressPhase.style.display = 'none';
+    resultPhase.style.display = 'block';
+    var parts = [];
+    if (data.imported) parts.push(data.imported + ' imported');
+    if (data.locations_added) parts.push(data.locations_added + ' locations added');
+    if (data.skipped) parts.push(data.skipped + ' skipped');
+    if (data.recipes_attached) parts.push(data.recipes_attached + ' recipes');
+    if (data.previews_generated) parts.push(data.previews_generated + ' previews');
+    document.getElementById('import-result-text').textContent = parts.join(', ') || 'Nothing to import.';
+    // Link to browse recently imported
+    document.getElementById('import-browse-link').href = '/?sort=date_desc';
+}
+
+// Close on overlay click
+overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) closeImportModal();
+});
+// Close on Escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && overlay.style.display !== 'none') closeImportModal();
+});
+</script>
+{% endblock %}

@@ -246,6 +246,14 @@ pub struct AppState {
     pub ai_embedding_index: std::sync::RwLock<Option<crate::embedding_store::EmbeddingIndex>>,
     #[cfg(feature = "ai")]
     pub face_detector: tokio::sync::Mutex<Option<crate::face::FaceDetector>>,
+    /// Currently running import job (at most one at a time).
+    pub import_job: std::sync::Mutex<Option<ImportJob>>,
+}
+
+/// Tracks a running import job for SSE progress.
+pub struct ImportJob {
+    pub job_id: String,
+    pub sender: tokio::sync::broadcast::Sender<String>,
 }
 
 impl AppState {
@@ -280,6 +288,7 @@ impl AppState {
             ai_config,
             ai_embedding_index: std::sync::RwLock::new(None),
             face_detector: tokio::sync::Mutex::new(None),
+            import_job: std::sync::Mutex::new(None),
         }
     }
 
@@ -309,6 +318,7 @@ impl AppState {
             verbosity,
             vlm_enabled,
             vlm_config,
+            import_job: std::sync::Mutex::new(None),
         }
     }
 
@@ -484,6 +494,14 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/duplicates", axum::routing::get(routes::duplicates_page))
         .route("/api/dedup/resolve", axum::routing::post(routes::dedup_resolve_api))
         .route("/api/dedup/location", axum::routing::delete(routes::dedup_remove_location_api))
+        .route("/volumes", axum::routing::get(routes::volumes_page))
+        .route("/api/volumes", axum::routing::get(routes::list_volumes_api).post(routes::register_volume_api))
+        .route("/api/volumes/{id}/rename", axum::routing::put(routes::rename_volume_api))
+        .route("/api/volumes/{id}/purpose", axum::routing::put(routes::set_volume_purpose_api))
+        .route("/api/volumes/{id}", axum::routing::delete(routes::remove_volume_api))
+        .route("/api/import", axum::routing::post(routes::start_import_api))
+        .route("/api/import/progress", axum::routing::get(routes::import_progress_sse))
+        .route("/api/import/status", axum::routing::get(routes::import_status_api))
         .route("/api/calendar", axum::routing::get(routes::calendar_api))
         .route("/api/map", axum::routing::get(routes::map_api))
         .route("/api/facets", axum::routing::get(routes::facets_api))

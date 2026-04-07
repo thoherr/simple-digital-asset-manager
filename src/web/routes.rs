@@ -3703,6 +3703,504 @@ pub async fn dedup_remove_location_api(
     }
 }
 
+// ── Volume management ────────────────────────────────────────────
+
+/// GET /volumes — render volumes page.
+pub async fn volumes_page(State(state): State<Arc<AppState>>) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
+        let volumes = registry.list()?;
+        let rows: Vec<super::templates::VolumeRow> = volumes
+            .iter()
+            .map(|v| super::templates::VolumeRow {
+                id: v.id.to_string(),
+                label: v.label.clone(),
+                mount_point: v.mount_point.to_string_lossy().to_string(),
+                volume_type: format!("{:?}", v.volume_type).to_lowercase(),
+                purpose: v.purpose.as_ref().map(|p| p.as_str().to_string()),
+                is_online: v.is_online,
+            })
+            .collect();
+        let config = crate::config::CatalogConfig::load(&state.catalog_root).unwrap_or_default();
+        let profile_names: Vec<String> = config.import.profiles.keys().cloned().collect();
+        let tmpl = super::templates::VolumesPage {
+            volumes: rows,
+            profile_names,
+            ai_enabled: state.ai_enabled,
+            vlm_enabled: state.vlm_enabled,
+        };
+        Ok::<_, anyhow::Error>(tmpl.render()?)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+/// GET /api/volumes — list volumes as JSON.
+pub async fn list_volumes_api(State(state): State<Arc<AppState>>) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
+        let volumes = registry.list()?;
+        let json: Vec<serde_json::Value> = volumes
+            .iter()
+            .map(|v| {
+                serde_json::json!({
+                    "id": v.id.to_string(),
+                    "label": v.label,
+                    "mount_point": v.mount_point.to_string_lossy(),
+                    "volume_type": format!("{:?}", v.volume_type).to_lowercase(),
+                    "purpose": v.purpose.as_ref().map(|p| p.as_str()),
+                    "is_online": v.is_online,
+                })
+            })
+            .collect();
+        Ok::<_, anyhow::Error>(serde_json::json!(json))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct RegisterVolumeRequest {
+    pub path: String,
+    pub label: String,
+    pub purpose: Option<String>,
+}
+
+/// POST /api/volumes — register a new volume.
+pub async fn register_volume_api(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<RegisterVolumeRequest>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let path = std::path::PathBuf::from(&req.path);
+        if !path.exists() {
+            anyhow::bail!("Path does not exist: {}", req.path);
+        }
+        let label = req.label.trim().to_string();
+        if label.is_empty() {
+            anyhow::bail!("Label cannot be empty");
+        }
+        let purpose = req
+            .purpose
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                crate::models::VolumePurpose::parse(s)
+                    .ok_or_else(|| anyhow::anyhow!("Invalid purpose: {s}"))
+            })
+            .transpose()?;
+        let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
+        let volume = registry.register(&label, &path, crate::models::VolumeType::External, purpose)?;
+        Ok::<_, anyhow::Error>(serde_json::json!({
+            "id": volume.id.to_string(),
+            "label": volume.label,
+        }))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => (StatusCode::CREATED, Json(json)).into_response(),
+        Ok(Err(e)) => {
+            let msg = format!("{e:#}");
+            let status = if msg.contains("already") {
+                StatusCode::CONFLICT
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            (status, msg).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct RenameVolumeRequest {
+    pub label: String,
+}
+
+/// PUT /api/volumes/{id}/rename — rename a volume.
+pub async fn rename_volume_api(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(req): Json<RenameVolumeRequest>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let label = req.label.trim().to_string();
+        if label.is_empty() {
+            anyhow::bail!("Label cannot be empty");
+        }
+        let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
+        registry.rename(&id, &label)?;
+        Ok::<_, anyhow::Error>(serde_json::json!({"ok": true}))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SetPurposeRequest {
+    pub purpose: Option<String>,
+}
+
+/// PUT /api/volumes/{id}/purpose — set or clear volume purpose.
+pub async fn set_volume_purpose_api(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(req): Json<SetPurposeRequest>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let purpose = req
+            .purpose
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                crate::models::VolumePurpose::parse(s)
+                    .ok_or_else(|| anyhow::anyhow!("Invalid purpose: {s}"))
+            })
+            .transpose()?;
+        let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
+        registry.set_purpose(&id, purpose)?;
+        Ok::<_, anyhow::Error>(serde_json::json!({"ok": true}))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+/// DELETE /api/volumes/{id} — remove a volume.
+pub async fn remove_volume_api(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let service = state.asset_service();
+        let result = service.remove_volume(&id, true, |_, _, _| {})?;
+        Ok::<_, anyhow::Error>(serde_json::json!({
+            "label": result.volume_label,
+            "locations_removed": result.locations_removed,
+            "recipes_removed": result.recipes_removed,
+            "assets_removed": result.removed_assets,
+        }))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+// ── Import ───────────────────────────────────────────────────────
+
+#[derive(Debug, serde::Deserialize)]
+pub struct StartImportRequest {
+    pub volume_id: String,
+    pub subfolder: Option<String>,
+    pub profile: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub auto_group: Option<bool>,
+    pub smart: Option<bool>,
+    pub dry_run: Option<bool>,
+}
+
+/// POST /api/import — start an import job (or run dry-run synchronously).
+pub async fn start_import_api(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<StartImportRequest>,
+) -> Response {
+    let dry_run = req.dry_run.unwrap_or(false);
+
+    if dry_run {
+        // Dry-run: run synchronously and return result directly
+        let state = state.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            run_import(&state, &req)
+        })
+        .await;
+
+        return match result {
+            Ok(Ok(json)) => Json(json).into_response(),
+            Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e:#}")).into_response(),
+            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+        };
+    }
+
+    // Non-dry-run: check no import running, start background job
+    {
+        let lock = state.import_job.lock().unwrap();
+        if lock.is_some() {
+            return (StatusCode::CONFLICT, "An import is already running").into_response();
+        }
+    }
+
+    let (tx, _rx) = tokio::sync::broadcast::channel::<String>(512);
+    let job_id = uuid::Uuid::new_v4().to_string();
+
+    {
+        let mut lock = state.import_job.lock().unwrap();
+        *lock = Some(super::ImportJob {
+            job_id: job_id.clone(),
+            sender: tx.clone(),
+        });
+    }
+
+    let state2 = state.clone();
+    tokio::spawn(async move {
+        let tx2 = tx.clone();
+        let state3 = state2.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            run_import_with_progress(&state3, &req, &tx2)
+        })
+        .await;
+
+        // Send completion event
+        let done_event = match &result {
+            Ok(Ok(json)) => {
+                let mut obj = json.clone();
+                obj.as_object_mut().unwrap().insert("done".to_string(), serde_json::json!(true));
+                serde_json::to_string(&obj).unwrap_or_default()
+            }
+            Ok(Err(e)) => serde_json::json!({"done": true, "error": format!("{e:#}")}).to_string(),
+            Err(e) => serde_json::json!({"done": true, "error": format!("{e}")}).to_string(),
+        };
+        let _ = tx.send(done_event);
+
+        // Clear the job
+        let mut lock = state2.import_job.lock().unwrap();
+        *lock = None;
+    });
+
+    Json(serde_json::json!({"job_id": job_id, "status": "started"})).into_response()
+}
+
+/// Run import synchronously (for dry-run or background task).
+fn run_import(
+    state: &AppState,
+    req: &StartImportRequest,
+) -> anyhow::Result<serde_json::Value> {
+    let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
+    let volume = registry.resolve_volume(&req.volume_id)?;
+    let config = crate::config::CatalogConfig::load(&state.catalog_root).unwrap_or_default();
+
+    let import_config = if let Some(ref profile_name) = req.profile {
+        config.import.resolve_profile(profile_name)
+            .ok_or_else(|| anyhow::anyhow!("Unknown import profile: {profile_name}"))?
+    } else {
+        config.import.clone()
+    };
+
+    let filter = crate::asset_service::FileTypeFilter::default();
+    let mut tags: Vec<String> = import_config.auto_tags.clone();
+    if let Some(ref extra) = req.tags {
+        tags.extend(extra.iter().cloned());
+    }
+    tags.sort();
+    tags.dedup();
+
+    let dry_run = req.dry_run.unwrap_or(false);
+    let smart = req.smart.unwrap_or(import_config.smart_previews);
+
+    // Build import path
+    let mut import_path = volume.mount_point.clone();
+    if let Some(ref sub) = req.subfolder {
+        if !sub.is_empty() {
+            import_path = import_path.join(sub);
+        }
+    }
+    if !import_path.exists() {
+        anyhow::bail!("Path does not exist: {}", import_path.display());
+    }
+
+    let service = state.asset_service();
+    let result = service.import_with_callback(
+        &[import_path],
+        &volume,
+        &filter,
+        &import_config.exclude,
+        &tags,
+        dry_run,
+        smart,
+        |_, _, _| {},
+    )?;
+
+    Ok(serde_json::json!({
+        "dry_run": dry_run,
+        "imported": result.imported,
+        "locations_added": result.locations_added,
+        "skipped": result.skipped,
+        "recipes_attached": result.recipes_attached,
+        "recipes_updated": result.recipes_updated,
+        "previews_generated": result.previews_generated,
+    }))
+}
+
+/// Run import with progress events sent via broadcast channel.
+fn run_import_with_progress(
+    state: &AppState,
+    req: &StartImportRequest,
+    tx: &tokio::sync::broadcast::Sender<String>,
+) -> anyhow::Result<serde_json::Value> {
+    let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
+    let volume = registry.resolve_volume(&req.volume_id)?;
+    let config = crate::config::CatalogConfig::load(&state.catalog_root).unwrap_or_default();
+
+    let import_config = if let Some(ref profile_name) = req.profile {
+        config.import.resolve_profile(profile_name)
+            .ok_or_else(|| anyhow::anyhow!("Unknown import profile: {profile_name}"))?
+    } else {
+        config.import.clone()
+    };
+
+    let filter = crate::asset_service::FileTypeFilter::default();
+    let mut tags: Vec<String> = import_config.auto_tags.clone();
+    if let Some(ref extra) = req.tags {
+        tags.extend(extra.iter().cloned());
+    }
+    tags.sort();
+    tags.dedup();
+
+    let smart = req.smart.unwrap_or(import_config.smart_previews);
+
+    let mut import_path = volume.mount_point.clone();
+    if let Some(ref sub) = req.subfolder {
+        if !sub.is_empty() {
+            import_path = import_path.join(sub);
+        }
+    }
+    if !import_path.exists() {
+        anyhow::bail!("Path does not exist: {}", import_path.display());
+    }
+
+    let service = state.asset_service();
+    let imported = std::sync::atomic::AtomicUsize::new(0);
+    let skipped = std::sync::atomic::AtomicUsize::new(0);
+    let locations = std::sync::atomic::AtomicUsize::new(0);
+    let recipes = std::sync::atomic::AtomicUsize::new(0);
+
+    let result = service.import_with_callback(
+        &[import_path],
+        &volume,
+        &filter,
+        &import_config.exclude,
+        &tags,
+        false,
+        smart,
+        |path, status, _elapsed| {
+            let label = match status {
+                crate::asset_service::FileStatus::Imported => {
+                    imported.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    "imported"
+                }
+                crate::asset_service::FileStatus::LocationAdded => {
+                    locations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    "location"
+                }
+                crate::asset_service::FileStatus::Skipped => {
+                    skipped.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    "skipped"
+                }
+                crate::asset_service::FileStatus::RecipeAttached |
+                crate::asset_service::FileStatus::RecipeUpdated => {
+                    recipes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    "recipe"
+                }
+            };
+            let file = path
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let evt = serde_json::json!({
+                "done": false,
+                "file": file,
+                "status": label,
+                "imported": imported.load(std::sync::atomic::Ordering::Relaxed),
+                "skipped": skipped.load(std::sync::atomic::Ordering::Relaxed),
+                "locations_added": locations.load(std::sync::atomic::Ordering::Relaxed),
+                "recipes": recipes.load(std::sync::atomic::Ordering::Relaxed),
+            });
+            let _ = tx.send(evt.to_string());
+        },
+    )?;
+
+    // Post-import auto-group
+    if req.auto_group.unwrap_or(false) && (result.imported > 0 || result.locations_added > 0) {
+        let engine = crate::query::QueryEngine::new(&state.catalog_root);
+        let _ = engine.auto_group(&result.new_asset_ids, false);
+    }
+
+    Ok(serde_json::json!({
+        "imported": result.imported,
+        "locations_added": result.locations_added,
+        "skipped": result.skipped,
+        "recipes_attached": result.recipes_attached,
+        "recipes_updated": result.recipes_updated,
+        "previews_generated": result.previews_generated,
+    }))
+}
+
+/// GET /api/import/progress — SSE stream of import progress events.
+pub async fn import_progress_sse(
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    use axum::response::sse::{Event, KeepAlive, Sse};
+    use tokio_stream::StreamExt;
+
+    let rx = {
+        let lock = state.import_job.lock().unwrap();
+        match lock.as_ref() {
+            Some(job) => job.sender.subscribe(),
+            None => {
+                return (StatusCode::NOT_FOUND, "No import running").into_response();
+            }
+        }
+    };
+
+    let stream = tokio_stream::wrappers::BroadcastStream::new(rx)
+        .filter_map(|msg| match msg {
+            Ok(data) => Some(Event::default().data(data)),
+            Err(_) => None,
+        })
+        .map(Ok::<_, std::convert::Infallible>);
+
+    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+}
+
+/// GET /api/import/status — check if an import is running.
+pub async fn import_status_api(
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    let lock = state.import_job.lock().unwrap();
+    let running = lock.is_some();
+    let job_id = lock.as_ref().map(|j| j.job_id.clone());
+    Json(serde_json::json!({"running": running, "job_id": job_id})).into_response()
+}
+
 #[derive(Debug, serde::Deserialize)]
 pub struct CompareParams {
     pub ids: Option<String>,
