@@ -1,0 +1,73 @@
+# cargo-deny configuration for MAKI
+#
+# Run: cargo deny check
+#
+# Validates that all dependencies use approved licenses, that no advisories
+# affect us, and that the dependency graph is clean.
+
+[graph]
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-gnu" },
+    { triple = "x86_64-apple-darwin" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "x86_64-pc-windows-msvc" },
+]
+all-features = false
+no-default-features = false
+
+# ── Licenses ──────────────────────────────────────────────────────────
+[licenses]
+# Allowed SPDX license identifiers. Must match the list in about.toml so
+# `cargo about` and `cargo deny` agree on what's acceptable. Anything not
+# in this list causes the check to fail, forcing a conscious decision
+# before adding a crate with an unfamiliar or copyleft license.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "NCSA",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "MPL-2.0",
+    "OpenSSL",
+    "CC0-1.0",
+    "0BSD",
+]
+confidence-threshold = 0.93
+
+# ── Advisories ────────────────────────────────────────────────────────
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "warn"
+# Vulnerabilities still fail the build (default behavior).
+# Unmaintained crates only warn — we can't always control transitive deps,
+# and an unmaintained-but-functional crate is not the same as a vulnerable one.
+ignore = [
+    # paste 1.0.15 — unmaintained (RUSTSEC-2024-0436); pulled in by lofty,
+    # rav1e (via ravif/image), and simba (nalgebra). No vulnerability, just
+    # archived. Revisit if a vulnerability is found or alternatives mature.
+    "RUSTSEC-2024-0436",
+]
+
+# ── Bans ──────────────────────────────────────────────────────────────
+[bans]
+# Allow multiple versions of the same crate (the dep graph has many of these
+# in practice; resolving them all is a separate cleanup project).
+multiple-versions = "allow"
+wildcards = "warn"
+deny = []
+
+# ── Sources ───────────────────────────────────────────────────────────
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

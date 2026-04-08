@@ -8,7 +8,31 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Generate THIRD_PARTY_LICENSES.md once — it's platform-independent and
+  # depends only on the Cargo.lock dependency tree.
+  licenses:
+    runs-on: ubuntu-latest
+    name: Generate third-party licenses
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-about and cargo-deny
+        run: |
+          cargo install cargo-about --locked
+          cargo install cargo-deny --locked
+      - name: Validate dependency licenses
+        run: cargo deny check
+      - name: Generate THIRD_PARTY_LICENSES.md
+        run: cargo about generate -o THIRD_PARTY_LICENSES.md about.hbs
+      - name: Upload licenses artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: third-party-licenses
+          path: THIRD_PARTY_LICENSES.md
+
   build:
+    needs: [licenses]
     strategy:
       fail-fast: false
       matrix:
@@ -50,6 +74,12 @@ jobs:
           key: release-${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: release-${{ runner.os }}-cargo-
 
+      - name: Download third-party licenses artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: third-party-licenses
+          path: .
+
       # --- Standard build ---
 
       - name: Build release binary (standard)
@@ -62,7 +92,7 @@ jobs:
           ARCHIVE="maki-${VERSION}-${{ matrix.platform }}.${{ matrix.ext }}"
           mkdir -p staging
           cp target/${{ matrix.target }}/release/maki staging/
-          cp README.md LICENSE staging/
+          cp README.md LICENSE THIRD_PARTY_LICENSES.md staging/
           cd staging && tar czf "../${ARCHIVE}" *
           echo "STANDARD_ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
 
@@ -74,7 +104,7 @@ jobs:
           $ARCHIVE = "maki-${VERSION}-${{ matrix.platform }}.${{ matrix.ext }}"
           New-Item -ItemType Directory -Path staging -Force
           Copy-Item "target/${{ matrix.target }}/release/maki.exe" staging/
-          Copy-Item README.md, LICENSE staging/
+          Copy-Item README.md, LICENSE, THIRD_PARTY_LICENSES.md staging/
           Compress-Archive -Path staging/* -DestinationPath $ARCHIVE
           echo "STANDARD_ARCHIVE=${ARCHIVE}" >> $env:GITHUB_ENV
 
@@ -91,7 +121,7 @@ jobs:
           rm -rf staging
           mkdir -p staging
           cp target/${{ matrix.target }}/release/maki staging/
-          cp README.md LICENSE staging/
+          cp README.md LICENSE THIRD_PARTY_LICENSES.md staging/
           cd staging && tar czf "../${ARCHIVE}" *
           echo "PRO_ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
 
@@ -104,7 +134,7 @@ jobs:
           Remove-Item -Recurse -Force staging -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path staging -Force
           Copy-Item "target/${{ matrix.target }}/release/maki.exe" staging/
-          Copy-Item README.md, LICENSE staging/
+          Copy-Item README.md, LICENSE, THIRD_PARTY_LICENSES.md staging/
           Compress-Archive -Path staging/* -DestinationPath $ARCHIVE
           echo "PRO_ARCHIVE=${ARCHIVE}" >> $env:GITHUB_ENV
 
@@ -163,6 +193,7 @@ jobs:
             artifacts/linux-x86_64-pro/*
             artifacts/windows-x86_64/*
             artifacts/windows-x86_64-pro/*
+            artifacts/third-party-licenses/THIRD_PARTY_LICENSES.md
             doc/manual/maki-manual.pdf
             doc/quickref/cheat-sheet.pdf
             doc/quickref/search-filters.pdf

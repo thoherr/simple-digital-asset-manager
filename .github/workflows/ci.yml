@@ -57,3 +57,17 @@ jobs:
 
       - name: Run integration tests with AI features
         run: cargo test --test cli --features ai
+
+  # Validate dependency licenses and check for security advisories.
+  # Runs only on Linux since the dep tree is platform-independent.
+  licenses:
+    runs-on: ubuntu-latest
+    name: License & advisory check
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      - name: Run cargo deny check
+        run: cargo deny check

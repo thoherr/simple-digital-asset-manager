@@ -36,6 +36,7 @@ Man-page style documentation for every command, filter, and configuration option
 - [Configuration](reference/08-configuration.md) — `maki.toml` reference
 - [Data Model](reference/09-data-model.md) — Asset, Variant, Recipe, Volume, and FileLocation entities
 - [VLM Model Guide](reference/10-vlm-models.md) — Vision-language models for `maki describe`: tested models, backends, hardware guide
+- [Licenses & Acknowledgements](reference/11-licenses.md) — MAKI license, third-party Rust crates, AI models, external tools
 
 \newpage
 

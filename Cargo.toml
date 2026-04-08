@@ -32,7 +32,7 @@ axum = "0.8"
 tower-http = { version = "0.6", features = ["fs"] }
 askama = "0.12"
 printpdf = "0.7"
-viuer = { version = "0.11", features = ["print-file"] }
+viuer = { version = "0.11", features = ["print-file"], optional = true }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 ort = { version = "2.0.0-rc.11", optional = true, default-features = false, features = ["std", "ndarray", "download-binaries", "tls-native", "copy-dylibs"] }
 ndarray = { version = "0.17", optional = true }
@@ -43,6 +43,10 @@ default = []
 pro = ["ai"]
 ai = ["ort", "ndarray", "tokenizers"]
 ai-gpu = ["ai", "ort/coreml"]
+# Inline terminal image preview via viuer. Off by default because viuer pulls
+# in `ansi_colours` (LGPL-3.0). Enable with `--features terminal-preview` if
+# you accept the LGPL-3.0 license terms for that transitive dependency.
+terminal-preview = ["viuer"]
 
 [dev-dependencies]
 assert_cmd = "2"

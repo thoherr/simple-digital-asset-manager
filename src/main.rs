@@ -1040,6 +1040,14 @@ enum Commands {
         document: String,
     },
 
+    /// Show MAKI license and third-party crate licenses
+    #[command(display_order = 56)]
+    Licenses {
+        /// Show summary only (counts and where to find full text)
+        #[arg(long)]
+        summary: bool,
+    },
+
     /// Start an interactive asset management shell
     #[command(display_order = 56)]
     Shell {
@@ -2780,7 +2788,12 @@ faces/\n\
                         if !cli.json {
                             eprintln!("{name}");
                         }
-                        maki::preview::display_in_terminal(&path, None, None)?;
+                        let displayed = maki::preview::display_in_terminal(&path, None, None)?;
+                        if !displayed && !cli.json {
+                            eprintln!("Preview path: {}", path.display());
+                            eprintln!("(inline terminal display not available — use --open to open externally,");
+                            eprintln!(" or rebuild MAKI with --features terminal-preview to enable inline display)");
+                        }
                     }
                     if cli.json {
                         println!("{}", serde_json::json!({
@@ -6508,6 +6521,61 @@ faces/\n\
                     println!("  {} error(s) encountered", result.errors);
                 }
             }
+            Ok(())
+        }
+        Commands::Licenses { summary } => {
+            let third_party_url = "https://github.com/thoherr/maki/releases/latest/download/THIRD_PARTY_LICENSES.md";
+
+            if cli.json {
+                println!("{}", serde_json::json!({
+                    "maki_license": "Apache-2.0",
+                    "maki_license_url": "https://github.com/thoherr/maki/blob/main/LICENSE",
+                    "third_party_licenses_url": third_party_url,
+                    "third_party_summary": "All Rust dependencies use permissive licenses (MIT, Apache-2.0, BSD, ISC, MPL-2.0, NCSA, Unicode, Zlib, BSL-1.0, CC0). See THIRD_PARTY_LICENSES.md in the release archive.",
+                    "ai_models": {
+                        "license": "Apache-2.0",
+                        "source": "Hugging Face (downloaded on demand)",
+                        "credit": "Google Research (SigLIP, SigLIP 2)",
+                    },
+                    "external_tools": "dcraw, libraw, ffmpeg, curl — installed separately by the user under their own licenses; not bundled.",
+                }));
+                return Ok(());
+            }
+
+            println!("MAKI — Media Asset Keeper & Indexer");
+            println!("License: Apache-2.0");
+            println!("https://github.com/thoherr/maki/blob/main/LICENSE");
+            println!();
+            println!("Third-party Rust dependencies");
+            println!("─────────────────────────────");
+            println!("All compiled-in Rust crates use permissive open-source licenses:");
+            println!("  Apache-2.0, MIT, BSD-2/3-Clause, ISC, MPL-2.0, NCSA, Unicode, Zlib,");
+            println!("  BSL-1.0, CC0, 0BSD.");
+            println!();
+            println!("The full license text for every dependency is in:");
+            println!("  THIRD_PARTY_LICENSES.md (in your MAKI release archive)");
+            println!("  {third_party_url}");
+            println!();
+            println!("AI models (Pro)");
+            println!("───────────────");
+            println!("SigLIP and SigLIP 2 image-text encoders are downloaded on demand from");
+            println!("Hugging Face. Both are released by Google Research under Apache-2.0.");
+            println!("Face detection/recognition models (when used) are also Apache-2.0.");
+            println!("MAKI does not bundle model weights in the binary.");
+            println!();
+            println!("External tools");
+            println!("──────────────");
+            println!("dcraw, libraw, ffmpeg, ffprobe, and curl are called as separate processes");
+            println!("when present on the system. They are governed by their own licenses and");
+            println!("installed by the user; MAKI does not bundle their code.");
+
+            if !summary {
+                println!();
+                println!("Run 'maki licenses --summary' for a shorter version, or open the");
+                println!("THIRD_PARTY_LICENSES.md file in your release archive for the full");
+                println!("text of every dependency's license.");
+            }
+
             Ok(())
         }
         Commands::Doc { document } => {

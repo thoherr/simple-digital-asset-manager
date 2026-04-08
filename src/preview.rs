@@ -913,6 +913,12 @@ pub fn extract_video_metadata(path: &Path) -> std::collections::HashMap<String, 
 
 /// Display a preview image inline in the terminal using viuer.
 /// Returns Ok(true) if displayed, Ok(false) if no preview exists.
+///
+/// Requires the `terminal-preview` feature (off by default — pulls in
+/// `ansi_colours` which is LGPL-3.0). When the feature is disabled, this
+/// function returns Ok(false) and the caller should fall back to opening
+/// the preview in an external viewer with `open_in_viewer`.
+#[cfg(feature = "terminal-preview")]
 pub fn display_in_terminal(path: &Path, max_width: Option<u32>, max_height: Option<u32>) -> Result<bool> {
     if !path.exists() {
         return Ok(false);
@@ -926,6 +932,11 @@ pub fn display_in_terminal(path: &Path, max_width: Option<u32>, max_height: Opti
     viuer::print_from_file(path, &conf)
         .context("Failed to display image in terminal")?;
     Ok(true)
+}
+
+#[cfg(not(feature = "terminal-preview"))]
+pub fn display_in_terminal(_path: &Path, _max_width: Option<u32>, _max_height: Option<u32>) -> Result<bool> {
+    Ok(false)
 }
 
 /// Open a preview image in the OS default viewer.

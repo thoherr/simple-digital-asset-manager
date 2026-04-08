@@ -1,0 +1,53 @@
+# Third-Party Licenses
+
+This document contains the licenses for all third-party Rust crates compiled
+into the **MAKI** binary. It is generated automatically by [`cargo-about`]
+and shipped alongside each release.
+
+MAKI itself is released under the Apache-2.0 license. The Rust crates listed
+below are used under the terms of their respective licenses, all of which are
+permissive open-source licenses (MIT, Apache-2.0, BSD, ISC, MPL-2.0, etc.).
+
+For external tools like `dcraw`, `libraw`, `ffmpeg`, and `curl`, MAKI only
+calls them as separate processes and does not bundle their code; they are
+governed by their own licenses and installed separately by the user.
+
+For AI models (SigLIP, SigLIP 2, face detection/recognition), MAKI downloads
+weights on demand from Hugging Face. Those models are released by Google and
+the Hugging Face community under Apache-2.0; MAKI does not bundle them in
+the binary.
+
+[`cargo-about`]: https://github.com/EmbarkStudios/cargo-about
+
+---
+
+## Overview
+
+{{#each overview}}
+- **{{name}}** — {{count}} crate(s)
+{{/each}}
+
+---
+
+## Crates by License
+
+{{#each licenses}}
+### {{name}}
+
+Used by:
+{{#each used_by}}
+- [{{crate.name}} {{crate.version}}]({{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}})
+{{/each}}
+
+<details>
+<summary>License text</summary>
+
+```
+{{text}}
+```
+
+</details>
+
+---
+
+{{/each}}
