@@ -256,37 +256,29 @@ maki show a1b2c --json | jq '.variants[].locations[]'
 
 ### NAME
 
-`maki preview` -- display an asset's preview image in the terminal
+`maki preview` -- open an asset's preview in the OS default image viewer
 
 ### SYNOPSIS
 
 ```
-maki [GLOBAL FLAGS] preview <ASSET_ID> [--open]
+maki [GLOBAL FLAGS] preview <ASSET_ID>
 ```
 
 ### DESCRIPTION
 
-Renders the asset's best preview image directly in the terminal using the viuer library. Auto-detects the terminal's graphics protocol (iTerm2, Kitty, Sixel) and falls back to Unicode half-block characters.
+Resolves the asset's best preview file (smart preview if available, otherwise the regular preview) and opens it with the operating system's default image viewer (`open` on macOS, `xdg-open` on Linux, `start` on Windows). Useful for quickly inspecting an asset from the CLI without launching a full image browser.
 
-With `--open`, launches the preview file in the OS default image viewer instead of rendering in the terminal.
-
-Also available as a shell built-in: `preview <id>`, `preview $var`, `preview _ --open`.
+Also available as a shell built-in: `preview <id>`, `preview $var`.
 
 ### OPTIONS
 
 - `<ASSET_ID>` -- Asset ID or prefix (required)
-- `--open` -- Open in the OS default viewer instead of terminal display
 
 ### EXAMPLES
 
-Display a preview in the terminal:
+Open a preview:
 ```
 maki preview a1b2c3d4
-```
-
-Open in the default viewer:
-```
-maki preview a1b2c --open
 ```
 
 In the shell with variable expansion:

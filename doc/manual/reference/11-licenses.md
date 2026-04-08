@@ -58,16 +58,6 @@ The configuration files are `about.toml` (for `cargo-about`) and `deny.toml` (fo
 
 [`cargo-deny`]: https://github.com/EmbarkStudios/cargo-deny
 
-### Optional `terminal-preview` feature
-
-The `terminal-preview` build feature enables inline image display in the terminal via the `viuer` crate. **It is disabled by default in release builds** because `viuer` pulls in `ansi_colours`, which is licensed **LGPL-3.0-or-later**. Enabling this feature means accepting the LGPL-3.0 terms for that one transitive dependency. To use it, build from source:
-
-```bash
-cargo build --release --features terminal-preview
-```
-
-Without this feature, `maki preview <id>` falls back to printing the preview file path; use `maki preview <id> --open` to open the file in your OS default image viewer.
-
 ## AI models *(Pro)*
 
 MAKI Pro uses image-text encoder models (SigLIP, SigLIP 2) and face detection/recognition models. These are **downloaded on demand** from Hugging Face the first time you run `maki auto-tag --download` or trigger a feature that needs them; they are not bundled in the binary.

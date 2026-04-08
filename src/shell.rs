@@ -633,16 +633,13 @@ fn handle_line(
         _ => {}
     }
 
-    // preview [--open] <asset_id|$var|_>
+    // preview <asset_id|$var|_>
     if line == "preview" || line.starts_with("preview ") {
         let rest = line.strip_prefix("preview").unwrap_or("").trim();
-        let (open_mode, args) = if rest.starts_with("--open") {
-            (true, rest.strip_prefix("--open").unwrap_or("").trim())
-        } else {
-            (false, rest)
-        };
+        // Accept (and ignore) the legacy --open flag for backward compatibility
+        let args = rest.strip_prefix("--open").map(str::trim).unwrap_or(rest);
         if args.is_empty() {
-            eprintln!("  Usage: preview [--open] <asset_id>");
+            eprintln!("  Usage: preview <asset_id>");
             return LineResult::Handled;
         }
         // Expand variables and _ in args
@@ -660,8 +657,8 @@ fn handle_line(
         } else {
             expanded.asset_ids
         };
-        // Display previews
-        match handle_preview_builtin(catalog_root, &ids, open_mode) {
+        // Open previews in the OS default viewer
+        match handle_preview_builtin(catalog_root, &ids) {
             Ok(displayed_ids) => {
                 if !displayed_ids.is_empty() {
                     vars.last_ids = displayed_ids;
@@ -960,7 +957,6 @@ fn execute_with_ids(
 fn handle_preview_builtin(
     catalog_root: &Path,
     asset_ids: &[String],
-    open_mode: bool,
 ) -> Result<Vec<String>> {
     let config = crate::config::CatalogConfig::load(catalog_root)?;
     let catalog = crate::catalog::Catalog::open(catalog_root)?;
@@ -991,13 +987,8 @@ fn handle_preview_builtin(
 
         match preview_path {
             Some(path) => {
-                if open_mode {
-                    crate::preview::open_in_viewer(&path)?;
-                    eprintln!("  Opened {name}");
-                } else {
-                    eprintln!("  {name}");
-                    crate::preview::display_in_terminal(&path, None, None)?;
-                }
+                crate::preview::open_in_viewer(&path)?;
+                eprintln!("  Opened {name}");
                 displayed.push(full_id.to_string());
             }
             None => {
@@ -1218,8 +1209,7 @@ Other syntax:
   # comment          Lines starting with # are ignored
 
 Shell commands:
-  preview <id>       Display asset preview in the terminal
-  preview --open <id>  Open preview in OS image viewer
+  preview <id>       Open the asset's preview in the OS default image viewer
   help               Show this help
   quit / exit        End the session (also Ctrl-D)
 

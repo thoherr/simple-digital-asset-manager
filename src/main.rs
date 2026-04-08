@@ -445,15 +445,11 @@ enum Commands {
         locations: bool,
     },
 
-    /// Display asset preview in the terminal
+    /// Open the asset's preview in the OS default image viewer
     #[command(display_order = 32)]
     Preview {
         /// Asset ID (or prefix)
         asset_id: String,
-
-        /// Open in the default OS image viewer instead of inline display
-        #[arg(long)]
-        open: bool,
     },
 
     /// Find duplicate files
@@ -1490,7 +1486,7 @@ Organize:
 Retrieve:
   search             Search assets
   show               Show asset details
-  preview            Display asset preview in the terminal (or --open in OS viewer)
+  preview            Open the asset's preview in the OS default image viewer
   export             Export files matching a search query to a directory
   contact-sheet      Generate a PDF contact sheet from search results
   duplicates         Find duplicate files
@@ -2750,7 +2746,7 @@ faces/\n\
 
             Ok(())
         }
-        Commands::Preview { asset_id, open } => {
+        Commands::Preview { asset_id } => {
             let catalog_root = maki::config::find_catalog_root()?;
             let config = CatalogConfig::load(&catalog_root)?;
             let catalog = maki::catalog::Catalog::open(&catalog_root)?;
@@ -2777,23 +2773,10 @@ faces/\n\
 
             match preview_path {
                 Some(path) => {
-                    if open {
-                        maki::preview::open_in_viewer(&path)?;
-                        if !cli.json {
-                            let name = details.name.as_deref().unwrap_or(full_id);
-                            eprintln!("Opened preview for {name}");
-                        }
-                    } else {
+                    maki::preview::open_in_viewer(&path)?;
+                    if !cli.json {
                         let name = details.name.as_deref().unwrap_or(full_id);
-                        if !cli.json {
-                            eprintln!("{name}");
-                        }
-                        let displayed = maki::preview::display_in_terminal(&path, None, None)?;
-                        if !displayed && !cli.json {
-                            eprintln!("Preview path: {}", path.display());
-                            eprintln!("(inline terminal display not available — use --open to open externally,");
-                            eprintln!(" or rebuild MAKI with --features terminal-preview to enable inline display)");
-                        }
+                        eprintln!("Opened preview for {name}");
                     }
                     if cli.json {
                         println!("{}", serde_json::json!({
