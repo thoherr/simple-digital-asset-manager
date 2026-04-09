@@ -251,6 +251,30 @@ maki search 'lens:"24-70" camera:sony'
 
 ---
 
+## description
+
+**Syntax:** `description:<text>`, `description:"<multi-word text>"`, or `desc:<text>` (short alias)
+
+**Description:** Case-insensitive substring match against the asset's `description` field. Useful for finding assets by what's *in* them when you've added descriptions manually or via VLM auto-describe (Pro). Unlike free-text search, this filter targets ONLY the description column — it does not match against name, filename, or source metadata.
+
+The short alias `desc:` is equivalent to `description:` and exists for convenience in interactive use. Both negation (`-description:`, `-desc:`) and OR (`description:foo,bar`) work the same as other text filters. Assets with NULL description are correctly excluded by negation.
+
+**Examples:**
+
+```
+maki search "description:sunset"                    # any asset whose description mentions 'sunset'
+maki search 'description:"colorful flowers"'        # multi-word match
+maki search "desc:cat -desc:rejected"               # cats but not rejected
+maki search "description:wedding rating:5+"         # 5-star photos described as wedding
+maki search "description:sunset,dawn,dusk"          # any of three terms (OR)
+```
+
+**Comparison with free-text:** A bare term like `maki search "sunset"` matches the asset's name, filename, description, AND source metadata at once — convenient for broad lookups but noisy when you specifically want description hits. Use `description:sunset` to scope the match.
+
+**SQL behavior:** `WHERE a.description LIKE '%value%'`. Pure assets-table filter, no JOIN required. Multiple positive `description:` entries are AND-combined; comma-separated values within an entry are OR-combined.
+
+---
+
 ## iso
 
 **Syntax:** `iso:<N>` (exact) or `iso:<N>+` (minimum) or `iso:<min>-<max>` (range)

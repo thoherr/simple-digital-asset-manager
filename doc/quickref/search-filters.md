@@ -19,6 +19,7 @@ Filters combine with **AND** — every filter must match. Free-text tokens that 
 | Color label | `label:<color>` | `label:Red`, `label:Blue` |
 | Camera | `camera:<text>` | `camera:fuji`, `camera:"Canon EOS R5"` |
 | Lens | `lens:<text>` | `lens:56mm`, `lens:"RF 50mm"` |
+| Description | `description:<text>`, `desc:<text>` | `description:sunset` |
 | ISO | `iso:<N>`, `iso:<min>-<max>` | `iso:100`, `iso:100-800` |
 | Focal length | `focal:<N>`, `focal:<min>-<max>` | `focal:50`, `focal:35-70` |
 | Aperture | `f:<N>`, `f:<min>-<max>` | `f:2.8`, `f:1.4-2.8` |

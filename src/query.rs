@@ -91,6 +91,8 @@ pub struct ParsedSearch {
     pub cameras_exclude: Vec<String>,
     pub lenses: Vec<String>,
     pub lenses_exclude: Vec<String>,
+    pub descriptions: Vec<String>,
+    pub descriptions_exclude: Vec<String>,
     pub collections: Vec<String>,
     pub collections_exclude: Vec<String>,
     pub path_prefixes: Vec<String>,
@@ -160,6 +162,8 @@ impl ParsedSearch {
         self.cameras_exclude.extend(other.cameras_exclude.iter().cloned());
         self.lenses.extend(other.lenses.iter().cloned());
         self.lenses_exclude.extend(other.lenses_exclude.iter().cloned());
+        self.descriptions.extend(other.descriptions.iter().cloned());
+        self.descriptions_exclude.extend(other.descriptions_exclude.iter().cloned());
         self.collections.extend(other.collections.iter().cloned());
         self.collections_exclude.extend(other.collections_exclude.iter().cloned());
         self.path_prefixes.extend(other.path_prefixes.iter().cloned());
@@ -226,6 +230,8 @@ impl ParsedSearch {
             cameras_exclude: &self.cameras_exclude,
             lenses: &self.lenses,
             lenses_exclude: &self.lenses_exclude,
+            descriptions: &self.descriptions,
+            descriptions_exclude: &self.descriptions_exclude,
             collections: &self.collections,
             collections_exclude: &self.collections_exclude,
             path_prefixes: &self.path_prefixes,
@@ -396,6 +402,19 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
                 parsed.lenses_exclude.push(value.to_string());
             } else {
                 parsed.lenses.push(value.to_string());
+            }
+        } else if let Some(value) = token_body.strip_prefix("description:") {
+            if negated {
+                parsed.descriptions_exclude.push(value.to_string());
+            } else {
+                parsed.descriptions.push(value.to_string());
+            }
+        } else if let Some(value) = token_body.strip_prefix("desc:") {
+            // Short alias for description:
+            if negated {
+                parsed.descriptions_exclude.push(value.to_string());
+            } else {
+                parsed.descriptions.push(value.to_string());
             }
         } else if let Some(value) = token_body.strip_prefix("iso:") {
             parsed.iso = parse_numeric_filter(value);
@@ -3935,6 +3954,32 @@ mod tests {
     fn parse_lens_filter() {
         let p = parse_search_query("lens:56mm");
         assert_eq!(p.lenses, vec!["56mm"]);
+    }
+
+    #[test]
+    fn parse_description_filter() {
+        let p = parse_search_query("description:sunset");
+        assert_eq!(p.descriptions, vec!["sunset"]);
+        assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_description_short_alias() {
+        let p = parse_search_query("desc:sunset");
+        assert_eq!(p.descriptions, vec!["sunset"]);
+    }
+
+    #[test]
+    fn parse_description_negated() {
+        let p = parse_search_query("-description:rejected");
+        assert_eq!(p.descriptions_exclude, vec!["rejected"]);
+        assert!(p.descriptions.is_empty());
+    }
+
+    #[test]
+    fn parse_description_quoted() {
+        let p = parse_search_query("description:\"colorful flowers\"");
+        assert_eq!(p.descriptions, vec!["colorful flowers"]);
     }
 
     #[test]

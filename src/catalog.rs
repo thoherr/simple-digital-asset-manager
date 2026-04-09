@@ -428,6 +428,8 @@ pub struct SearchOptions<'a> {
     pub cameras_exclude: &'a [String],
     pub lenses: &'a [String],
     pub lenses_exclude: &'a [String],
+    pub descriptions: &'a [String],
+    pub descriptions_exclude: &'a [String],
     pub collections: &'a [String],
     pub collections_exclude: &'a [String],
     pub path_prefixes: &'a [String],
@@ -492,6 +494,8 @@ impl<'a> Default for SearchOptions<'a> {
             cameras_exclude: &[],
             lenses: &[],
             lenses_exclude: &[],
+            descriptions: &[],
+            descriptions_exclude: &[],
             collections: &[],
             collections_exclude: &[],
             path_prefixes: &[],
@@ -2929,6 +2933,11 @@ impl Catalog {
 
         // --- Lens (LIKE on v.lens_model) ---
         Self::add_like_filter(&mut clauses, &mut params, opts.lenses, opts.lenses_exclude, "v.lens_model", &mut needs_v_join);
+
+        // --- Description (LIKE on a.description) ---
+        // Pure assets-table filter, no JOIN required. Use a throwaway flag.
+        let mut _desc_no_join = false;
+        Self::add_like_filter(&mut clauses, &mut params, opts.descriptions, opts.descriptions_exclude, "a.description", &mut _desc_no_join);
 
         // --- Numeric variant filters ---
         if let Some(ref f) = opts.iso { Self::numeric_clause(f, "v.iso", &mut clauses, &mut params); needs_v_join = true; }
@@ -5507,6 +5516,61 @@ mod tests {
         let results2 = catalog.search_paginated(&opts2).unwrap();
         assert_eq!(results2.len(), 1);
         assert_eq!(results2[0].original_filename, "cs2.jpg");
+    }
+
+    #[test]
+    fn search_description_filter() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let cases = [
+            ("sha256:d1", Some("a beautiful sunset over the ocean")),
+            ("sha256:d2", Some("portrait of a cat in soft window light")),
+            ("sha256:d3", Some("Sunset behind mountain peaks")),
+            ("sha256:d4", None),  // no description
+        ];
+        for (hash, desc) in &cases {
+            let mut a = crate::models::Asset::new(crate::models::AssetType::Image, hash);
+            a.description = desc.map(|s| s.to_string());
+            let v = crate::models::Variant {
+                content_hash: hash.to_string(),
+                asset_id: a.id.clone(),
+                role: crate::models::VariantRole::Original,
+                format: "jpg".to_string(),
+                file_size: 100,
+                original_filename: format!("{}.jpg", &hash[7..]),
+                source_metadata: Default::default(),
+                locations: vec![],
+            };
+            a.variants.push(v.clone());
+            catalog.insert_asset(&a).unwrap();
+            catalog.insert_variant(&v).unwrap();
+        }
+
+        // description:sunset matches d1 and d3 (case-insensitive substring)
+        let descs = vec!["sunset".to_string()];
+        let opts = SearchOptions { descriptions: &descs, per_page: u32::MAX, ..Default::default() };
+        let results = catalog.search_paginated(&opts).unwrap();
+        let names: Vec<&str> = results.iter().map(|r| r.original_filename.as_str()).collect();
+        assert_eq!(results.len(), 2, "got: {names:?}");
+        assert!(names.contains(&"d1.jpg"));
+        assert!(names.contains(&"d3.jpg"));
+
+        // description:cat matches only d2
+        let descs = vec!["cat".to_string()];
+        let opts = SearchOptions { descriptions: &descs, per_page: u32::MAX, ..Default::default() };
+        let results = catalog.search_paginated(&opts).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].original_filename, "d2.jpg");
+
+        // -description:cat excludes d2; assets with NULL description survive
+        let exclude = vec!["cat".to_string()];
+        let opts = SearchOptions { descriptions_exclude: &exclude, per_page: u32::MAX, ..Default::default() };
+        let results = catalog.search_paginated(&opts).unwrap();
+        let names: Vec<&str> = results.iter().map(|r| r.original_filename.as_str()).collect();
+        assert_eq!(results.len(), 3, "got: {names:?}");
+        assert!(!names.contains(&"d2.jpg"));
+        assert!(names.contains(&"d4.jpg"), "NULL description should survive exclusion");
     }
 
     #[test]
