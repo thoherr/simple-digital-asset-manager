@@ -3199,48 +3199,65 @@ impl Catalog {
     /// Returns a Vec of SQL expressions (each with params already pushed).
     ///
     /// If the tag starts with `=`, only exact matches are returned (no descendants).
-    /// Otherwise, both exact and prefix (descendant) matches are generated.
+    /// If the tag starts with `^`, the match is case-sensitive (uses SQLite
+    /// GLOB instead of LIKE). The two prefixes can be combined in any order:
+    /// `tag:=^Foo`, `tag:^=Foo`.
+    /// Otherwise, both exact and prefix (descendant) matches are generated,
+    /// case-insensitively (the SQLite LIKE default for ASCII).
     ///
     /// Tags containing `"` may be stored in JSON two ways:
     /// - Unescaped: `"\"Sir\" Oliver Mally"` (serde_json proper)
     /// - Raw: `""Sir" Oliver Mally"` (legacy/malformed JSON)
     /// We match both forms.
     fn tag_like_parts(params: &mut Vec<Box<dyn rusqlite::types::ToSql>>, tag: &str) -> Vec<String> {
-        // Check for exact-match prefix
-        let (exact_only, tag_value) = if tag.starts_with('=') {
-            (true, &tag[1..])
-        } else {
-            (false, tag)
-        };
+        // Strip the `=` (exact level) and `^` (case-sensitive) prefix markers
+        // in any order. Both modifiers stack independently.
+        let mut rest = tag;
+        let mut exact_only = false;
+        let mut case_sensitive = false;
+        loop {
+            if let Some(s) = rest.strip_prefix('=') { exact_only = true; rest = s; }
+            else if let Some(s) = rest.strip_prefix('^') { case_sensitive = true; rest = s; }
+            else { break; }
+        }
+        let tag_value = rest;
         let stored = crate::tag_util::tag_input_to_storage(tag_value);
         let mut exprs = Vec::new();
 
+        // Helper: build the wildcard pattern for either LIKE (%..%) or GLOB (*..*).
+        // GLOB is case-sensitive; LIKE is case-insensitive for ASCII. Tag values
+        // almost never contain `*` or `?`, but if they do, GLOB would treat them
+        // as wildcards — this is a documented edge case for case-sensitive search.
+        let op = if case_sensitive { "GLOB" } else { "LIKE" };
+        let wild = if case_sensitive { "*" } else { "%" };
+        let pat = |middle: &str| -> String { format!("{wild}{middle}{wild}") };
+        // For the "not-descendant" clause we need a trailing `|` before the wild,
+        // so the pattern is `<wild>"tag|<wild>` (matches any descendant).
+        let desc_pat = |stored: &str| -> String { format!("{wild}\"{stored}|{wild}") };
+
         if exact_only {
             // Exact/leaf match: has this tag but NOT any child tag.
-            // "assets tagged at exactly this level, not deeper"
-            params.push(Box::new(format!("%\"{stored}\"%")));
-            params.push(Box::new(format!("%\"{stored}|%")));
-            exprs.push("(a.tags LIKE ? AND a.tags NOT LIKE ?)".to_string());
+            params.push(Box::new(pat(&format!("\"{stored}\""))));
+            params.push(Box::new(desc_pat(&stored)));
+            exprs.push(format!("(a.tags {op} ? AND a.tags NOT {op} ?)"));
         } else {
-            // Exact match: tag appears as a complete JSON string value
-            params.push(Box::new(format!("%\"{stored}\"%")));
-            exprs.push("a.tags LIKE ?".to_string());
-            // Prefix/descendant match: tag followed by | (hierarchy separator)
-            params.push(Box::new(format!("%\"{stored}|%")));
-            exprs.push("a.tags LIKE ?".to_string());
+            params.push(Box::new(pat(&format!("\"{stored}\""))));
+            exprs.push(format!("a.tags {op} ?"));
+            params.push(Box::new(desc_pat(&stored)));
+            exprs.push(format!("a.tags {op} ?"));
         }
 
         // If stored form differs from input, also match input form
         if tag_value != stored {
-            params.push(Box::new(format!("%\"{tag_value}\"%")));
-            exprs.push("a.tags LIKE ?".to_string());
+            params.push(Box::new(pat(&format!("\"{tag_value}\""))));
+            exprs.push(format!("a.tags {op} ?"));
         }
 
         // If tag contains ", also match JSON-escaped form (\" in stored JSON)
         if tag_value.contains('"') {
             let json_escaped = tag_value.replace('"', "\\\"");
-            params.push(Box::new(format!("%\"{json_escaped}\"%")));
-            exprs.push("a.tags LIKE ?".to_string());
+            params.push(Box::new(pat(&format!("\"{json_escaped}\""))));
+            exprs.push(format!("a.tags {op} ?"));
         }
 
         exprs
@@ -5326,6 +5343,109 @@ mod tests {
         let results = catalog.search_paginated(&opts).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].original_filename, "rl4.jpg");
+    }
+
+    fn setup_case_tag_catalog() -> Catalog {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        // Asset 1: lowercase "landscape"
+        let mut a1 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:cs1");
+        a1.tags = vec!["landscape".to_string()];
+        let v1 = crate::models::Variant {
+            content_hash: "sha256:cs1".to_string(),
+            asset_id: a1.id.clone(),
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 1000,
+            original_filename: "cs1.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        a1.variants.push(v1.clone());
+        catalog.insert_asset(&a1).unwrap();
+        catalog.insert_variant(&v1).unwrap();
+
+        // Asset 2: capitalized "Landscape"
+        let mut a2 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:cs2");
+        a2.tags = vec!["Landscape".to_string()];
+        let v2 = crate::models::Variant {
+            content_hash: "sha256:cs2".to_string(),
+            asset_id: a2.id.clone(),
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 1000,
+            original_filename: "cs2.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        a2.variants.push(v2.clone());
+        catalog.insert_asset(&a2).unwrap();
+        catalog.insert_variant(&v2).unwrap();
+
+        // Asset 3: no tag
+        let mut a3 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:cs3");
+        let v3 = crate::models::Variant {
+            content_hash: "sha256:cs3".to_string(),
+            asset_id: a3.id.clone(),
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 1000,
+            original_filename: "cs3.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        a3.variants.push(v3.clone());
+        catalog.insert_asset(&a3).unwrap();
+        catalog.insert_variant(&v3).unwrap();
+
+        catalog
+    }
+
+    #[test]
+    fn search_tag_case_insensitive_default() {
+        let catalog = setup_case_tag_catalog();
+        // Without `^`, `tag:landscape` matches both "landscape" and "Landscape"
+        let tags = vec!["landscape".to_string()];
+        let opts = SearchOptions { tags: &tags, per_page: u32::MAX, ..Default::default() };
+        let results = catalog.search_paginated(&opts).unwrap();
+        assert_eq!(results.len(), 2, "case-insensitive tag should match both cases");
+    }
+
+    #[test]
+    fn search_tag_case_sensitive_marker() {
+        let catalog = setup_case_tag_catalog();
+        // With `^`, `tag:^landscape` matches ONLY "landscape"
+        let tags = vec!["^landscape".to_string()];
+        let opts = SearchOptions { tags: &tags, per_page: u32::MAX, ..Default::default() };
+        let results = catalog.search_paginated(&opts).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].original_filename, "cs1.jpg");
+
+        // And `tag:^Landscape` matches ONLY "Landscape"
+        let tags2 = vec!["^Landscape".to_string()];
+        let opts2 = SearchOptions { tags: &tags2, per_page: u32::MAX, ..Default::default() };
+        let results2 = catalog.search_paginated(&opts2).unwrap();
+        assert_eq!(results2.len(), 1);
+        assert_eq!(results2[0].original_filename, "cs2.jpg");
+    }
+
+    #[test]
+    fn search_tag_case_sensitive_exact_combined() {
+        let catalog = setup_case_tag_catalog();
+        // Both markers combined: `tag:=^landscape` (exact level + case-sensitive)
+        let tags = vec!["=^landscape".to_string()];
+        let opts = SearchOptions { tags: &tags, per_page: u32::MAX, ..Default::default() };
+        let results = catalog.search_paginated(&opts).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].original_filename, "cs1.jpg");
+
+        // Reverse order also works: `tag:^=landscape`
+        let tags2 = vec!["^=landscape".to_string()];
+        let opts2 = SearchOptions { tags: &tags2, per_page: u32::MAX, ..Default::default() };
+        let results2 = catalog.search_paginated(&opts2).unwrap();
+        assert_eq!(results2.len(), 1);
+        assert_eq!(results2[0].original_filename, "cs1.jpg");
     }
 
     #[test]

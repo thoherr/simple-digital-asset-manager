@@ -13,6 +13,7 @@
         <div class="tag-filter" id="tag-filter">
             <div class="tag-filter-chips" id="tag-chips"></div>
             <input type="text" class="tag-filter-input" id="tag-input" placeholder="Filter by tags..." autocomplete="off">
+            <button type="button" class="tag-case-toggle" id="tag-case-toggle" title="Case-sensitive tag match (off by default). Useful for finding duplicates like 'landscape' vs 'Landscape' on the tags page.">Cc</button>
             <div class="tag-autocomplete" id="tag-autocomplete"></div>
         </div>
         <input type="text" name="path" placeholder="Path (e.g. Pictures/2026 or */2026/*/party)" value="{{ path }}" class="path-filter-input" autocomplete="off" title="Use * as wildcard. Patterns with leading * trigger a full table scan and are slower.">

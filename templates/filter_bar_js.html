@@ -450,16 +450,38 @@
         };
     }
 
+    // --- Case-sensitive tag toggle (persisted in localStorage) ---
+    // When active, every tag filter in the outgoing query is prefixed with `^`,
+    // which makes the backend match tags case-sensitively via SQLite GLOB.
+    // Useful for finding case-duplicate tags like "landscape" vs "Landscape".
+    var tagCaseToggle = document.getElementById('tag-case-toggle');
+    var tagCaseSensitive = localStorage.getItem('maki-tag-case-sensitive') === '1';
+    function applyTagCaseState() {
+        if (!tagCaseToggle) return;
+        if (tagCaseSensitive) { tagCaseToggle.classList.add('active'); }
+        else { tagCaseToggle.classList.remove('active'); }
+    }
+    if (tagCaseToggle) {
+        applyTagCaseState();
+        tagCaseToggle.addEventListener('click', function() {
+            tagCaseSensitive = !tagCaseSensitive;
+            localStorage.setItem('maki-tag-case-sensitive', tagCaseSensitive ? '1' : '0');
+            applyTagCaseState();
+            onFilterChange();
+        });
+    }
+
     // Build a query string from current filter state
     window.damFilterQuery = function() {
         var parts = [];
         var qEl = document.querySelector('[name=q]');
         if (qEl && qEl.value.trim()) parts.push(qEl.value.trim());
         var tags = getSelectedTags();
+        var tagPrefix = tagCaseSensitive ? '^' : '';
         tags.forEach(function(t) {
             var display = tagToDisplay(t);
-            if (display.indexOf(' ') !== -1) { parts.push('tag:"' + display + '"'); }
-            else { parts.push('tag:' + display); }
+            if (display.indexOf(' ') !== -1) { parts.push('tag:' + tagPrefix + '"' + display + '"'); }
+            else { parts.push('tag:' + tagPrefix + display); }
         });
         var r = getFilterRating();
         if (r) parts.push('rating:' + r);

@@ -7,6 +7,8 @@ Filters combine with **AND** — every filter must match. Free-text tokens that 
 |--------|--------|---------|
 | Asset type | `type:<type>` | `type:image`, `type:video` |
 | Tag | `tag:<name>` | `tag:landscape`, `tag:"Fools Theater"` |
+| Tag exact level | `tag:=<name>` | `tag:=animals\|birds` (no descendants) |
+| Tag case-sensitive | `tag:^<name>` | `tag:^Landscape` (not "landscape") |
 | Exclude tag | `-tag:<name>` | `-tag:rejected` |
 | Format | `format:<ext>` | `format:nef`, `format:jpg` |
 | Rating (exact) | `rating:<N>` | `rating:5` |
