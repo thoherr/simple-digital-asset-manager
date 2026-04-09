@@ -3198,11 +3198,19 @@ impl Catalog {
     /// Helper: generate tag LIKE clause parts for a single tag value.
     /// Returns a Vec of SQL expressions (each with params already pushed).
     ///
-    /// If the tag starts with `=`, only exact matches are returned (no descendants).
-    /// If the tag starts with `^`, the match is case-sensitive (uses SQLite
-    /// GLOB instead of LIKE). The two prefixes can be combined in any order:
-    /// `tag:=^Foo`, `tag:^=Foo`.
-    /// Otherwise, both exact and prefix (descendant) matches are generated,
+    /// Build SQL clauses for a `tag:` filter value.
+    ///
+    /// Prefix markers (any order, all stackable):
+    /// - `=` — exact level only (no descendants)
+    /// - `^` — case-sensitive (SQLite GLOB instead of LIKE)
+    /// - `|` — anchored prefix: match any tag whose hierarchy component STARTS
+    ///   with the rest of the value, at any level. Mutually exclusive with `=`
+    ///   (a prefix-anchor implicitly includes descendants by definition).
+    ///   Examples: `tag:|wed` matches `wedding`, `wedding-2024`, `events|wedding`,
+    ///   `events|wedding|2024-05`. `tag:^|Wed` matches the same set
+    ///   case-sensitively.
+    ///
+    /// Without any markers, both exact and descendant matches are generated,
     /// case-insensitively (the SQLite LIKE default for ASCII).
     ///
     /// Tags containing `"` may be stored in JSON two ways:
@@ -3210,16 +3218,21 @@ impl Catalog {
     /// - Raw: `""Sir" Oliver Mally"` (legacy/malformed JSON)
     /// We match both forms.
     fn tag_like_parts(params: &mut Vec<Box<dyn rusqlite::types::ToSql>>, tag: &str) -> Vec<String> {
-        // Strip the `=` (exact level) and `^` (case-sensitive) prefix markers
-        // in any order. Both modifiers stack independently.
+        // Strip the `=`, `^`, and `|` prefix markers in any order.
         let mut rest = tag;
         let mut exact_only = false;
         let mut case_sensitive = false;
+        let mut prefix_anchor = false;
         loop {
             if let Some(s) = rest.strip_prefix('=') { exact_only = true; rest = s; }
             else if let Some(s) = rest.strip_prefix('^') { case_sensitive = true; rest = s; }
+            else if let Some(s) = rest.strip_prefix('|') { prefix_anchor = true; rest = s; }
             else { break; }
         }
+        // `=` and `|` are conceptually mutually exclusive: an anchored prefix
+        // search always includes descendants. If both are given, `|` wins
+        // (the more specific search) and `=` is silently ignored.
+        if prefix_anchor { exact_only = false; }
         let tag_value = rest;
         let stored = crate::tag_util::tag_input_to_storage(tag_value);
         let mut exprs = Vec::new();
@@ -3234,6 +3247,20 @@ impl Catalog {
         // For the "not-descendant" clause we need a trailing `|` before the wild,
         // so the pattern is `<wild>"tag|<wild>` (matches any descendant).
         let desc_pat = |stored: &str| -> String { format!("{wild}\"{stored}|{wild}") };
+
+        if prefix_anchor {
+            // Match any component starting with `stored`. In JSON, a tag
+            // component starts either right after a `"` (root) or right after
+            // a `|` (descendant level). Two patterns cover both cases.
+            params.push(Box::new(pat(&format!("\"{stored}"))));
+            exprs.push(format!("a.tags {op} ?"));
+            params.push(Box::new(pat(&format!("|{stored}"))));
+            exprs.push(format!("a.tags {op} ?"));
+            // Don't bother with the legacy "input form differs from stored"
+            // path: prefix-anchor mode is a power-user shortcut, the user
+            // should use the storage form (`|`) directly.
+            return exprs;
+        }
 
         if exact_only {
             // Exact/leaf match: has this tag but NOT any child tag.
@@ -5480,6 +5507,105 @@ mod tests {
         let results2 = catalog.search_paginated(&opts2).unwrap();
         assert_eq!(results2.len(), 1);
         assert_eq!(results2[0].original_filename, "cs2.jpg");
+    }
+
+    #[test]
+    fn search_tag_prefix_anchor() {
+        // Build a catalog with various tags to test the | prefix anchor
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let cases = [
+            ("sha256:pa1", vec!["wedding"]),
+            ("sha256:pa2", vec!["wedding-2024"]),
+            ("sha256:pa3", vec!["events|wedding"]),
+            ("sha256:pa4", vec!["events|wedding|2024-05"]),
+            ("sha256:pa5", vec!["weekend"]),               // starts with "we" but not "wed"
+            ("sha256:pa6", vec!["midweek"]),                // contains "we" mid-component, must NOT match |we
+            ("sha256:pa7", vec!["other"]),
+        ];
+        for (hash, tags) in &cases {
+            let mut a = crate::models::Asset::new(crate::models::AssetType::Image, hash);
+            a.tags = tags.iter().map(|s| s.to_string()).collect();
+            let v = crate::models::Variant {
+                content_hash: hash.to_string(),
+                asset_id: a.id.clone(),
+                role: crate::models::VariantRole::Original,
+                format: "jpg".to_string(),
+                file_size: 100,
+                original_filename: format!("{}.jpg", &hash[7..]),
+                source_metadata: Default::default(),
+                locations: vec![],
+            };
+            a.variants.push(v.clone());
+            catalog.insert_asset(&a).unwrap();
+            catalog.insert_variant(&v).unwrap();
+        }
+
+        // |wed should match: wedding, wedding-2024, events|wedding, events|wedding|2024-05
+        // (4 assets); should NOT match weekend, midweek, other.
+        let tags = vec!["|wed".to_string()];
+        let opts = SearchOptions { tags: &tags, per_page: u32::MAX, ..Default::default() };
+        let results = catalog.search_paginated(&opts).unwrap();
+        let names: Vec<&str> = results.iter().map(|r| r.original_filename.as_str()).collect();
+        assert_eq!(results.len(), 4, "got: {names:?}");
+        assert!(names.contains(&"pa1.jpg"));
+        assert!(names.contains(&"pa2.jpg"));
+        assert!(names.contains(&"pa3.jpg"));
+        assert!(names.contains(&"pa4.jpg"));
+        assert!(!names.contains(&"pa5.jpg"));
+        assert!(!names.contains(&"pa6.jpg"));
+        assert!(!names.contains(&"pa7.jpg"));
+
+        // |we should additionally match weekend (root-level)
+        let tags = vec!["|we".to_string()];
+        let opts = SearchOptions { tags: &tags, per_page: u32::MAX, ..Default::default() };
+        let results = catalog.search_paginated(&opts).unwrap();
+        let names: Vec<&str> = results.iter().map(|r| r.original_filename.as_str()).collect();
+        assert!(names.contains(&"pa5.jpg"), "weekend should match |we");
+        // midweek must NOT match — "we" is mid-component, not at a boundary
+        assert!(!names.contains(&"pa6.jpg"), "midweek should NOT match |we (we is mid-component)");
+    }
+
+    #[test]
+    fn search_tag_prefix_anchor_case_sensitive() {
+        // Combined ^| should be case-sensitive prefix anchor
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        for (hash, tag) in &[
+            ("sha256:pcs1", "Wedding"),
+            ("sha256:pcs2", "wedding"),
+        ] {
+            let mut a = crate::models::Asset::new(crate::models::AssetType::Image, hash);
+            a.tags = vec![tag.to_string()];
+            let v = crate::models::Variant {
+                content_hash: hash.to_string(),
+                asset_id: a.id.clone(),
+                role: crate::models::VariantRole::Original,
+                format: "jpg".to_string(),
+                file_size: 100,
+                original_filename: format!("{}.jpg", &hash[7..]),
+                source_metadata: Default::default(),
+                locations: vec![],
+            };
+            a.variants.push(v.clone());
+            catalog.insert_asset(&a).unwrap();
+            catalog.insert_variant(&v).unwrap();
+        }
+
+        // ^|Wed → only the capitalized variant
+        let tags = vec!["^|Wed".to_string()];
+        let opts = SearchOptions { tags: &tags, per_page: u32::MAX, ..Default::default() };
+        let results = catalog.search_paginated(&opts).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].original_filename, "pcs1.jpg");
+
+        // |Wed (no ^) → both variants
+        let tags = vec!["|Wed".to_string()];
+        let opts = SearchOptions { tags: &tags, per_page: u32::MAX, ..Default::default() };
+        let results = catalog.search_paginated(&opts).unwrap();
+        assert_eq!(results.len(), 2);
     }
 
     #[test]

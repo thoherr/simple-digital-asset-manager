@@ -9,6 +9,7 @@ Filters combine with **AND** — every filter must match. Free-text tokens that 
 | Tag | `tag:<name>` | `tag:landscape`, `tag:"Fools Theater"` |
 | Tag exact level | `tag:=<name>` | `tag:=animals\|birds` (no descendants) |
 | Tag case-sensitive | `tag:^<name>` | `tag:^Landscape` (not "landscape") |
+| Tag prefix anchor | `tag:\|<text>` | `tag:\|wed` (wedding, wedding-2024, ...) |
 | Exclude tag | `-tag:<name>` | `-tag:rejected` |
 | Format | `format:<ext>` | `format:nef`, `format:jpg` |
 | Rating (exact) | `rating:<N>` | `rating:5`, `rating:0` (unrated) |

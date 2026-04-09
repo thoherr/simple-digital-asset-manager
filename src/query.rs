@@ -2044,14 +2044,26 @@ impl QueryEngine {
         let online = Self::load_online_volumes(&self.catalog_root);
         let content_store = ContentStore::new(&self.catalog_root);
 
-        // Strip the optional =/^ markers from `old_tag`. The new_tag is always
+        // Strip the optional =/^/| markers from `old_tag`. The new_tag is always
         // taken literally — we never want to rename to a marker-prefixed value.
+        // The `|` marker (prefix anchor) is parsed but rejected for rename: it
+        // would mean "rename every tag starting with X to Y", which collapses
+        // distinct tags into one and is rarely what a user actually wants. We
+        // bail with a clear error so users compose multiple targeted renames.
         let mut rest = old_tag;
         let mut exact_only = false;
         let mut case_sensitive = false;
         loop {
             if let Some(s) = rest.strip_prefix('=') { exact_only = true; rest = s; }
             else if let Some(s) = rest.strip_prefix('^') { case_sensitive = true; rest = s; }
+            else if rest.starts_with('|') {
+                anyhow::bail!(
+                    "The | prefix-anchor marker is not supported for `tag rename` because it would \
+                     collapse distinct tags into one. Use `maki search 'tag:{}' --format ids` to find \
+                     matching tags first, then run a targeted rename for each.",
+                    rest
+                );
+            }
             else { break; }
         }
         let old_tag = rest;
