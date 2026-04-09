@@ -23,46 +23,97 @@
         return tags;
     }
 
-    function addTag(name) {
-        name = name.trim();
+    // Rebuild the chip's `data-tag` attribute from its name + toggle state.
+    // Prefix order: `=` (exact level) before `^` (case-sensitive). The backend
+    // accepts either order; we pick one for consistency.
+    function updateChipDataTag(chip, name) {
+        var exact = chip.getAttribute('data-exact') === '1';
+        var caseSensitive = chip.getAttribute('data-case') === '1';
+        var prefix = (exact ? '=' : '') + (caseSensitive ? '^' : '');
+        chip.setAttribute('data-tag', prefix + name);
+    }
+
+    // Strip `=` and `^` prefix markers from a raw tag name (user may type
+    // them manually in the input field).
+    function stripTagPrefixes(raw) {
+        var exact = false, caseSensitive = false, name = raw;
+        var changed = true;
+        while (changed) {
+            changed = false;
+            if (name.charAt(0) === '=') { exact = true; name = name.substring(1); changed = true; }
+            else if (name.charAt(0) === '^') { caseSensitive = true; name = name.substring(1); changed = true; }
+        }
+        return { name: name, exact: exact, caseSensitive: caseSensitive };
+    }
+
+    function addTag(raw) {
+        raw = raw.trim();
+        if (!raw) return;
+        var parsed = stripTagPrefixes(raw);
+        var name = parsed.name;
         if (!name) return;
-        // Strip = prefix if user typed it manually
-        var exact = false;
-        if (name.charAt(0) === '=') { exact = true; name = name.substring(1); }
-        var existing = getSelectedTags();
-        if (existing.indexOf(name) !== -1 || existing.indexOf('=' + name) !== -1) return;
+
+        // Reject any chip that already has this tag name regardless of modifiers
+        var existingNames = [];
+        document.querySelectorAll('#tag-chips .tag-chip').forEach(function(c) {
+            var n = c.getAttribute('data-name');
+            if (n) existingNames.push(n);
+        });
+        if (existingNames.indexOf(name) !== -1) return;
 
         var chip = document.createElement('span');
         chip.className = 'tag-chip';
-        chip.setAttribute('data-tag', exact ? '=' + name : name);
-        chip.setAttribute('data-exact', exact ? '1' : '0');
+        chip.setAttribute('data-name', name);
+        chip.setAttribute('data-exact', parsed.exact ? '1' : '0');
+        chip.setAttribute('data-case', parsed.caseSensitive ? '1' : '0');
+        updateChipDataTag(chip, name);
 
         var label = document.createElement('span');
         label.textContent = tagToDisplay(name);
         chip.appendChild(label);
 
-        // Mode toggle: ▼ (with descendants) / = (exact only)
-        var toggle = document.createElement('button');
-        toggle.type = 'button';
-        toggle.className = 'tag-mode-toggle';
-        toggle.title = exact ? 'This level only (click to include descendants)' : 'Including descendants (click for this level only)';
-        toggle.textContent = exact ? '=' : '\u25BC';
-        toggle.onclick = function() {
+        // Exact-level toggle: ▼ (include descendants) / = (this level only)
+        var exactToggle = document.createElement('button');
+        exactToggle.type = 'button';
+        exactToggle.className = 'tag-mode-toggle';
+        function renderExact() {
             var isExact = chip.getAttribute('data-exact') === '1';
-            if (isExact) {
-                chip.setAttribute('data-exact', '0');
-                chip.setAttribute('data-tag', name);
-                toggle.textContent = '\u25BC';
-                toggle.title = 'Including descendants (click for this level only)';
-            } else {
-                chip.setAttribute('data-exact', '1');
-                chip.setAttribute('data-tag', '=' + name);
-                toggle.textContent = '=';
-                toggle.title = 'This level only (click to include descendants)';
-            }
+            exactToggle.textContent = isExact ? '=' : '\u25BC';
+            exactToggle.title = isExact
+                ? 'This level only (click to include descendants)'
+                : 'Including descendants (click for this level only)';
+        }
+        renderExact();
+        exactToggle.onclick = function() {
+            var isExact = chip.getAttribute('data-exact') === '1';
+            chip.setAttribute('data-exact', isExact ? '0' : '1');
+            updateChipDataTag(chip, name);
+            renderExact();
             onFilterChange();
         };
-        chip.appendChild(toggle);
+        chip.appendChild(exactToggle);
+
+        // Case-sensitivity toggle: cc (insensitive, default) / Cc (sensitive)
+        var caseToggle = document.createElement('button');
+        caseToggle.type = 'button';
+        caseToggle.className = 'tag-case-toggle';
+        function renderCase() {
+            var cs = chip.getAttribute('data-case') === '1';
+            caseToggle.textContent = cs ? 'Cc' : 'cc';
+            caseToggle.classList.toggle('active', cs);
+            caseToggle.title = cs
+                ? 'Case-sensitive (click for case-insensitive)'
+                : 'Case-insensitive (click for case-sensitive)';
+        }
+        renderCase();
+        caseToggle.onclick = function() {
+            var cs = chip.getAttribute('data-case') === '1';
+            chip.setAttribute('data-case', cs ? '0' : '1');
+            updateChipDataTag(chip, name);
+            renderCase();
+            onFilterChange();
+        };
+        chip.appendChild(caseToggle);
 
         var btn = document.createElement('button');
         btn.type = 'button';
@@ -450,38 +501,26 @@
         };
     }
 
-    // --- Case-sensitive tag toggle (persisted in localStorage) ---
-    // When active, every tag filter in the outgoing query is prefixed with `^`,
-    // which makes the backend match tags case-sensitively via SQLite GLOB.
-    // Useful for finding case-duplicate tags like "landscape" vs "Landscape".
-    var tagCaseToggle = document.getElementById('tag-case-toggle');
-    var tagCaseSensitive = localStorage.getItem('maki-tag-case-sensitive') === '1';
-    function applyTagCaseState() {
-        if (!tagCaseToggle) return;
-        if (tagCaseSensitive) { tagCaseToggle.classList.add('active'); }
-        else { tagCaseToggle.classList.remove('active'); }
-    }
-    if (tagCaseToggle) {
-        applyTagCaseState();
-        tagCaseToggle.addEventListener('click', function() {
-            tagCaseSensitive = !tagCaseSensitive;
-            localStorage.setItem('maki-tag-case-sensitive', tagCaseSensitive ? '1' : '0');
-            applyTagCaseState();
-            onFilterChange();
-        });
-    }
-
     // Build a query string from current filter state
     window.damFilterQuery = function() {
         var parts = [];
         var qEl = document.querySelector('[name=q]');
         if (qEl && qEl.value.trim()) parts.push(qEl.value.trim());
         var tags = getSelectedTags();
-        var tagPrefix = tagCaseSensitive ? '^' : '';
+        // getSelectedTags() already returns data-tag values which include any
+        // `=` (exact level) and `^` (case-sensitive) prefixes per chip.
         tags.forEach(function(t) {
-            var display = tagToDisplay(t);
-            if (display.indexOf(' ') !== -1) { parts.push('tag:' + tagPrefix + '"' + display + '"'); }
-            else { parts.push('tag:' + tagPrefix + display); }
+            // Quote only the name portion (after any =/^ prefix markers) if
+            // it contains spaces. The prefixes themselves must stay outside
+            // the quotes so the parser sees them.
+            var prefix = '';
+            var rest = t;
+            while (rest.charAt(0) === '=' || rest.charAt(0) === '^') {
+                prefix += rest.charAt(0);
+                rest = rest.substring(1);
+            }
+            if (rest.indexOf(' ') !== -1) { parts.push('tag:' + prefix + '"' + rest + '"'); }
+            else { parts.push('tag:' + prefix + rest); }
         });
         var r = getFilterRating();
         if (r) parts.push('rating:' + r);

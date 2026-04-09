@@ -101,7 +101,7 @@ maki search "type:video rating:3+"
 
 **This-level-only match:** Prefix with `=` to match assets tagged at exactly this level, excluding those with deeper tags in the same branch. `tag:=location|Germany|Bayern` matches assets whose deepest tag in this branch is `Bayern` — NOT assets that also have `location|Germany|Bayern|München`. In the web UI, click the `▼` indicator on a tag chip to toggle to `=` (this-level-only) mode.
 
-**Case-sensitive match:** Tag matching is case-insensitive by default (`tag:landscape` matches both `landscape` and `Landscape`). Prefix with `^` to make the match case-sensitive — useful when cleaning up tag duplicates like `landscape` vs `Landscape`, which the tags page shows as distinct entries. In the web UI, click the `Cc` toggle next to the tag filter input to enable case-sensitive mode for all tag chips at once; the state is persisted in localStorage.
+**Case-sensitive match:** Tag matching is case-insensitive by default (`tag:landscape` matches both `landscape` and `Landscape`). Prefix with `^` to make the match case-sensitive — useful when cleaning up tag duplicates like `landscape` vs `Landscape`, which the tags page shows as distinct entries. In the web UI, each tag chip has a small `cc`/`Cc` toggle next to the `▼`/`=` mode toggle: click it to flip that specific chip between case-insensitive (`cc`) and case-sensitive (`Cc`) matching.
 
 The `=` and `^` prefixes can be combined in any order: `tag:=^Foo` or `tag:^=Foo`.
 
