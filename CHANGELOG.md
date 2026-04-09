@@ -2,7 +2,12 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
-## v4.3.15 (unreleased)
+## v4.3.15 (2026-04-10)
+
+### New Features
+- **`tag:|xyz` prefix anchor** — match any tag whose hierarchy component **starts with** `xyz`, at any level (root or descendant). `tag:|wed` matches assets tagged `wedding`, `wedding-2024`, `events|wedding`, `events|wedding|2024-05-12`. Useful for finding tag families with shared prefixes (`2024-*`, `wedding-*`) or for narrowing on short letter combinations like `nen`/`ken` that appear inside many words. Stacks with `^` for case-sensitive prefix anchor (`tag:^|Wed`). The `=` exact-level marker is silently ignored when `|` is present (they conflict — a prefix anchor implicitly includes descendants).
+- **`|xyz` autocomplete prefix anchor** — same syntax in the browse-page tag filter dropdown and the tags-page search input. Default substring search is unchanged; type a leading `|` to anchor the query to a hierarchy component start. Also fixes the leaf-suppression filter so intermediate hierarchy levels (e.g. `events|wedding` with descendants below) become selectable when the user is targeting a non-leaf component.
+- **`description:` / `desc:` search filter** — case-insensitive substring match against the asset's description column. Unlike free-text search (which matches name + filename + description + source metadata at once), this filter targets only the description, making it useful for finding assets by VLM-generated content or manual captions without noise. Supports negation, comma-OR, and quoted multi-word values like the other text filters.
 
 ### Enhancements
 - **`maki tag rename` accepts the same `=`/`^` prefix markers as `tag:` search** — closes a consistency gap between search and rename. By default, rename is case-insensitive and cascades to descendants (unchanged). New prefix markers on `OLD_TAG`:
@@ -10,13 +15,15 @@ All notable changes to the Digital Asset Manager are documented here.
   - `^Foo` — case-sensitive, treats `Foo` and `foo` as different tags
   - `=^Foo` / `^=Foo` — both, in any order
 
-  Useful for cleaning up case-duplicate tags after spotting them on the tags page: e.g. `maki tag rename "^Landscape" "landscape" --apply` renames only the capitalized variant, leaving the lowercase one alone. The new modes are 100% consistent with the `tag:` search filter syntax — what you can find with search, you can rename. NEW_TAG is always taken literally (no prefix parsing).
+  Useful for cleaning up case-duplicate tags after spotting them on the tags page: e.g. `maki tag rename "^Landscape" "landscape" --apply` renames only the capitalized variant, leaving the lowercase one alone. The new modes are 100% consistent with the `tag:` search filter syntax — what you can find with search, you can rename. NEW_TAG is always taken literally (no prefix parsing). The `|` prefix-anchor marker is rejected for rename with a clear error: collapsing distinct tags into one is rarely intended; users should compose targeted renames instead.
 
-  Backend: `Catalog::assets_with_tag_or_prefix` extended with `case_sensitive` and `exact_only` flags. Case-sensitive queries use SQLite `GLOB` (matching the `tag:^` search path). 5 new tests cover the new modes and the order-independence of `=^` vs `^=`.
+  Backend: `Catalog::assets_with_tag_or_prefix` extended with `case_sensitive` and `exact_only` flags. Case-sensitive queries use SQLite `GLOB` (matching the `tag:^` search path). Tag rename has 5 new tests covering the new modes and the order-independence of `=^` vs `^=`. Tag search filter has 2 new tests for `tag:|xyz` (including case-sensitive `^|`). The `description:` filter has 5 new tests (parser variants and end-to-end search with negation).
 
 ### Documentation
+- Search filter reference: expanded `tag:` section with the `|` prefix anchor and the marker combination rules; new dedicated `description:` section with the free-text comparison note.
 - `tag rename` reference: new markers documented with a table and 3 new examples (case-sensitive only, exact-level only, combined).
-- Cheat sheet: hint on the `tag rename` entry that `OLD` accepts `=` and `^` prefixes.
+- Cheat sheet and search filter quickref: added `tag:|wed`, `description:cat`, and the `tag rename` marker hint.
+- Tag autocomplete placeholder/tooltip in the browse filter bar and tags-page search input now mention the `|xyz` anchored syntax.
 
 ## v4.3.14 (2026-04-09)
 
