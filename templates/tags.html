@@ -11,7 +11,7 @@
 {% if tags.is_empty() %}
 <p class="muted">No tags yet.</p>
 {% else %}
-<input type="text" id="tag-search" class="tag-search-input" placeholder="Filter tags…">
+<input type="text" id="tag-search" class="tag-search-input" placeholder="Filter tags… (|xyz = starts with)" title="Substring search by default. Prefix with | to anchor to a hierarchy component start (e.g. |wed matches 'wedding' and 'events|wedding|...').">
 
 <div class="tag-list-header">
     <span class="tag-col-name sortable active" data-sort="name" data-dir="asc">
@@ -127,13 +127,26 @@
     function filterTags(query) {
         var entries = list.querySelectorAll('.tag-entry');
         var q = query.toLowerCase();
+        // Leading `|` anchors the search to a hierarchy component boundary —
+        // the rest of the query must START a component (root or after a `|`).
+        var anchored = false;
+        if (q.charAt(0) === '|') {
+            anchored = true;
+            q = q.substring(1);
+        }
+        function nameMatches(name) {
+            if (anchored) {
+                return name.indexOf('|' + q) !== -1 || name.indexOf(q) === 0;
+            }
+            return name.indexOf(q) !== -1;
+        }
         var shown = 0;
         // Build set of ancestor paths to show when a descendant matches
         var ancestorsToShow = {};
         if (q.length >= 2) {
             for (var i = 0; i < entries.length; i++) {
                 var name = entries[i].getAttribute('data-name');
-                if (name.toLowerCase().indexOf(q) !== -1) {
+                if (nameMatches(name.toLowerCase())) {
                     // Show all ancestors of matching entries
                     var parts = name.split('|');
                     var path = '';
@@ -146,7 +159,7 @@
         }
         for (var i = 0; i < entries.length; i++) {
             var name = entries[i].getAttribute('data-name').toLowerCase();
-            if (q.length < 2 || name.indexOf(q) !== -1 || ancestorsToShow[entries[i].getAttribute('data-name')]) {
+            if (q.length < 2 || nameMatches(name) || ancestorsToShow[entries[i].getAttribute('data-name')]) {
                 entries[i].classList.remove('hidden');
                 shown++;
             } else {

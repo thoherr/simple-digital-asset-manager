@@ -141,17 +141,47 @@
         var ac = document.getElementById('tag-autocomplete');
         var selected = getSelectedTags();
         query = query.toLowerCase();
+        // A leading `|` anchors the search to a hierarchy component boundary —
+        // matches tag components that START with the rest of the query at any
+        // level (root or after a `|`). Useful when a substring like "ken" or
+        // "nen" appears in many words and you want to narrow to ones that
+        // begin with that letter combination.
+        var anchored = false;
+        if (query.charAt(0) === '|') {
+            anchored = true;
+            query = query.substring(1);
+        }
         var queryStorage = query.replace(/>/g, '|');
+
+        function tagMatches(tl) {
+            if (anchored) {
+                // Match if any hierarchy component starts with the query
+                return tl.indexOf('|' + query) !== -1 || tl.indexOf('|' + queryStorage) !== -1
+                    || tl.indexOf(query) === 0 || tl.indexOf(queryStorage) === 0;
+            }
+            return tl.indexOf(query) !== -1 || tl.indexOf(queryStorage) !== -1;
+        }
+
         var rawMatches = allTags.filter(function(t) {
-            var tl = t.toLowerCase();
-            return (tl.indexOf(query) !== -1 || tl.indexOf(queryStorage) !== -1) && selected.indexOf(t) === -1;
+            return tagMatches(t.toLowerCase()) && selected.indexOf(t) === -1;
         });
+
         // Prefer leaf tags: suppress entries that are prefixes of other matches,
-        // UNLESS the query directly matches the last component (user is targeting that level)
+        // UNLESS the query directly matches the last component (user is targeting that level).
+        // In anchored mode, also keep entries where ANY component starts with the query —
+        // this lets users select intermediate hierarchy levels (e.g. `events|wedding` from
+        // `|wed` even when `events|wedding|2024-05-12` exists below it).
         var matches = rawMatches.filter(function(t) {
             var prefix = t + '|';
             var hasChild = rawMatches.some(function(other) { return other.indexOf(prefix) === 0; });
             if (!hasChild) return true;
+            if (anchored) {
+                // Keep this intermediate level if any of its components starts with the query
+                var components = t.toLowerCase().split('|');
+                return components.some(function(c) {
+                    return c.indexOf(query) === 0 || c.indexOf(queryStorage) === 0;
+                });
+            }
             // Keep if query matches the last component of this tag
             var lastPart = t.split('|').pop().toLowerCase();
             return lastPart.indexOf(query) !== -1 || lastPart.indexOf(queryStorage) !== -1;
