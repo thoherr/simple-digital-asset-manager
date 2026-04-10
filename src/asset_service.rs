@@ -1143,6 +1143,14 @@ impl AssetService {
                                 on_file(file_path, FileStatus::RecipeUpdated, file_start.elapsed());
                             }
                         } else {
+                            // Check if the asset already has a recipe with the same
+                            // content hash (on any volume). If so, the XMP content is
+                            // identical to one we've already processed — there's nothing
+                            // new to merge. Just record the location for backup tracking.
+                            // This prevents re-importing old metadata from a backup copy
+                            // that was made before tag renames, rating changes, etc.
+                            let already_known_content = asset.recipes.iter().any(|r| r.content_hash == content_hash);
+
                             if !dry_run {
                                 // Attach new recipe to parent
                                 let recipe = Recipe {
@@ -1155,7 +1163,7 @@ impl AssetService {
                                     pending_writeback: false,
                                 };
                                 asset.recipes.push(recipe.clone());
-                                if ext.eq_ignore_ascii_case("xmp") {
+                                if ext.eq_ignore_ascii_case("xmp") && !already_known_content {
                                     let xmp = crate::xmp_reader::extract(file_path);
                                     apply_xmp_data(&xmp, &mut asset, &parent_variant_hash);
                                     catalog.insert_asset(&asset)?;
@@ -1288,6 +1296,11 @@ impl AssetService {
                     continue;
                 }
 
+                // Check if the asset already has a recipe with the same content
+                // hash (on any volume). If so, skip the metadata merge — the XMP
+                // content is identical to one we've already processed.
+                let already_known_content = asset.recipes.iter().any(|r| r.content_hash == content_hash);
+
                 if !dry_run {
                     // No existing recipe at this location — attach new recipe
                     let recipe = Recipe {
@@ -1302,8 +1315,9 @@ impl AssetService {
 
                     asset.recipes.push(recipe.clone());
 
-                    // Extract metadata from XMP sidecars
-                    if ext.eq_ignore_ascii_case("xmp") {
+                    // Extract metadata from XMP sidecars — but only if the content
+                    // is genuinely new (different hash from all existing recipes).
+                    if ext.eq_ignore_ascii_case("xmp") && !already_known_content {
                         let xmp = crate::xmp_reader::extract(file_path);
                         apply_xmp_data(&xmp, asset, variant_hash);
                         catalog.insert_asset(asset)?;
