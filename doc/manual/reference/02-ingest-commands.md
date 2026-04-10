@@ -419,10 +419,29 @@ Combined: rename only the exact-case, exact-level tag:
 maki tag rename "=^Birds" "Aves" --apply
 ```
 
-Consolidate synonyms across languages:
+Move a branch deeper in the hierarchy (all descendants follow — `letter|a` → `abstract|letter|a`, etc.):
 
 ```bash
-maki tag rename "Konzert" "concert" --apply
+maki tag rename "subject|letter" "subject|abstract|letter" --apply
+```
+
+Move an entire subtree to a new root:
+
+```bash
+maki tag rename "animals" "nature|animals" --apply
+# animals|birds|eagles → nature|animals|birds|eagles
+```
+
+Flatten a deep hierarchy into a single tag:
+
+```bash
+maki tag rename "location|Germany|Bayern|München" "München" --apply
+```
+
+Consolidate synonyms across languages (assets that already have the target tag just get the old one removed):
+
+```bash
+maki tag rename "Konzert" "performing arts|concert" --apply
 ```
 
 Fix a typo:
@@ -431,10 +450,16 @@ Fix a typo:
 maki tag rename "lanscape" "landscape" --apply
 ```
 
-Preview what would change:
+Preview what would change (dry run, no `--apply`):
 
 ```bash
 maki tag rename "old-tag" "new-tag"
+```
+
+Preview with per-asset detail:
+
+```bash
+maki tag rename "old-tag" "new-tag" --log
 ```
 
 ### SEE ALSO
