@@ -39,7 +39,7 @@ Imports files and directories into the catalog. Each file is hashed (SHA-256), a
 
 **Stem-based auto-grouping**: Files sharing the same filename stem in the same directory are grouped into one asset. RAW files take priority as the primary variant (defining the asset's identity and EXIF data). Additional media files become extra variants on the same asset.
 
-**Recipe handling**: Processing sidecar files (`.xmp`, `.cos`, `.cot`, `.cop`, `.pp3`, `.dop`, `.on1`) are attached as recipe records to the primary variant rather than imported as standalone assets. Re-importing after external edits updates recipes in place.
+**Recipe handling**: Processing sidecar files (`.xmp`, `.cos`, `.cot`, `.cop`, `.pp3`, `.dop`, `.on1`) are attached as recipe records to the primary variant rather than imported as standalone assets. Re-importing after external edits updates recipes in place. Identical copies of an already-known recipe (same content hash, e.g. from a backup volume) are recorded for location tracking but do not re-merge metadata — this keeps your curated tags and ratings intact when importing backups.
 
 **XMP metadata extraction**: When an `.xmp` sidecar is attached, its contents are parsed. Keywords become asset tags, `dc:description` sets the asset description, `xmp:Rating` becomes the asset rating, and `xmp:Label` becomes the color label. EXIF data takes precedence over XMP for overlapping fields.
 
