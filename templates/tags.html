@@ -45,6 +45,25 @@
     {% endfor %}
 </div>
 
+<!-- Rename tag modal (must be in DOM before the script block) -->
+<div class="import-overlay" id="rename-overlay" style="display:none">
+    <div class="import-modal" style="max-width:450px;">
+        <h2>Rename Tag</h2>
+        <div style="margin-bottom:0.75rem;">
+            <label style="font-size:0.82rem;color:var(--text-muted);display:block;margin-bottom:0.2rem;">From</label>
+            <code id="rename-old" style="font-size:0.9rem;"></code>
+        </div>
+        <label style="font-size:0.82rem;color:var(--text-muted);display:block;margin-bottom:0.2rem;">To</label>
+        <input type="text" id="rename-new" class="form-input" style="width:100%;box-sizing:border-box;margin-bottom:0.75rem;" placeholder="new|tag|name">
+        <div style="display:flex;gap:0.5rem;">
+            <button class="batch-btn" id="rename-preview">Preview</button>
+            <button class="batch-btn batch-btn-primary" id="rename-apply" disabled>Apply</button>
+            <button class="batch-btn" id="rename-cancel">Cancel</button>
+        </div>
+        <div id="rename-result" style="margin-top:0.75rem;font-size:0.88rem;color:var(--text-muted);min-height:1.2em;"></div>
+    </div>
+</div>
+
 <script>
 (function() {
     var list = document.getElementById('tag-list');
@@ -271,24 +290,5 @@
     });
 })();
 </script>
-
-<!-- Rename tag modal -->
-<div class="import-overlay" id="rename-overlay" style="display:none">
-    <div class="import-modal" style="max-width:450px;">
-        <h2>Rename Tag</h2>
-        <div style="margin-bottom:0.75rem;">
-            <label style="font-size:0.82rem;color:var(--text-muted);display:block;margin-bottom:0.2rem;">From</label>
-            <code id="rename-old" style="font-size:0.9rem;"></code>
-        </div>
-        <label style="font-size:0.82rem;color:var(--text-muted);display:block;margin-bottom:0.2rem;">To</label>
-        <input type="text" id="rename-new" class="form-input" style="width:100%;box-sizing:border-box;margin-bottom:0.75rem;" placeholder="new|tag|name">
-        <div style="display:flex;gap:0.5rem;">
-            <button class="batch-btn" id="rename-preview">Preview</button>
-            <button class="batch-btn batch-btn-primary" id="rename-apply" disabled>Apply</button>
-            <button class="batch-btn" id="rename-cancel">Cancel</button>
-        </div>
-        <div id="rename-result" style="margin-top:0.75rem;font-size:0.88rem;color:var(--text-muted);min-height:1.2em;"></div>
-    </div>
-</div>
 {% endif %}
 {% endblock %}
