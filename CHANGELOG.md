@@ -2,6 +2,20 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.3.17 (2026-04-11)
+
+### Enhancements
+- **Recipe grouping on detail page** — recipes are now grouped by content hash (same as variants are grouped by their locations). An XMP sidecar file on 3 volumes shows as "Recipes (1, 3 locations)" instead of "3 recipes". Different XMP content (e.g. pre/post edit) naturally shows as separate recipe entries. Mirrors the variant display model exactly.
+- **Variant and recipe location counts** — both the Variants and Recipes section headers now show "N, M locations" when items exist on multiple volumes. Consistent display format across both sections.
+- **Distinct import status for recipe locations** — `--log` output and summary distinguish "recipe" (new content, metadata processed) from "recipe location added" (identical content already known, just tracked). New `recipes_location_added` counter in JSON output.
+- **Stats page shows unique recipe count** — the recipe stat card shows unique recipes as the primary number, with total locations in parentheses when backup copies inflate the count.
+
+### New
+- **`scripts/sync-backup.sh`** — rsync-based full catalog backup script. Complements the git-based `backup-catalog.sh` (metadata only) by including previews, embeddings, and catalog.db. Checkpoints SQLite WAL before syncing. Supports `--dry-run`, custom destination, and external drive targets. Uses macOS-compatible rsync options (`-rlt` instead of `-a --no-perms`).
+
+### Documentation
+- Data model reference: updated Recipe description to explain the variant-parallel grouping concept and the content-hash dedup on import.
+
 ## v4.3.16 (2026-04-11)
 
 ### Bug Fixes
