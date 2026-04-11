@@ -399,7 +399,7 @@
 
         {% if !variants.is_empty() %}
         <details open>
-            <summary>Variants ({{ variants.len() }})</summary>
+            <summary>Variants ({{ variants.len() }}{% if variant_location_count != variants.len() %}, {{ variant_location_count }} locations{% endif %})</summary>
             {% if variants.len() > 1 %}
             <div id="split-toolbar" style="display:none; margin-bottom: 0.5em;">
                 <button id="split-extract-btn" class="btn btn-sm">Extract as new asset(s)</button>

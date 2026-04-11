@@ -328,6 +328,7 @@ pub struct AssetPage {
     pub asset_type: String,
     pub primary_format: String,
     pub variant_count: usize,
+    pub variant_location_count: usize,
     pub created_at: String,
     pub description: Option<String>,
     pub rating: Option<u8>,
@@ -434,7 +435,7 @@ impl AssetPage {
 
         let variant_count = details.variants.len();
 
-        let variants = details
+        let variants: Vec<VariantRow> = details
             .variants
             .iter()
             .map(|v| {
@@ -547,6 +548,7 @@ impl AssetPage {
             asset_type: details.asset_type,
             primary_format,
             variant_count,
+            variant_location_count: variants.iter().map(|v| v.locations.len()).sum::<usize>(),
             created_at: format_date(&details.created_at),
             description: details.description,
             rating: details.rating,
