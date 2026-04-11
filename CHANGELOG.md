@@ -2,6 +2,15 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.3.16 (2026-04-11)
+
+### Bug Fixes
+- **Importing backup volumes no longer re-merges old metadata** *(critical)* — when importing a backup copy of a volume (e.g. after rsync), the XMP sidecar files are byte-identical to the ones MAKI already processed from the original volume. Previously, re-attaching these recipes merged their metadata as if it were new, undoing tag renames, label changes, etc. made in MAKI since the backup was created (because tags merge as union, re-introducing old values). Now MAKI checks whether the asset already has a recipe with the same content hash; if so, the recipe is recorded for backup location tracking but the metadata merge is skipped. Genuinely modified recipes (different hash, e.g. from CaptureOne/Lightroom edits) are still processed normally.
+
+### Documentation
+- Import command reference: note that identical recipe copies from backup volumes are tracked but don't re-merge metadata.
+- Tag rename reference: added hierarchy refactoring examples (move branch deeper, move to new root, flatten hierarchy, consolidate synonyms with merge).
+
 ## v4.3.15 (2026-04-10)
 
 ### New Features

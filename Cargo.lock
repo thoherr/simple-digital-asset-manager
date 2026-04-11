@@ -1646,7 +1646,7 @@ checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
 
 [[package]]
 name = "maki"
-version = "4.3.15"
+version = "4.3.16"
 dependencies = [
  "ab_glyph",
  "anyhow",
