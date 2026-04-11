@@ -1315,7 +1315,7 @@ details[open] summary { margin-bottom: 0.5rem; }
 .bar-track {
     flex: 1;
     height: 22px;
-    background: var(--badge-bg);
+    background: transparent;
     border-radius: 4px;
     overflow: hidden;
 }
@@ -1335,6 +1335,8 @@ details[open] summary { margin-bottom: 0.5rem; }
     font-size: 0.82rem;
     font-weight: 600;
     min-width: 80px;
+    text-align: right;
+    flex-shrink: 0;
     color: var(--text);
 }
 .bar-pct { font-weight: 400; color: var(--text-muted); }
