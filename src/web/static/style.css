@@ -1334,7 +1334,7 @@ details[open] summary { margin-bottom: 0.5rem; }
 .bar-value {
     font-size: 0.82rem;
     font-weight: 600;
-    min-width: 80px;
+    width: 160px;
     text-align: right;
     flex-shrink: 0;
     color: var(--text);
