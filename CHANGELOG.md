@@ -2,6 +2,18 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.3.18 (2026-04-12)
+
+### New Features
+- **Tag rename in the web UI** — each tag on the tags page has a pencil icon (visible on hover) that opens a rename modal. The modal has a From (read-only), To (editable with tag autocomplete), Preview (dry run), and Apply button. Enter key acts as Preview first, then Apply once the preview confirms the change — two keystrokes to rename. No more switching between browser and terminal for tag cleanup.
+
+### Bug Fixes
+- **`tag:=` exact-level match with ancestor-expanded tags** — with CaptureOne/Lightroom ancestor expansion, tagging an asset `location|Germany|Bayern|Holzkirchen|Marktplatz` also creates standalone ancestor tags `Holzkirchen`, `Bayern`, etc. Previously `tag:=Holzkirchen` still matched this asset because it had the standalone tag. Now the exact-level check also excludes assets where the tag appears as a mid-path component (`|Holzkirchen|...`) in any hierarchical tag — so `tag:=Holzkirchen` correctly means "Holzkirchen is the deepest level, nothing more specific below it."
+- **Backup page bar chart** — removed misleading dark track background (looked like it represented data but was just empty space); fixed number alignment when "AT RISK" badge was present by moving the badge before the count.
+
+### Enhancements
+- **Variant location count on stats page** — the variants stat card now shows total file locations in parentheses when they differ from the variant count (e.g. "357474 VARIANTS (714948 LOCATIONS)"), matching the recipe card format.
+
 ## v4.3.17 (2026-04-11)
 
 ### Enhancements
