@@ -378,7 +378,7 @@
                 return;
             }
         }
-        if (e.key === 'Enter') { e.preventDefault(); doRename(false); }
+        if (e.key === 'Enter') { e.preventDefault(); doRename(!renameApplyBtn.disabled); }
     });
 })();
 </script>
