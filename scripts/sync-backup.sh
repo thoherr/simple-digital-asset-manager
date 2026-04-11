@@ -21,7 +21,8 @@
 # Safety:
 #   - SQLite WAL is checkpointed before syncing (ensures catalog.db
 #     is self-contained and safe to copy).
-#   - Permissions/ownership are NOT synced (just file content + times).
+#   - Permissions/ownership are NOT synced (uses -rlt instead of -a to
+#     skip perms/owner/group — just file content + timestamps).
 #   - --delete removes files from backup that no longer exist in source.
 #   - Excludes .git/ (from backup-catalog.sh) and temporary files.
 #
@@ -75,13 +76,13 @@ if [ -f "$DB" ] && command -v sqlite3 >/dev/null 2>&1; then
 fi
 
 # ── Run rsync ────────────────────────────────────────────────────
-rsync -a --delete \
-    --no-perms --no-owner --no-group \
+# Uses only flags compatible with both GNU rsync and macOS openrsync.
+rsync -rlt --delete \
     --exclude='.git/' \
     --exclude='*.download' \
     --exclude='catalog.db-wal' \
     --exclude='catalog.db-shm' \
-    --info=stats2,name \
+    --stats \
     $DRY_RUN \
     "$ROOT/" "$DEST/"
 
