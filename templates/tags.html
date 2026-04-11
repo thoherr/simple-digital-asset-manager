@@ -219,9 +219,10 @@
     var renameAcIndex = -1;
 
     // Autocomplete for the "To" field — reuses /api/tags
+    // /api/tags returns [[name, count], ...] tuples
     var allTagNames = [];
     fetch('/api/tags').then(function(r) { return r.json(); }).then(function(data) {
-        allTagNames = data.map(function(t) { return t.name || t; });
+        allTagNames = data.map(function(t) { return Array.isArray(t) ? t[0] : (t.name || t); });
     });
 
     function showRenameAc(query) {
