@@ -1113,6 +1113,10 @@ enum TagCommands {
         /// Remove vocabulary entries that have no assets (only keep used tags)
         #[arg(long)]
         prune: bool,
+
+        /// Export only the built-in default vocabulary (ignore catalog tags and existing vocabulary.yaml)
+        #[arg(long)]
+        default: bool,
     },
 }
 
@@ -2978,8 +2982,19 @@ faces/\n\
                     }
                     Ok(())
                 }
-                Some(TagCommands::ExportVocabulary { output, prune }) => {
+                Some(TagCommands::ExportVocabulary { output, prune, default }) => {
                     let catalog_root = maki::config::find_catalog_root()?;
+
+                    if default {
+                        // Export only the built-in default vocabulary
+                        let yaml = maki::vocabulary::default_vocabulary();
+                        let out_path = output.map(std::path::PathBuf::from)
+                            .unwrap_or_else(|| catalog_root.join("vocabulary.yaml"));
+                        std::fs::write(&out_path, yaml)?;
+                        println!("Exported default vocabulary to {}", out_path.display());
+                        return Ok(());
+                    }
+
                     let catalog = maki::catalog::Catalog::open(&catalog_root)?;
                     let catalog_tags = catalog.list_all_tags()?;
 
