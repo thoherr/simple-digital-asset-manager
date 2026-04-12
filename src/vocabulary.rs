@@ -146,6 +146,32 @@ subject:
     - fashion
     - documentary
     - abstract
+  style:
+    # Visual era/aesthetic of the subject (not the photographic technique —
+    # that's under technique|style). Cross-cuts other subject categories:
+    # tag a vintage car as subject|vehicle|car + subject|style|vintage.
+    - vintage
+    - modern
+    - retro
+    - rustic
+    - industrial
+    - classic
+  condition:
+    # Physical state of the subject
+    - abandoned
+    - ruined
+    - restored
+    - weathered
+    - pristine
+    - under construction
+  mood:
+    # Emotional quality of the scene
+    - dramatic
+    - serene
+    - playful
+    - mysterious
+    - melancholic
+    - joyful
 
 location:
   # Structure: location > country > region > city > venue

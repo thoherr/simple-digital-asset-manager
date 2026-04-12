@@ -131,15 +131,40 @@ subject
 │   ├── food         (coffee, wine, cake, cooking, restaurant, ...)
 │   ├── instrument   (guitar, piano, drum, saxophone, ...)
 │   └── other        (book, camera, flag, candle, sculpture, ...)
-└── concept
-    ├── travel
-    ├── fashion
-    ├── documentary
-    └── abstract
+├── concept
+│   ├── travel
+│   ├── fashion
+│   ├── documentary
+│   └── abstract
+├── style          (visual era/aesthetic of the SUBJECT — see note below)
+│   ├── vintage
+│   ├── modern
+│   ├── retro
+│   ├── rustic
+│   ├── industrial
+│   └── classic
+├── condition      (physical state of the subject)
+│   ├── abandoned
+│   ├── ruined
+│   ├── restored
+│   ├── weathered
+│   ├── pristine
+│   └── under construction
+└── mood           (emotional quality of the scene)
+    ├── dramatic
+    ├── serene
+    ├── playful
+    ├── mysterious
+    ├── melancholic
+    └── joyful
 ```
 
 You don't need all of these on day one. Start with the top two levels and add
 leaf nodes as your collection demands them.
+
+**Subject qualifiers — style, condition, mood:** These three branches are *cross-cutting qualifiers* that can be combined with any other subject category. They describe *how* the subject looks or feels, not *what* it is. Tag a vintage car photo as `subject|urban|transport|car` + `subject|style|vintage`. Tag an abandoned factory as `subject|urban|architecture` + `subject|condition|abandoned` + `subject|mood|mysterious`.
+
+Don't confuse `subject|style` (the subject's visual era — vintage, modern, retro) with `technique|style` (the photographic technique — black and white, high key, infrared). A vintage car shot in black and white gets both: `subject|style|vintage` + `technique|style|black and white`.
 
 **When categories overlap:** `subject|person` describes the *composition* of the photo (a portrait, a group scene, someone doing an activity), not the profession or context. A musician on stage is `subject|performing arts|concert|musician` — the photo shows a performance, not a person doing a generic activity. The same musician backstage in a headshot is `subject|person|portrait`. The rule: ask "what is the photo *about*?" — if the answer is "a concert" use `performing arts`, if it's "a portrait of someone" use `person`.
 
