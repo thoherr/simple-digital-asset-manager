@@ -386,7 +386,7 @@ impl PreviewGenerator {
             std::fs::remove_file(&temp_tiff).ok();
         }
 
-        anyhow::bail!("Neither dcraw nor dcraw_emu not found in PATH");
+        anyhow::bail!("neither dcraw nor dcraw_emu not found in PATH");
     }
 
     /// Generate preview from a video file using ffmpeg.

@@ -33,7 +33,7 @@ impl DescribeMode {
             "describe" => Ok(Self::Describe),
             "tags" => Ok(Self::Tags),
             "both" => Ok(Self::Both),
-            _ => anyhow::bail!("Invalid mode '{s}'. Valid modes: describe, tags, both"),
+            _ => anyhow::bail!("invalid mode '{s}'. Valid modes: describe, tags, both"),
         }
     }
 }
@@ -397,7 +397,7 @@ fn call_openai_compatible(
             .get("message")
             .and_then(|m| m.as_str())
             .unwrap_or("unknown error");
-        anyhow::bail!("VLM error: {msg}");
+        anyhow::bail!("vLM error: {msg}");
     }
 
     let raw_text = resp
@@ -477,7 +477,7 @@ fn call_ollama_native(
 
     if let Some(err) = resp.get("error") {
         let msg = err.as_str().unwrap_or("unknown error");
-        anyhow::bail!("Ollama error: {msg}");
+        anyhow::bail!("ollama error: {msg}");
     }
 
     let raw_text = resp
@@ -485,7 +485,7 @@ fn call_ollama_native(
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
             let snippet = response.chars().take(300).collect::<String>();
-            anyhow::anyhow!("Unexpected Ollama response format: no 'response' field\n  Response: {snippet}")
+            anyhow::anyhow!("unexpected Ollama response format: no 'response' field\n  Response: {snippet}")
         })?;
 
     // Strip <think>...</think> blocks (qwen3 and other reasoning models)
@@ -564,7 +564,7 @@ fn curl_post(
         }
         // Detect timeout
         if stderr.contains("timed out") || stderr.contains("Operation timeout") {
-            anyhow::bail!("VLM request timed out after {timeout}s");
+            anyhow::bail!("vLM request timed out after {timeout}s");
         }
         anyhow::bail!("curl failed (exit {}): {}{}", output.status, stderr, stdout);
     }
@@ -578,7 +578,7 @@ fn curl_post(
 
     // Detect HTTP error status from curl output
     if response.starts_with("<!DOCTYPE") || response.starts_with("<html") {
-        anyhow::bail!("VLM endpoint returned HTML (404 or error page)");
+        anyhow::bail!("vLM endpoint returned HTML (404 or error page)");
     }
 
     Ok(response)

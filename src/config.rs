@@ -718,7 +718,7 @@ pub fn find_catalog_root() -> Result<PathBuf> {
             return Ok(dir);
         }
         if !dir.pop() {
-            anyhow::bail!("No maki catalog found. Run `maki init` to create one.");
+            anyhow::bail!("no maki catalog found. Run `maki init` to create one.");
         }
     }
 }

@@ -1726,7 +1726,7 @@ impl Catalog {
             rusqlite::params![new_asset_id, content_hash],
         )?;
         if changed == 0 {
-            anyhow::bail!("No variant found with hash '{content_hash}'");
+            anyhow::bail!("no variant found with hash '{content_hash}'");
         }
         Ok(())
     }
@@ -1747,7 +1747,7 @@ impl Catalog {
             rusqlite::params![asset_id],
         )?;
         if changed == 0 {
-            anyhow::bail!("No asset found with id '{asset_id}'");
+            anyhow::bail!("no asset found with id '{asset_id}'");
         }
         Ok(())
     }
@@ -2015,7 +2015,7 @@ impl Catalog {
             rusqlite::params![volume_id, relative_path, recipe_id],
         )?;
         if changed == 0 {
-            anyhow::bail!("No recipe found with id '{recipe_id}'");
+            anyhow::bail!("no recipe found with id '{recipe_id}'");
         }
         Ok(())
     }
@@ -2100,7 +2100,7 @@ impl Catalog {
             rusqlite::params![new_content_hash, recipe_id],
         )?;
         if changed == 0 {
-            anyhow::bail!("No recipe found with id '{recipe_id}'");
+            anyhow::bail!("no recipe found with id '{recipe_id}'");
         }
         Ok(())
     }
@@ -2631,7 +2631,7 @@ impl Catalog {
             rusqlite::params![new_path_norm, recipe_id],
         )?;
         if changed == 0 {
-            anyhow::bail!("No recipe found with id '{recipe_id}'");
+            anyhow::bail!("no recipe found with id '{recipe_id}'");
         }
         Ok(())
     }
@@ -6928,7 +6928,7 @@ mod tests {
         let err = catalog
             .update_recipe_location("nonexistent-id", "vol", "path")
             .unwrap_err();
-        assert!(err.to_string().contains("No recipe found"));
+        assert!(err.to_string().contains("no recipe found"));
     }
 
     /// Helper to set up a catalog with a volume, asset, variant, and recipe for recipe tests.

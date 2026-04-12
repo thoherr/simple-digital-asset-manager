@@ -222,7 +222,7 @@ impl SigLipModel {
     fn load_internal(model_dir: &Path, model_id: &str, verbosity: crate::Verbosity, provider: &str) -> Result<Self> {
         let debug = verbosity.debug;
         let spec = get_model_spec(model_id)
-            .ok_or_else(|| anyhow::anyhow!("Unknown model: {model_id}"))?;
+            .ok_or_else(|| anyhow::anyhow!("unknown model: {model_id}"))?;
         let vision_path = model_dir.join("onnx").join("vision_model_quantized.onnx");
         let text_path = model_dir.join("onnx").join("text_model_quantized.onnx");
         let tokenizer_path = model_dir.join("tokenizer.json");
@@ -257,7 +257,7 @@ impl SigLipModel {
         };
 
         if !tokenizer_path.exists() {
-            anyhow::bail!("Tokenizer not found at {}", tokenizer_path.display());
+            anyhow::bail!("tokenizer not found at {}", tokenizer_path.display());
         }
 
         let vision = build_onnx_session(&vision_path, provider, verbosity)?;
@@ -292,7 +292,7 @@ impl SigLipModel {
         }
 
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
-            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("failed to load tokenizer: {e}"))?;
 
         Ok(Self {
             vision,
@@ -557,7 +557,7 @@ fn tokenize_batch(tokenizer: &Tokenizer, texts: &[String], max_text_len: usize, 
     for (i, text) in texts.iter().enumerate() {
         let encoding = tokenizer
             .encode(text.as_str(), true)
-            .map_err(|e| anyhow::anyhow!("Tokenization failed: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("tokenization failed: {e}"))?;
 
         let ids = encoding.get_ids();
         let len = ids.len().min(max_text_len);
@@ -724,7 +724,7 @@ pub fn load_labels_from_file(path: &Path) -> Result<Vec<String>> {
         .collect();
 
     if labels.is_empty() {
-        anyhow::bail!("Labels file is empty: {}", path.display());
+        anyhow::bail!("labels file is empty: {}", path.display());
     }
 
     Ok(labels)

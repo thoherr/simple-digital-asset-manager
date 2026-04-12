@@ -83,7 +83,7 @@ impl std::str::FromStr for LabelStyle {
             "border" => Ok(Self::Border),
             "dot" => Ok(Self::Dot),
             "none" => Ok(Self::None),
-            _ => anyhow::bail!("Invalid label style '{}'. Valid: border, dot, none", s),
+            _ => anyhow::bail!("invalid label style '{}'. Valid: border, dot, none", s),
         }
     }
 }
@@ -194,7 +194,7 @@ impl std::str::FromStr for PaperSize {
             "a4" => Ok(Self::A4),
             "letter" => Ok(Self::Letter),
             "a3" => Ok(Self::A3),
-            _ => anyhow::bail!("Unknown paper size '{}'. Valid sizes: a4, letter, a3", s),
+            _ => anyhow::bail!("unknown paper size '{}'. Valid sizes: a4, letter, a3", s),
         }
     }
 }
@@ -386,7 +386,7 @@ pub fn generate_contact_sheet(
     // Search for matching assets
     let results = engine.search(query)?;
     if results.is_empty() {
-        anyhow::bail!("No assets match the query");
+        anyhow::bail!("no assets match the query");
     }
 
     let cols = config.effective_columns();

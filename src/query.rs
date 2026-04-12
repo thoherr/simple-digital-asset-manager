@@ -66,7 +66,7 @@ pub fn parse_date_input(s: &str) -> Result<DateTime<Utc>> {
         }
     }
 
-    anyhow::bail!("Invalid date format: '{s}'. Use YYYY, YYYY-MM, YYYY-MM-DD, or ISO 8601.")
+    anyhow::bail!("invalid date format: '{s}'. Use YYYY, YYYY-MM, YYYY-MM-DD, or ISO 8601.")
 }
 
 /// Parsed search query with all supported filter prefixes.
@@ -1177,7 +1177,7 @@ impl QueryEngine {
         if let Some(ref similar_ref) = parsed.similar {
             let full_id = catalog
                 .resolve_asset_id(similar_ref)?
-                .ok_or_else(|| anyhow::anyhow!("No asset found matching '{similar_ref}'"))?;
+                .ok_or_else(|| anyhow::anyhow!("no asset found matching '{similar_ref}'"))?;
             let config = crate::config::CatalogConfig::load(&self.catalog_root).unwrap_or_default();
             let model_id = &config.ai.model;
             let emb_store = crate::embedding_store::EmbeddingStore::new(catalog.conn());
@@ -1209,13 +1209,13 @@ impl QueryEngine {
             let config = crate::config::CatalogConfig::load(&self.catalog_root).unwrap_or_default();
             let model_id = &config.ai.model;
             let spec = crate::ai::get_model_spec(model_id)
-                .ok_or_else(|| anyhow::anyhow!("Unknown AI model: {model_id}"))?;
+                .ok_or_else(|| anyhow::anyhow!("unknown AI model: {model_id}"))?;
 
             // Resolve model directory
             let model_dir_str = &config.ai.model_dir;
             let model_base = if model_dir_str.starts_with("~/") {
                 let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))
-                    .map_err(|_| anyhow::anyhow!("Cannot determine home directory"))?;
+                    .map_err(|_| anyhow::anyhow!("cannot determine home directory"))?;
                 std::path::PathBuf::from(home).join(&model_dir_str[2..])
             } else {
                 std::path::PathBuf::from(model_dir_str)
@@ -1279,7 +1279,7 @@ impl QueryEngine {
         for entry in labels {
             for label in entry.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
                 let vol = volumes.iter().find(|v| v.label.eq_ignore_ascii_case(label))
-                    .ok_or_else(|| anyhow::anyhow!("Unknown volume: '{label}'"))?;
+                    .ok_or_else(|| anyhow::anyhow!("unknown volume: '{label}'"))?;
                 ids.push(vol.id.to_string());
             }
         }
@@ -1291,10 +1291,10 @@ impl QueryEngine {
         let catalog = Catalog::open(&self.catalog_root)?;
         let full_id = catalog
             .resolve_asset_id(asset_id_prefix)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id_prefix}'"))?;
         catalog
             .load_asset_details(&full_id)?
-            .ok_or_else(|| anyhow::anyhow!("Asset '{full_id}' not found in catalog"))
+            .ok_or_else(|| anyhow::anyhow!("asset '{full_id}' not found in catalog"))
     }
 
     /// Resolve a scope (query, single asset, explicit IDs) to a set of asset IDs.
@@ -1315,7 +1315,7 @@ impl QueryEngine {
             for raw_id in asset_ids {
                 let full_id = catalog
                     .resolve_asset_id(raw_id)?
-                    .ok_or_else(|| anyhow::anyhow!("No asset found matching '{raw_id}'"))?;
+                    .ok_or_else(|| anyhow::anyhow!("no asset found matching '{raw_id}'"))?;
                 ids.insert(full_id);
             }
             return Ok(Some(ids));
@@ -1325,7 +1325,7 @@ impl QueryEngine {
             let catalog = Catalog::open(&self.catalog_root)?;
             let full_id = catalog
                 .resolve_asset_id(prefix)?
-                .ok_or_else(|| anyhow::anyhow!("No asset found matching '{prefix}'"))?;
+                .ok_or_else(|| anyhow::anyhow!("no asset found matching '{prefix}'"))?;
             return Ok(Some(HashSet::from([full_id])));
         }
         // Search query
@@ -1344,7 +1344,7 @@ impl QueryEngine {
     /// merges tags, and deletes donor assets.
     pub fn group(&self, variant_hashes: &[String]) -> Result<GroupResult> {
         if variant_hashes.is_empty() {
-            anyhow::bail!("No variant hashes provided");
+            anyhow::bail!("no variant hashes provided");
         }
 
         let catalog = Catalog::open(&self.catalog_root)?;
@@ -1355,7 +1355,7 @@ impl QueryEngine {
         for hash in variant_hashes {
             let asset_id = catalog
                 .find_asset_id_by_variant(hash)?
-                .ok_or_else(|| anyhow::anyhow!("No variant found with hash '{hash}'"))?;
+                .ok_or_else(|| anyhow::anyhow!("no variant found with hash '{hash}'"))?;
             asset_ids.push(asset_id);
         }
 
@@ -1493,12 +1493,12 @@ impl QueryEngine {
         target_id: Option<&str>,
     ) -> Result<GroupResult> {
         if asset_ids.len() < 2 {
-            anyhow::bail!("Need at least 2 assets to group");
+            anyhow::bail!("need at least 2 assets to group");
         }
 
         if let Some(tid) = target_id {
             if !asset_ids.iter().any(|id| id == tid) {
-                anyhow::bail!("Target asset '{}' is not in the selected assets", tid);
+                anyhow::bail!("target asset '{}' is not in the selected assets", tid);
             }
         }
 
@@ -1635,7 +1635,7 @@ impl QueryEngine {
     /// Recipes attached to extracted variants move with them.
     pub fn split(&self, asset_id: &str, variant_hashes: &[String]) -> Result<SplitResult> {
         if variant_hashes.is_empty() {
-            anyhow::bail!("No variant hashes provided");
+            anyhow::bail!("no variant hashes provided");
         }
 
         let catalog = Catalog::open(&self.catalog_root)?;
@@ -1644,7 +1644,7 @@ impl QueryEngine {
         // Resolve asset ID (supports prefix matching)
         let full_id = catalog
             .resolve_asset_id(asset_id)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
         let source_uuid: uuid::Uuid = full_id.parse()?;
         let mut source = store.load(source_uuid)?;
 
@@ -1664,7 +1664,7 @@ impl QueryEngine {
         // Refuse to extract all variants — at least one must remain
         let extract_set: HashSet<&str> = variant_hashes.iter().map(|h| h.as_str()).collect();
         if extract_set.len() >= source.variants.len() {
-            anyhow::bail!("Cannot extract all variants — at least one must remain in the source asset");
+            anyhow::bail!("cannot extract all variants — at least one must remain in the source asset");
         }
 
         // Check if the identity variant (the one that generated the asset UUID) is being split off
@@ -1690,7 +1690,7 @@ impl QueryEngine {
                 .variants
                 .iter()
                 .position(|v| v.content_hash == *hash)
-                .ok_or_else(|| anyhow::anyhow!("Variant '{}' not found", hash))?;
+                .ok_or_else(|| anyhow::anyhow!("variant '{}' not found", hash))?;
             let mut variant = source.variants.remove(idx);
 
             // Create new asset ID deterministically from variant hash (using the same
@@ -1972,7 +1972,7 @@ impl QueryEngine {
     fn tag_inner(&self, ctx: &BatchContext, asset_id_prefix: &str, tags: &[String], remove: bool) -> Result<TagResult> {
         let full_id = ctx.catalog
             .resolve_asset_id(asset_id_prefix)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id_prefix}'"))?;
 
         let uuid: uuid::Uuid = full_id.parse()?;
         let mut asset = ctx.meta_store.load(uuid)?;
@@ -2243,7 +2243,7 @@ impl QueryEngine {
 
         let full_id = catalog
             .resolve_asset_id(asset_id_prefix)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id_prefix}'"))?;
 
         let uuid: uuid::Uuid = full_id.parse()?;
         let mut asset = store.load(uuid)?;
@@ -2431,7 +2431,7 @@ impl QueryEngine {
         let catalog = Catalog::open(&self.catalog_root)?;
         let full_id = catalog
             .resolve_asset_id(asset_id_prefix)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id_prefix}'"))?;
 
         let uuid: uuid::Uuid = full_id.parse()?;
         let store = MetadataStore::new(&self.catalog_root);
@@ -2502,7 +2502,7 @@ impl QueryEngine {
         let catalog = Catalog::open(&self.catalog_root)?;
         let full_id = catalog
             .resolve_asset_id(asset_id_prefix)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id_prefix}'"))?;
 
         let uuid: uuid::Uuid = full_id.parse()?;
         let store = MetadataStore::new(&self.catalog_root);
@@ -2522,7 +2522,7 @@ impl QueryEngine {
         let catalog = Catalog::open(&self.catalog_root)?;
         let full_id = catalog
             .resolve_asset_id(asset_id_prefix)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id_prefix}'"))?;
 
         let uuid: uuid::Uuid = full_id.parse()?;
         let store = MetadataStore::new(&self.catalog_root);
@@ -2550,7 +2550,7 @@ impl QueryEngine {
     fn set_rating_inner(&self, ctx: &BatchContext, asset_id_prefix: &str, rating: Option<u8>) -> Result<Option<u8>> {
         let full_id = ctx.catalog
             .resolve_asset_id(asset_id_prefix)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id_prefix}'"))?;
 
         let uuid: uuid::Uuid = full_id.parse()?;
         let mut asset = ctx.meta_store.load(uuid)?;
@@ -2811,7 +2811,7 @@ impl QueryEngine {
     fn set_color_label_inner(&self, ctx: &BatchContext, asset_id_prefix: &str, label: Option<String>) -> Result<Option<String>> {
         let full_id = ctx.catalog
             .resolve_asset_id(asset_id_prefix)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id_prefix}'"))?;
 
         let uuid: uuid::Uuid = full_id.parse()?;
         let mut asset = ctx.meta_store.load(uuid)?;
@@ -2835,7 +2835,7 @@ impl QueryEngine {
         let catalog = Catalog::open(&self.catalog_root)?;
         let full_id = catalog
             .resolve_asset_id(asset_id_prefix)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id_prefix}'"))?;
 
         let uuid: uuid::Uuid = full_id.parse()?;
         let store = MetadataStore::new(&self.catalog_root);
@@ -2858,13 +2858,13 @@ impl QueryEngine {
         let catalog = Catalog::open(&self.catalog_root)?;
         let full_id = catalog
             .resolve_asset_id(asset_id_prefix)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id_prefix}'"))?;
 
         // Validate that the content_hash belongs to this asset
         if let Some(hash) = content_hash {
             let details = self.show(&full_id)?;
             if !details.variants.iter().any(|v| v.content_hash == hash) {
-                anyhow::bail!("Variant {hash} does not belong to asset {full_id}");
+                anyhow::bail!("variant {hash} does not belong to asset {full_id}");
             }
         }
 
@@ -2899,12 +2899,12 @@ impl QueryEngine {
         let catalog = Catalog::open(&self.catalog_root)?;
         let full_id = catalog
             .resolve_asset_id(asset_id_prefix)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id_prefix}'"))?;
 
         // Verify variant belongs to this asset
         let details = self.show(&full_id)?;
         if !details.variants.iter().any(|v| v.content_hash == variant_hash) {
-            anyhow::bail!("Variant {variant_hash} does not belong to asset {full_id}");
+            anyhow::bail!("variant {variant_hash} does not belong to asset {full_id}");
         }
 
         // Update sidecar
@@ -2945,7 +2945,7 @@ impl QueryEngine {
         let catalog = Catalog::open(&self.catalog_root)?;
         let full_id = catalog
             .resolve_asset_id(asset_id_prefix)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id_prefix}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id_prefix}'"))?;
 
         let uuid: uuid::Uuid = full_id.parse()?;
         let store = MetadataStore::new(&self.catalog_root);
@@ -3216,7 +3216,7 @@ impl QueryEngine {
         // Resolve volume filter to volume ID
         let volume_id_filter: Option<String> = if let Some(label) = volume_filter {
             let vol = volumes.iter().find(|v| v.label == label)
-                .ok_or_else(|| anyhow::anyhow!("Unknown volume: {label}"))?;
+                .ok_or_else(|| anyhow::anyhow!("unknown volume: {label}"))?;
             Some(vol.id.to_string())
         } else {
             None
@@ -3445,7 +3445,7 @@ impl QueryEngine {
         log: bool,
     ) -> Result<FromTagResult> {
         if !pattern.contains("{}") {
-            anyhow::bail!("Pattern must contain '{{}}' as a wildcard placeholder");
+            anyhow::bail!("pattern must contain '{{}}' as a wildcard placeholder");
         }
 
         // Build regex: escape metacharacters, replace {} with (.+), anchor
@@ -3745,7 +3745,7 @@ mod tests {
 
         let result = engine.group(&["sha256:bogus".to_string()]);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("No variant found"));
+        assert!(result.unwrap_err().to_string().contains("no variant found"));
     }
 
     #[test]
@@ -5297,7 +5297,7 @@ mod tests {
             &["Nonexistent".to_string()], &[vol],
         );
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unknown volume"));
+        assert!(result.unwrap_err().to_string().contains("unknown volume"));
     }
 
     #[test]

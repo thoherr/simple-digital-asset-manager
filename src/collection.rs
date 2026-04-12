@@ -131,11 +131,11 @@ impl<'a> CollectionStore<'a> {
         let mut rows = stmt.query(rusqlite::params![name])?;
         if let Some(row) = rows.next()? {
             let id_str: String = row.get(0)?;
-            let id: Uuid = id_str.parse().map_err(|e| anyhow::anyhow!("Invalid UUID: {e}"))?;
+            let id: Uuid = id_str.parse().map_err(|e| anyhow::anyhow!("invalid UUID: {e}"))?;
             let name: String = row.get(1)?;
             let description: Option<String> = row.get(2)?;
             let created_at_str: String = row.get(3)?;
-            let created_at: DateTime<Utc> = created_at_str.parse().map_err(|e| anyhow::anyhow!("Invalid date: {e}"))?;
+            let created_at: DateTime<Utc> = created_at_str.parse().map_err(|e| anyhow::anyhow!("invalid date: {e}"))?;
 
             // Load asset IDs
             let asset_ids = self.get_asset_ids(&id_str)?;
@@ -166,7 +166,7 @@ impl<'a> CollectionStore<'a> {
     /// Add assets to a collection. Returns the number of new additions.
     pub fn add_assets(&self, collection_name: &str, asset_ids: &[String]) -> Result<u32> {
         let col = self.get_by_name(collection_name)?
-            .ok_or_else(|| anyhow::anyhow!("No collection named '{collection_name}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no collection named '{collection_name}'"))?;
         let col_id = col.id.to_string();
         let now = Utc::now().to_rfc3339();
         let mut added = 0u32;
@@ -186,7 +186,7 @@ impl<'a> CollectionStore<'a> {
     /// Remove assets from a collection. Returns the number of removals.
     pub fn remove_assets(&self, collection_name: &str, asset_ids: &[String]) -> Result<u32> {
         let col = self.get_by_name(collection_name)?
-            .ok_or_else(|| anyhow::anyhow!("No collection named '{collection_name}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no collection named '{collection_name}'"))?;
         let col_id = col.id.to_string();
         let mut removed = 0u32;
         for id in asset_ids {
@@ -204,7 +204,7 @@ impl<'a> CollectionStore<'a> {
     /// Delete a collection and its membership records.
     pub fn delete(&self, name: &str) -> Result<()> {
         let col = self.get_by_name(name)?
-            .ok_or_else(|| anyhow::anyhow!("No collection named '{name}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no collection named '{name}'"))?;
         let col_id = col.id.to_string();
         self.conn.execute("DELETE FROM collection_assets WHERE collection_id = ?1", rusqlite::params![col_id])?;
         self.conn.execute("DELETE FROM collections WHERE id = ?1", rusqlite::params![col_id])?;
@@ -228,7 +228,7 @@ impl<'a> CollectionStore<'a> {
     /// Get all asset IDs in a collection by name (for use as search filter).
     pub fn asset_ids_for_collection(&self, name: &str) -> Result<Vec<String>> {
         let col = self.get_by_name(name)?
-            .ok_or_else(|| anyhow::anyhow!("No collection named '{name}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no collection named '{name}'"))?;
         self.get_asset_ids(&col.id.to_string())
     }
 
@@ -241,11 +241,11 @@ impl<'a> CollectionStore<'a> {
         let mut rows = stmt.query([])?;
         while let Some(row) = rows.next()? {
             let id_str: String = row.get(0)?;
-            let id: Uuid = id_str.parse().map_err(|e| anyhow::anyhow!("Invalid UUID: {e}"))?;
+            let id: Uuid = id_str.parse().map_err(|e| anyhow::anyhow!("invalid UUID: {e}"))?;
             let name: String = row.get(1)?;
             let description: Option<String> = row.get(2)?;
             let created_at_str: String = row.get(3)?;
-            let created_at: DateTime<Utc> = created_at_str.parse().map_err(|e| anyhow::anyhow!("Invalid date: {e}"))?;
+            let created_at: DateTime<Utc> = created_at_str.parse().map_err(|e| anyhow::anyhow!("invalid date: {e}"))?;
             let asset_ids = self.get_asset_ids(&id_str)?;
             collections.push(Collection {
                 id,

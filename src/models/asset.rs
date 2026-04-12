@@ -104,7 +104,7 @@ impl Asset {
             "pink" => Ok(Some("Pink".to_string())),
             "purple" => Ok(Some("Purple".to_string())),
             _ => Err(format!(
-                "Unknown color label '{s}'. Valid colors: Red, Orange, Yellow, Green, Blue, Pink, Purple"
+                "unknown color label '{s}'. Valid colors: Red, Orange, Yellow, Green, Blue, Pink, Purple"
             )),
         }
     }

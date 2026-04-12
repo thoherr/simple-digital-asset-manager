@@ -409,7 +409,7 @@ fn parse_detections(
         return parse_multi_output_detections(outputs, num_outputs, output_names, input_w, input_h, min_confidence);
     }
 
-    anyhow::bail!("Unrecognized detection model output format ({num_outputs} outputs)");
+    anyhow::bail!("unrecognized detection model output format ({num_outputs} outputs)");
 }
 
 /// Parse YuNet 2023 format: [N, 15] tensor.
@@ -646,7 +646,7 @@ fn parse_multi_output_detections(
     let conf = conf_data.context("No confidence tensor found in detection output")?;
 
     if loc_cols < 4 {
-        anyhow::bail!("Location tensor has too few columns: {loc_cols}");
+        anyhow::bail!("location tensor has too few columns: {loc_cols}");
     }
 
     let n_detections = loc.len() / loc_cols;

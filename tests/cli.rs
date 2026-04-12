@@ -86,7 +86,7 @@ fn commands_fail_without_init() {
         .args(["search", "foo"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No maki catalog found"));
+        .stderr(predicate::str::contains("no maki catalog found"));
 }
 
 #[test]
@@ -1368,7 +1368,7 @@ fn volume_add_purpose_invalid() {
         ])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Invalid purpose"));
+        .stderr(predicate::str::contains("invalid purpose"));
 }
 
 #[test]
@@ -1574,7 +1574,7 @@ fn volume_remove_unknown() {
         .args(["volume", "remove", "nonexistent"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No volume found"));
+        .stderr(predicate::str::contains("no volume found"));
 }
 
 #[test]
@@ -2182,7 +2182,7 @@ fn edit_no_flags_errors() {
         .args(["edit", &asset_id])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No edit flags provided"));
+        .stderr(predicate::str::contains("no edit flags provided"));
 }
 
 #[test]
@@ -2501,7 +2501,7 @@ fn sync_no_paths_errors() {
         .args(["sync"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No paths specified"));
+        .stderr(predicate::str::contains("no paths specified"));
 }
 
 // ── Cleanup ─────────────────────────────────────────────────────────
@@ -3022,7 +3022,7 @@ fn search_volume_label_filter() {
         .args(["search", "volume:nonexistent"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Unknown volume"));
+        .stderr(predicate::str::contains("unknown volume"));
 
     // Negated volume should exclude (use -- to prevent clap flag parsing)
     maki()
@@ -3562,7 +3562,7 @@ fn saved_search_run_not_found() {
         .args(["ss", "run", "nonexistent"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No saved search named"));
+        .stderr(predicate::str::contains("no saved search named"));
 }
 
 #[test]
@@ -3602,7 +3602,7 @@ fn saved_search_delete_not_found() {
         .args(["ss", "delete", "nonexistent"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No saved search named"));
+        .stderr(predicate::str::contains("no saved search named"));
 }
 
 #[test]
@@ -4721,7 +4721,7 @@ fn split_refuses_all_variants() {
         .args(["split", id, hash])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Cannot extract all variants"));
+        .stderr(predicate::str::contains("cannot extract all variants"));
 }
 
 #[test]
@@ -5088,7 +5088,7 @@ fn edit_label_validates_color() {
         .args(["edit", &asset_id, "--label", "Magenta"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Unknown color label"));
+        .stderr(predicate::str::contains("unknown color label"));
 }
 
 // ── Export-based preview tests ──────────────────────────────────

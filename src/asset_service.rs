@@ -1384,14 +1384,14 @@ impl AssetService {
         // Resolve asset
         let full_id = catalog
             .resolve_asset_id(asset_id)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
         let asset_uuid: Uuid = full_id.parse()?;
         let asset = metadata_store.load(asset_uuid)?;
 
         // Resolve target volume
         let target_volume = registry.resolve_volume(target_volume_label)?;
         if !target_volume.mount_point.exists() {
-            bail!("Target volume '{}' is offline (mount point {} not found)",
+            bail!("target volume '{}' is offline (mount point {} not found)",
                 target_volume.label, target_volume.mount_point.display());
         }
 
@@ -1415,7 +1415,7 @@ impl AssetService {
                         "Source volume {} not found in registry", loc.volume_id
                     ))?;
                 if !source_vol.mount_point.exists() {
-                    bail!("Source volume '{}' is offline (mount point {} not found)",
+                    bail!("source volume '{}' is offline (mount point {} not found)",
                         source_vol.label, source_vol.mount_point.display());
                 }
 
@@ -1443,7 +1443,7 @@ impl AssetService {
                     "Source volume {} not found in registry", recipe.location.volume_id
                 ))?;
             if !source_vol.mount_point.exists() {
-                bail!("Source volume '{}' is offline (mount point {} not found)",
+                bail!("source volume '{}' is offline (mount point {} not found)",
                     source_vol.label, source_vol.mount_point.display());
             }
 
@@ -1759,7 +1759,7 @@ impl AssetService {
         // Resolve asset ID
         let full_id = catalog
             .resolve_asset_id(asset_id)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
 
         // Try as variant file location first, then recipe
         if let Some((content_hash, _format)) =
@@ -1778,7 +1778,7 @@ impl AssetService {
 
             // Verify file exists at new path
             if !to_path.exists() {
-                bail!("File not found at '{}'", to_path.display());
+                bail!("file not found at '{}'", to_path.display());
             }
 
             // Verify content hash matches
@@ -1834,7 +1834,7 @@ impl AssetService {
 
             // Verify file exists at new path
             if !to_path.exists() {
-                bail!("File not found at '{}'", to_path.display());
+                bail!("file not found at '{}'", to_path.display());
             }
 
             // Verify content hash matches
@@ -1931,7 +1931,7 @@ impl AssetService {
                     None => {
                         result.skipped += 1;
                         result.errors.push(format!(
-                            "No volume found for {}",
+                            "no volume found for {}",
                             file_path.display()
                         ));
                         on_file(file_path, VerifyStatus::Skipped, file_start.elapsed());
@@ -2061,7 +2061,7 @@ impl AssetService {
             let assets = if let Some(asset_id) = asset_filter {
                 let full_id = catalog
                     .resolve_asset_id(asset_id)?
-                    .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+                    .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
                 let uuid: Uuid = full_id.parse()?;
                 vec![metadata_store.load(uuid)?]
             } else if let Some(days) = max_age_days {
@@ -4314,7 +4314,7 @@ impl AssetService {
             // Path mode: scan files under given paths, filter to recipes, look up each
             let files = resolve_files(paths, exclude_patterns);
             let filter = FileTypeFilter::default();
-            let vol = volume.ok_or_else(|| anyhow::anyhow!("No volume resolved for path mode"))?;
+            let vol = volume.ok_or_else(|| anyhow::anyhow!("no volume resolved for path mode"))?;
             let vol_id = vol.id.to_string();
 
             let mut entries = Vec::new();
@@ -4439,7 +4439,7 @@ impl AssetService {
                 media_entries = catalog.list_file_locations_for_asset(aid)?;
             } else if !paths.is_empty() {
                 let files = resolve_files(paths, exclude_patterns);
-                let vol = volume.ok_or_else(|| anyhow::anyhow!("No volume resolved for path mode"))?;
+                let vol = volume.ok_or_else(|| anyhow::anyhow!("no volume resolved for path mode"))?;
                 let vol_id = vol.id.to_string();
 
                 let mut entries = Vec::new();
@@ -4870,7 +4870,7 @@ impl AssetService {
         let assets = if let Some(asset_id) = asset_filter {
             let full_id = catalog
                 .resolve_asset_id(asset_id)?
-                .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+                .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
             let uuid: Uuid = full_id.parse()?;
             vec![metadata_store.load(uuid)?]
         } else if !paths.is_empty() {
@@ -5044,7 +5044,7 @@ impl AssetService {
         let assets = if let Some(asset_id) = asset_filter {
             let full_id = catalog
                 .resolve_asset_id(asset_id)?
-                .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+                .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
             let uuid: Uuid = full_id.parse()?;
             vec![metadata_store.load(uuid)?]
         } else {
@@ -5233,7 +5233,7 @@ impl AssetService {
             Some(prefix) => Some(
                 catalog
                     .resolve_asset_id(prefix)?
-                    .ok_or_else(|| anyhow::anyhow!("No asset found matching '{prefix}'"))?,
+                    .ok_or_else(|| anyhow::anyhow!("no asset found matching '{prefix}'"))?,
             ),
             None => None,
         };
@@ -5847,7 +5847,7 @@ impl AssetService {
             on_file(&entry.target_path, &ExportStatus::Copied, file_start.elapsed());
         }
 
-        zip.finish().map_err(|e| anyhow::anyhow!("Failed to finalize ZIP: {e}"))?;
+        zip.finish().map_err(|e| anyhow::anyhow!("failed to finalize ZIP: {e}"))?;
         Ok(result)
     }
 
@@ -5899,7 +5899,7 @@ impl AssetService {
         let asset_ids: Vec<String> = if let Some(id) = asset_id {
             let full_id = catalog
                 .resolve_asset_id(id)?
-                .ok_or_else(|| anyhow::anyhow!("No asset found matching '{id}'"))?;
+                .ok_or_else(|| anyhow::anyhow!("no asset found matching '{id}'"))?;
             vec![full_id]
         } else {
             let q = if let Some(query) = query {
@@ -6349,7 +6349,7 @@ impl AssetService {
         } else if let Some(id) = asset_id {
             let full_id = catalog
                 .resolve_asset_id(id)?
-                .ok_or_else(|| anyhow::anyhow!("No asset found matching '{id}'"))?;
+                .ok_or_else(|| anyhow::anyhow!("no asset found matching '{id}'"))?;
             vec![full_id]
         } else {
             let q = if let Some(query) = query {
@@ -7970,7 +7970,7 @@ mod tests {
         let err = service
             .relocate("nonexistent-id", "vol2", false, false, false)
             .unwrap_err();
-        assert!(err.to_string().contains("No asset found"));
+        assert!(err.to_string().contains("no asset found"));
     }
 
     #[test]
@@ -7995,7 +7995,7 @@ mod tests {
         let err = service
             .relocate(&asset_id, "nonexistent-vol", false, false, false)
             .unwrap_err();
-        assert!(err.to_string().contains("No volume found"));
+        assert!(err.to_string().contains("no volume found"));
     }
 
     #[test]

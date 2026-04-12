@@ -1649,7 +1649,7 @@ fn run_command(cli: Cli) -> anyhow::Result<Vec<String>> {
             let catalog_root = std::env::current_dir()?;
             let config_path = catalog_root.join("maki.toml");
             if config_path.exists() {
-                anyhow::bail!("A maki catalog already exists in this directory.");
+                anyhow::bail!("a maki catalog already exists in this directory.");
             }
 
             // Create directories
@@ -1719,7 +1719,7 @@ faces/\n\
                 let registry = DeviceRegistry::new(&catalog_root);
                 let parsed_purpose = if let Some(ref p) = purpose {
                     Some(maki::models::VolumePurpose::parse(p).ok_or_else(|| {
-                        anyhow::anyhow!("Invalid purpose '{}'. Valid values: media, working, archive, backup, cloud", p)
+                        anyhow::anyhow!("invalid purpose '{}'. Valid values: media, working, archive, backup, cloud", p)
                     })?)
                 } else {
                     None
@@ -1754,7 +1754,7 @@ faces/\n\
                 }
                 let purpose_filter = if let Some(ref p) = purpose {
                     Some(maki::models::VolumePurpose::parse(p).ok_or_else(|| {
-                        anyhow::anyhow!("Invalid purpose '{}'. Valid values: media, working, archive, backup, cloud", p)
+                        anyhow::anyhow!("invalid purpose '{}'. Valid values: media, working, archive, backup, cloud", p)
                     })?)
                 } else {
                     None
@@ -1810,7 +1810,7 @@ faces/\n\
                     None
                 } else {
                     Some(maki::models::VolumePurpose::parse(&purpose).ok_or_else(|| {
-                        anyhow::anyhow!("Invalid purpose '{}'. Valid values: media, working, archive, backup, cloud, none", purpose)
+                        anyhow::anyhow!("invalid purpose '{}'. Valid values: media, working, archive, backup, cloud, none", purpose)
                     })?)
                 };
                 let vol = registry.set_purpose(&volume, parsed_purpose)?;
@@ -2120,7 +2120,7 @@ faces/\n\
                 .collect();
 
             if canonical_paths.is_empty() {
-                anyhow::bail!("No paths specified for import.");
+                anyhow::bail!("no paths specified for import.");
             }
 
             // Resolve volume: explicit --volume flag, or auto-detect from path
@@ -2874,7 +2874,7 @@ faces/\n\
                     // Load asset to get current tags, then remove all
                     let catalog = maki::catalog::Catalog::open(&catalog_root)?;
                     let full_id = catalog.resolve_asset_id(&asset_id)?
-                        .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+                        .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
                     let uuid: uuid::Uuid = full_id.parse()?;
                     let metadata_store = maki::metadata_store::MetadataStore::new(&catalog_root);
                     let asset = metadata_store.load(uuid)?;
@@ -3027,9 +3027,9 @@ faces/\n\
                 }
                 None => {
                     // Direct tag add/remove: maki tag <asset> <tags> [--remove]
-                    let asset_id = asset_id.ok_or_else(|| anyhow::anyhow!("Asset ID is required for tag add/remove"))?;
+                    let asset_id = asset_id.ok_or_else(|| anyhow::anyhow!("asset ID is required for tag add/remove"))?;
                     if tags.is_empty() {
-                        anyhow::bail!("No tags specified.");
+                        anyhow::bail!("no tags specified.");
                     }
                     let catalog_root = maki::config::find_catalog_root()?;
                     let engine = QueryEngine::new(&catalog_root);
@@ -3093,7 +3093,7 @@ faces/\n\
             }
 
             if name.is_none() && !clear_name && description.is_none() && !clear_description && rating.is_none() && !clear_rating && label.is_none() && !clear_label && !clear_tags && date.is_none() && !clear_date {
-                anyhow::bail!("No edit flags provided. Use --name, --description, --rating, --label, --date, --role/--variant, or --clear-*.");
+                anyhow::bail!("no edit flags provided. Use --name, --description, --rating, --label, --date, --role/--variant, or --clear-*.");
             }
 
             // Validate label if provided
@@ -3257,7 +3257,7 @@ faces/\n\
                 asset_ids
             };
             if ids.is_empty() {
-                anyhow::bail!("No asset IDs specified.");
+                anyhow::bail!("no asset IDs specified.");
             }
 
             let catalog_root = maki::config::find_catalog_root()?;
@@ -3445,7 +3445,7 @@ faces/\n\
                         } else {
                             eprintln!("{e}");
                         }
-                        anyhow::bail!("VLM endpoint check failed");
+                        anyhow::bail!("vLM endpoint check failed");
                     }
                 }
                 return Ok(());
@@ -3728,7 +3728,7 @@ faces/\n\
 
                 let full_id = catalog
                     .resolve_asset_id(similar_id)?
-                    .ok_or_else(|| anyhow::anyhow!("No asset found matching '{similar_id}'"))?;
+                    .ok_or_else(|| anyhow::anyhow!("no asset found matching '{similar_id}'"))?;
 
                 let query_emb = match emb_store.get(&full_id, model_id)? {
                     Some(emb) => emb,
@@ -3752,11 +3752,11 @@ faces/\n\
                         );
                         let details = catalog
                             .load_asset_details(&full_id)?
-                            .ok_or_else(|| anyhow::anyhow!("Asset not found"))?;
+                            .ok_or_else(|| anyhow::anyhow!("asset not found"))?;
                         let image_path = service
                             .find_image_for_ai(&details, &preview_gen, &online_volumes)
                             .ok_or_else(|| {
-                                anyhow::anyhow!("No processable image for asset {}", &full_id[..8])
+                                anyhow::anyhow!("no processable image for asset {}", &full_id[..8])
                             })?;
                         let emb = ai_model.encode_image(&image_path)?;
                         emb_store.store(&full_id, &emb, model_id)?;
@@ -3984,7 +3984,7 @@ faces/\n\
             let asset_ids: Vec<String> = if let Some(ref id) = asset {
                 let full_id = catalog
                     .resolve_asset_id(id)?
-                    .ok_or_else(|| anyhow::anyhow!("No asset found matching '{id}'"))?;
+                    .ok_or_else(|| anyhow::anyhow!("no asset found matching '{id}'"))?;
                 vec![full_id]
             } else {
                 let q = if let Some(ref query) = query {
@@ -4176,7 +4176,7 @@ faces/\n\
                     let asset_ids: Vec<String> = if let Some(ref aid) = asset {
                         let full_id = catalog
                             .resolve_asset_id(aid)?
-                            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{aid}'"))?;
+                            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{aid}'"))?;
                         vec![full_id]
                     } else {
                         let q = if let Some(ref query) = query {
@@ -4269,7 +4269,7 @@ faces/\n\
                         if let Some(ref a) = asset {
                             let full_id = catalog
                                 .resolve_asset_id(a)?
-                                .ok_or_else(|| anyhow::anyhow!("No asset found matching '{a}'"))?;
+                                .ok_or_else(|| anyhow::anyhow!("no asset found matching '{a}'"))?;
                             Some(vec![full_id])
                         } else {
                             let q = if let Some(ref query) = query {
@@ -4518,7 +4518,7 @@ faces/\n\
             };
 
             if ids.is_empty() {
-                anyhow::bail!("No asset IDs specified. Use --query, positional args, or pipe from stdin.");
+                anyhow::bail!("no asset IDs specified. Use --query, positional args, or pipe from stdin.");
             }
 
             // Determine target volume: --target flag, or second positional arg for single-asset compat
@@ -4742,14 +4742,14 @@ faces/\n\
             }
 
             if result.failed > 0 {
-                anyhow::bail!("Verification failed for {} file(s)", result.failed);
+                anyhow::bail!("verification failed for {} file(s)", result.failed);
             }
 
             Ok(())
         }
         Commands::Sync { paths, volume, apply, remove_stale } => {
             if paths.is_empty() {
-                anyhow::bail!("No paths specified for sync.");
+                anyhow::bail!("no paths specified for sync.");
             }
             if remove_stale && !apply {
                 anyhow::bail!("--remove-stale requires --apply.");
@@ -5044,7 +5044,7 @@ faces/\n\
                 let catalog = Catalog::open(&catalog_root)?;
                 match catalog.resolve_asset_id(prefix)? {
                     Some(id) => Some(id),
-                    None => anyhow::bail!("No asset found matching '{prefix}'"),
+                    None => anyhow::bail!("no asset found matching '{prefix}'"),
                 }
             } else {
                 None
@@ -6261,7 +6261,7 @@ faces/\n\
                     full.parse()?
                 } else {
                     // Not in SQLite — try loading sidecar directly
-                    anyhow::bail!("Asset '{}' not found in catalog. For new assets, use 'maki refresh --reimport --asset {}'", asset_id, asset_id);
+                    anyhow::bail!("asset '{}' not found in catalog. For new assets, use 'maki refresh --reimport --asset {}'", asset_id, asset_id);
                 };
 
                 let asset_obj = store.load(uuid)?;
@@ -6590,7 +6590,7 @@ faces/\n\
                 "cheatsheet" | "cheat" | "cs" => "https://github.com/thoherr/maki/releases/latest/download/cheat-sheet.pdf",
                 "filters" | "search" | "filter" | "sf" => "https://github.com/thoherr/maki/releases/latest/download/search-filters.pdf",
                 _ => {
-                    anyhow::bail!("Unknown document '{}'. Available: manual, cheatsheet, filters", document);
+                    anyhow::bail!("unknown document '{}'. Available: manual, cheatsheet, filters", document);
                 }
             };
             if cli.json {
@@ -6749,7 +6749,7 @@ faces/\n\
             let export_layout = match layout.as_str() {
                 "flat" => ExportLayout::Flat,
                 "mirror" => ExportLayout::Mirror,
-                _ => anyhow::bail!("Unknown layout '{}'. Valid layouts: flat, mirror", layout),
+                _ => anyhow::bail!("unknown layout '{}'. Valid layouts: flat, mirror", layout),
             };
 
             let catalog_root = maki::config::find_catalog_root()?;
@@ -7101,7 +7101,7 @@ faces/\n\
                     use maki::format::{self, OutputFormat};
 
                     let col = store.get_by_name(&name)?
-                        .ok_or_else(|| anyhow::anyhow!("No collection named '{name}'"))?;
+                        .ok_or_else(|| anyhow::anyhow!("no collection named '{name}'"))?;
 
                     if col.asset_ids.is_empty() {
                         if cli.json {
@@ -7214,7 +7214,7 @@ faces/\n\
                         asset_ids
                     };
                     if ids.is_empty() {
-                        anyhow::bail!("No asset IDs specified.");
+                        anyhow::bail!("no asset IDs specified.");
                     }
                     let added = store.add_assets(&name, &ids)?;
                     // Persist to YAML
@@ -7232,7 +7232,7 @@ faces/\n\
                 }
                 CollectionCommands::Remove { name, asset_ids } => {
                     if asset_ids.is_empty() {
-                        anyhow::bail!("No asset IDs specified.");
+                        anyhow::bail!("no asset IDs specified.");
                     }
                     let removed = store.remove_assets(&name, &asset_ids)?;
                     // Persist to YAML
@@ -7272,7 +7272,7 @@ faces/\n\
             match cmd {
                 StackCommands::Create { asset_ids } => {
                     if asset_ids.len() < 2 {
-                        anyhow::bail!("A stack requires at least 2 assets");
+                        anyhow::bail!("a stack requires at least 2 assets");
                     }
                     let stack = store.create(&asset_ids)?;
                     let yaml = store.export_all()?;
@@ -7304,7 +7304,7 @@ faces/\n\
                 }
                 StackCommands::Remove { asset_ids } => {
                     if asset_ids.is_empty() {
-                        anyhow::bail!("No asset IDs specified.");
+                        anyhow::bail!("no asset IDs specified.");
                     }
                     let removed = store.remove(&asset_ids)?;
                     let yaml = store.export_all()?;
@@ -7356,7 +7356,7 @@ faces/\n\
                 }
                 StackCommands::Show { asset_id, format } => {
                     let (stack_id, members) = store.stack_for_asset(&asset_id)?
-                        .ok_or_else(|| anyhow::anyhow!("Asset {asset_id} is not in a stack"))?;
+                        .ok_or_else(|| anyhow::anyhow!("asset {asset_id} is not in a stack"))?;
                     if cli.json {
                         println!("{}", serde_json::json!({
                             "stack_id": stack_id,
@@ -7455,7 +7455,7 @@ faces/\n\
 
                     let file = maki::saved_search::load(&catalog_root)?;
                     let ss = maki::saved_search::find_by_name(&file, &name)
-                        .ok_or_else(|| anyhow::anyhow!("No saved search named '{name}'"))?;
+                        .ok_or_else(|| anyhow::anyhow!("no saved search named '{name}'"))?;
 
                     let engine = QueryEngine::new(&catalog_root);
                     let results = engine.search(&ss.query)?;
@@ -7557,7 +7557,7 @@ faces/\n\
                     let before = file.searches.len();
                     file.searches.retain(|s| s.name != name);
                     if file.searches.len() == before {
-                        anyhow::bail!("No saved search named '{name}'");
+                        anyhow::bail!("no saved search named '{name}'");
                     }
                     maki::saved_search::save(&catalog_root, &file)?;
                     if cli.json {
@@ -7685,9 +7685,9 @@ fn resolve_person_id(face_store: &maki::face_store::FaceStore, prefix: &str) -> 
         .filter(|(p, _)| p.id.starts_with(prefix))
         .collect();
     match matches.len() {
-        0 => anyhow::bail!("No person found matching '{prefix}'"),
+        0 => anyhow::bail!("no person found matching '{prefix}'"),
         1 => Ok(matches[0].0.id.clone()),
-        _ => anyhow::bail!("Ambiguous person ID prefix '{prefix}' — matches {} people", matches.len()),
+        _ => anyhow::bail!("ambiguous person ID prefix '{prefix}' — matches {} people", matches.len()),
     }
 }
 
@@ -7705,9 +7705,9 @@ fn resolve_face_id(face_store: &maki::face_store::FaceStore, prefix: &str) -> an
         .query_map(rusqlite::params![format!("{prefix}%")], |row| row.get(0))?
         .collect::<Result<Vec<_>, _>>()?;
     match ids.len() {
-        0 => anyhow::bail!("No face found matching '{prefix}'"),
+        0 => anyhow::bail!("no face found matching '{prefix}'"),
         1 => Ok(ids[0].clone()),
-        _ => anyhow::bail!("Ambiguous face ID prefix '{prefix}' — matches {} faces", ids.len()),
+        _ => anyhow::bail!("ambiguous face ID prefix '{prefix}' — matches {} faces", ids.len()),
     }
 }
 

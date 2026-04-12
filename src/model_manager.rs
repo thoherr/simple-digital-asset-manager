@@ -33,7 +33,7 @@ impl ModelManager {
     /// Create a new ModelManager for the given model.
     pub fn new(model_dir: &Path, model_id: &str) -> Result<Self> {
         let spec = get_model_spec(model_id)
-            .ok_or_else(|| anyhow::anyhow!("Unknown model: {model_id}"))?;
+            .ok_or_else(|| anyhow::anyhow!("unknown model: {model_id}"))?;
         Ok(Self {
             model_dir: model_dir.to_path_buf(),
             spec,
@@ -121,7 +121,7 @@ impl ModelManager {
 
             if !status.success() {
                 std::fs::remove_file(&tmp_dest).ok();
-                anyhow::bail!("Download failed for {rel_path} (curl exit code: {})", status);
+                anyhow::bail!("download failed for {rel_path} (curl exit code: {})", status);
             }
 
             // Rename to final path

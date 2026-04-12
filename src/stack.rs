@@ -78,7 +78,7 @@ impl<'a> StackStore<'a> {
     /// The first asset becomes the pick (position 0).
     pub fn create(&self, asset_ids: &[String]) -> Result<Stack> {
         if asset_ids.len() < 2 {
-            anyhow::bail!("A stack requires at least 2 assets");
+            anyhow::bail!("a stack requires at least 2 assets");
         }
 
         // Check none are already stacked
@@ -89,7 +89,7 @@ impl<'a> StackStore<'a> {
                 |row| row.get(0),
             ).ok();
             if let Some(sid) = existing {
-                anyhow::bail!("Asset {id} is already in stack {sid}");
+                anyhow::bail!("asset {id} is already in stack {sid}");
             }
         }
 
@@ -120,7 +120,7 @@ impl<'a> StackStore<'a> {
     /// Returns the number of assets actually added.
     pub fn add(&self, reference_asset_id: &str, new_asset_ids: &[String]) -> Result<u32> {
         let (stack_id, mut members) = self.stack_for_asset(reference_asset_id)?
-            .ok_or_else(|| anyhow::anyhow!("Asset {reference_asset_id} is not in a stack"))?;
+            .ok_or_else(|| anyhow::anyhow!("asset {reference_asset_id} is not in a stack"))?;
 
         let mut added = 0u32;
         for id in new_asset_ids {
@@ -189,10 +189,10 @@ impl<'a> StackStore<'a> {
     /// Set the pick of a stack (move this asset to position 0).
     pub fn set_pick(&self, asset_id: &str) -> Result<()> {
         let (stack_id, members) = self.stack_for_asset(asset_id)?
-            .ok_or_else(|| anyhow::anyhow!("Asset {asset_id} is not in a stack"))?;
+            .ok_or_else(|| anyhow::anyhow!("asset {asset_id} is not in a stack"))?;
 
         let current_pos = members.iter().position(|id| id == asset_id)
-            .ok_or_else(|| anyhow::anyhow!("Asset {asset_id} not found in stack members"))?;
+            .ok_or_else(|| anyhow::anyhow!("asset {asset_id} not found in stack members"))?;
 
         if current_pos == 0 {
             return Ok(()); // Already the pick
@@ -215,7 +215,7 @@ impl<'a> StackStore<'a> {
     /// Dissolve an entire stack (unstack all members).
     pub fn dissolve(&self, asset_id: &str) -> Result<()> {
         let (stack_id, _) = self.stack_for_asset(asset_id)?
-            .ok_or_else(|| anyhow::anyhow!("Asset {asset_id} is not in a stack"))?;
+            .ok_or_else(|| anyhow::anyhow!("asset {asset_id} is not in a stack"))?;
 
         self.conn.execute(
             "UPDATE assets SET stack_id = NULL, stack_position = NULL WHERE stack_id = ?1",
@@ -316,9 +316,9 @@ impl<'a> StackStore<'a> {
         let mut rows = stmt.query([])?;
         while let Some(row) = rows.next()? {
             let id_str: String = row.get(0)?;
-            let id: Uuid = id_str.parse().map_err(|e| anyhow::anyhow!("Invalid UUID: {e}"))?;
+            let id: Uuid = id_str.parse().map_err(|e| anyhow::anyhow!("invalid UUID: {e}"))?;
             let created_at_str: String = row.get(1)?;
-            let created_at: DateTime<Utc> = created_at_str.parse().map_err(|e| anyhow::anyhow!("Invalid date: {e}"))?;
+            let created_at: DateTime<Utc> = created_at_str.parse().map_err(|e| anyhow::anyhow!("invalid date: {e}"))?;
             let asset_ids = self.ordered_members(&id_str)?;
             stacks.push(Stack {
                 id,

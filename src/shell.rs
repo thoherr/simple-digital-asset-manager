@@ -573,12 +573,12 @@ fn handle_line(
     if let Some(rest) = parse_variable_assignment(line) {
         let (var_name, command_part) = rest;
         if command_part.is_empty() {
-            return LineResult::Err(anyhow::anyhow!("No command after variable assignment"));
+            return LineResult::Err(anyhow::anyhow!("no command after variable assignment"));
         }
 
         let tokens = match shell_split(&command_part) {
             Some(t) => t,
-            None => return LineResult::Err(anyhow::anyhow!("Unmatched quote in command")),
+            None => return LineResult::Err(anyhow::anyhow!("unmatched quote in command")),
         };
 
         // Check if it's just `$name = _` or `$name = $other` — copy variable contents
@@ -837,7 +837,7 @@ fn handle_line(
     // Shell-split the line into tokens (before variable expansion)
     let tokens = match shell_split(line) {
         Some(t) => t,
-        None => return LineResult::Err(anyhow::anyhow!("Unmatched quote in command")),
+        None => return LineResult::Err(anyhow::anyhow!("unmatched quote in command")),
     };
 
     // Expand variables: extract $name/_ references and collect their IDs

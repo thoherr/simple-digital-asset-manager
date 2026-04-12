@@ -34,7 +34,7 @@ fn resolve_best_variant_idx(
     stored_hash.as_ref()
         .and_then(|h| variants.iter().position(|v| &v.content_hash == h))
         .or_else(|| crate::models::variant::best_preview_index_details(variants))
-        .ok_or_else(|| anyhow::anyhow!("Asset has no variants"))
+        .ok_or_else(|| anyhow::anyhow!("asset has no variants"))
 }
 
 /// Resolve `similar:` filter: look up embedding, search index, return matching IDs with scores.
@@ -50,7 +50,7 @@ fn resolve_similar_filter(
     if let Some(ref similar_ref) = parsed.similar {
         let full_id = catalog
             .resolve_asset_id(similar_ref)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{similar_ref}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{similar_ref}'"))?;
         let model_id = &state.ai_config.model;
         let spec = crate::ai::get_model_spec(model_id);
         if let Some(spec) = spec {
@@ -850,10 +850,10 @@ pub async fn asset_page(
 
         let full_id = catalog
             .resolve_asset_id(&asset_id)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
         let details = catalog
             .load_asset_details(&full_id)?
-            .ok_or_else(|| anyhow::anyhow!("Asset '{full_id}' not found in catalog"))?;
+            .ok_or_else(|| anyhow::anyhow!("asset '{full_id}' not found in catalog"))?;
 
         let preview_gen = state.preview_generator();
         let best_hash = resolve_best_variant_idx(&catalog, &full_id, &details.variants)
@@ -962,7 +962,7 @@ pub async fn asset_page(
         Ok(Ok(html)) => Html(html).into_response(),
         Ok(Err(e)) => {
             let msg = format!("{e:#}");
-            if msg.contains("No asset found") {
+            if msg.contains("no asset found") {
                 (
                     StatusCode::NOT_FOUND,
                     Html(format!("<h1>Not Found</h1><p>{msg}</p>")),
@@ -1103,7 +1103,7 @@ pub async fn rename_tag_api(
         let old_storage = crate::tag_util::tag_input_to_storage(&req.old_tag);
         let new_storage = crate::tag_util::tag_input_to_storage(&req.new_tag);
         if new_storage.is_empty() {
-            anyhow::bail!("New tag name cannot be empty");
+            anyhow::bail!("new tag name cannot be empty");
         }
         let engine = state.query_engine();
         let result = engine.tag_rename(&old_storage, &new_storage, req.apply, |_, _| {})?;
@@ -2118,9 +2118,9 @@ pub async fn set_variant_role(
     let result = tokio::task::spawn_blocking(move || {
         let engine = state.query_engine();
         let content_hash = body.get("content_hash").and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing content_hash"))?;
+            .ok_or_else(|| anyhow::anyhow!("missing content_hash"))?;
         let role = body.get("role").and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing role"))?;
+            .ok_or_else(|| anyhow::anyhow!("missing role"))?;
         engine.set_variant_role(&asset_id, content_hash, role)?;
         Ok::<_, anyhow::Error>(serde_json::json!({"ok": true, "role": role}))
     })
@@ -2334,7 +2334,7 @@ pub async fn delete_saved_search(
         let before = file.searches.len();
         file.searches.retain(|s| s.name != name);
         if file.searches.len() == before {
-            anyhow::bail!("No saved search named '{name}'");
+            anyhow::bail!("no saved search named '{name}'");
         }
         crate::saved_search::save(&state.catalog_root, &file)?;
         Ok::<_, anyhow::Error>(serde_json::json!({"status": "deleted", "name": name}))
@@ -2392,7 +2392,7 @@ pub async fn create_collection_api(
     let result = tokio::task::spawn_blocking(move || {
         let name = req.name.trim().to_string();
         if name.is_empty() {
-            anyhow::bail!("Collection name cannot be empty");
+            anyhow::bail!("collection name cannot be empty");
         }
         let description = req.description.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty());
         let catalog = state.catalog()?;
@@ -2652,7 +2652,7 @@ pub async fn add_to_stack(
         let catalog = state.catalog()?;
         let ref_full = catalog
             .resolve_asset_id(&reference_id)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{reference_id}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{reference_id}'"))?;
         let store = crate::stack::StackStore::new(catalog.conn());
         let added = store.add(&ref_full, &req.asset_ids)?;
         let yaml = store.export_all()?;
@@ -2797,17 +2797,17 @@ pub async fn stack_by_similarity(
         let catalog = state.catalog()?;
         let full_id = catalog
             .resolve_asset_id(&asset_id)?
-            .ok_or_else(|| anyhow::anyhow!("No asset found matching '{asset_id}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
 
         // Check if already stacked
         let store = crate::stack::StackStore::new(catalog.conn());
         if store.stack_for_asset(&full_id)?.is_some() {
-            anyhow::bail!("Asset is already in a stack. Dissolve it first.");
+            anyhow::bail!("asset is already in a stack. Dissolve it first.");
         }
 
         let model_id = &state.ai_config.model;
         let spec = crate::ai::get_model_spec(model_id)
-            .ok_or_else(|| anyhow::anyhow!("AI model not configured"))?;
+            .ok_or_else(|| anyhow::anyhow!("aI model not configured"))?;
 
         let emb_store = crate::embedding_store::EmbeddingStore::new(catalog.conn());
         let query_emb = emb_store
@@ -2834,7 +2834,7 @@ pub async fn stack_by_similarity(
             if let Some(ref idx) = *idx_guard {
                 idx.search(&query_emb, limit, Some(&full_id))
             } else {
-                return Err(anyhow::anyhow!("Embedding index not available"));
+                return Err(anyhow::anyhow!("embedding index not available"));
             }
         };
 
@@ -2849,7 +2849,7 @@ pub async fn stack_by_similarity(
         }
 
         if stack_ids.len() < 2 {
-            anyhow::bail!("No similar assets found above {}% threshold", (threshold * 100.0) as u32);
+            anyhow::bail!("no similar assets found above {}% threshold", (threshold * 100.0) as u32);
         }
 
         let stack = store.create(&stack_ids)?;
@@ -2981,7 +2981,7 @@ pub async fn toggle_saved_search_favorite(
             .searches
             .iter_mut()
             .find(|s| s.name == name)
-            .ok_or_else(|| anyhow::anyhow!("No saved search named '{name}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no saved search named '{name}'"))?;
         entry.favorite = req.favorite;
         crate::saved_search::save(&state.catalog_root, &file)?;
         Ok::<_, anyhow::Error>(serde_json::json!({"status": "updated", "name": name, "favorite": req.favorite}))
@@ -3017,18 +3017,18 @@ pub async fn rename_saved_search(
     let result = tokio::task::spawn_blocking(move || {
         let new_name = req.new_name.trim().to_string();
         if new_name.is_empty() {
-            anyhow::bail!("Name cannot be empty");
+            anyhow::bail!("name cannot be empty");
         }
         let mut file = crate::saved_search::load(&state.catalog_root)?;
         // Check for name collision
         if file.searches.iter().any(|s| s.name == new_name) {
-            anyhow::bail!("A saved search named '{new_name}' already exists");
+            anyhow::bail!("a saved search named '{new_name}' already exists");
         }
         let entry = file
             .searches
             .iter_mut()
             .find(|s| s.name == name)
-            .ok_or_else(|| anyhow::anyhow!("No saved search named '{name}'"))?;
+            .ok_or_else(|| anyhow::anyhow!("no saved search named '{name}'"))?;
         entry.name = new_name.clone();
         crate::saved_search::save(&state.catalog_root, &file)?;
         Ok::<_, anyhow::Error>(serde_json::json!({"status": "renamed", "old_name": name, "new_name": new_name}))
@@ -3706,7 +3706,7 @@ pub async fn dedup_remove_location_api(
             |row| row.get(0),
         )?;
         if location_count <= 1 {
-            anyhow::bail!("Cannot remove the last copy of a file");
+            anyhow::bail!("cannot remove the last copy of a file");
         }
 
         // Resolve volume and check it's online
@@ -3715,16 +3715,16 @@ pub async fn dedup_remove_location_api(
         let vol = volumes
             .iter()
             .find(|v| v.id.to_string() == req.volume_id)
-            .ok_or_else(|| anyhow::anyhow!("Volume not found: {}", req.volume_id))?;
+            .ok_or_else(|| anyhow::anyhow!("volume not found: {}", req.volume_id))?;
         if !vol.is_online {
-            anyhow::bail!("Volume '{}' is offline", vol.label);
+            anyhow::bail!("volume '{}' is offline", vol.label);
         }
 
         // Delete the physical file
         let full_path = vol.mount_point.join(&req.relative_path);
         if full_path.exists() {
             std::fs::remove_file(&full_path).map_err(|e| {
-                anyhow::anyhow!("Failed to delete {}: {e}", full_path.display())
+                anyhow::anyhow!("failed to delete {}: {e}", full_path.display())
             })?;
         }
 
@@ -3735,7 +3735,7 @@ pub async fn dedup_remove_location_api(
         let service = state.asset_service();
         let metadata_store = crate::metadata_store::MetadataStore::new(&state.catalog_root);
         let vol_uuid: uuid::Uuid = req.volume_id.parse().map_err(|e| {
-            anyhow::anyhow!("Invalid volume ID '{}': {e}", req.volume_id)
+            anyhow::anyhow!("invalid volume ID '{}': {e}", req.volume_id)
         })?;
         if let Err(e) = service.remove_sidecar_file_location(
             &metadata_store,
@@ -3883,11 +3883,11 @@ pub async fn register_volume_api(
     let result = tokio::task::spawn_blocking(move || {
         let path = std::path::PathBuf::from(&req.path);
         if !path.exists() {
-            anyhow::bail!("Path does not exist: {}", req.path);
+            anyhow::bail!("path does not exist: {}", req.path);
         }
         let label = req.label.trim().to_string();
         if label.is_empty() {
-            anyhow::bail!("Label cannot be empty");
+            anyhow::bail!("label cannot be empty");
         }
         let purpose = req
             .purpose
@@ -3895,7 +3895,7 @@ pub async fn register_volume_api(
             .filter(|s| !s.is_empty())
             .map(|s| {
                 crate::models::VolumePurpose::parse(s)
-                    .ok_or_else(|| anyhow::anyhow!("Invalid purpose: {s}"))
+                    .ok_or_else(|| anyhow::anyhow!("invalid purpose: {s}"))
             })
             .transpose()?;
         let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
@@ -3937,7 +3937,7 @@ pub async fn rename_volume_api(
     let result = tokio::task::spawn_blocking(move || {
         let label = req.label.trim().to_string();
         if label.is_empty() {
-            anyhow::bail!("Label cannot be empty");
+            anyhow::bail!("label cannot be empty");
         }
         let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
         registry.rename(&id, &label)?;
@@ -3971,7 +3971,7 @@ pub async fn set_volume_purpose_api(
             .filter(|s| !s.is_empty())
             .map(|s| {
                 crate::models::VolumePurpose::parse(s)
-                    .ok_or_else(|| anyhow::anyhow!("Invalid purpose: {s}"))
+                    .ok_or_else(|| anyhow::anyhow!("invalid purpose: {s}"))
             })
             .transpose()?;
         let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
@@ -4106,7 +4106,7 @@ fn run_import(
 
     let import_config = if let Some(ref profile_name) = req.profile {
         config.import.resolve_profile(profile_name)
-            .ok_or_else(|| anyhow::anyhow!("Unknown import profile: {profile_name}"))?
+            .ok_or_else(|| anyhow::anyhow!("unknown import profile: {profile_name}"))?
     } else {
         config.import.clone()
     };
@@ -4130,7 +4130,7 @@ fn run_import(
         }
     }
     if !import_path.exists() {
-        anyhow::bail!("Path does not exist: {}", import_path.display());
+        anyhow::bail!("path does not exist: {}", import_path.display());
     }
 
     let service = state.asset_service();
@@ -4168,7 +4168,7 @@ fn run_import_with_progress(
 
     let import_config = if let Some(ref profile_name) = req.profile {
         config.import.resolve_profile(profile_name)
-            .ok_or_else(|| anyhow::anyhow!("Unknown import profile: {profile_name}"))?
+            .ok_or_else(|| anyhow::anyhow!("unknown import profile: {profile_name}"))?
     } else {
         config.import.clone()
     };
@@ -4190,7 +4190,7 @@ fn run_import_with_progress(
         }
     }
     if !import_path.exists() {
-        anyhow::bail!("Path does not exist: {}", import_path.display());
+        anyhow::bail!("path does not exist: {}", import_path.display());
     }
 
     let service = state.asset_service();
@@ -4353,7 +4353,7 @@ pub async fn compare_page(
         Ok(Ok(html)) => Html(html).into_response(),
         Ok(Err(e)) => {
             let msg = format!("{e:#}");
-            if msg.contains("No asset found") {
+            if msg.contains("no asset found") {
                 (
                     StatusCode::NOT_FOUND,
                     Html(format!("<h1>Not Found</h1><p>{msg}</p><p><a href=\"/\">Back to browse</a></p>")),
@@ -4401,7 +4401,7 @@ pub async fn serve_smart_preview(
         // Look up variant format
         let format = catalog
             .get_variant_format(&content_hash)?
-            .ok_or_else(|| anyhow::anyhow!("Variant not found"))?;
+            .ok_or_else(|| anyhow::anyhow!("variant not found"))?;
 
         // Find an online source file
         let locations = catalog.get_variant_file_locations(&content_hash)?;
@@ -4422,7 +4422,7 @@ pub async fn serve_smart_preview(
                     None
                 }
             })
-            .ok_or_else(|| anyhow::anyhow!("No online source file"))?;
+            .ok_or_else(|| anyhow::anyhow!("no online source file"))?;
 
         // Generate the smart preview
         let preview_gen = state.preview_generator();
@@ -4583,15 +4583,15 @@ pub async fn open_location(
         let vol = volumes
             .iter()
             .find(|v| v.id.to_string() == req.volume_id)
-            .ok_or_else(|| anyhow::anyhow!("Volume not found"))?;
+            .ok_or_else(|| anyhow::anyhow!("volume not found"))?;
 
         if !vol.is_online {
-            anyhow::bail!("Volume '{}' is offline", vol.label);
+            anyhow::bail!("volume '{}' is offline", vol.label);
         }
 
         let full_path = vol.mount_point.join(&req.relative_path);
         if !full_path.exists() {
-            anyhow::bail!("File not found on disk: {}", full_path.display());
+            anyhow::bail!("file not found on disk: {}", full_path.display());
         }
 
         // Platform-specific reveal
@@ -4601,7 +4601,7 @@ pub async fn open_location(
                 .arg("-R")
                 .arg(&full_path)
                 .spawn()
-                .map_err(|e| anyhow::anyhow!("Failed to open Finder: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("failed to open Finder: {e}"))?;
         }
         #[cfg(target_os = "linux")]
         {
@@ -4609,7 +4609,7 @@ pub async fn open_location(
                 std::process::Command::new("xdg-open")
                     .arg(parent)
                     .spawn()
-                    .map_err(|e| anyhow::anyhow!("Failed to open file manager: {e}"))?;
+                    .map_err(|e| anyhow::anyhow!("failed to open file manager: {e}"))?;
             }
         }
         #[cfg(target_os = "windows")]
@@ -4618,11 +4618,11 @@ pub async fn open_location(
                 .arg("/select,")
                 .arg(&full_path)
                 .spawn()
-                .map_err(|e| anyhow::anyhow!("Failed to open Explorer: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("failed to open Explorer: {e}"))?;
         }
         #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
         {
-            anyhow::bail!("Reveal in file manager is not supported on this platform");
+            anyhow::bail!("reveal in file manager is not supported on this platform");
         }
 
         Ok::<_, anyhow::Error>(())
@@ -4648,10 +4648,10 @@ pub async fn open_terminal(
         let vol = volumes
             .iter()
             .find(|v| v.id.to_string() == req.volume_id)
-            .ok_or_else(|| anyhow::anyhow!("Volume not found"))?;
+            .ok_or_else(|| anyhow::anyhow!("volume not found"))?;
 
         if !vol.is_online {
-            anyhow::bail!("Volume '{}' is offline", vol.label);
+            anyhow::bail!("volume '{}' is offline", vol.label);
         }
 
         let full_path = vol.mount_point.join(&req.relative_path);
@@ -4659,11 +4659,11 @@ pub async fn open_terminal(
             full_path
         } else {
             full_path.parent()
-                .ok_or_else(|| anyhow::anyhow!("Cannot determine parent directory"))?
+                .ok_or_else(|| anyhow::anyhow!("cannot determine parent directory"))?
                 .to_path_buf()
         };
         if !dir.exists() {
-            anyhow::bail!("Directory not found on disk: {}", dir.display());
+            anyhow::bail!("directory not found on disk: {}", dir.display());
         }
 
         #[cfg(target_os = "macos")]
@@ -4673,7 +4673,7 @@ pub async fn open_terminal(
                 .arg("Terminal")
                 .arg(&dir)
                 .spawn()
-                .map_err(|e| anyhow::anyhow!("Failed to open Terminal: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("failed to open Terminal: {e}"))?;
         }
         #[cfg(target_os = "linux")]
         {
@@ -4691,7 +4691,7 @@ pub async fn open_terminal(
                 }
             }
             if !launched {
-                anyhow::bail!("No terminal emulator found");
+                anyhow::bail!("no terminal emulator found");
             }
         }
         #[cfg(target_os = "windows")]
@@ -4700,11 +4700,11 @@ pub async fn open_terminal(
                 .args(["/c", "start", "cmd"])
                 .current_dir(&dir)
                 .spawn()
-                .map_err(|e| anyhow::anyhow!("Failed to open command prompt: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("failed to open command prompt: {e}"))?;
         }
         #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
         {
-            anyhow::bail!("Open terminal is not supported on this platform");
+            anyhow::bail!("open terminal is not supported on this platform");
         }
 
         Ok::<_, anyhow::Error>(())
@@ -5740,7 +5740,7 @@ fn stroll_page_inner(
         catalog
             .resolve_asset_id(id_prefix)
             .map_err(|e| format!("{e:#}"))?
-            .ok_or_else(|| format!("No asset found matching '{id_prefix}'"))?
+            .ok_or_else(|| format!("no asset found matching '{id_prefix}'"))?
     } else {
         // Pick a random asset that has an embedding
         let all = emb_store.all_embeddings_for_model(model_id).map_err(|e| format!("{e:#}"))?;

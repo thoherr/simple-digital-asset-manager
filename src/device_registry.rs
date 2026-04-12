@@ -51,7 +51,7 @@ impl DeviceRegistry {
         let mut volumes = self.load()?;
 
         if volumes.iter().any(|v| v.label == label) {
-            anyhow::bail!("A volume with label '{}' already exists", label);
+            anyhow::bail!("a volume with label '{}' already exists", label);
         }
 
         let mut volume = Volume::new(label.to_string(), mount_point.to_path_buf(), volume_type);
@@ -80,7 +80,7 @@ impl DeviceRegistry {
                 self.save(&volumes)?;
                 Ok(result)
             }
-            None => anyhow::bail!("No volume found matching '{}'", label_or_id),
+            None => anyhow::bail!("no volume found matching '{}'", label_or_id),
         }
     }
 
@@ -136,7 +136,7 @@ impl DeviceRegistry {
 
         let labels: Vec<&str> = volumes.iter().map(|v| v.label.as_str()).collect();
         anyhow::bail!(
-            "No volume found matching '{}'. Known volumes: {}",
+            "no volume found matching '{}'. Known volumes: {}",
             label_or_id,
             if labels.is_empty() {
                 "(none)".to_string()
@@ -163,7 +163,7 @@ impl DeviceRegistry {
                 self.save(&volumes)?;
                 Ok(removed)
             }
-            None => anyhow::bail!("No volume found matching '{}'", label_or_id),
+            None => anyhow::bail!("no volume found matching '{}'", label_or_id),
         }
     }
 
@@ -184,7 +184,7 @@ impl DeviceRegistry {
                 self.save(&volumes)?;
                 Ok(())
             }
-            None => anyhow::bail!("No volume found matching '{}'", label_or_id),
+            None => anyhow::bail!("no volume found matching '{}'", label_or_id),
         }
     }
 
@@ -299,7 +299,7 @@ mod tests {
             .unwrap();
 
         let err = registry.resolve_volume("Nonexistent").unwrap_err();
-        assert!(err.to_string().contains("No volume found"));
+        assert!(err.to_string().contains("no volume found"));
     }
 
     #[test]
@@ -403,7 +403,7 @@ mod tests {
         let err = registry
             .set_purpose("Nonexistent", Some(VolumePurpose::Working))
             .unwrap_err();
-        assert!(err.to_string().contains("No volume found"));
+        assert!(err.to_string().contains("no volume found"));
     }
 
     #[test]
