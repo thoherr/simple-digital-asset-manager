@@ -269,10 +269,7 @@
         renameResultEl.textContent = '';
     });
     renameNewEl.addEventListener('blur', function() {
-        setTimeout(function() { renameAc.style.display = 'none'; }, 150);
-    });
-    renameNewEl.addEventListener('focus', function() {
-        if (this.value.trim().length >= 2) showRenameAc(this.value.trim());
+        setTimeout(function() { renameAc.style.display = 'none'; renameAcIndex = -1; }, 150);
     });
 
     document.querySelectorAll('.tag-rename-btn').forEach(function(btn) {
@@ -349,8 +346,9 @@
     renamePreviewBtn.addEventListener('click', function() { doRename(false); });
     renameApplyBtn.addEventListener('click', function() { doRename(true); });
     renameNewEl.addEventListener('keydown', function(e) {
-        var items = renameAc.querySelectorAll('.tag-suggestion');
-        if (renameAc.style.display !== 'none' && items.length > 0) {
+        var acOpen = renameAc.style.display !== 'none';
+        var items = acOpen ? renameAc.querySelectorAll('.tag-suggestion') : [];
+        if (acOpen && items.length > 0) {
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 renameAcIndex = Math.min(renameAcIndex + 1, items.length - 1);
@@ -372,13 +370,20 @@
                 renameResultEl.textContent = '';
                 return;
             }
-            if (e.key === 'Escape') {
-                renameAc.style.display = 'none';
-                renameAcIndex = -1;
-                return;
-            }
         }
-        if (e.key === 'Enter') { e.preventDefault(); doRename(!renameApplyBtn.disabled); }
+        // Escape always closes the autocomplete (even with no selection)
+        if (e.key === 'Escape' && acOpen) {
+            renameAc.style.display = 'none';
+            renameAcIndex = -1;
+            return;
+        }
+        // Enter: close autocomplete first, then preview/apply
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            renameAc.style.display = 'none';
+            renameAcIndex = -1;
+            doRename(!renameApplyBtn.disabled);
+        }
     });
 })();
 </script>
