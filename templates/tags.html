@@ -230,7 +230,7 @@
         var q = query.toLowerCase();
         var matches = allTagNames.filter(function(t) {
             return t.toLowerCase().indexOf(q) !== -1 && t !== query;
-        }).slice(0, 8);
+        }).slice(0, 30);
         if (matches.length === 0) { renameAc.style.display = 'none'; renameAcIndex = -1; return; }
         renameAc.innerHTML = '';
         renameAcIndex = -1;
@@ -377,11 +377,16 @@
             renameAcIndex = -1;
             return;
         }
-        // Enter: close autocomplete first, then preview/apply
-        if (e.key === 'Enter') {
+        // Enter: if autocomplete is open, just close it (next Enter will preview/apply)
+        if (e.key === 'Enter' && acOpen) {
             e.preventDefault();
             renameAc.style.display = 'none';
             renameAcIndex = -1;
+            return;
+        }
+        // Enter with autocomplete closed: preview/apply
+        if (e.key === 'Enter') {
+            e.preventDefault();
             doRename(!renameApplyBtn.disabled);
         }
     });
