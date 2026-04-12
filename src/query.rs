@@ -1,3 +1,31 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// query.rs — Search parsing, query engine, and asset mutation operations
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Table of Contents:
+//   1. IMPORTS .......................... use declarations
+//   2. DATE PARSING ..................... parse_date_input
+//   3. PARSED SEARCH .................... ParsedSearch struct, merge, to_search_options
+//   4. QUERY TOKENIZER .................. tokenize_query
+//   5. SEARCH PARSER .................... parse_search_query (filter:value dispatch)
+//   6. NUMERIC FILTER ................... NumericFilter enum, parse_numeric_filter
+//   7. FREE FUNCTIONS ................... stem_prefix_matches, find_session_root
+//   8. RESULT TYPES ..................... GroupResult, SplitResult, EditFields, etc.
+//   9. PATH NORMALIZATION ............... normalize_path_for_search, clean_path
+//  10. QUERY ENGINE STRUCT .............. BatchContext, QueryEngine
+//  11. SEARCH & SHOW .................... search, show, resolve_scope
+//  12. GROUP & SPLIT .................... group, group_by_asset_ids, split, auto_group
+//  13. TAG OPERATIONS ................... tag, tag_rename
+//  14. METADATA REIMPORT ................ reimport_metadata, reimport_exif_only
+//  15. EDIT & SET FIELDS ................ edit, set_name, set_date, set_rating, etc.
+//  16. XMP WRITEBACK .................... write_back_*_to_xmp, writeback, writeback_process
+//  17. STACK FROM TAG ................... stack_from_tag
+//  18. BATCH METHODS .................... batch_tag, batch_set_rating, batch_set_color_label
+//  19. TESTS ............................ Unit and integration tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══ IMPORTS ═══
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -12,6 +40,8 @@ use crate::models::volume::Volume;
 use crate::models::recipe::Recipe;
 use crate::models::Asset;
 use crate::xmp_reader;
+
+// ═══ DATE PARSING ═══
 
 /// Parse a flexible date input string into a `DateTime<Utc>`.
 ///
@@ -76,6 +106,8 @@ pub fn parse_date_input(s: &str) -> Result<DateTime<Utc>> {
 /// - **Comma within a value** = OR: `tag:alice,bob` (either tag matches)
 /// - **`-` prefix** = negation: `-tag:rejected` excludes matching assets
 #[derive(Debug, Default)]
+// ═══ PARSED SEARCH ═══
+
 pub struct ParsedSearch {
     pub text: Option<String>,
     pub text_exclude: Vec<String>,
@@ -270,6 +302,8 @@ impl ParsedSearch {
     }
 }
 
+// ═══ QUERY TOKENIZER ═══
+
 /// Tokenize a search query respecting double-quoted values.
 ///
 /// Splits on whitespace, but `prefix:"multi word value"` stays as a single token
@@ -321,6 +355,8 @@ fn tokenize_query(query: &str) -> Vec<String> {
 
     tokens
 }
+
+// ═══ SEARCH PARSER ═══
 
 /// Parse a search query string into structured filters.
 ///
@@ -595,6 +631,8 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
 /// Parse an integer range value: "3200" (exact), "3200+" (min), "100-800" (range).
 /// Unified numeric filter supporting exact, minimum, range, and OR values.
 ///
+// ═══ NUMERIC FILTER ═══
+
 /// All numeric search filters (rating, iso, focal, f, width, height, copies,
 /// variants, scattered, face_count) use this type for consistent syntax:
 /// `x` (exact), `x+` (minimum), `x-y` (range), `x,y` (OR), `x,y+` (combined).
@@ -677,6 +715,8 @@ pub fn parse_numeric_filter(value: &str) -> Option<NumericFilter> {
     }
 }
 
+// ═══ FREE FUNCTIONS ═══
+
 /// Check if `short` is a prefix-match for `long` with a separator boundary.
 ///
 /// Returns true if `short == long` (exact match) or if `long` starts with `short`
@@ -739,6 +779,8 @@ fn find_session_root(dir: &str, session_root_pattern: &str) -> String {
         }
     }
 }
+
+// ═══ RESULT TYPES ═══
 
 /// Result of a group operation.
 #[derive(Debug)]
@@ -874,6 +916,8 @@ pub struct WritebackResult {
     pub dry_run: bool,
 }
 
+// ═══ PATH NORMALIZATION ═══
+
 /// Resolve and normalize a `path:` filter value for search.
 ///
 /// When `cwd` is provided (CLI context):
@@ -977,7 +1021,8 @@ fn clean_path(path: &std::path::Path) -> String {
     result.to_string_lossy().replace('\\', "/")
 }
 
-/// Search and filter assets via the SQLite catalog.
+// ═══ QUERY ENGINE STRUCT ═══
+
 /// Shared context for batch operations — avoids reopening catalog, device
 /// registry, and content store per asset.
 pub struct BatchContext {
@@ -1014,6 +1059,8 @@ impl QueryEngine {
             default_filter,
         }
     }
+
+    // ═══ SEARCH & SHOW ═══
 
     /// Search assets by a free-text query string.
     ///
@@ -1337,6 +1384,8 @@ impl QueryEngine {
         // No scope — process everything
         Ok(None)
     }
+
+    // ═══ GROUP & SPLIT ═══
 
     /// Group variants (identified by content hashes) into a single asset.
     ///
@@ -1959,6 +2008,8 @@ impl QueryEngine {
         })
     }
 
+    // ═══ TAG OPERATIONS ═══
+
     /// Add or remove tags on an asset. Updates both sidecar YAML and SQLite catalog.
     pub fn tag(&self, asset_id_prefix: &str, tags: &[String], remove: bool) -> Result<TagResult> {
         let catalog = Catalog::open(&self.catalog_root)?;
@@ -2224,6 +2275,8 @@ impl QueryEngine {
         Ok(result)
     }
 
+    // ═══ METADATA REIMPORT ═══
+
     /// Clear asset-level metadata and re-extract from variant source files (XMP recipes + embedded XMP).
     /// Returns the updated tags list.
     pub fn reimport_metadata(&self, asset_id_prefix: &str) -> Result<Vec<String>> {
@@ -2426,6 +2479,8 @@ impl QueryEngine {
         Ok(asset.tags.clone())
     }
 
+    // ═══ EDIT & SET FIELDS ═══
+
     /// Edit asset metadata (name, description, rating). Updates both sidecar YAML and SQLite.
     pub fn edit(&self, asset_id_prefix: &str, fields: EditFields) -> Result<EditResult> {
         let catalog = Catalog::open(&self.catalog_root)?;
@@ -2563,6 +2618,8 @@ impl QueryEngine {
 
         Ok(rating)
     }
+
+    // ═══ XMP WRITEBACK ═══
 
     /// Write back a rating change to `.xmp` recipe files on disk.
     ///
@@ -3434,6 +3491,8 @@ impl QueryEngine {
         Ok(result)
     }
 
+    // ═══ STACK FROM TAG ═══
+
     /// Convert tags matching a pattern into stacks.
     /// Pattern uses `{}` as a wildcard placeholder (e.g. `"Aperture Stack {}"`).
     /// Default is report-only (dry run); pass `apply=true` to execute.
@@ -3550,7 +3609,7 @@ impl QueryEngine {
         Ok(result)
     }
 
-    // --- Batch methods (shared catalog/registry/content_store) ---
+    // ═══ BATCH METHODS ═══
 
     /// Load online volume mount points. Returns empty map if no volumes registered.
     fn load_online_volumes(catalog_root: &Path) -> HashMap<uuid::Uuid, PathBuf> {
@@ -3619,6 +3678,8 @@ impl QueryEngine {
         asset_ids.iter().map(|id| self.set_color_label_inner(&ctx, id, label.clone())).collect()
     }
 }
+
+// ═══ TESTS ═══
 
 #[cfg(test)]
 mod tests {

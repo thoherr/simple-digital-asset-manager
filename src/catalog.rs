@@ -1,3 +1,35 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// catalog.rs — SQLite catalog (derived cache of sidecar data)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Table of Contents:
+//   1. IMPORTS .......................... use declarations
+//   2. TYPES & STRUCTS .................. MapMarker, FacetCounts, SearchRow, AssetDetails, etc.
+//   3. SEARCH OPTIONS ................... SearchSort, SearchOptions, SearchPage
+//   4. HELPER FUNCTIONS ................. path_pattern_to_like, next_date_bound
+//   5. CATALOG STRUCT & CONNECTION ...... Catalog, open, open_fast, open_and_migrate
+//   6. SCHEMA MIGRATIONS ................ run_migrations, initialize
+//   7. ASSET CRUD ....................... insert_asset, update_asset_*, delete_asset
+//   8. VARIANT & LOCATION CRUD .......... insert_variant, insert_file_location, etc.
+//   9. RECIPE CRUD ...................... insert_recipe, update_recipe_*, writeback
+//  10. VOLUME OPERATIONS ................ ensure_volume, delete_volume, bulk_move_*
+//  11. ASSET LOOKUPS .................... search_assets, resolve_asset_id, load_asset_details
+//  12. DUPLICATES ....................... find_duplicates, find_duplicates_filtered
+//  13. LOCATION & RECIPE QUERIES ........ find_variant_by_volume, list_recipes_*, etc.
+//  14. REBUILD .......................... rebuild (drop + recreate)
+//  15. STATS ............................ stats_overview, stats_per_volume, build_stats
+//  16. SEARCH BUILDER ................... rating_clause, numeric_clause, build_search_where
+//  17. SEARCH EXECUTION ................. search_paginated, search_count, get_search_row
+//  18. CALENDAR & FACETS ................ calendar_counts, facet_counts, map_markers
+//  19. TAG & FORMAT QUERIES ............. list_all_tags, assets_with_tag, list_all_formats
+//  20. ANALYTICS ........................ build_analytics
+//  21. BACKUP STATUS .................... backup_status_overview, at_risk, missing_from_volume
+//  22. CLEANUP QUERIES .................. count_file_locations, list_orphaned_asset_ids, etc.
+//  23. TESTS ............................ Unit tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══ IMPORTS ═══
+
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -7,6 +39,8 @@ use rusqlite::Connection;
 use crate::query::NumericFilter;
 
 use crate::models::{Asset, FileLocation, Recipe, Variant};
+
+// ═══ TYPES & STRUCTS ═══
 
 /// Map marker data for the web UI map view.
 #[derive(Debug, serde::Serialize)]
@@ -374,6 +408,8 @@ pub struct VolumeGapDetail {
     pub coverage_pct: f64,
 }
 
+// ═══ SEARCH OPTIONS ═══
+
 /// Sort order for paginated search.
 #[derive(Debug, Clone, Copy)]
 pub enum SearchSort {
@@ -561,6 +597,8 @@ pub struct SearchPage {
     pub total_pages: u32,
 }
 
+// ═══ HELPER FUNCTIONS ═══
+
 /// Convert an inclusive date bound to an exclusive upper bound.
 ///
 /// - `"2026-02-25"` → `"2026-02-26"` (next day)
@@ -633,6 +671,8 @@ fn next_date_bound(s: &str) -> String {
 
 /// Current schema version. Bump this whenever `run_migrations()` changes.
 pub const SCHEMA_VERSION: u32 = 5;
+
+// ═══ CATALOG STRUCT & CONNECTION ═══
 
 /// SQLite-backed local catalog for fast queries. This is a derived cache,
 /// not the source of truth (sidecar files are).
@@ -774,6 +814,8 @@ impl Catalog {
     pub fn conn(&self) -> &Connection {
         &self.conn
     }
+
+    // ═══ SCHEMA MIGRATIONS ═══
 
     /// Run schema migrations, skipping work that is already done.
     ///
@@ -1024,6 +1066,8 @@ impl Catalog {
         Ok(())
     }
 
+    // ═══ ASSET CRUD ═══
+
     /// Insert an asset into the catalog.
     pub fn insert_asset(&self, asset: &Asset) -> Result<()> {
         let tags_json = serde_json::to_string(&asset.tags)?;
@@ -1191,6 +1235,8 @@ impl Catalog {
         Ok(())
     }
 
+    // ═══ VARIANT & LOCATION CRUD ═══
+
     /// Insert a variant into the catalog.
     pub fn insert_variant(&self, variant: &Variant) -> Result<()> {
         let meta = &variant.source_metadata;
@@ -1276,6 +1322,8 @@ impl Catalog {
         Ok(results)
     }
 
+    // ═══ RECIPE CRUD ═══
+
     /// Insert a recipe into the catalog.
     pub fn insert_recipe(&self, recipe: &Recipe) -> Result<()> {
         self.conn.execute(
@@ -1293,6 +1341,8 @@ impl Catalog {
         )?;
         Ok(())
     }
+
+    // ═══ VOLUME OPERATIONS ═══
 
     /// Ensure a volume record exists in the SQLite cache.
     pub fn ensure_volume(&self, volume: &crate::models::Volume) -> Result<()> {
@@ -1496,6 +1546,8 @@ impl Catalog {
         let conn = Connection::open_in_memory()?;
         Ok(Self { conn })
     }
+
+    // ═══ ASSET LOOKUPS ═══
 
     /// Search assets by optional filters. Results join assets with variants.
     pub fn search_assets(
@@ -1833,6 +1885,8 @@ impl Catalog {
         Ok(entries)
     }
 
+    // ═══ DUPLICATES ═══
+
     /// Find variants that have more than one file location (duplicates).
     pub fn find_duplicates(&self) -> Result<Vec<DuplicateEntry>> {
         self.load_duplicate_entries(
@@ -2063,6 +2117,8 @@ impl Catalog {
         }
         Ok(None)
     }
+
+    // ═══ LOCATION & RECIPE QUERIES ═══
 
     /// Check if a recipe with the given content hash exists.
     pub fn has_recipe_by_content_hash(&self, content_hash: &str) -> Result<bool> {
@@ -2370,6 +2426,8 @@ impl Catalog {
         Ok(ids)
     }
 
+    // ═══ REBUILD ═══
+
     /// Drop and recreate data tables (assets, variants, file_locations, recipes).
     /// Keeps the volumes table intact. Ensures the schema is up to date.
     pub fn rebuild(&self) -> Result<()> {
@@ -2636,7 +2694,7 @@ impl Catalog {
         Ok(())
     }
 
-    // ── Stats queries ──────────────────────────────────────────────
+    // ═══ STATS ═══
 
     /// Core overview counts: (assets, variants, recipes, total_size).
     pub fn stats_overview(&self) -> Result<(u64, u64, u64, u64, u64)> {
@@ -2696,6 +2754,8 @@ impl Catalog {
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
     }
+
+    // ═══ SEARCH BUILDER ═══
 
     /// Build the WHERE clause and parameters for search queries.
     /// Returns (where_clause, params, needs_fl_join, needs_v_join).
@@ -3482,6 +3542,8 @@ impl Catalog {
         }
     }
 
+    // ═══ SEARCH EXECUTION ═══
+
     /// Paginated search with dynamic filters and sorting.
     /// Uses a separate COUNT query + paginated data query (faster than COUNT(*) OVER()
     /// which forces SQLite to materialize the entire result set).
@@ -3697,6 +3759,8 @@ impl Catalog {
         let count: u64 = self.conn.query_row(&sql, param_refs.as_slice(), |r| r.get(0))?;
         Ok(count)
     }
+
+    // ═══ CALENDAR & FACETS ═══
 
     /// Get asset counts per day for a given year, respecting search filters.
     ///
@@ -4057,6 +4121,8 @@ impl Catalog {
         }
         Ok((markers, total))
     }
+
+    // ═══ TAG & FORMAT QUERIES ═══
 
     /// List all unique tags with their usage counts, sorted by count descending.
     pub fn list_all_tags(&self) -> Result<Vec<(String, u64)>> {
@@ -4576,6 +4642,8 @@ impl Catalog {
         })
     }
 
+    // ═══ ANALYTICS ═══
+
     /// Build analytics data for the dashboard page.
     pub fn build_analytics(&self, limit: usize) -> Result<AnalyticsData> {
         // Camera usage (top N)
@@ -4682,6 +4750,8 @@ impl Catalog {
             yearly_counts,
         })
     }
+
+    // ═══ BACKUP STATUS ═══
 
     /// Build a backup-status overview for the given scope of assets.
     ///
@@ -4982,6 +5052,8 @@ impl Catalog {
         Ok(ids)
     }
 
+    // ═══ CLEANUP QUERIES ═══
+
     /// Return asset IDs where all variants have zero file_locations.
     /// Find asset IDs that have at least one file location with stale or missing verification.
     /// Used by verify --max-age to skip loading sidecars for fully-verified assets.
@@ -5255,6 +5327,8 @@ impl Catalog {
         Ok(ids)
     }
 }
+
+// ═══ TESTS ═══
 
 #[cfg(test)]
 mod tests {

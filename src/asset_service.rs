@@ -1,3 +1,30 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// asset_service.rs — Core asset lifecycle operations
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Table of Contents:
+//   1. IMPORTS & CONSTANTS .............. File type groups, use declarations
+//   2. FILE TYPE FILTER ................. FileTypeFilter struct & impl
+//   3. RESULT TYPES ..................... FileStatus, ImportResult, RelocateResult, etc.
+//   4. ASSET SERVICE STRUCT ............. AssetService + scan_orphaned_sharded_files
+//   5. IMPORT ........................... import, import_with_callback
+//   6. RELOCATE & UPDATE LOCATION ....... relocate, update_location
+//   7. VERIFY ........................... verify, verify_location
+//   8. SYNC ............................. sync (reconcile catalog with disk)
+//   9. CLEANUP & DELETE ................. cleanup, delete_assets
+//  10. VOLUME OPERATIONS ................ remove_volume, combine_volume, split_volume
+//  11. DEDUP ............................ dedup (same-volume duplicate removal)
+//  12. REFRESH & SYNC METADATA .......... refresh, sync_metadata
+//  13. FIX COMMANDS ..................... fix_roles, fix_dates, fix_recipes
+//  14. EXPORT ........................... build_export_plan, export, export_zip
+//  15. AI & FACES ....................... auto_tag, detect_faces, describe (feature-gated)
+//  16. VIDEO METADATA ................... backfill_video_metadata
+//  17. FREE FUNCTIONS ................... compute_prefixes, apply_xmp_data, helpers
+//  18. TESTS ............................ Unit and integration tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══ IMPORTS & CONSTANTS ═══
+
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -12,6 +39,8 @@ use crate::metadata_store::MetadataStore;
 use crate::models::{
     Asset, AssetType, FileLocation, Recipe, RecipeType, Variant, VariantRole, Volume,
 };
+
+// ═══ FILE TYPE FILTER ═══
 
 /// File type group definitions: (name, extensions, default_on).
 const GROUPS: &[(&str, &[&str], bool)] = &[
@@ -149,6 +178,8 @@ impl Default for FileTypeFilter {
 }
 
 /// Status of a single file during import.
+// ═══ RESULT TYPES ═══
+
 pub enum FileStatus {
     Imported,
     LocationAdded,
@@ -613,6 +644,8 @@ fn file_mtime(path: &Path) -> Option<chrono::DateTime<chrono::Utc>> {
 }
 
 /// High-level operations that orchestrate the other components.
+// ═══ ASSET SERVICE STRUCT ═══
+
 pub struct AssetService {
     catalog_root: PathBuf,
     verbosity: crate::Verbosity,
@@ -679,6 +712,8 @@ impl AssetService {
             preview_config: preview_config.clone(),
         }
     }
+
+    // ═══ IMPORT ═══
 
     /// Import files: hash, deduplicate, create assets/variants, write sidecars, insert into DB.
     pub fn import(
@@ -1363,6 +1398,8 @@ impl AssetService {
         })
     }
 
+    // ═══ RELOCATE & UPDATE LOCATION ═══
+
     /// Relocate all files of an asset to a target volume.
     ///
     /// Copies variant files and recipe files, verifies integrity, updates metadata.
@@ -1877,6 +1914,8 @@ impl AssetService {
             );
         }
     }
+
+    // ═══ VERIFY ═══
 
     /// Verify file integrity by re-hashing files and comparing against stored content hashes.
     ///
@@ -2393,6 +2432,8 @@ impl AssetService {
         Ok(())
     }
 
+    // ═══ SYNC ═══
+
     /// Scan directories and reconcile the catalog with disk reality.
     ///
     /// Detects moved files, new files, modified recipes, and missing files.
@@ -2859,6 +2900,8 @@ impl AssetService {
         }
         Ok(())
     }
+
+    // ═══ CLEANUP & DELETE ═══
 
     /// Scan all file locations and recipes across online volumes, checking for files
     /// that no longer exist on disk. Optionally remove stale records.
@@ -3481,6 +3524,8 @@ impl AssetService {
         Ok(result)
     }
 
+    // ═══ VOLUME OPERATIONS ═══
+
     /// Remove a volume and all its associated data (locations, recipes, orphaned assets/previews).
     /// Report-only by default; `--apply` executes removal.
     pub fn remove_volume(
@@ -4026,6 +4071,8 @@ impl AssetService {
         Ok(result)
     }
 
+    // ═══ DEDUP ═══
+
     /// Remove same-volume duplicate file locations.
     ///
     /// For each variant with 2+ locations on the same volume, keeps the "best"
@@ -4278,6 +4325,8 @@ impl AssetService {
 
         Ok(result)
     }
+
+    // ═══ REFRESH & SYNC METADATA ═══
 
     /// Re-read metadata from changed recipe/sidecar files, and optionally
     /// re-extract embedded XMP from JPEG/TIFF media files (`--media`).
@@ -4844,6 +4893,8 @@ impl AssetService {
         Ok(result)
     }
 
+    // ═══ FIX COMMANDS ═══
+
     /// Fix variant roles: re-role non-RAW variants to Export in assets that have a RAW variant.
     pub fn fix_roles(
         &self,
@@ -5391,6 +5442,8 @@ impl AssetService {
         Ok(result)
     }
 
+    // ═══ EXPORT ═══
+
     /// Export files matching a search query to a target directory.
     ///
     /// Searches the catalog, resolves file locations on online volumes, and copies
@@ -5851,6 +5904,8 @@ impl AssetService {
         Ok(result)
     }
 
+    // ═══ AI & FACES ═══
+
     /// Auto-tag assets using SigLIP zero-shot classification.
     #[cfg(feature = "ai")]
     pub fn auto_tag(
@@ -6244,6 +6299,8 @@ impl AssetService {
         Ok(result)
     }
 
+    // ═══ VIDEO METADATA ═══
+
     /// Backfill video metadata (duration, codec, resolution, framerate) via ffprobe.
     ///
     /// Updates variant source_metadata in both the YAML sidecar and SQLite catalog.
@@ -6629,6 +6686,8 @@ impl AssetService {
     }
 }
 
+// ═══ FREE FUNCTIONS ═══
+
 /// Compute directory prefixes from scanned paths relative to the volume mount point.
 fn compute_prefixes(paths: &[PathBuf], mount_point: &Path) -> Vec<String> {
     let mut prefixes = Vec::new();
@@ -6970,6 +7029,8 @@ fn is_excluded_name(name: &str, patterns: &[String]) -> bool {
     }
     false
 }
+
+// ═══ TESTS ═══
 
 #[cfg(test)]
 mod tests {
