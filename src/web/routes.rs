@@ -130,51 +130,27 @@ pub async fn browse_page(
     let result = tokio::task::spawn_blocking(move || {
         let catalog = state.catalog()?;
 
-        let query = params.q.as_deref().unwrap_or("");
-        let asset_type = params.asset_type.as_deref().unwrap_or("");
-        let tag = params.tag.as_deref().unwrap_or("");
-        let format = params.format.as_deref().unwrap_or("");
-        let volume = params.volume.as_deref().unwrap_or("");
-        let rating_str = params.rating.as_deref().unwrap_or("");
-        let label_str = params.label.as_deref().unwrap_or("");
-        let sort_str = params.sort.as_deref().unwrap_or("date_desc");
-        let page = params.page.unwrap_or(1).max(1);
-
-        let collection_str = params.collection.as_deref().unwrap_or("");
-        let path_str = params.path.as_deref().unwrap_or("");
-        let person_str = params.person.as_deref().unwrap_or("");
-        let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
-
-        let nodefault = params.nodefault.as_deref() == Some("1");
-        let mut parsed = merge_search_params(query, asset_type, tag, format, rating_str, label_str);
-        apply_default_filter(&mut parsed, &state.default_filter, nodefault);
-
-        // Normalize absolute path → volume-relative + implicit volume filter
-        let path_volume_id = if !path_str.is_empty() {
-            let registry = DeviceRegistry::new(&state.catalog_root);
-            let vols = registry.list().unwrap_or_default();
-            let (normalized, vol_id) = normalize_path_for_search(path_str, &vols, None);
-            if !normalized.is_empty() {
-                parsed.path_prefixes.push(normalized);
-            }
-            vol_id
-        } else {
-            None
-        };
-
-        // Push collection from dropdown into parsed struct
-        if !collection_str.is_empty() {
-            parsed.collections.push(collection_str.to_string());
-        }
-
-        // Push person from dropdown into parsed struct
-        if !person_str.is_empty() {
-            parsed.persons.push(person_str.to_string());
-        }
+        let bf = build_parsed_search(&params, &state);
+        let parsed = bf.parsed;
+        let volume = bf.volume;
+        let path_volume_id = bf.path_volume_id;
+        let sort_str = bf.sort_str;
+        let page = bf.page;
+        let collapse_stacks = bf.collapse_stacks;
+        let query = bf.query;
+        let asset_type = bf.asset_type;
+        let tag = bf.tag;
+        let format_filter = bf.format_filter;
+        let rating_str = bf.rating;
+        let label_str = bf.label;
+        let collection_str = bf.collection;
+        let path_str = bf.path;
+        let person_str = bf.person;
+        let nodefault = bf.nodefault;
 
         let mut opts = parsed.to_search_options();
         if !volume.is_empty() {
-            opts.volume = Some(volume);
+            opts.volume = Some(&volume);
         }
         if let Some(ref vid) = path_volume_id {
             if opts.volume.is_none() {
@@ -306,7 +282,7 @@ pub async fn browse_page(
         // Similarity results are bounded by the embedding search limit (not paginated),
         // so fetch them all on one page to allow correct client-side sorting.
         let per_page = if has_similarity { u32::MAX } else { state.per_page };
-        let effective_sort = if has_similarity && params.sort.is_none() { "similarity_desc" } else { sort_str };
+        let effective_sort = if has_similarity && params.sort.is_none() { "similarity_desc" } else { &sort_str };
         opts.sort = SearchSort::from_str(effective_sort);
         opts.page = if has_similarity { 1 } else { page };
         opts.per_page = per_page;
@@ -343,7 +319,7 @@ pub async fn browse_page(
                 query: query.to_string(),
                 asset_type: asset_type.to_string(),
                 tag: tag.to_string(),
-                format_filter: format.to_string(),
+                format_filter: format_filter.to_string(),
                 volume: volume.to_string(),
                 rating: rating_str.to_string(),
                 label: label_str.to_string(),
@@ -401,7 +377,7 @@ pub async fn browse_page(
             query: query.to_string(),
             asset_type: asset_type.to_string(),
             tag: tag.to_string(),
-            format_filter: format.to_string(),
+            format_filter: format_filter.to_string(),
             volume: volume.to_string(),
             rating: rating_str.to_string(),
             label: label_str.to_string(),
@@ -1455,8 +1431,99 @@ fn build_format_groups(format_counts: Vec<(String, u64)>) -> Vec<FormatGroup> {
         .collect()
 }
 
-/// Parse the `q` param through `parse_search_query` and overlay explicit dropdown params.
-/// Returns a `ParsedSearch` (owned) that can be converted to `SearchOptions` by the caller.
+/// Shared result from `build_parsed_search` — holds the parsed query and
+/// extracted filter state that every browse/search/calendar/map handler needs.
+struct BrowseFilters {
+    parsed: ParsedSearch,
+    // Raw param values for template rendering (display current filter state)
+    query: String,
+    asset_type: String,
+    tag: String,
+    format_filter: String,
+    volume: String,
+    rating: String,
+    label: String,
+    collection: String,
+    path: String,
+    person: String,
+    path_volume_id: Option<String>,
+    sort_str: String,
+    page: u32,
+    collapse_stacks: bool,
+    nodefault: bool,
+}
+
+/// Extract and merge all browse filter parameters from URL query params.
+/// This is the single source of truth for how SearchParams → ParsedSearch
+/// works across browse_page, search_api, page_ids_api, calendar_api, map_api,
+/// and facets_api. Each handler calls this, then adds handler-specific logic
+/// (template rendering, JSON formatting, etc.).
+fn build_parsed_search(params: &SearchParams, state: &AppState) -> BrowseFilters {
+    let query = params.q.as_deref().unwrap_or("");
+    let asset_type = params.asset_type.as_deref().unwrap_or("");
+    let tag = params.tag.as_deref().unwrap_or("");
+    let fmt = params.format.as_deref().unwrap_or("");
+    let volume = params.volume.as_deref().unwrap_or("").to_string();
+    let rating_str = params.rating.as_deref().unwrap_or("");
+    let label_str = params.label.as_deref().unwrap_or("");
+    let sort_str = params.sort.as_deref().unwrap_or("date_desc").to_string();
+    let page = params.page.unwrap_or(1).max(1);
+    let collection_str = params.collection.as_deref().unwrap_or("");
+    let path_str = params.path.as_deref().unwrap_or("");
+    let person_str = params.person.as_deref().unwrap_or("");
+    let collapse_stacks = params.stacks.as_deref().unwrap_or("1") == "1";
+    let nodefault = params.nodefault.as_deref() == Some("1");
+
+    // Parse query + overlay explicit dropdown params
+    let mut parsed = parse_search_query(query);
+    if !asset_type.is_empty() { parsed.asset_types.push(asset_type.to_string()); }
+    if !tag.is_empty() { parsed.tags.push(tag.to_string()); }
+    if !fmt.is_empty() { parsed.formats.push(fmt.to_string()); }
+    if !rating_str.is_empty() { parsed.rating = crate::query::parse_numeric_filter(rating_str); }
+    if !label_str.is_empty() { parsed.color_labels.push(label_str.to_string()); }
+
+    // Apply default filter from config
+    apply_default_filter(&mut parsed, &state.default_filter, nodefault);
+
+    // Normalize absolute path → volume-relative + implicit volume filter
+    let path_volume_id = if !path_str.is_empty() {
+        let registry = DeviceRegistry::new(&state.catalog_root);
+        let vols = registry.list().unwrap_or_default();
+        let (normalized, vol_id) = normalize_path_for_search(path_str, &vols, None);
+        if !normalized.is_empty() {
+            parsed.path_prefixes.push(normalized);
+        }
+        vol_id
+    } else {
+        None
+    };
+
+    // Push collection/person from dropdowns
+    if !collection_str.is_empty() { parsed.collections.push(collection_str.to_string()); }
+    if !person_str.is_empty() { parsed.persons.push(person_str.to_string()); }
+
+    BrowseFilters {
+        parsed,
+        query: query.to_string(),
+        asset_type: asset_type.to_string(),
+        tag: tag.to_string(),
+        format_filter: fmt.to_string(),
+        volume,
+        rating: rating_str.to_string(),
+        label: label_str.to_string(),
+        collection: collection_str.to_string(),
+        path: path_str.to_string(),
+        person: person_str.to_string(),
+        path_volume_id,
+        sort_str,
+        page,
+        collapse_stacks,
+        nodefault,
+    }
+}
+
+/// Merge explicit dropdown params into a ParsedSearch.
+/// Used by handlers not yet migrated to build_parsed_search.
 fn merge_search_params(
     query: &str,
     asset_type: &str,
@@ -1466,24 +1533,11 @@ fn merge_search_params(
     label: &str,
 ) -> ParsedSearch {
     let mut parsed = parse_search_query(query);
-
-    // Explicit dropdown params add to the parsed Vecs (don't replace)
-    if !asset_type.is_empty() {
-        parsed.asset_types.push(asset_type.to_string());
-    }
-    if !tag.is_empty() {
-        parsed.tags.push(tag.to_string());
-    }
-    if !format.is_empty() {
-        parsed.formats.push(format.to_string());
-    }
-    if !rating_str.is_empty() {
-        parsed.rating = crate::query::parse_numeric_filter(rating_str);
-    }
-    if !label.is_empty() {
-        parsed.color_labels.push(label.to_string());
-    }
-
+    if !asset_type.is_empty() { parsed.asset_types.push(asset_type.to_string()); }
+    if !tag.is_empty() { parsed.tags.push(tag.to_string()); }
+    if !format.is_empty() { parsed.formats.push(format.to_string()); }
+    if !rating_str.is_empty() { parsed.rating = crate::query::parse_numeric_filter(rating_str); }
+    if !label.is_empty() { parsed.color_labels.push(label.to_string()); }
     parsed
 }
 
