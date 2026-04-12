@@ -542,13 +542,13 @@ maki-tag-export-vocabulary -- export the current tag tree as a vocabulary file
 
 ### SYNOPSIS
 
-    maki [GLOBAL FLAGS] tag export-vocabulary [--output <FILE>] [--prune]
+    maki [GLOBAL FLAGS] tag export-vocabulary [--output <FILE>] [--prune] [--default]
 
 ### DESCRIPTION
 
 Generates a `vocabulary.yaml` file by merging the current catalog's tags with any existing vocabulary entries. Tags are grouped into a nested YAML hierarchy.
 
-By default, planned-but-unused entries from the existing `vocabulary.yaml` are preserved in the export — the command adds new tags from usage without destroying your planned structure. Use `--prune` to remove unused entries and keep only tags that exist on at least one asset.
+By default, planned-but-unused entries from the existing `vocabulary.yaml` are preserved in the export — the command adds new tags from usage without destroying your planned structure. Use `--prune` to remove unused entries and keep only tags that exist on at least one asset. Use `--default` to export only the built-in default vocabulary, ignoring both catalog tags and the existing vocabulary file.
 
 ### OPTIONS
 
@@ -558,12 +558,17 @@ By default, planned-but-unused entries from the existing `vocabulary.yaml` are p
 **--prune**
 : Remove vocabulary entries that have no assets. Only keep tags from actual usage.
 
+**--default**
+: Export only the built-in default vocabulary. Ignores catalog tags and existing `vocabulary.yaml`. Useful when the default vocabulary is updated (e.g. after a MAKI upgrade adds new categories) and you want to inspect or merge the changes without overwriting your curated file.
+
 ### EXAMPLES
 
 ```bash
-maki tag export-vocabulary                          # merge: keep planned + add used
-maki tag export-vocabulary --prune                  # only used tags
-maki tag export-vocabulary --output ~/my-vocab.yaml  # custom path
+maki tag export-vocabulary                                  # merge: keep planned + add used
+maki tag export-vocabulary --prune                          # only used tags
+maki tag export-vocabulary --output ~/my-vocab.yaml         # custom path
+maki tag export-vocabulary --default                        # built-in defaults only
+maki tag export-vocabulary --default --output defaults.yaml # compare with your vocabulary
 ```
 
 ### SEE ALSO

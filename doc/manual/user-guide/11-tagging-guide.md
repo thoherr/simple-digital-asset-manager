@@ -508,6 +508,14 @@ maki tag export-vocabulary
 
 This generates `vocabulary.yaml` from your existing tags, grouped into a nested tree. Edit it to add planned categories and remove unwanted entries.
 
+To see what the built-in default vocabulary looks like (without mixing in your catalog's tags), use `--default`:
+
+```bash
+maki tag export-vocabulary --default --output defaults.yaml
+```
+
+This is useful after a MAKI upgrade that adds new default categories (e.g. `subject|style`, `subject|condition`, `subject|mood`) — you can compare the defaults with your existing vocabulary and merge what you want. The `--default` flag ignores both your catalog tags and your existing `vocabulary.yaml`; it outputs only the built-in starter vocabulary.
+
 ### Vocabulary vs. auto-tagging labels
 
 The vocabulary file and the auto-tagging label file (`labels` in `[ai]` config) serve different purposes:
