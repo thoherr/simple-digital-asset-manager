@@ -691,7 +691,12 @@ impl Catalog {
         // Walks directory components and returns everything up to and including
         // the deepest component matching the regex pattern. Falls back to the
         // parent directory if no component matches.
-        conn.create_scalar_function("session_root", 2, rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC | rusqlite::functions::FunctionFlags::SQLITE_UTF8, |ctx| {
+        //
+        // The compiled regex is cached in a RefCell because the pattern is the
+        // same for every row within a query — compiling it once instead of per-row
+        // is critical for performance on large catalogs.
+        let regex_cache: std::cell::RefCell<Option<(String, regex::Regex)>> = std::cell::RefCell::new(None);
+        conn.create_scalar_function("session_root", 2, rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC | rusqlite::functions::FunctionFlags::SQLITE_UTF8, move |ctx| {
             let path: String = ctx.get(0)?;
             let pattern: String = ctx.get(1)?;
 
@@ -700,14 +705,18 @@ impl Catalog {
             let parts: Vec<&str> = dir.split('/').collect();
 
             if pattern.is_empty() || parts.is_empty() {
-                // No pattern or no directory — fall back to parent dir
                 return Ok(dir.to_string());
             }
 
-            let re = match regex::Regex::new(&pattern) {
-                Ok(r) => r,
-                Err(_) => return Ok(dir.to_string()),
-            };
+            // Cache the compiled regex — same pattern for every row in a query
+            let mut cache = regex_cache.borrow_mut();
+            if cache.as_ref().map_or(true, |(p, _)| p != &pattern) {
+                match regex::Regex::new(&pattern) {
+                    Ok(r) => *cache = Some((pattern.clone(), r)),
+                    Err(_) => return Ok(dir.to_string()),
+                }
+            }
+            let re = &cache.as_ref().unwrap().1;
 
             // Find deepest matching component
             let mut session_idx = None;
@@ -720,7 +729,6 @@ impl Catalog {
             match session_idx {
                 Some(idx) => Ok(parts[..=idx].join("/")),
                 None => {
-                    // No match — fall back to parent directory
                     if parts.len() > 1 {
                         Ok(parts[..parts.len() - 1].join("/"))
                     } else {
