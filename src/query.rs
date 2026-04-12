@@ -1050,8 +1050,13 @@ impl QueryEngine {
             path_volume_id = None;
         }
 
+        // Load session root pattern from config for the scattered: filter
+        let config = crate::config::CatalogConfig::load(&self.catalog_root).unwrap_or_default();
+        let session_pattern = config.group.session_root_pattern;
+
         let mut opts = SearchOptions {
             per_page: u32::MAX,
+            session_root_pattern: &session_pattern,
             ..parsed.to_search_options()
         };
 

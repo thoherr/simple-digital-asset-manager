@@ -452,6 +452,7 @@ pub struct SearchOptions<'a> {
     pub variant_count: Option<NumericFilter>,
     pub scattered: Option<NumericFilter>,
     pub scattered_depth: Option<u32>,
+    pub session_root_pattern: &'a str,
     pub face_count: Option<NumericFilter>,
     pub duration: Option<NumericFilter>,
     pub codec: Option<String>,
@@ -518,6 +519,7 @@ impl<'a> Default for SearchOptions<'a> {
             variant_count: None,
             scattered: None,
             scattered_depth: None,
+            session_root_pattern: r"^\d{4}-\d{2}",
             face_count: None,
             duration: None,
             codec: None,
@@ -681,6 +683,50 @@ impl Catalog {
                 // Fewer than N slashes — return the whole path minus the last segment
                 let _ = pos;
                 Ok(path.rfind('/').map_or(path.clone(), |p| path[..p].to_string()))
+            }
+        })?;
+
+        // Register session_root(path, pattern) — finds the session root for a
+        // file path using the same logic as auto-group's find_session_root().
+        // Walks directory components and returns everything up to and including
+        // the deepest component matching the regex pattern. Falls back to the
+        // parent directory if no component matches.
+        conn.create_scalar_function("session_root", 2, rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC | rusqlite::functions::FunctionFlags::SQLITE_UTF8, |ctx| {
+            let path: String = ctx.get(0)?;
+            let pattern: String = ctx.get(1)?;
+
+            // Split into directory components (strip filename)
+            let dir = path.rfind('/').map_or("", |pos| &path[..pos]);
+            let parts: Vec<&str> = dir.split('/').collect();
+
+            if pattern.is_empty() || parts.is_empty() {
+                // No pattern or no directory — fall back to parent dir
+                return Ok(dir.to_string());
+            }
+
+            let re = match regex::Regex::new(&pattern) {
+                Ok(r) => r,
+                Err(_) => return Ok(dir.to_string()),
+            };
+
+            // Find deepest matching component
+            let mut session_idx = None;
+            for (i, part) in parts.iter().enumerate() {
+                if re.is_match(part) {
+                    session_idx = Some(i);
+                }
+            }
+
+            match session_idx {
+                Some(idx) => Ok(parts[..=idx].join("/")),
+                None => {
+                    // No match — fall back to parent directory
+                    if parts.len() > 1 {
+                        Ok(parts[..parts.len() - 1].join("/"))
+                    } else {
+                        Ok(dir.to_string())
+                    }
+                }
             }
         })?;
 
@@ -3064,15 +3110,17 @@ impl Catalog {
         // Variant count (denormalized column)
         if let Some(ref f) = opts.variant_count { Self::numeric_clause(f, "a.variant_count", &mut clauses, &mut params); }
 
-        // Scattered filter — count distinct directory paths (ignoring volume)
-        // Default: count distinct parent directories (full path minus filename)
-        // With depth /N: count distinct paths truncated to first N segments
-        // Uses the custom path_dir(path, depth) SQL function registered at open()
+        // Scattered filter — count distinct session roots for this asset's
+        // file locations. Uses the same session root detection as auto-group:
+        // the deepest directory component matching [group] session_root_pattern.
+        // An asset whose files all live under the same session root (e.g.
+        // Capture/, Selects/, Output/ of the same shoot) has scattered:1.
+        // An asset with files in different session roots (different shoots)
+        // has scattered:2+, indicating a potential mis-grouping.
         if let Some(ref f) = opts.scattered {
-
-            let depth = opts.scattered_depth.unwrap_or(0);
+            let pattern_escaped = opts.session_root_pattern.replace('\'', "''");
             let expr = format!(
-                "(SELECT COUNT(DISTINCT path_dir(fl2.relative_path, {depth})) \
+                "(SELECT COUNT(DISTINCT session_root(fl2.relative_path, '{pattern_escaped}')) \
                  FROM file_locations fl2 \
                  JOIN variants v2 ON fl2.content_hash = v2.content_hash \
                  WHERE v2.asset_id = a.id)"

@@ -689,34 +689,25 @@ maki search "variants:5+ type:image"  # images with many variants
 
 ## scattered
 
-**Syntax:** `scattered:<N>` or `scattered:<N>/<depth>`
+**Syntax:** `scattered:<N>` or `scattered:<N>+`
 
-**Values:** Positive integer (minimum number of distinct directories). Optional `/<depth>` specifies how many path segments to compare.
+**Values:** Positive integer (number of distinct session roots)
 
-**Description:** Finds assets whose variant files are stored in multiple distinct directories. Counts distinct directory paths across all file locations of an asset's variants, ignoring the volume — so backup copies in the same relative path on different volumes don't count as scattered.
+**Description:** Finds assets whose variant files are spread across multiple **session roots** — the shoot/event boundaries detected by the `[group] session_root_pattern` regex (default: `^\d{4}-\d{2}`, matching directories starting with a date like `2024-10-05-wedding`). This is the same session root detection used by `auto-group`.
 
-By default, the full parent directory (everything before the filename) is compared. The optional `/<depth>` parameter truncates paths to the first N segments before counting, which is useful when subdirectories like `Selects/` and `Output/` within the same shoot folder shouldn't count as scattered.
+An asset with files in `2024-10/2024-10-05-event/Capture/` and `2024-10/2024-10-05-event/Output/Final/Web/` has `scattered:1` — both paths share the session root `2024-10/2024-10-05-event`, which is the same shoot. An asset with files in different session roots (e.g. `2024-10/2024-10-05-event/` and `2019-11/2019-11-30-other/`) has `scattered:2+`, indicating a potential cross-shoot mis-grouping.
+
+This makes `scattered:2+` a precise diagnostic for finding assets that were accidentally merged across different shoots by `auto-group` — the original purpose of this filter. Subdirectories within the same shoot (Capture/, Selects/, Output/) do not inflate the count.
 
 **Examples:**
 
 ```
-maki search "scattered:2+"                   # files in 2+ distinct directories
+maki search "scattered:2+"                   # files in 2+ distinct session roots (suspicious)
 maki search "scattered:2+ variants:3+"       # scattered + many variants
-maki search "scattered:2+/1"                 # scattered at top-level directory
-                                             # (2026-03-10/Selects/a.nef and
-                                             #  2026-03-10/Output/a.nef → same at depth 1)
-maki search "scattered:2+/2"                 # scattered at 2 directory levels
+maki search "scattered:1"                    # all files in the same session root (normal)
 ```
 
-**Depth examples** with paths `2026-03-10/Selects/img.nef` and `2026-03-10/Output/img.nef`:
-
-| Syntax | Compared as | Count | Scattered? |
-|--------|------------|-------|------------|
-| `scattered:2+` | `2026-03-10/Selects` vs `2026-03-10/Output` | 2 | yes |
-| `scattered:2+/1` | `2026-03-10` vs `2026-03-10` | 1 | no |
-| `scattered:2+/2` | `2026-03-10/Selects` vs `2026-03-10/Output` | 2 | yes |
-
-**SQL behavior:** Uses a custom `path_dir(path, depth)` function to extract directory prefixes. Scalar subquery counting `DISTINCT path_dir(relative_path, depth)` across `file_locations` joined through `variants`. Self-contained, no outer JOIN flags needed.
+**SQL behavior:** Uses a custom `session_root(path, pattern)` function (registered at connection open) that implements the same deepest-date-component detection as `find_session_root()` in auto-group. Scalar subquery counting `DISTINCT session_root(relative_path, pattern)` across `file_locations` joined through `variants`. The pattern comes from `[group] session_root_pattern` in `maki.toml`.
 
 ---
 
