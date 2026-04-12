@@ -635,7 +635,7 @@ Navigate to `/tags` or click "Tags" in the navigation bar.
 - **Clickable tags**: click any tag name to jump to the browse page filtered by that tag.
 - **Hierarchical tree view**: tags containing `|` separators are displayed as a collapsible tree. Each node shows its own count (assets tagged with that exact tag) and a total count (including all descendants). Click the disclosure triangle to expand or collapse a branch. Clicking a parent tag searches for all descendants.
 - **Prefix-anchored filter**: type a leading `|` in the filter input to match only tags that *start* with the query at a hierarchy boundary (e.g., `|wed` matches `wedding` and `events|wedding` but not `midweek`).
-- **Rename tags**: hover over any tag row to reveal a pencil icon (✏). Click it to open a rename dialog with:
+- **Rename tags**: hover over any tag row to reveal a pencil icon. Click it to open a rename dialog with:
   - **From** (read-only, pre-filled with the clicked tag)
   - **To** (editable input with tag autocomplete from your existing vocabulary)
   - **Preview** button (dry run — shows how many assets would be affected)

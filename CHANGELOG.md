@@ -2,6 +2,28 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.3.19 (2026-04-12)
+
+### Bug Fixes
+- **`scattered:` now counts distinct session roots** — previously counted distinct directories, inflating the count for assets with files in Capture/, Selects/, Output/ of the same shoot. Now uses the same session root detection as auto-group, so `scattered:2+` correctly means "files in different shoots." Custom `session_root(path, pattern)` SQLite function with regex caching for performance (~2s on 260k catalog, down from 56s before caching).
+- **`copies:` now counts distinct volumes** — previously counted total file location rows. An asset with RAW + JPEG on the same volume showed `copies:2` but wasn't actually backed up. Now `copies:1` matches the backup-status page's "AT RISK" count exactly.
+- **Rename autocomplete UX** — Enter without a selection now just closes the list (next Enter triggers preview/apply). Increased suggestion limit from 8 to 30 with scrollable dropdown. Fixed stale suggestions staying visible when typing a new (non-matching) tag name.
+
+### New Features
+- **`--default` flag for `tag export-vocabulary`** — exports only the built-in default vocabulary, ignoring catalog tags and existing vocabulary.yaml. Useful for inspecting new default categories after a MAKI upgrade.
+- **Subject qualifiers in default vocabulary** — three new cross-cutting branches under `subject`: `style` (vintage, modern, retro, rustic, industrial, classic), `condition` (abandoned, ruined, restored, weathered, pristine), `mood` (dramatic, serene, playful, mysterious, melancholic, joyful).
+- **`--path` flag for fix-scattered-groups.py** — scopes both the search AND the analysis to a specific directory tree, so exports and screensaver directories outside the path don't trigger splits.
+
+### Code Quality
+- **P1: Deduplicated web route filter parsing** — extracted `build_parsed_search()` helper. 6 route handlers (browse, search, page_ids, calendar, map, facets) migrated from ~50 lines of copy-pasted param extraction each. Net -116 lines.
+- **P2: Replaced 7 production `unwrap()` calls** with descriptive `expect()` messages in asset_service.rs and catalog.rs.
+- **P3: Standardized error message capitalization** to lowercase across ~177 `anyhow::bail!()` / `anyhow::anyhow!()` messages, matching Rust convention.
+- **Section markers and TOC** added to the three largest source files (asset_service.rs 8.6k, catalog.rs 8.6k, query.rs 5.8k lines) for IDE navigation.
+
+### Documentation
+- Web UI guide: documented tag rename modal (pencil icon, autocomplete, Enter-Enter workflow) and recipe grouping display.
+- Fixed undefined LaTeX reference in manual PDF build.
+
 ## v4.3.18 (2026-04-12)
 
 ### New Features
