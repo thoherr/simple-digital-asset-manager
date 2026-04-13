@@ -97,7 +97,7 @@ maki search "type:video rating:3+"
 
 **Description:** Filters to assets that have a specific tag. Supports quoted values for multi-word tags.
 
-**Hierarchical matching:** Tags can be organized hierarchically using `|` as a separator (e.g., `animals|birds|eagles`), aligned with Lightroom and CaptureOne conventions. `>` is also accepted as an alternative separator. Searching for a tag name matches it at any level in the hierarchy: `tag:eagles` finds assets tagged `animals|birds|eagles`, `tag:birds` finds both `animals|birds` and `animals|birds|eagles`. Parent-to-child matching also works: `tag:animals` finds `animals`, `animals|birds`, and `animals|birds|eagles`. Only exact component names match — `tag:eagle` does NOT match `eagles`.
+**Hierarchical matching:** Tags can be organized hierarchically using `|` as a separator (e.g., `animal|bird|eagle`), aligned with Lightroom and CaptureOne conventions. `>` is also accepted as an alternative separator. Searching for a tag name matches it at any level in the hierarchy: `tag:eagle` finds assets tagged `animal|bird|eagle`, `tag:bird` finds both `animal|bird` and `animal|bird|eagle`. Parent-to-child matching also works: `tag:animal` finds `animal`, `animal|bird`, and `animal|bird|eagle`. Only exact component names match — `tag:eag` does NOT match `eagle`.
 
 **This-level-only match:** Prefix with `=` to match assets tagged at exactly this level, excluding those with deeper tags in the same branch. `tag:=location|Germany|Bayern` matches assets whose deepest tag in this branch is `Bayern` — NOT assets that also have `location|Germany|Bayern|München`. In the web UI, click the `▼` indicator on a tag chip to toggle to `=` (this-level-only) mode.
 
@@ -115,10 +115,10 @@ The `=`, `^`, and `|` prefixes can be combined in any order: `tag:=^Foo`, `tag:^
 maki search "tag:landscape"
 maki search 'tag:"Fools Theater"'
 maki search 'tag:"Black and White" rating:4+'
-maki search "tag:animals"                      # matches animals, animals|birds, animals|birds|eagles
-maki search "tag:eagles"                       # matches animals|birds|eagles (any level in hierarchy)
-maki search "tag:animals|birds"                # matches animals|birds and animals|birds|eagles
-maki search "tag:=animals|birds"               # this level only: has birds but no deeper tag
+maki search "tag:animal"                       # matches animal, animal|bird, animal|bird|eagle
+maki search "tag:eagle"                        # matches animal|bird|eagle (any level in hierarchy)
+maki search "tag:animal|bird"                  # matches animal|bird and animal|bird|eagle
+maki search "tag:=animal|bird"                 # this level only: has bird but no deeper tag
 maki search 'tag:="location|Germany|Bayern"'   # Bayern level only, not cities/venues below
 maki search "tag:^Landscape"                   # case-sensitive: matches "Landscape" but NOT "landscape"
 maki search "tag:=^Animals"                    # exact level AND case-sensitive

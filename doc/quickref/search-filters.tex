@@ -67,7 +67,7 @@ Filters combine with \textbf{AND}. Free-text tokens search names, filenames, des
 \hline\\[-6pt]
 Asset type          & \cmd{type:<type>}                     & \cmd{type:image}, \cmd{type:video} \\
 Tag                 & \cmd{tag:<name>}                      & \cmd{tag:landscape}, \cmd{tag:"Fools Theater"} \\
-Tag exact level     & \cmd{tag:=<name>}                     & \cmd{tag:=animals|birds} (no descendants) \\
+Tag exact level     & \cmd{tag:=<name>}                     & \cmd{tag:=animal|bird} (no descendants) \\
 Tag case-sensitive  & \cmd{tag:\textasciicircum<name>}      & \cmd{tag:\textasciicircum Landscape} (not "landscape") \\
 Tag prefix anchor   & \cmd{tag:|<text>}                     & \cmd{tag:|wed} (wedding, wedding-2024, ...) \\
 Exclude tag         & \cmd{-tag:<name>}                     & \cmd{-tag:rejected} \\
@@ -145,7 +145,7 @@ All numeric filters support: exact (\cmd{3}), minimum (\cmd{3+}), range (\cmd{3-
 \end{tabularx}
 
 \vspace{4pt}
-Hierarchical tags: \cmd{tag:birds} matches at any level --- \cmd{animals|birds}, \cmd{animals|birds|eagles}, and standalone \cmd{birds}.
+Hierarchical tags: \cmd{tag:bird} matches at any level --- \cmd{animal|bird}, \cmd{animal|bird|eagle}, and standalone \cmd{bird}.
 
 \vspace{18pt}
 \section{Sort Options}
