@@ -197,21 +197,22 @@ Pure assets-table filter, no JOIN required.
 
 ## label
 
-**Syntax:** `label:<color>`
+**Syntax:** `label:<color>` or `label:none`
 
-**Values:** `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Pink`, `Purple` (case-insensitive input, stored as title-case)
+**Values:** `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Pink`, `Purple` (case-insensitive input, stored as title-case), `none` (unlabeled)
 
-**Description:** Filters by color label. The 7-color set is a superset of Lightroom's 5 colors, matching CaptureOne's label palette.
+**Description:** Filters by color label. The 7-color set is a superset of Lightroom's 5 colors, matching CaptureOne's label palette. Use `label:none` to find assets without any color label.
 
 **Examples:**
 
 ```
 maki search "label:Red"
 maki search "label:blue"
+maki search "label:none"
 maki search "label:Green rating:4+"
 ```
 
-**SQL behavior:** `WHERE a.color_label = ? COLLATE NOCASE`. Pure assets-table filter, no JOIN required. The `COLLATE NOCASE` makes the comparison case-insensitive so users can type `label:red`, `label:Red`, or `label:RED` interchangeably regardless of how the label is stored in the catalog.
+**SQL behavior:** `WHERE a.color_label = ? COLLATE NOCASE` for color values; `WHERE a.color_label IS NULL` for `label:none`. Pure assets-table filter, no JOIN required. The `COLLATE NOCASE` makes the comparison case-insensitive so users can type `label:red`, `label:Red`, or `label:RED` interchangeably regardless of how the label is stored in the catalog.
 
 ---
 

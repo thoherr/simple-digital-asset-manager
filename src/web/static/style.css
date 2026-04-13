@@ -1105,11 +1105,12 @@ select.badge {
     font-size: 0.95rem;
     margin-right: 0.15rem;
     padding: 0 0.15rem;
+    line-height: 1;
     border-radius: 3px;
     transition: color 0.15s, background 0.15s;
 }
 .rating-unrated:hover { color: var(--text); transform: scale(1.15); }
-.rating-unrated.active { color: var(--primary); background: rgba(232, 99, 74, 0.12); }
+.rating-unrated.active { color: var(--primary); background: rgba(232, 99, 74, 0.12); border: 1.5px solid var(--primary); font-weight: bold; }
 [data-theme="dark"] .rating-unrated { color: #555; }
 [data-theme="dark"] .rating-unrated:hover { color: var(--text); }
 .rating-filter-hint {
@@ -1840,6 +1841,21 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     align-items: center;
     gap: 0.25rem;
 }
+.label-unlabeled {
+    cursor: pointer;
+    user-select: none;
+    color: #ccc;
+    font-size: 0.95rem;
+    margin-right: 0.15rem;
+    padding: 0 0.15rem;
+    line-height: 1;
+    border-radius: 3px;
+    transition: color 0.15s, background 0.15s;
+}
+.label-unlabeled:hover { color: var(--text); transform: scale(1.15); }
+.label-unlabeled.active { color: var(--primary); background: rgba(232, 99, 74, 0.12); border: 1.5px solid var(--primary); font-weight: bold; }
+[data-theme="dark"] .label-unlabeled { color: #555; }
+[data-theme="dark"] .label-unlabeled:hover { color: var(--text); }
 .label-dot-filter {
     width: 14px;
     height: 14px;

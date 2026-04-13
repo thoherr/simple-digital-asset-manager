@@ -343,6 +343,7 @@
     // --- Label filter dots ---
     var currentLabel = "{{ label }}";
     var labelDots = document.querySelectorAll('#label-filter .label-dot-filter');
+    var labelUnlabeled = document.getElementById('label-unlabeled');
 
     function getFilterLabel() { return currentLabel; }
 
@@ -352,6 +353,10 @@
             if (d.getAttribute('data-label') === value) { d.classList.add('active'); }
             else { d.classList.remove('active'); }
         });
+        if (labelUnlabeled) {
+            if (value === 'none') { labelUnlabeled.classList.add('active'); }
+            else { labelUnlabeled.classList.remove('active'); }
+        }
     }
 
     labelDots.forEach(function(d) {
@@ -362,6 +367,14 @@
             onFilterChange();
         });
     });
+
+    if (labelUnlabeled) {
+        labelUnlabeled.style.cursor = 'pointer';
+        labelUnlabeled.addEventListener('click', function() {
+            setLabelFilter(currentLabel === 'none' ? '' : 'none');
+            onFilterChange();
+        });
+    }
 
     window.getFilterLabel = getFilterLabel;
     window.setLabelFilter = setLabelFilter;

@@ -465,6 +465,7 @@ pub struct SearchOptions<'a> {
     pub formats_exclude: &'a [String],
     pub color_labels: &'a [String],
     pub color_labels_exclude: &'a [String],
+    pub color_label_none: bool,
     pub cameras: &'a [String],
     pub cameras_exclude: &'a [String],
     pub lenses: &'a [String],
@@ -532,6 +533,7 @@ impl<'a> Default for SearchOptions<'a> {
             formats_exclude: &[],
             color_labels: &[],
             color_labels_exclude: &[],
+            color_label_none: false,
             cameras: &[],
             cameras_exclude: &[],
             lenses: &[],
@@ -3025,6 +3027,9 @@ impl Catalog {
         }
 
         // --- Color label (equality on a.color_label) ---
+        if opts.color_label_none {
+            clauses.push("a.color_label IS NULL".to_string());
+        }
         Self::add_equality_filter(&mut clauses, &mut params, opts.color_labels, opts.color_labels_exclude, "a.color_label", &mut false, false);
 
         // --- Path pattern (LIKE on fl.relative_path) ---

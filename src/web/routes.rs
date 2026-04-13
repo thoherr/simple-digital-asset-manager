@@ -1420,7 +1420,11 @@ fn build_parsed_search(params: &SearchParams, state: &AppState) -> BrowseFilters
     if !tag.is_empty() { parsed.tags.push(tag.to_string()); }
     if !fmt.is_empty() { parsed.formats.push(fmt.to_string()); }
     if !rating_str.is_empty() { parsed.rating = crate::query::parse_numeric_filter(rating_str); }
-    if !label_str.is_empty() { parsed.color_labels.push(label_str.to_string()); }
+    if label_str == "none" {
+        parsed.color_label_none = true;
+    } else if !label_str.is_empty() {
+        parsed.color_labels.push(label_str.to_string());
+    }
 
     // Apply default filter from config
     apply_default_filter(&mut parsed, &state.default_filter, nodefault);
@@ -1477,7 +1481,11 @@ fn merge_search_params(
     if !tag.is_empty() { parsed.tags.push(tag.to_string()); }
     if !format.is_empty() { parsed.formats.push(format.to_string()); }
     if !rating_str.is_empty() { parsed.rating = crate::query::parse_numeric_filter(rating_str); }
-    if !label.is_empty() { parsed.color_labels.push(label.to_string()); }
+    if label == "none" {
+        parsed.color_label_none = true;
+    } else if !label.is_empty() {
+        parsed.color_labels.push(label.to_string());
+    }
     parsed
 }
 

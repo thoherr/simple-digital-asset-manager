@@ -119,6 +119,7 @@ pub struct ParsedSearch {
     pub formats_exclude: Vec<String>,
     pub color_labels: Vec<String>,
     pub color_labels_exclude: Vec<String>,
+    pub color_label_none: bool,
     pub cameras: Vec<String>,
     pub cameras_exclude: Vec<String>,
     pub lenses: Vec<String>,
@@ -242,6 +243,7 @@ impl ParsedSearch {
         self.orphan_false = self.orphan_false || other.orphan_false;
         self.missing = self.missing || other.missing;
         self.volume_none = self.volume_none || other.volume_none;
+        self.color_label_none = self.color_label_none || other.color_label_none;
     }
 
     /// Convert to `SearchOptions` for passing to catalog search methods.
@@ -258,6 +260,7 @@ impl ParsedSearch {
             formats_exclude: &self.formats_exclude,
             color_labels: &self.color_labels,
             color_labels_exclude: &self.color_labels_exclude,
+            color_label_none: self.color_label_none,
             cameras: &self.cameras,
             cameras_exclude: &self.cameras_exclude,
             lenses: &self.lenses,
@@ -483,7 +486,9 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
                 parsed.volumes.push(value.to_string());
             }
         } else if let Some(value) = token_body.strip_prefix("label:") {
-            if negated {
+            if value == "none" {
+                parsed.color_label_none = true;
+            } else if negated {
                 parsed.color_labels_exclude.push(value.to_string());
             } else {
                 parsed.color_labels.push(value.to_string());
@@ -4277,6 +4282,15 @@ mod tests {
     fn parse_label_filter() {
         let p = parse_search_query("label:Red");
         assert_eq!(p.color_labels, vec!["Red"]);
+        assert!(!p.color_label_none);
+        assert!(p.text.is_none());
+    }
+
+    #[test]
+    fn parse_label_none_filter() {
+        let p = parse_search_query("label:none");
+        assert!(p.color_label_none);
+        assert!(p.color_labels.is_empty());
         assert!(p.text.is_none());
     }
 

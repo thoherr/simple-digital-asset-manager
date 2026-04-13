@@ -28,6 +28,7 @@
                 <span class="rating-filter-hint" id="rating-hint">{% if !rating.is_empty() %}{{ rating }}{% endif %}</span>
             </div>
             <div class="label-filter" id="label-filter">
+                <span class="label-unlabeled{% if label == "none" %} active{% endif %}" id="label-unlabeled" title="Unlabeled (no color label)" data-label="none">&#x2205;</span>
                 <span class="label-dot-filter{% if label == "Red" %} active{% endif %}" data-label="Red" style="background: #e74c3c;" title="Red"></span>
                 <span class="label-dot-filter{% if label == "Orange" %} active{% endif %}" data-label="Orange" style="background: #e67e22;" title="Orange"></span>
                 <span class="label-dot-filter{% if label == "Yellow" %} active{% endif %}" data-label="Yellow" style="background: #f1c40f;" title="Yellow"></span>
