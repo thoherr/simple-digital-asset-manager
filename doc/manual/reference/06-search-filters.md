@@ -97,7 +97,7 @@ maki search "type:video rating:3+"
 
 **Description:** Filters to assets that have a specific tag. Supports quoted values for multi-word tags.
 
-**Hierarchical matching:** Tags can be organized hierarchically using `|` as a separator (e.g., `animals|birds|eagles`), aligned with Lightroom and CaptureOne conventions. `>` is also accepted as an alternative separator. Searching for a parent tag matches all descendants: `tag:animals` finds assets tagged `animals`, `animals|birds`, and `animals|birds|eagles`. Searching for an intermediate level also works: `tag:animals|birds` matches both `animals|birds` and `animals|birds|eagles`.
+**Hierarchical matching:** Tags can be organized hierarchically using `|` as a separator (e.g., `animals|birds|eagles`), aligned with Lightroom and CaptureOne conventions. `>` is also accepted as an alternative separator. Searching for a tag name matches it at any level in the hierarchy: `tag:eagles` finds assets tagged `animals|birds|eagles`, `tag:birds` finds both `animals|birds` and `animals|birds|eagles`. Parent-to-child matching also works: `tag:animals` finds `animals`, `animals|birds`, and `animals|birds|eagles`. Only exact component names match — `tag:eagle` does NOT match `eagles`.
 
 **This-level-only match:** Prefix with `=` to match assets tagged at exactly this level, excluding those with deeper tags in the same branch. `tag:=location|Germany|Bayern` matches assets whose deepest tag in this branch is `Bayern` — NOT assets that also have `location|Germany|Bayern|München`. In the web UI, click the `▼` indicator on a tag chip to toggle to `=` (this-level-only) mode.
 
@@ -116,6 +116,7 @@ maki search "tag:landscape"
 maki search 'tag:"Fools Theater"'
 maki search 'tag:"Black and White" rating:4+'
 maki search "tag:animals"                      # matches animals, animals|birds, animals|birds|eagles
+maki search "tag:eagles"                       # matches animals|birds|eagles (any level in hierarchy)
 maki search "tag:animals|birds"                # matches animals|birds and animals|birds|eagles
 maki search "tag:=animals|birds"               # this level only: has birds but no deeper tag
 maki search 'tag:="location|Germany|Bayern"'   # Bayern level only, not cities/venues below
@@ -125,7 +126,7 @@ maki search "tag:|wed"                          # prefix anchor: wedding, weddin
 maki search "tag:^|Wed"                         # case-sensitive prefix anchor: Wedding but not wedding
 ```
 
-**SQL behavior:** `WHERE (a.tags LIKE '%"stored"%' OR a.tags LIKE '%"stored|%')`. The second LIKE clause enables parent-matches-children semantics. With `=` prefix: `WHERE (a.tags LIKE '%"stored"%' AND a.tags NOT LIKE '%"stored|%')` — matches the tag but excludes assets with deeper descendants. With `^` prefix: SQLite `GLOB` is used instead of `LIKE` — GLOB is case-sensitive and uses `*` as the wildcard (literal `*` and `?` in tag names are an unsupported edge case for case-sensitive search).
+**SQL behavior:** Four LIKE patterns match the tag at any hierarchy level: `%"stored"%` (standalone), `%"stored|%` (parent from root), `%|stored"%` (leaf child), `%|stored|%` (mid-path). The JSON quoting provides natural word boundaries — `tag:eagle` cannot match `eagles`. With `=` prefix: `WHERE (LIKE '%"stored"%' OR LIKE '%|stored"%') AND NOT LIKE '%"stored|%' AND NOT LIKE '%|stored|%'` — matches the tag at any level but only as a leaf (no descendants). With `^` prefix: SQLite `GLOB` is used instead of `LIKE` — GLOB is case-sensitive and uses `*` as the wildcard (literal `*` and `?` in tag names are an unsupported edge case for case-sensitive search).
 
 ---
 

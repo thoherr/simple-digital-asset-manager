@@ -3414,25 +3414,36 @@ impl Catalog {
         }
 
         if exact_only {
-            // Exact/leaf match: the tag exists on the asset BUT is never
-            // followed by `|child` at any position in any tag path.
+            // Exact/leaf match: the tag exists on the asset at any level in
+            // the hierarchy BUT is never followed by `|child`.
             //
-            // With ancestor expansion (CaptureOne/Lightroom convention),
-            // `location|Germany|Bayern|Holzkirchen|Marktplatz` also creates
-            // standalone tags `Holzkirchen`, `Bayern`, etc. A naive check
-            // for `"Holzkirchen|` misses the mid-path case
-            // `|Holzkirchen|Marktplatz`. Two NOT clauses cover both:
-            //   1. NOT "stored|...  (stored is at the start of a tag path)
-            //   2. NOT |stored|...  (stored is mid-path, after a |)
+            // Positive (OR): tag appears as…
+            //   1. standalone: "stored"  (root-level tag)
+            //   2. leaf child: |stored"  (end of a hierarchy path)
+            // Negative (AND NOT): no descendants exist…
+            //   1. NOT "stored|…  (no descendants from root)
+            //   2. NOT |stored|…  (no descendants from mid-path)
             params.push(Box::new(pat(&format!("\"{stored}\""))));
+            params.push(Box::new(pat(&format!("|{stored}\""))));
             params.push(Box::new(desc_pat(&stored)));
             let mid_desc_pat = format!("{wild}|{stored}|{wild}");
             params.push(Box::new(mid_desc_pat));
-            exprs.push(format!("(a.tags {op} ? AND a.tags NOT {op} ? AND a.tags NOT {op} ?)"));
+            exprs.push(format!("((a.tags {op} ? OR a.tags {op} ?) AND a.tags NOT {op} ? AND a.tags NOT {op} ?)"));
         } else {
+            // Default: match the tag at any level in the hierarchy, with or
+            // without descendants.
+            //   1. "stored"  — standalone (root-level exact)
+            //   2. "stored|  — parent from root (has descendants)
+            //   3. |stored"  — leaf child (end of a hierarchy path)
+            //   4. |stored|  — mid-path component (has descendants, is a child)
             params.push(Box::new(pat(&format!("\"{stored}\""))));
             exprs.push(format!("a.tags {op} ?"));
             params.push(Box::new(desc_pat(&stored)));
+            exprs.push(format!("a.tags {op} ?"));
+            params.push(Box::new(pat(&format!("|{stored}\""))));
+            exprs.push(format!("a.tags {op} ?"));
+            let mid_child_pat = format!("{wild}|{stored}|{wild}");
+            params.push(Box::new(mid_child_pat));
             exprs.push(format!("a.tags {op} ?"));
         }
 
@@ -6003,6 +6014,18 @@ mod tests {
         // Search for exact tag
         let results = catalog.search_assets(None, None, Some("animals|birds|eagles"), None, None, None).unwrap();
         assert_eq!(results.len(), 1, "tag:animals|birds|eagles should match exactly");
+
+        // Search for leaf component by name (child matching)
+        let results = catalog.search_assets(None, None, Some("eagles"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:eagles should match animals|birds|eagles");
+
+        // Search for mid-path component by name
+        let results = catalog.search_assets(None, None, Some("birds"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:birds should match animals|birds|eagles");
+
+        // Partial name must NOT match (no substring matching)
+        let results = catalog.search_assets(None, None, Some("eagle"), None, None, None).unwrap();
+        assert!(results.is_empty(), "tag:eagle should NOT match eagles (no substring)");
 
         // Search for non-matching parent
         let results = catalog.search_assets(None, None, Some("cats"), None, None, None).unwrap();
