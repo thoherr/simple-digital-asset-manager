@@ -2,6 +2,25 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.3.20 (2026-04-14)
+
+### New Features
+- **`label:none` search filter** — find assets without any color label, matching the existing `rating:0` (unrated) and `volume:none` patterns. Available in CLI search, web UI filter bar (∅ icon next to color dots), and saved searches.
+- **Tag search matches at any hierarchy level** — `tag:Altstätten` now finds `location|Switzerland|Altstätten`. Previously only matched root-level parents; now four LIKE patterns cover standalone, parent, leaf-child, and mid-path positions. No substring matching — `tag:eagle` does NOT match `eagles`.
+
+### Bug Fixes
+- **`tag rename =` uses leaf-only semantics** — consistent with search `=` behavior. Previously `=` only prevented cascade to descendants but still matched all assets with the exact tag (including expanded ancestors). Now skips assets where the tag also has children, matching the browse UI's exact-level chip behavior.
+- **Quoting hint on empty search** — when `maki search` returns no results and the query has both a filter and free text (suggesting forgotten inner quotes), a hint is printed: `tag:"my tag"`.
+- **Asset ID whitespace trimming** — `resolve_asset_id` now trims whitespace (including non-breaking spaces) from the prefix, preventing failures from copy-paste artifacts.
+
+### UI
+- **Stronger active state for ∅ filter icons** — both "unrated" and "unlabeled" ∅ icons now show a visible border and bold text when active, matching the color dot selection style.
+
+### Documentation
+- Tag hierarchy examples use singular form (animal|bird|eagle) matching the recommended convention.
+- Search filters reference updated for `label:none` and hierarchical tag matching.
+- Quick reference card: dropped Pro explanation line, tightened spacing to fit page 1, added `label:none`, updated version.
+
 ## v4.3.19 (2026-04-12)
 
 ### Bug Fixes
