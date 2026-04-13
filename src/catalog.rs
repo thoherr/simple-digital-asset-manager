@@ -1602,6 +1602,7 @@ impl Catalog {
     /// Returns `Ok(Some(id))` if exactly one match, `Ok(None)` if no match,
     /// or an error if the prefix is ambiguous (multiple matches).
     pub fn resolve_asset_id(&self, prefix: &str) -> Result<Option<String>> {
+        let prefix = prefix.trim();
         let pattern = format!("{prefix}%");
         let mut stmt = self.conn.prepare(
             "SELECT id FROM assets WHERE id LIKE ?1",

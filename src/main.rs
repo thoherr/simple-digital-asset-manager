@@ -3037,7 +3037,8 @@ faces/\n\
                 }
                 None => {
                     // Direct tag add/remove: maki tag <asset> <tags> [--remove]
-                    let asset_id = asset_id.ok_or_else(|| anyhow::anyhow!("asset ID is required for tag add/remove"))?;
+                    let asset_id = asset_id.map(|s| s.trim().to_string())
+                        .ok_or_else(|| anyhow::anyhow!("asset ID is required for tag add/remove"))?;
                     if tags.is_empty() {
                         anyhow::bail!("no tags specified.");
                     }
