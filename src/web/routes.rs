@@ -866,8 +866,13 @@ pub async fn asset_page(
                     } else {
                         None
                     };
+                    // Show the person's display label whenever a face is assigned.
+                    // Named person → their name. Unnamed cluster → "Unknown (abc12345)"
+                    // matching the people page synthesis. None only when truly unassigned.
                     let person_name = f.person_id.as_ref().and_then(|pid| {
-                        face_store.get_person(pid).ok().flatten().and_then(|p| p.name)
+                        face_store.get_person(pid).ok().flatten().map(|p| {
+                            p.name.unwrap_or_else(|| format!("Unknown ({})", &pid[..8.min(pid.len())]))
+                        })
                     });
                     FaceRow {
                         face_id: f.id.clone(),

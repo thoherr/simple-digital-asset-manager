@@ -104,7 +104,11 @@
                     <div class="face-meta">
                         <span class="face-confidence">{{ f.confidence_pct }}%</span>
                         {% if let Some(name) = f.person_name %}
-                        <a href="/?person={{ name|urlencode }}" class="face-person-name">{{ name }}</a>
+                        {% if let Some(pid) = f.person_id %}
+                        <a href="/?person={{ pid }}" class="face-person-name">{{ name }}</a>
+                        {% else %}
+                        <span class="face-person-name">{{ name }}</span>
+                        {% endif %}
                         <button class="face-unassign" data-face-id="{{ f.face_id }}" title="Unassign">&times;</button>
                         {% else %}
                         <select class="face-assign-select" data-face-id="{{ f.face_id }}">
