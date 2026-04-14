@@ -1439,6 +1439,33 @@ enum FacesCommands {
         apply: bool,
     },
 
+    /// Analyze face embedding similarity distribution (diagnostic)
+    Similarity {
+        /// Search query to scope which assets' faces to analyze
+        #[arg(long)]
+        query: Option<String>,
+
+        /// Analyze faces from a specific asset (ID or prefix)
+        #[arg(long)]
+        asset: Option<String>,
+
+        /// Limit to faces on assets from a specific volume
+        #[arg(long)]
+        volume: Option<String>,
+
+        /// Minimum confidence for faces to include
+        #[arg(long, default_value = "0.0")]
+        min_confidence: f32,
+
+        /// Show top-N nearest neighbors for each face (0 = none, just summary)
+        #[arg(long, default_value = "0")]
+        top: usize,
+
+        /// Include already-assigned faces (default: only unassigned)
+        #[arg(long)]
+        all: bool,
+    },
+
     /// List all people
     People,
 
@@ -4469,6 +4496,154 @@ faces/\n\
                     } else {
                         println!("Dry run — would delete {count} unassigned face record(s).");
                         println!("  Run with --apply to actually delete.");
+                    }
+                    Ok(())
+                }
+                FacesCommands::Similarity { query, asset, volume, min_confidence, top, all } => {
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = maki::face_store::FaceStore::new(catalog.conn());
+
+                    // Resolve scope (same pattern as cluster)
+                    let scoped_ids: Option<Vec<String>> = if query.is_some() || asset.is_some() || volume.is_some() {
+                        let engine = QueryEngine::new(&catalog_root);
+                        if let Some(ref a) = asset {
+                            let full_id = catalog
+                                .resolve_asset_id(a)?
+                                .ok_or_else(|| anyhow::anyhow!("no asset found matching '{a}'"))?;
+                            Some(vec![full_id])
+                        } else {
+                            let q = if let Some(ref query) = query {
+                                let volume_part = volume.as_deref().map(|v| format!(" volume:{v}")).unwrap_or_default();
+                                format!("{query}{volume_part}")
+                            } else if let Some(ref v) = volume {
+                                format!("volume:{v}")
+                            } else {
+                                "*".to_string()
+                            };
+                            let rows = engine.search(&q)?;
+                            Some(rows.into_iter().map(|r| r.asset_id).collect())
+                        }
+                    } else {
+                        None
+                    };
+
+                    let faces = face_store.face_embeddings_scoped(scoped_ids.as_deref())?;
+                    // Filter by assignment + confidence
+                    let filtered: Vec<(String, String, Vec<f32>, f32)> = faces.into_iter()
+                        .filter(|(_, pid, _, conf)| (all || pid.is_none()) && *conf >= min_confidence)
+                        .map(|(id, pid, emb, conf)| (id, pid.unwrap_or_default(), emb, conf))
+                        .collect();
+
+                    let n = filtered.len();
+                    if n < 2 {
+                        if cli.json {
+                            println!("{}", serde_json::json!({"faces": n, "pairs": 0}));
+                        } else {
+                            println!("Not enough faces to analyze ({n}). Need at least 2.");
+                        }
+                        return Ok(());
+                    }
+
+                    // Compute all pairwise similarities
+                    let mut sims: Vec<f32> = Vec::with_capacity(n * (n - 1) / 2);
+                    let mut per_face: Vec<Vec<(usize, f32)>> = vec![Vec::new(); n];
+                    for i in 0..n {
+                        for j in (i + 1)..n {
+                            let s = maki::ai::cosine_similarity(&filtered[i].2, &filtered[j].2);
+                            sims.push(s);
+                            per_face[i].push((j, s));
+                            per_face[j].push((i, s));
+                        }
+                    }
+                    sims.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+                    // Stats
+                    let pct = |p: f32| -> f32 {
+                        let idx = ((sims.len() as f32 - 1.0) * p).round() as usize;
+                        sims[idx]
+                    };
+                    let mean: f32 = sims.iter().sum::<f32>() / sims.len() as f32;
+                    let min = sims[0];
+                    let max = *sims.last().unwrap();
+                    let p10 = pct(0.10);
+                    let p25 = pct(0.25);
+                    let p50 = pct(0.50);
+                    let p75 = pct(0.75);
+                    let p90 = pct(0.90);
+                    let p95 = pct(0.95);
+                    let p99 = pct(0.99);
+
+                    // Histogram: 10 buckets from min to max
+                    let bucket_count = 10;
+                    let mut buckets = vec![0u32; bucket_count];
+                    let range = (max - min).max(1e-6);
+                    for &s in &sims {
+                        let mut b = (((s - min) / range) * bucket_count as f32) as usize;
+                        if b >= bucket_count { b = bucket_count - 1; }
+                        buckets[b] += 1;
+                    }
+
+                    if cli.json {
+                        println!("{}", serde_json::json!({
+                            "faces": n,
+                            "pairs": sims.len(),
+                            "stats": {
+                                "min": min, "max": max, "mean": mean,
+                                "p10": p10, "p25": p25, "p50": p50,
+                                "p75": p75, "p90": p90, "p95": p95, "p99": p99,
+                            },
+                            "histogram": {
+                                "min": min, "max": max, "buckets": buckets,
+                            },
+                        }));
+                    } else {
+                        let mode = if all { "all faces" } else { "unassigned faces" };
+                        println!("Face similarity analysis — {n} {mode}, {} pairs (min_confidence={min_confidence:.2})", sims.len());
+                        println!();
+                        println!("Pairwise cosine similarity:");
+                        println!("  min:    {min:.3}");
+                        println!("  p10:    {p10:.3}");
+                        println!("  p25:    {p25:.3}");
+                        println!("  median: {p50:.3}");
+                        println!("  mean:   {mean:.3}");
+                        println!("  p75:    {p75:.3}");
+                        println!("  p90:    {p90:.3}");
+                        println!("  p95:    {p95:.3}");
+                        println!("  p99:    {p99:.3}");
+                        println!("  max:    {max:.3}");
+                        println!();
+                        println!("Histogram ({bucket_count} buckets, {min:.2}–{max:.2}):");
+                        let max_count = *buckets.iter().max().unwrap_or(&1);
+                        for (i, &count) in buckets.iter().enumerate() {
+                            let lo = min + (i as f32) * range / bucket_count as f32;
+                            let hi = min + ((i + 1) as f32) * range / bucket_count as f32;
+                            let bar_width = (count as f32 * 40.0 / max_count as f32) as usize;
+                            let bar: String = "█".repeat(bar_width);
+                            println!("  {lo:.3}–{hi:.3}  {count:>6}  {bar}");
+                        }
+                        println!();
+                        println!("Interpretation:");
+                        println!("  • A bimodal distribution (two humps) means the model separates people well.");
+                        println!("    Pick a threshold in the gap between humps.");
+                        println!("  • A single hump or flat distribution means embeddings are not discriminating.");
+                        println!("    Check face model quality, face crop size, or filter by higher --min-confidence.");
+
+                        if top > 0 {
+                            println!();
+                            println!("Top-{top} nearest neighbors per face:");
+                            for i in 0..n {
+                                per_face[i].sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+                                let short_id = &filtered[i].0[..8.min(filtered[i].0.len())];
+                                let person = if filtered[i].1.is_empty() { "unassigned".to_string() } else { format!("person={}", &filtered[i].1[..8.min(filtered[i].1.len())]) };
+                                println!("  {short_id} (conf={:.2}, {person}):", filtered[i].3);
+                                for (j, s) in per_face[i].iter().take(top) {
+                                    let short_j = &filtered[*j].0[..8.min(filtered[*j].0.len())];
+                                    let person_j = if filtered[*j].1.is_empty() { "unassigned".to_string() } else { format!("person={}", &filtered[*j].1[..8.min(filtered[*j].1.len())]) };
+                                    println!("    → {short_j} [{s:.3}] ({person_j})");
+                                }
+                            }
+                        }
                     }
                     Ok(())
                 }
