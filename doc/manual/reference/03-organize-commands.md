@@ -997,7 +997,7 @@ Alias: `maki st from-tag`
 
 Finds assets whose tags match a pattern containing a `{}` wildcard, groups them by the wildcard value, and creates a stack from each group. This automates the common workflow of converting tag-based groupings (e.g., from CaptureOne or Lightroom) into maki stacks.
 
-Without `--apply`, runs in **report-only mode** showing what stacks would be created. With `--apply`, creates the stacks. With `--remove-tags`, the matched tag is removed from each asset after stacking.
+Without `--apply`, runs in **report-only mode** showing what stacks would be created. With `--apply`, creates the stacks. With `--remove-tags`, the matched tag is removed from **every asset that carries it** — including orphan tags (single-asset tags that can't form a stack) and already-stacked assets. This makes `--remove-tags` a true cleanup flag for post-migration tag removal.
 
 ### ARGUMENTS
 
@@ -1007,7 +1007,7 @@ Without `--apply`, runs in **report-only mode** showing what stacks would be cre
 ### OPTIONS
 
 **--remove-tags**
-: Remove the matched tag from each asset after stack creation. Only effective with `--apply`.
+: Remove the matched tag from every asset that carries it, including orphans and already-stacked assets. Only effective with `--apply`. Useful for cleaning up leftover tags after a partial migration — re-run with `--remove-tags` to sweep up tags that earlier runs left behind.
 
 **--apply**
 : Actually create stacks. Without this flag, the command only reports what it would do.

@@ -7447,6 +7447,45 @@ fn stack_from_tag_single_asset_skipped() {
 }
 
 #[test]
+fn stack_from_tag_remove_tags_cleans_up_orphans() {
+    // --remove-tags should remove the tag even when no stack is created
+    // (orphan tag on single asset or already-stacked assets).
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let ids = import_and_get_ids(&root, &["fto_a.jpg", "fto_b.jpg", "fto_c.jpg"]);
+
+    // Asset A: orphan (only one asset with "Aperture Stack 1")
+    maki().current_dir(&root).args(["tag", &ids[0], "Aperture Stack 1"]).assert().success();
+
+    // Assets B and C: already stacked with "Aperture Stack 2" tag still present
+    for id in &ids[1..] {
+        maki().current_dir(&root).args(["tag", id, "Aperture Stack 2"]).assert().success();
+    }
+    maki().current_dir(&root).args(["stack", "create", &ids[1], &ids[2]]).assert().success();
+
+    // Run stack from-tag with --remove-tags — both tags should be cleaned up
+    // even though no new stacks are created.
+    maki()
+        .current_dir(&root)
+        .args(["stack", "from-tag", "Aperture Stack {}", "--apply", "--remove-tags"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Tags skipped: 2"))
+        .stdout(predicate::str::contains("Tags removed: 3"));
+
+    // Verify all three assets no longer carry the Aperture Stack tag
+    for id in &ids {
+        maki()
+            .current_dir(&root)
+            .args(["show", id])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Aperture Stack").not());
+    }
+}
+
+#[test]
 fn stack_from_tag_json_output() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());

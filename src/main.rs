@@ -1353,7 +1353,9 @@ enum StackCommands {
         /// Tag pattern with {} as wildcard (e.g. "Aperture Stack {}")
         pattern: String,
 
-        /// Remove the matched tag from stacked assets after conversion
+        /// Remove the matched tag from ALL assets that carry it, including
+        /// orphans (single-asset tags that can't form a stack) and already-
+        /// stacked assets. Useful for cleaning up after a migration.
         #[arg(long)]
         remove_tags: bool,
 

@@ -3554,6 +3554,7 @@ impl QueryEngine {
         for tag in &matching_tags {
             let assets = catalog.assets_with_exact_tag(tag)?;
             let total_found = assets.len() as u32;
+            let all_asset_ids: Vec<String> = assets.iter().map(|(id, _)| id.clone()).collect();
 
             // Partition into stacked and unstacked
             let (already_stacked, unstacked): (Vec<_>, Vec<_>) =
@@ -3561,16 +3562,37 @@ impl QueryEngine {
 
             let skipped = already_stacked.len() as u32;
 
+            // Helper: when --remove-tags is set, remove the tag from every asset
+            // that carries it — regardless of whether a stack was created. This
+            // handles orphan tags (only 1 asset) and tags left over from earlier
+            // runs where stacks were already created but tag removal was incomplete.
+            let remove_all_tags = |ids: &[String], result: &mut FromTagResult| {
+                if remove_tags && apply {
+                    for id in ids {
+                        let _ = self.tag(id, &[tag.clone()], true);
+                        result.tags_removed += 1;
+                    }
+                }
+            };
+
             if unstacked.len() < 2 {
                 result.tags_skipped += 1;
                 if log {
+                    let note = if remove_tags && apply && total_found > 0 {
+                        format!(" (removed tag from {} asset(s))", total_found)
+                    } else {
+                        String::new()
+                    };
                     eprintln!(
-                        "{} — skipped ({} unstacked, {} already stacked)",
+                        "{} — skipped ({} unstacked, {} already stacked){}",
                         tag,
                         unstacked.len(),
-                        skipped
+                        skipped,
+                        note
                     );
                 }
+                // Still remove the tag when requested, even though no stack is created.
+                remove_all_tags(&all_asset_ids, &mut result);
                 result.details.push(FromTagDetail {
                     tag: tag.clone(),
                     assets_found: total_found,
@@ -3588,14 +3610,9 @@ impl QueryEngine {
             if apply {
                 let stack = store.create(&unstacked_ids)?;
                 stack_id_str = Some(stack.id.to_string());
-
-                if remove_tags {
-                    for id in &unstacked_ids {
-                        let _ = self.tag(id, &[tag.clone()], true);
-                        result.tags_removed += 1;
-                    }
-                }
             }
+            // Remove tag from ALL assets with it (newly-stacked + already-stacked).
+            remove_all_tags(&all_asset_ids, &mut result);
 
             result.stacks_created += 1;
             result.assets_stacked += stacked_count;
