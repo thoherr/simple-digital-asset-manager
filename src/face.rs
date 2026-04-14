@@ -42,8 +42,8 @@ pub const DETECTION_MODEL: FaceModelSpec = FaceModelSpec {
 /// `id` doubles as the recognition_model stamp on face rows, so the clustering
 /// code can detect and skip embeddings produced by an older model variant.
 pub const RECOGNITION_MODEL: FaceModelSpec = FaceModelSpec {
-    id: "arcface-resnet100-fp32",
-    display_name: "ArcFace ResNet-100 (FP32)",
+    id: "arcface-resnet100-fp32-aligned",
+    display_name: "ArcFace ResNet-100 (FP32, aligned)",
     hf_repo: "onnxmodelzoo/arcfaceresnet100-8",
     filename: "arcfaceresnet100-8.onnx",
     approx_size: 261_000_000,
@@ -196,8 +196,15 @@ impl FaceDetector {
 
     /// Extract a face embedding using ArcFace.
     ///
-    /// Crops and aligns the face from the source image using the 5-point landmarks,
-    /// then runs through the ArcFace recognition model to produce a 512-dim embedding.
+    /// Aligns the face to the canonical 112×112 ArcFace template using a
+    /// similarity transform (Umeyama, least-squares) fit to the detector's
+    /// 5-point landmarks, then runs the aligned crop through the recognition
+    /// model to produce a 512-dim L2-normalized embedding.
+    ///
+    /// Alignment is critical: ArcFace was trained on faces warped to fixed
+    /// landmark positions. Unaligned bbox crops produce degraded embeddings
+    /// — typically all-near-identical similarities (~0.9+) regardless of
+    /// who's in the image.
     pub fn embed_face(
         &mut self,
         image_path: &Path,
@@ -206,32 +213,14 @@ impl FaceDetector {
         let img = image::open(image_path)
             .with_context(|| format!("Failed to open image: {}", image_path.display()))?;
 
-        let w = img.width() as f32;
-        let h = img.height() as f32;
+        let rgb = align_face_to_arcface(&img, &face.landmarks);
 
-        // Crop the face region with some padding
-        let pad = 0.2; // 20% padding around the face bbox
-        let crop_x = ((face.bbox_x - face.bbox_w * pad) * w).max(0.0) as u32;
-        let crop_y = ((face.bbox_y - face.bbox_h * pad) * h).max(0.0) as u32;
-        let crop_w = ((face.bbox_w * (1.0 + 2.0 * pad)) * w).min(w - crop_x as f32) as u32;
-        let crop_h = ((face.bbox_h * (1.0 + 2.0 * pad)) * h).min(h - crop_y as f32) as u32;
-
-        let crop_w = crop_w.max(1);
-        let crop_h = crop_h.max(1);
-
-        let cropped = img.crop_imm(crop_x, crop_y, crop_w, crop_h);
-
-        // ArcFace expects 112x112 input
-        let resized = cropped.resize_exact(112, 112, image::imageops::FilterType::CatmullRom);
-        let rgb = resized.to_rgb8();
-
-        // Build NCHW tensor, normalized to [0, 1] range (standard ArcFace preprocessing)
+        // Build NCHW tensor with standard ArcFace normalization: (pixel - 127.5) / 127.5
         let mut tensor = Array4::<f32>::zeros((1, 3, 112, 112));
         for y in 0..112usize {
             for x in 0..112usize {
                 let pixel = rgb.get_pixel(x as u32, y as u32);
                 for c in 0..3 {
-                    // ArcFace standard normalization: (pixel - 127.5) / 127.5
                     tensor[[0, c, y, x]] = (pixel[c] as f32 - 127.5) / 127.5;
                 }
             }
@@ -773,6 +762,152 @@ fn l2_normalize(v: &[f32]) -> Vec<f32> {
     v.iter().map(|x| x / norm).collect()
 }
 
+/// Canonical 5-point landmark positions for ArcFace's 112×112 template.
+/// Taken from the InsightFace reference implementation. Order matches
+/// `DetectedFace.landmarks`: right eye, left eye, nose, right mouth, left mouth.
+pub(crate) const ARCFACE_CANONICAL_LANDMARKS: [(f32, f32); 5] = [
+    (38.2946, 51.6963),
+    (73.5318, 51.5014),
+    (56.0252, 71.7366),
+    (41.5493, 92.3655),
+    (70.7299, 92.2041),
+];
+
+/// Compute a 2D similarity transform (translation + rotation + uniform scale)
+/// from `src` to `dst` using the closed-form least-squares solution.
+///
+/// Returns a 2×3 affine matrix `[[a, -b, c], [b, a, d]]` representing the
+/// forward map: `dst = M · [src.x, src.y, 1]ᵀ`.
+///
+/// The similarity form (2 parameters for rotation+scale, 2 for translation)
+/// is appropriate for face alignment where the 5 landmarks are well-
+/// constrained but may include small detection noise. A full affine (6
+/// parameters) would over-fit individual landmark errors and warp the face
+/// non-rigidly.
+pub(crate) fn similarity_transform(src: &[(f32, f32); 5], dst: &[(f32, f32); 5]) -> [[f32; 3]; 2] {
+    let n = src.len() as f32;
+    let (mut sum_sx, mut sum_sy, mut sum_dx, mut sum_dy) = (0.0, 0.0, 0.0, 0.0);
+    for i in 0..5 {
+        sum_sx += src[i].0;
+        sum_sy += src[i].1;
+        sum_dx += dst[i].0;
+        sum_dy += dst[i].1;
+    }
+    let (msx, msy) = (sum_sx / n, sum_sy / n);
+    let (mdx, mdy) = (sum_dx / n, sum_dy / n);
+
+    let (mut var_s, mut cov_direct, mut cov_cross) = (0.0f32, 0.0f32, 0.0f32);
+    for i in 0..5 {
+        let scx = src[i].0 - msx;
+        let scy = src[i].1 - msy;
+        let dcx = dst[i].0 - mdx;
+        let dcy = dst[i].1 - mdy;
+        var_s += scx * scx + scy * scy;
+        cov_direct += scx * dcx + scy * dcy;
+        cov_cross += scx * dcy - scy * dcx;
+    }
+    // Guard against degenerate case (all points coincident) — fall back to identity.
+    if var_s < 1e-12 {
+        return [[1.0, 0.0, mdx - msx], [0.0, 1.0, mdy - msy]];
+    }
+    let a = cov_direct / var_s; // s·cos(θ)
+    let b = cov_cross / var_s;  // s·sin(θ)
+    // Pick translation so the forward map takes the source centroid to the destination centroid.
+    let c = mdx - (a * msx - b * msy);
+    let d = mdy - (b * msx + a * msy);
+    [[a, -b, c], [b, a, d]]
+}
+
+/// Invert a 2D similarity transform given as a 2×3 matrix `[[a, -b, c], [b, a, d]]`.
+pub(crate) fn invert_similarity(m: [[f32; 3]; 2]) -> [[f32; 3]; 2] {
+    let a = m[0][0];
+    let b = m[1][0];
+    let c = m[0][2];
+    let d = m[1][2];
+    let det = a * a + b * b;
+    if det < 1e-12 {
+        return [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+    }
+    let ia = a / det;
+    let ib = b / det;
+    [[ia, ib, -ia * c - ib * d], [-ib, ia, ib * c - ia * d]]
+}
+
+/// Warp a source image to a 112×112 ArcFace-aligned RGB crop using the detected
+/// 5-point landmarks (normalized coordinates [0, 1] relative to the full image).
+///
+/// Uses bilinear interpolation; out-of-bounds samples get black pixels. Output
+/// is guaranteed to be exactly 112×112 regardless of source image size.
+pub(crate) fn align_face_to_arcface(
+    source: &image::DynamicImage,
+    landmarks_normalized: &[(f32, f32); 5],
+) -> image::RgbImage {
+    let source_rgb = source.to_rgb8();
+    let w = source_rgb.width() as f32;
+    let h = source_rgb.height() as f32;
+
+    // Convert normalized landmarks ([0,1] across the full image) into pixel coords.
+    let mut src_px: [(f32, f32); 5] = [(0.0, 0.0); 5];
+    for i in 0..5 {
+        src_px[i] = (landmarks_normalized[i].0 * w, landmarks_normalized[i].1 * h);
+    }
+
+    // Forward transform maps source pixels → output (112×112) coords. For the
+    // pull-style warp we iterate over output pixels and use the inverse transform
+    // to sample from the source.
+    let fwd = similarity_transform(&src_px, &ARCFACE_CANONICAL_LANDMARKS);
+    let inv = invert_similarity(fwd);
+
+    let mut out = image::RgbImage::new(112, 112);
+    let sw = source_rgb.width() as i32;
+    let sh = source_rgb.height() as i32;
+    for y in 0..112u32 {
+        for x in 0..112u32 {
+            let xf = x as f32;
+            let yf = y as f32;
+            let sx = inv[0][0] * xf + inv[0][1] * yf + inv[0][2];
+            let sy = inv[1][0] * xf + inv[1][1] * yf + inv[1][2];
+            let pixel = bilinear_sample_rgb(&source_rgb, sx, sy, sw, sh);
+            out.put_pixel(x, y, pixel);
+        }
+    }
+    out
+}
+
+/// Bilinear-interpolated RGB sample with zero-padding outside the image.
+fn bilinear_sample_rgb(img: &image::RgbImage, x: f32, y: f32, w: i32, h: i32) -> image::Rgb<u8> {
+    let x0 = x.floor() as i32;
+    let y0 = y.floor() as i32;
+    // If entirely outside, return black. Edge case: x or y on the last pixel.
+    if x0 < -1 || y0 < -1 || x0 >= w || y0 >= h {
+        return image::Rgb([0u8, 0, 0]);
+    }
+    let dx = x - x0 as f32;
+    let dy = y - y0 as f32;
+    // Helper: fetch a pixel with clamped coordinates, falling back to black for negative.
+    let sample = |px: i32, py: i32| -> [f32; 3] {
+        if px < 0 || py < 0 || px >= w || py >= h {
+            [0.0, 0.0, 0.0]
+        } else {
+            let p = img.get_pixel(px as u32, py as u32);
+            [p[0] as f32, p[1] as f32, p[2] as f32]
+        }
+    };
+    let p00 = sample(x0, y0);
+    let p10 = sample(x0 + 1, y0);
+    let p01 = sample(x0, y0 + 1);
+    let p11 = sample(x0 + 1, y0 + 1);
+    let mut rgb = [0u8; 3];
+    for c in 0..3 {
+        let v = p00[c] * (1.0 - dx) * (1.0 - dy)
+            + p10[c] * dx * (1.0 - dy)
+            + p01[c] * (1.0 - dx) * dy
+            + p11[c] * dx * dy;
+        rgb[c] = v.round().clamp(0.0, 255.0) as u8;
+    }
+    image::Rgb(rgb)
+}
+
 /// Default face model directory: `~/.maki/models/faces/`.
 pub fn default_face_model_dir() -> Result<std::path::PathBuf> {
     let home = std::env::var("HOME")
@@ -826,6 +961,111 @@ mod tests {
     }
 
     #[test]
+    fn similarity_transform_identity_when_src_equals_dst() {
+        let pts = ARCFACE_CANONICAL_LANDMARKS;
+        let m = similarity_transform(&pts, &pts);
+        assert!((m[0][0] - 1.0).abs() < 1e-5, "a ≈ 1 for identity, got {}", m[0][0]);
+        assert!(m[0][1].abs() < 1e-5, "-b ≈ 0 for identity, got {}", m[0][1]);
+        assert!(m[0][2].abs() < 1e-4, "tx ≈ 0 for identity, got {}", m[0][2]);
+        assert!(m[1][0].abs() < 1e-5, "b ≈ 0 for identity, got {}", m[1][0]);
+        assert!((m[1][1] - 1.0).abs() < 1e-5, "a ≈ 1 for identity, got {}", m[1][1]);
+        assert!(m[1][2].abs() < 1e-4, "ty ≈ 0 for identity, got {}", m[1][2]);
+    }
+
+    #[test]
+    fn similarity_transform_pure_translation() {
+        let src = ARCFACE_CANONICAL_LANDMARKS;
+        // Translate every point by (+10, +20)
+        let mut dst = src;
+        for p in &mut dst {
+            p.0 += 10.0;
+            p.1 += 20.0;
+        }
+        let m = similarity_transform(&src, &dst);
+        assert!((m[0][0] - 1.0).abs() < 1e-4);
+        assert!(m[0][1].abs() < 1e-4);
+        assert!((m[0][2] - 10.0).abs() < 1e-3, "tx ≈ 10, got {}", m[0][2]);
+        assert!((m[1][2] - 20.0).abs() < 1e-3, "ty ≈ 20, got {}", m[1][2]);
+    }
+
+    #[test]
+    fn similarity_transform_uniform_scale() {
+        let src = ARCFACE_CANONICAL_LANDMARKS;
+        // Scale every point by 2× around the origin.
+        let mut dst = src;
+        for p in &mut dst {
+            p.0 *= 2.0;
+            p.1 *= 2.0;
+        }
+        let m = similarity_transform(&src, &dst);
+        assert!((m[0][0] - 2.0).abs() < 1e-3, "a ≈ 2 for uniform scale, got {}", m[0][0]);
+        assert!(m[0][1].abs() < 1e-3, "-b ≈ 0 for no rotation, got {}", m[0][1]);
+    }
+
+    #[test]
+    fn similarity_transform_applied_maps_src_to_dst_exactly_when_similarity() {
+        // Construct dst as a known similarity transform of src (rotation 30°, scale 1.5, translate (5, 7))
+        let theta = 30.0_f32.to_radians();
+        let s = 1.5f32;
+        let (a, b) = (s * theta.cos(), s * theta.sin());
+        let (tx, ty) = (5.0f32, 7.0f32);
+        let src = ARCFACE_CANONICAL_LANDMARKS;
+        let mut dst = src;
+        for p in &mut dst {
+            let (x, y) = *p;
+            *p = (a * x - b * y + tx, b * x + a * y + ty);
+        }
+        let m = similarity_transform(&src, &dst);
+        // Apply the recovered transform and verify we hit dst.
+        for i in 0..5 {
+            let (x, y) = src[i];
+            let mapped_x = m[0][0] * x + m[0][1] * y + m[0][2];
+            let mapped_y = m[1][0] * x + m[1][1] * y + m[1][2];
+            assert!((mapped_x - dst[i].0).abs() < 1e-3, "x_{i}: {} vs {}", mapped_x, dst[i].0);
+            assert!((mapped_y - dst[i].1).abs() < 1e-3, "y_{i}: {} vs {}", mapped_y, dst[i].1);
+        }
+    }
+
+    #[test]
+    fn invert_similarity_composes_to_identity() {
+        // Round trip: forward then inverse should yield the identity transform.
+        let m = [[1.5f32, -0.5, 10.0], [0.5, 1.5, -3.0]];
+        let inv = invert_similarity(m);
+        // Compose m ∘ inv — for point (x, y), applying inv then m should yield (x, y).
+        for &(x, y) in &[(0.0f32, 0.0f32), (1.0, 0.0), (0.0, 1.0), (100.0, 50.0), (-25.0, 75.0)] {
+            let ix = inv[0][0] * x + inv[0][1] * y + inv[0][2];
+            let iy = inv[1][0] * x + inv[1][1] * y + inv[1][2];
+            let rx = m[0][0] * ix + m[0][1] * iy + m[0][2];
+            let ry = m[1][0] * ix + m[1][1] * iy + m[1][2];
+            assert!((rx - x).abs() < 1e-4, "round-trip x: {} vs {}", rx, x);
+            assert!((ry - y).abs() < 1e-4, "round-trip y: {} vs {}", ry, y);
+        }
+    }
+
+    #[test]
+    fn align_face_produces_112x112_output() {
+        // Build a 500×500 red image and align with arbitrary landmarks —
+        // output size and type check only; correctness of warping is exercised
+        // by the similarity_transform / invert_similarity tests above.
+        let mut src = image::RgbImage::new(500, 500);
+        for p in src.pixels_mut() {
+            *p = image::Rgb([200, 100, 50]);
+        }
+        let dyn_img = image::DynamicImage::ImageRgb8(src);
+        // Arbitrary but plausible normalized landmarks.
+        let lms = [
+            (0.35, 0.40), (0.65, 0.40), (0.50, 0.55), (0.38, 0.70), (0.62, 0.70),
+        ];
+        let aligned = align_face_to_arcface(&dyn_img, &lms);
+        assert_eq!(aligned.width(), 112);
+        assert_eq!(aligned.height(), 112);
+        // Center pixel should have landed within the source image, so it's
+        // the solid color — not black (which would indicate out-of-bounds).
+        let center = aligned.get_pixel(56, 56);
+        assert_ne!(*center, image::Rgb([0, 0, 0]), "center should not be black");
+    }
+
+    #[test]
     fn default_face_model_dir_path() {
         let dir = default_face_model_dir().unwrap();
         let dir_str = dir.to_str().unwrap().replace('\\', "/");
@@ -846,7 +1086,7 @@ mod tests {
     fn face_model_specs_complete() {
         assert_eq!(FACE_MODEL_SPECS.len(), 2);
         assert_eq!(FACE_MODEL_SPECS[0].id, "yunet-face-detection");
-        assert_eq!(FACE_MODEL_SPECS[1].id, "arcface-resnet100-fp32");
+        assert_eq!(FACE_MODEL_SPECS[1].id, "arcface-resnet100-fp32-aligned");
     }
 
     #[test]
