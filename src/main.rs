@@ -1415,11 +1415,26 @@ enum FacesCommands {
         #[arg(long)]
         volume: Option<String>,
 
-        /// Similarity threshold for clustering (0.0–1.0)
+        /// Similarity threshold for clustering (0.0–1.0). Higher = stricter.
+        /// Typical range: 0.55–0.75 for the bundled face model.
         #[arg(long)]
         threshold: Option<f32>,
 
+        /// Skip face detections with confidence below this value (0.0–1.0).
+        /// Low-quality detections (blurry, partial, profile) produce noisy
+        /// embeddings that hurt clustering. Defaults to `[ai] face_min_confidence`
+        /// from maki.toml (default 0.5).
+        #[arg(long)]
+        min_confidence: Option<f32>,
+
         /// Apply clustering (default: dry-run showing cluster sizes)
+        #[arg(long)]
+        apply: bool,
+    },
+
+    /// Delete face records that are not assigned to any person
+    Clean {
+        /// Apply the deletion (default: report-only)
         #[arg(long)]
         apply: bool,
     },
@@ -4269,12 +4284,13 @@ faces/\n\
                     }
                     Ok(())
                 }
-                FacesCommands::Cluster { query, asset, volume, threshold, apply } => {
+                FacesCommands::Cluster { query, asset, volume, threshold, min_confidence, apply } => {
                     let catalog = maki::catalog::Catalog::open(&catalog_root)?;
                     let _ = maki::face_store::FaceStore::initialize(catalog.conn());
                     let face_store = maki::face_store::FaceStore::new(catalog.conn());
 
                     let thresh = threshold.unwrap_or(config.ai.face_cluster_threshold);
+                    let min_conf = min_confidence.unwrap_or(config.ai.face_min_confidence);
 
                     // Resolve scope to asset IDs (same pattern as maki embed)
                     let scoped_ids: Option<Vec<String>> = if query.is_some() || asset.is_some() || volume.is_some() {
@@ -4302,7 +4318,7 @@ faces/\n\
                     let scope = scoped_ids.as_deref();
 
                     if apply {
-                        let result = face_store.auto_cluster(thresh, scope)?;
+                        let result = face_store.auto_cluster(thresh, min_conf, scope)?;
                         // Persist faces/people YAML
                         if let Err(e) = face_store.save_all_yaml(&catalog_root) {
                             eprintln!("  Warning: failed to save faces/people YAML: {e:#}");
@@ -4316,7 +4332,7 @@ faces/\n\
                             );
                         }
                     } else {
-                        let (clusters, _unassigned) = face_store.cluster_faces(thresh, scope)?;
+                        let (clusters, _unassigned) = face_store.cluster_faces(thresh, min_conf, scope)?;
                         let total_faces: usize = clusters.iter().map(|c| c.len()).sum();
                         if cli.json {
                             println!("{}", serde_json::json!({
@@ -4325,9 +4341,10 @@ faces/\n\
                                 "faces_in_clusters": total_faces,
                                 "cluster_sizes": clusters.iter().map(|c| c.len()).collect::<Vec<_>>(),
                                 "threshold": thresh,
+                                "min_confidence": min_conf,
                             }));
                         } else {
-                            println!("Cluster preview (threshold={thresh:.2}):");
+                            println!("Cluster preview (threshold={thresh:.2}, min_confidence={min_conf:.2}):");
                             for (i, cluster) in clusters.iter().enumerate() {
                                 println!("  Cluster {}: {} faces", i + 1, cluster.len());
                             }
@@ -4417,6 +4434,42 @@ faces/\n\
                     let _ = face_store.save_all_yaml(&catalog_root);
                     let short = &full_id[..8.min(full_id.len())];
                     println!("Unassigned face {short} from its person");
+                    Ok(())
+                }
+                FacesCommands::Clean { apply } => {
+                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+                    let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+                    let face_store = maki::face_store::FaceStore::new(catalog.conn());
+
+                    let count = face_store.count_unassigned_faces()?;
+                    if cli.json {
+                        if apply {
+                            let deleted = face_store.delete_unassigned_faces()?;
+                            if let Err(e) = face_store.save_all_yaml(&catalog_root) {
+                                eprintln!("  Warning: failed to save faces/people YAML: {e:#}");
+                            }
+                            println!("{}", serde_json::json!({
+                                "dry_run": false,
+                                "deleted": deleted,
+                            }));
+                        } else {
+                            println!("{}", serde_json::json!({
+                                "dry_run": true,
+                                "would_delete": count,
+                            }));
+                        }
+                    } else if count == 0 {
+                        println!("No unassigned faces to delete.");
+                    } else if apply {
+                        let deleted = face_store.delete_unassigned_faces()?;
+                        if let Err(e) = face_store.save_all_yaml(&catalog_root) {
+                            eprintln!("  Warning: failed to save faces/people YAML: {e:#}");
+                        }
+                        println!("Deleted {deleted} unassigned face record(s).");
+                    } else {
+                        println!("Dry run — would delete {count} unassigned face record(s).");
+                        println!("  Run with --apply to actually delete.");
+                    }
                     Ok(())
                 }
                 FacesCommands::Export => {

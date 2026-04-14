@@ -391,6 +391,26 @@ impl<'a> FaceStore<'a> {
         Ok(asset_id)
     }
 
+    /// Delete all faces that have no person assigned (`person_id IS NULL`).
+    /// Returns the number of faces deleted.
+    pub fn delete_unassigned_faces(&self) -> Result<u32> {
+        let count = self.conn.execute(
+            "DELETE FROM faces WHERE person_id IS NULL",
+            [],
+        )?;
+        Ok(count as u32)
+    }
+
+    /// Count faces that have no person assigned (`person_id IS NULL`).
+    pub fn count_unassigned_faces(&self) -> Result<u32> {
+        let count: u32 = self.conn.query_row(
+            "SELECT COUNT(*) FROM faces WHERE person_id IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
     /// Delete a person and unassign their faces.
     pub fn delete_person(&self, person_id: &str) -> Result<()> {
         self.conn.execute(
@@ -405,19 +425,19 @@ impl<'a> FaceStore<'a> {
     }
 
     /// Get all face embeddings grouped by person (for clustering).
-    /// Returns (face_id, person_id, embedding) tuples.
-    pub fn all_face_embeddings(&self) -> Result<Vec<(String, Option<String>, Vec<f32>)>> {
+    /// Returns (face_id, person_id, embedding, confidence) tuples.
+    pub fn all_face_embeddings(&self) -> Result<Vec<(String, Option<String>, Vec<f32>, f32)>> {
         self.face_embeddings_scoped(None)
     }
 
     /// Get face embeddings, optionally scoped to specific asset IDs.
-    /// Returns (face_id, person_id, embedding) tuples.
-    pub fn face_embeddings_scoped(&self, asset_ids: Option<&[String]>) -> Result<Vec<(String, Option<String>, Vec<f32>)>> {
+    /// Returns (face_id, person_id, embedding, confidence) tuples.
+    pub fn face_embeddings_scoped(&self, asset_ids: Option<&[String]>) -> Result<Vec<(String, Option<String>, Vec<f32>, f32)>> {
         let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match asset_ids {
             Some(ids) if !ids.is_empty() => {
                 let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{i}")).collect();
                 let sql = format!(
-                    "SELECT id, person_id, embedding FROM faces WHERE asset_id IN ({})",
+                    "SELECT id, person_id, embedding, confidence FROM faces WHERE asset_id IN ({})",
                     placeholders.join(",")
                 );
                 let params: Vec<Box<dyn rusqlite::types::ToSql>> = ids.iter()
@@ -426,7 +446,7 @@ impl<'a> FaceStore<'a> {
                 (sql, params)
             }
             _ => {
-                ("SELECT id, person_id, embedding FROM faces".to_string(), Vec::new())
+                ("SELECT id, person_id, embedding, confidence FROM faces".to_string(), Vec::new())
             }
         };
         let mut stmt = self.conn.prepare(&sql)?;
@@ -435,13 +455,14 @@ impl<'a> FaceStore<'a> {
             let id: String = row.get(0)?;
             let person_id: Option<String> = row.get(1)?;
             let blob: Vec<u8> = row.get(2)?;
-            Ok((id, person_id, blob))
+            let confidence: f32 = row.get(3)?;
+            Ok((id, person_id, blob, confidence))
         })?;
         let mut result = Vec::new();
         for row in rows {
-            let (id, person_id, blob) = row?;
+            let (id, person_id, blob, confidence) = row?;
             let emb = blob_to_embedding(&blob);
-            result.push((id, person_id, emb));
+            result.push((id, person_id, emb, confidence));
         }
         Ok(result)
     }
@@ -510,67 +531,114 @@ impl<'a> FaceStore<'a> {
         rows.collect::<Result<Vec<String>, _>>().context("Failed to find person asset IDs")
     }
 
-    /// Cluster unassigned faces into groups using greedy single-linkage.
+    /// Cluster unassigned faces using agglomerative hierarchical clustering
+    /// with average linkage (UPGMA).
     ///
-    /// If `asset_ids` is provided, only faces from those assets are considered.
-    /// Returns (clusters, unassigned_count) where each cluster is a list of face_ids with ≥2 faces.
-    pub fn cluster_faces(&self, threshold: f32, asset_ids: Option<&[String]>) -> Result<(Vec<Vec<String>>, usize)> {
+    /// - `threshold`: minimum average cosine similarity to merge two clusters (0.0–1.0)
+    /// - `min_confidence`: skip faces whose detection confidence is below this value
+    /// - `asset_ids`: if provided, only faces from those assets are considered
+    ///
+    /// Returns `(clusters, candidate_count)` where each cluster is a list of
+    /// face_ids with ≥2 members. `candidate_count` is the number of eligible
+    /// unassigned faces (after confidence filter) considered for clustering.
+    ///
+    /// HAC is order-independent and produces much tighter clusters than the
+    /// previous greedy algorithm. Uses the Lance-Williams update formula so
+    /// merges update cluster-to-cluster similarities in O(n) per merge.
+    pub fn cluster_faces(
+        &self,
+        threshold: f32,
+        min_confidence: f32,
+        asset_ids: Option<&[String]>,
+    ) -> Result<(Vec<Vec<String>>, usize)> {
         let all = self.face_embeddings_scoped(asset_ids)?;
-        // Only cluster unassigned faces
+        // Only cluster unassigned faces above the confidence threshold
         let unassigned: Vec<(String, Vec<f32>)> = all
             .into_iter()
-            .filter(|(_, pid, _)| pid.is_none())
-            .map(|(id, _, emb)| (id, emb))
+            .filter(|(_, pid, _, conf)| pid.is_none() && *conf >= min_confidence)
+            .map(|(id, _, emb, _)| (id, emb))
             .collect();
-        let unassigned_count = unassigned.len();
+        let n = unassigned.len();
 
-        if unassigned.is_empty() {
+        if n == 0 {
             return Ok((Vec::new(), 0));
         }
 
-        // Greedy clustering: each cluster has a centroid (average embedding)
-        let mut clusters: Vec<(Vec<String>, Vec<f32>)> = Vec::new(); // (face_ids, centroid)
-
-        for (face_id, emb) in &unassigned {
-            let mut best_idx = None;
-            let mut best_sim = threshold;
-
-            for (i, (_, centroid)) in clusters.iter().enumerate() {
-                let sim = crate::ai::cosine_similarity(emb, centroid);
-                if sim > best_sim {
-                    best_sim = sim;
-                    best_idx = Some(i);
-                }
-            }
-
-            if let Some(idx) = best_idx {
-                // Add to existing cluster, update centroid (running average)
-                let (ref mut ids, ref mut centroid) = clusters[idx];
-                let n = ids.len() as f32;
-                for (j, val) in emb.iter().enumerate() {
-                    centroid[j] = (centroid[j] * n + val) / (n + 1.0);
-                }
-                ids.push(face_id.clone());
-            } else {
-                // Start a new cluster
-                clusters.push((vec![face_id.clone()], emb.clone()));
+        // Precompute pairwise similarities. sim[i][j] = similarity between
+        // current clusters i and j (maintained via Lance-Williams after merges).
+        let mut sim = vec![vec![0.0f32; n]; n];
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let s = crate::ai::cosine_similarity(&unassigned[i].1, &unassigned[j].1);
+                sim[i][j] = s;
+                sim[j][i] = s;
             }
         }
 
-        // Return only clusters with ≥2 faces
-        let result: Vec<Vec<String>> = clusters
+        // Each slot holds Some(members) while the cluster is alive, None after merge.
+        // We merge j into i (i < j) and mark j as None.
+        let mut members: Vec<Option<Vec<usize>>> = (0..n).map(|i| Some(vec![i])).collect();
+
+        loop {
+            // Find the pair of live clusters with the highest similarity > threshold.
+            let mut best = None;
+            let mut best_sim = threshold;
+            for i in 0..n {
+                if members[i].is_none() { continue; }
+                for j in (i + 1)..n {
+                    if members[j].is_none() { continue; }
+                    if sim[i][j] > best_sim {
+                        best_sim = sim[i][j];
+                        best = Some((i, j));
+                    }
+                }
+            }
+
+            let (i, j) = match best {
+                Some(p) => p,
+                None => break,
+            };
+
+            // Lance-Williams update for average linkage (UPGMA):
+            //   sim(i ∪ j, k) = (|i| * sim(i,k) + |j| * sim(j,k)) / (|i| + |j|)
+            let size_i = members[i].as_ref().unwrap().len() as f32;
+            let size_j = members[j].as_ref().unwrap().len() as f32;
+            let total = size_i + size_j;
+            for k in 0..n {
+                if k == i || k == j { continue; }
+                if members[k].is_none() { continue; }
+                let new_sim = (size_i * sim[i][k] + size_j * sim[j][k]) / total;
+                sim[i][k] = new_sim;
+                sim[k][i] = new_sim;
+            }
+
+            // Merge j into i.
+            let merged = members[j].take().unwrap();
+            members[i].as_mut().unwrap().extend(merged);
+        }
+
+        // Extract clusters with ≥2 members, map indices back to face IDs.
+        let result: Vec<Vec<String>> = members
             .into_iter()
-            .filter(|(ids, _)| ids.len() >= 2)
-            .map(|(ids, _)| ids)
+            .flatten()
+            .filter(|c| c.len() >= 2)
+            .map(|c| c.into_iter().map(|idx| unassigned[idx].0.clone()).collect())
             .collect();
-        Ok((result, unassigned_count))
+        Ok((result, n))
     }
 
     /// Auto-cluster unassigned faces and create people for each cluster.
     ///
-    /// If `asset_ids` is provided, only faces from those assets are considered.
-    pub fn auto_cluster(&self, threshold: f32, asset_ids: Option<&[String]>) -> Result<AutoClusterResult> {
-        let (clusters, total_unassigned) = self.cluster_faces(threshold, asset_ids)?;
+    /// - `threshold`: similarity cut-off for average-linkage clustering
+    /// - `min_confidence`: ignore faces below this detection confidence
+    /// - `asset_ids`: optionally scope to faces from specific assets
+    pub fn auto_cluster(
+        &self,
+        threshold: f32,
+        min_confidence: f32,
+        asset_ids: Option<&[String]>,
+    ) -> Result<AutoClusterResult> {
+        let (clusters, total_unassigned) = self.cluster_faces(threshold, min_confidence, asset_ids)?;
 
         let mut people_created = 0u32;
         let mut faces_assigned = 0u32;
@@ -1313,5 +1381,104 @@ mod tests {
         let people = load_people_yaml(dir.path()).unwrap();
         assert!(faces.faces.is_empty());
         assert!(people.people.is_empty());
+    }
+
+    // Helper: create a 512-d embedding pointing mostly along `axis` with small noise.
+    // Embeddings are L2-normalized so cosine similarity is well-defined.
+    fn synth_embedding(axis: usize, variation: f32) -> Vec<f32> {
+        let mut v = vec![0.0f32; 512];
+        v[axis] = 1.0;
+        v[(axis + 1) % 512] = variation;
+        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        v.iter().map(|x| x / norm).collect()
+    }
+
+    #[test]
+    fn cluster_groups_similar_faces_into_distinct_clusters() {
+        let conn = setup_db();
+        let store = FaceStore::new(&conn);
+
+        // Three distinct "people" along different embedding axes — each with
+        // three near-duplicate faces (small variation).
+        // Person A: axis 0, Person B: axis 100, Person C: axis 200.
+        for (i, v) in [0.01, 0.02, 0.03].iter().enumerate() {
+            let emb = synth_embedding(0, *v);
+            store.store_face(&format!("a{i}"), "asset-1", 0.0, 0.0, 0.1, 0.1, &emb, 0.95).unwrap();
+        }
+        for (i, v) in [0.01, 0.02, 0.03].iter().enumerate() {
+            let emb = synth_embedding(100, *v);
+            store.store_face(&format!("b{i}"), "asset-1", 0.0, 0.0, 0.1, 0.1, &emb, 0.95).unwrap();
+        }
+        for (i, v) in [0.01, 0.02, 0.03].iter().enumerate() {
+            let emb = synth_embedding(200, *v);
+            store.store_face(&format!("c{i}"), "asset-2", 0.0, 0.0, 0.1, 0.1, &emb, 0.95).unwrap();
+        }
+
+        let (clusters, unassigned) = store.cluster_faces(0.5, 0.0, None).unwrap();
+        assert_eq!(unassigned, 9);
+        assert_eq!(clusters.len(), 3, "expected 3 well-separated clusters");
+        for c in &clusters {
+            assert_eq!(c.len(), 3, "each cluster should have 3 members");
+            // All IDs in a cluster should share the first letter (same "person")
+            let first_letter = c[0].chars().next().unwrap();
+            assert!(c.iter().all(|id| id.starts_with(first_letter)));
+        }
+    }
+
+    #[test]
+    fn cluster_respects_min_confidence_filter() {
+        let conn = setup_db();
+        let store = FaceStore::new(&conn);
+
+        // Two high-confidence faces (cluster candidates) and one low-confidence face.
+        let emb_a = synth_embedding(0, 0.01);
+        let emb_a2 = synth_embedding(0, 0.02);
+        let emb_low = synth_embedding(0, 0.03);
+        store.store_face("hi1", "asset-1", 0.0, 0.0, 0.1, 0.1, &emb_a, 0.95).unwrap();
+        store.store_face("hi2", "asset-1", 0.0, 0.0, 0.1, 0.1, &emb_a2, 0.95).unwrap();
+        store.store_face("low", "asset-1", 0.0, 0.0, 0.1, 0.1, &emb_low, 0.3).unwrap();
+
+        let (_, unassigned) = store.cluster_faces(0.5, 0.7, None).unwrap();
+        assert_eq!(unassigned, 2, "low-confidence face must be excluded");
+    }
+
+    #[test]
+    fn cluster_ignores_already_assigned_faces() {
+        let conn = setup_db();
+        let store = FaceStore::new(&conn);
+
+        let emb = synth_embedding(0, 0.0);
+        store.store_face("f1", "asset-1", 0.0, 0.0, 0.1, 0.1, &emb, 0.95).unwrap();
+        store.store_face("f2", "asset-1", 0.0, 0.0, 0.1, 0.1, &emb, 0.95).unwrap();
+
+        let pid = store.create_person(Some("Alice")).unwrap();
+        store.assign_face_to_person("f1", &pid).unwrap();
+
+        let (_, unassigned) = store.cluster_faces(0.5, 0.0, None).unwrap();
+        assert_eq!(unassigned, 1, "only the unassigned face should be considered");
+    }
+
+    #[test]
+    fn delete_unassigned_faces_only_removes_unassigned() {
+        let conn = setup_db();
+        let store = FaceStore::new(&conn);
+
+        let emb = vec![0.1f32; 512];
+        store.store_face("kept", "asset-1", 0.0, 0.0, 0.1, 0.1, &emb, 0.95).unwrap();
+        store.store_face("orphan1", "asset-1", 0.0, 0.0, 0.1, 0.1, &emb, 0.95).unwrap();
+        store.store_face("orphan2", "asset-2", 0.0, 0.0, 0.1, 0.1, &emb, 0.95).unwrap();
+
+        let pid = store.create_person(Some("Alice")).unwrap();
+        store.assign_face_to_person("kept", &pid).unwrap();
+
+        assert_eq!(store.count_unassigned_faces().unwrap(), 2);
+        let deleted = store.delete_unassigned_faces().unwrap();
+        assert_eq!(deleted, 2);
+        assert_eq!(store.count_unassigned_faces().unwrap(), 0);
+
+        // Assigned face still present
+        let remaining = store.faces_for_asset("asset-1").unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, "kept");
     }
 }

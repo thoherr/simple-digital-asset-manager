@@ -5560,7 +5560,8 @@ pub async fn cluster_faces_api(
         let _ = crate::face_store::FaceStore::initialize(catalog.conn());
         let face_store = crate::face_store::FaceStore::new(catalog.conn());
         let threshold = state.ai_config.face_cluster_threshold;
-        let result = face_store.auto_cluster(threshold, None)?;
+        let min_confidence = state.ai_config.face_min_confidence;
+        let result = face_store.auto_cluster(threshold, min_confidence, None)?;
         let _ = face_store.save_all_yaml(&state.catalog_root);
         state.dropdown_cache.invalidate_people();
         Ok::<_, anyhow::Error>(result)
