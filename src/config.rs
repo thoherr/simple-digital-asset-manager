@@ -313,11 +313,18 @@ fn default_ai_prompt() -> String {
 }
 
 fn default_face_cluster_threshold() -> f32 {
-    0.5
+    // Tuned for the aligned FP32 ArcFace pipeline. Intra-person cosine
+    // similarity typically falls in 0.5–0.9; inter-person similarity is
+    // negative-to-slightly-positive. 0.35 sits near the valley between
+    // the two humps — slightly aggressive (merges borderline same-person
+    // pairs) but reliably separates different people. Lower to 0.3 for
+    // stricter same-person clusters with fewer splits; raise to 0.4+ for
+    // cleaner but smaller clusters.
+    0.35
 }
 
 fn default_face_min_confidence() -> f32 {
-    0.5
+    0.7
 }
 
 impl Default for AiConfig {
@@ -328,8 +335,8 @@ impl Default for AiConfig {
             labels: None,
             model_dir: "~/.maki/models".to_string(),
             prompt: "a photograph of {}".to_string(),
-            face_cluster_threshold: 0.5,
-            face_min_confidence: 0.5,
+            face_cluster_threshold: 0.35,
+            face_min_confidence: 0.7,
             execution_provider: "auto".to_string(),
             text_limit: 50,
         }
