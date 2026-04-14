@@ -478,14 +478,26 @@ impl<'a> FaceStore<'a> {
         }
     }
 
-    /// Find asset IDs that have faces assigned to a person (by name).
-    pub fn find_person_asset_ids(&self, name: &str) -> Result<Vec<String>> {
+    /// Find asset IDs that have faces assigned to a person.
+    ///
+    /// Accepts either a person name or a person ID (UUID). If `value` parses
+    /// as a UUID, looks up by ID first (this covers unnamed clusters where
+    /// `people.name` is NULL); otherwise looks up by name. Falling through to
+    /// name lookup also handles the unlikely edge case of a named person
+    /// whose name happens to look like a UUID.
+    pub fn find_person_asset_ids(&self, value: &str) -> Result<Vec<String>> {
+        if uuid::Uuid::parse_str(value).is_ok() {
+            let ids = self.find_person_asset_ids_by_id(value)?;
+            if !ids.is_empty() {
+                return Ok(ids);
+            }
+        }
         let mut stmt = self.conn.prepare(
             "SELECT DISTINCT f.asset_id FROM faces f
              JOIN people p ON f.person_id = p.id
              WHERE p.name = ?1",
         )?;
-        let rows = stmt.query_map(rusqlite::params![name], |row| row.get(0))?;
+        let rows = stmt.query_map(rusqlite::params![value], |row| row.get(0))?;
         rows.collect::<Result<Vec<String>, _>>().context("Failed to find person asset IDs")
     }
 

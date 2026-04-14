@@ -19,7 +19,7 @@
 <div class="people-grid">
     {% for p in people %}
     <div class="person-card" data-id="{{ p.id }}">
-        <a href="/?person={{ p.name|urlencode }}">
+        <a href="/?person={{ p.id }}">
             {% if let Some(url) = p.crop_url %}
             <img src="{{ url }}" class="person-thumb" alt="{{ p.name }}">
             {% else %}
