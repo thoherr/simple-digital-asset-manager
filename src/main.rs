@@ -4529,10 +4529,14 @@ faces/\n\
                     };
 
                     let faces = face_store.face_embeddings_scoped(scoped_ids.as_deref())?;
-                    // Filter by assignment + confidence
-                    let filtered: Vec<(String, String, Vec<f32>, f32)> = faces.into_iter()
+                    // Filter by assignment + confidence; also look up asset_id for each
+                    // kept face so the output can point back to a real asset.
+                    let filtered: Vec<(String, String, String, Vec<f32>, f32)> = faces.into_iter()
                         .filter(|(_, pid, _, conf)| (all || pid.is_none()) && *conf >= min_confidence)
-                        .map(|(id, pid, emb, conf)| (id, pid.unwrap_or_default(), emb, conf))
+                        .filter_map(|(id, pid, emb, conf)| {
+                            let asset_id = face_store.get_face(&id).ok().flatten().map(|f| f.asset_id)?;
+                            Some((id, pid.unwrap_or_default(), asset_id, emb, conf))
+                        })
                         .collect();
 
                     let n = filtered.len();
@@ -4545,12 +4549,12 @@ faces/\n\
                         return Ok(());
                     }
 
-                    // Compute all pairwise similarities
+                    // Compute all pairwise similarities (embeddings are at tuple index 3)
                     let mut sims: Vec<f32> = Vec::with_capacity(n * (n - 1) / 2);
                     let mut per_face: Vec<Vec<(usize, f32)>> = vec![Vec::new(); n];
                     for i in 0..n {
                         for j in (i + 1)..n {
-                            let s = maki::ai::cosine_similarity(&filtered[i].2, &filtered[j].2);
+                            let s = maki::ai::cosine_similarity(&filtered[i].3, &filtered[j].3);
                             sims.push(s);
                             per_face[i].push((j, s));
                             per_face[j].push((i, s));
@@ -4631,16 +4635,18 @@ faces/\n\
 
                         if top > 0 {
                             println!();
-                            println!("Top-{top} nearest neighbors per face:");
+                            println!("Top-{top} nearest neighbors per face (format: face_id/asset_id):");
                             for i in 0..n {
                                 per_face[i].sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-                                let short_id = &filtered[i].0[..8.min(filtered[i].0.len())];
+                                let short_face = &filtered[i].0[..8.min(filtered[i].0.len())];
+                                let short_asset = &filtered[i].2[..8.min(filtered[i].2.len())];
                                 let person = if filtered[i].1.is_empty() { "unassigned".to_string() } else { format!("person={}", &filtered[i].1[..8.min(filtered[i].1.len())]) };
-                                println!("  {short_id} (conf={:.2}, {person}):", filtered[i].3);
+                                println!("  {short_face}/{short_asset} (conf={:.2}, {person}):", filtered[i].4);
                                 for (j, s) in per_face[i].iter().take(top) {
-                                    let short_j = &filtered[*j].0[..8.min(filtered[*j].0.len())];
+                                    let short_jf = &filtered[*j].0[..8.min(filtered[*j].0.len())];
+                                    let short_ja = &filtered[*j].2[..8.min(filtered[*j].2.len())];
                                     let person_j = if filtered[*j].1.is_empty() { "unassigned".to_string() } else { format!("person={}", &filtered[*j].1[..8.min(filtered[*j].1.len())]) };
-                                    println!("    → {short_j} [{s:.3}] ({person_j})");
+                                    println!("    → {short_jf}/{short_ja} [{s:.3}] ({person_j})");
                                 }
                             }
                         }
