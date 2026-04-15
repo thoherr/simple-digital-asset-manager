@@ -1450,9 +1450,15 @@ fn build_parsed_search(params: &SearchParams, state: &AppState) -> BrowseFilters
         None
     };
 
-    // Push collection/person from dropdowns
+    // Push collection/person from dropdowns. The `person` URL param accepts
+    // a comma-separated list (sent by the chip-based people picker); legacy
+    // single-value URLs from shared links still work since they have no comma.
     if !collection_str.is_empty() { parsed.collections.push(collection_str.to_string()); }
-    if !person_str.is_empty() { parsed.persons.push(person_str.to_string()); }
+    if !person_str.is_empty() {
+        for p in person_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            parsed.persons.push(p.to_string());
+        }
+    }
 
     BrowseFilters {
         parsed,
@@ -6532,7 +6538,9 @@ pub async fn export_zip(
                 parsed.collections.push(collection_str.to_string());
             }
             if !person_str.is_empty() {
-                parsed.persons.push(person_str.to_string());
+                for p in person_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    parsed.persons.push(p.to_string());
+                }
             }
 
             let mut opts = parsed.to_search_options();

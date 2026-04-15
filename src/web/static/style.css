@@ -228,43 +228,61 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     min-width: 100px;
 }
 
-/* Person filter combobox in the filter bar — searchable replacement for
-   <select name=person> so it scales when the catalog has many named people. */
-.person-filter-combobox {
+/* People filter — chip-based multi-select in the top filter row, mirroring
+   the tag-filter UX. Each chip is one person; multiple chips AND together. */
+.person-filter {
     position: relative;
-    display: inline-flex;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
-}
-.person-filter-input {
-    padding: 0.5rem 1.6rem 0.5rem 0.75rem;
+    gap: 4px;
+    padding: 4px 6px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    font-size: 0.9rem;
     background: var(--bg-input);
-    color: var(--text);
-    min-width: 140px;
-    max-width: 220px;
+    flex: 1 1 200px;
+    min-width: 180px;
 }
-.person-filter-input:focus {
-    outline: none;
+.person-filter:focus-within {
     border-color: var(--primary);
 }
-.person-filter-clear {
-    position: absolute;
-    right: 6px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 18px;
-    height: 18px;
-    padding: 0;
-    line-height: 1;
+.person-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.person-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px 2px 8px;
+    background: rgba(46, 168, 160, 0.18);  /* maki-teal tint to distinguish from tag chips */
+    border: 1px solid rgba(46, 168, 160, 0.45);
+    border-radius: 12px;
+    font-size: 0.85rem;
+    color: var(--text);
+    white-space: nowrap;
+}
+.person-chip .remove-person {
     background: transparent;
     border: none;
     color: var(--text-muted);
     cursor: pointer;
+    padding: 0 2px;
     font-size: 1rem;
+    line-height: 1;
 }
-.person-filter-clear:hover { color: var(--text); }
+.person-chip .remove-person:hover { color: var(--text); }
+.person-filter-input {
+    flex: 1;
+    min-width: 80px;
+    padding: 4px 6px;
+    border: none;
+    background: transparent;
+    font-size: 0.9rem;
+    color: var(--text);
+    outline: none;
+}
 .person-filter-dropdown {
     position: absolute;
     top: 100%;

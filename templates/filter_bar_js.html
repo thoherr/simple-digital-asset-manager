@@ -507,33 +507,72 @@
         pathInput.addEventListener('keyup', function(e) { e.stopPropagation(); });
     }
 
-    // --- Person filter combobox ---
-    // Searchable replacement for the old <select name=person>. Hidden input
-    // carries the ID (read by damFilterQuery); visible input is the filter.
-    var personBox = document.getElementById('person-filter-combobox');
-    if (personBox) {
-        var personIdInput = document.getElementById('person-filter-id');
-        var personInput = document.getElementById('person-filter-input');
-        var personClear = document.getElementById('person-filter-clear');
+    // --- People filter (chip-based, multi-select) ---
+    // Mirrors the tag-chip UX: type-to-filter, ↑/↓/Enter to add a chip,
+    // backspace in the empty input removes the last chip. Multiple chips
+    // are AND'd in damFilterQuery (one `person:"name"` token each), matching
+    // how multiple tag chips work.
+    var personFilter = document.getElementById('person-filter');
+    if (personFilter) {
+        var personChipsEl = document.getElementById('person-chips');
+        var personInput = document.getElementById('person-input');
         var personDropdown = document.getElementById('person-filter-dropdown');
+        var personIdInput = document.getElementById('person-filter-id');
         var personData = [];
         try {
             var pdEl = document.getElementById('person-filter-data');
             if (pdEl && pdEl.textContent.trim()) personData = JSON.parse(pdEl.textContent);
         } catch (e) { /* empty list */ }
+        var personById = {};
+        var personByName = {};
+        personData.forEach(function(p) { personById[p.id] = p; personByName[p.name.toLowerCase()] = p; });
 
-        // Initialize the visible input with the currently-selected person's name.
-        // The URL may contain either an ID (new) or a name (legacy shared links),
-        // so match on either.
-        var initialId = personIdInput.value;
-        if (initialId) {
-            var match = personData.find(function(p) { return p.id === initialId || p.name === initialId; });
-            if (match) {
-                personInput.value = match.name;
-                personIdInput.value = match.id;
-                personInput.dataset.name = match.name;
-                personClear.hidden = false;
-            }
+        function getSelectedPeopleNames() {
+            var names = [];
+            personChipsEl.querySelectorAll('.person-chip').forEach(function(c) {
+                names.push(c.getAttribute('data-name'));
+            });
+            return names;
+        }
+
+        function syncPersonHiddenInput() {
+            // Sync the hidden form input so htmx posts the selection as a
+            // comma-separated `person` URL param. The backend splits this
+            // into multiple Vec<String> entries when parsing.
+            personIdInput.value = getSelectedPeopleNames().join(',');
+        }
+
+        function addPersonChip(person) {
+            // De-dupe: a person can only be in the chips once.
+            var existing = getSelectedPeopleNames();
+            if (existing.indexOf(person.name) !== -1) return;
+            var chip = document.createElement('span');
+            chip.className = 'person-chip';
+            chip.setAttribute('data-id', person.id);
+            chip.setAttribute('data-name', person.name);
+            var label = document.createElement('span');
+            label.textContent = person.name;
+            chip.appendChild(label);
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'remove-person';
+            btn.innerHTML = '&times;';
+            btn.title = 'Remove';
+            btn.onclick = function() {
+                chip.remove();
+                syncPersonHiddenInput();
+                onFilterChange();
+            };
+            chip.appendChild(btn);
+            personChipsEl.appendChild(chip);
+        }
+
+        function addPersonAndSearch(person) {
+            addPersonChip(person);
+            personInput.value = '';
+            closePersonDropdown();
+            syncPersonHiddenInput();
+            onFilterChange();
         }
 
         var personActiveIdx = -1;
@@ -548,12 +587,11 @@
 
         function renderPersonDropdown() {
             var q = personInput.value.trim().toLowerCase();
-            var matches = personData;
-            if (q && q !== (personInput.dataset.name || '').toLowerCase()) {
-                matches = personData.filter(function(p) {
-                    return p.name.toLowerCase().indexOf(q) !== -1;
-                });
-            }
+            var selected = getSelectedPeopleNames();
+            var matches = personData.filter(function(p) {
+                if (selected.indexOf(p.name) !== -1) return false;  // already a chip
+                return q === '' || p.name.toLowerCase().indexOf(q) !== -1;
+            });
             var cap = 30;
             var truncated = matches.length > cap;
             var shown = truncated ? matches.slice(0, cap) : matches;
@@ -569,7 +607,7 @@
                 row.textContent = p.name;
                 row.addEventListener('mousedown', function(e) {
                     e.preventDefault();
-                    selectPerson(p);
+                    addPersonAndSearch(p);
                 });
                 row.addEventListener('mouseenter', function() {
                     personActiveIdx = i;
@@ -595,32 +633,11 @@
             if (activeRow) activeRow.scrollIntoView({block: 'nearest'});
         }
 
-        function selectPerson(p) {
-            personIdInput.value = p.id;
-            personInput.value = p.name;
-            personInput.dataset.name = p.name;
-            personClear.hidden = false;
-            closePersonDropdown();
-            onFilterChange();
-        }
-
-        function clearPerson() {
-            personIdInput.value = '';
-            personInput.value = '';
-            personInput.dataset.name = '';
-            personClear.hidden = true;
-            closePersonDropdown();
-            onFilterChange();
-        }
-
         personInput.addEventListener('focus', renderPersonDropdown);
         personInput.addEventListener('input', renderPersonDropdown);
         personInput.addEventListener('keydown', function(e) {
-            if (personDropdown.hidden && (e.key === 'ArrowDown' || e.key === 'Enter')) {
-                renderPersonDropdown();
-                return;
-            }
             if (e.key === 'ArrowDown') {
+                if (personDropdown.hidden) { renderPersonDropdown(); return; }
                 e.preventDefault();
                 if (personItems.length === 0) return;
                 personActiveIdx = Math.min(personActiveIdx + 1, personItems.length - 1);
@@ -633,29 +650,52 @@
             } else if (e.key === 'Enter') {
                 e.preventDefault();
                 if (personActiveIdx >= 0 && personItems[personActiveIdx]) {
-                    selectPerson(personItems[personActiveIdx]);
-                } else if (personInput.value.trim() === '') {
-                    clearPerson();
+                    addPersonAndSearch(personItems[personActiveIdx]);
+                } else {
+                    // Try exact name match against the typed text.
+                    var q = personInput.value.trim().toLowerCase();
+                    var match = personByName[q];
+                    if (match) addPersonAndSearch(match);
+                }
+            } else if (e.key === 'Backspace' && personInput.value === '') {
+                // Remove the last chip when backspacing in empty input — same UX as tags.
+                var chips = personChipsEl.querySelectorAll('.person-chip');
+                if (chips.length > 0) {
+                    chips[chips.length - 1].remove();
+                    syncPersonHiddenInput();
+                    onFilterChange();
                 }
             } else if (e.key === 'Escape') {
-                // Restore previously-selected name; closes the dropdown.
-                personInput.value = personInput.dataset.name || '';
+                personInput.value = '';
                 closePersonDropdown();
                 personInput.blur();
             }
             e.stopPropagation();
         });
         personInput.addEventListener('blur', function() {
-            // Give click handlers a tick to fire, then close and also restore
-            // the displayed name if the user abandoned an in-progress edit.
-            setTimeout(function() {
-                if (personInput.value !== (personInput.dataset.name || '')) {
-                    personInput.value = personInput.dataset.name || '';
-                }
-                closePersonDropdown();
-            }, 120);
+            setTimeout(closePersonDropdown, 120);
         });
-        personClear.addEventListener('click', clearPerson);
+
+        // Initialize chips from the URL `person` param (single value or
+        // comma-separated). The hidden input arrives with the raw URL value;
+        // we match each entry against name OR id (legacy shared links may
+        // use either form).
+        var initialPersonStr = personIdInput.value;
+        if (initialPersonStr) {
+            initialPersonStr.split(',').forEach(function(token) {
+                token = token.trim();
+                if (!token) return;
+                var match = personById[token];
+                if (!match) match = personByName[token.toLowerCase()];
+                if (match) addPersonChip(match);
+            });
+            syncPersonHiddenInput();
+        }
+
+        // Expose for damFilterQuery + hx-vals.
+        window.getSelectedPeople = getSelectedPeopleNames;
+    } else {
+        window.getSelectedPeople = function() { return []; };
     }
 
     // --- Default filter toggle ---
@@ -734,22 +774,14 @@
             if (colName.indexOf(' ') !== -1) { parts.push('collection:"' + colName + '"'); }
             else { parts.push('collection:' + colName); }
         }
-        // Person: the hidden input holds the ID, and the sibling text input's
-        // dataset.name carries the display name we emit into the query string.
-        // Falls back to the text input's own value for backward compatibility
-        // (e.g. handlers rendered by older templates that still use <select>).
-        var personIdEl = document.querySelector('.filter-row [name=person]');
-        if (personIdEl && personIdEl.value) {
-            var displayEl = document.getElementById('person-filter-input');
-            var personName = (displayEl && (displayEl.dataset.name || displayEl.value)) || '';
-            if (!personName && personIdEl.tagName === 'SELECT') {
-                personName = personIdEl.options[personIdEl.selectedIndex].textContent.trim();
-            }
-            if (personName) {
-                if (personName.indexOf(' ') !== -1) { parts.push('person:"' + personName + '"'); }
-                else { parts.push('person:' + personName); }
-            }
-        }
+        // People: emit one `person:` token per chip. AND'd by the backend,
+        // matching how multiple `tag:` tokens compose. Quote names that
+        // contain spaces.
+        var people = window.getSelectedPeople ? window.getSelectedPeople() : [];
+        people.forEach(function(name) {
+            if (name.indexOf(' ') !== -1) { parts.push('person:"' + name + '"'); }
+            else { parts.push('person:' + name); }
+        });
         var pathEl = document.querySelector('.filter-row [name=path]');
         if (pathEl && pathEl.value) {
             var pv = pathEl.value.trim();

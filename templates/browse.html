@@ -29,7 +29,7 @@
       hx-get="/"
       hx-target="#results"
       hx-push-url="true"
-      hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": getSelectedTags().join(","), "format": (window.damFormats ? window.damFormats.getSelected() : ""), "volume": (document.querySelector("[name=volume]") || {value:""}).value, "collection": (document.querySelector("[name=collection]") || {value:""}).value, "path": (document.querySelector("[name=path]") || {value:""}).value, "rating": getFilterRating(), "label": getFilterLabel(), "sort": new URLSearchParams(window.location.search).get("sort") || "date_desc", "page": "1", "stacks": getStackCollapse(), "nodefault": (document.getElementById("default-filter-cb") && !document.getElementById("default-filter-cb").checked) ? "1" : ""}'>
+      hx-vals='js:{"q": document.querySelector("[name=q]").value, "type": document.querySelector("[name=type]").value, "tag": getSelectedTags().join(","), "person": (window.getSelectedPeople ? window.getSelectedPeople().join(",") : ""), "format": (window.damFormats ? window.damFormats.getSelected() : ""), "volume": (document.querySelector("[name=volume]") || {value:""}).value, "collection": (document.querySelector("[name=collection]") || {value:""}).value, "path": (document.querySelector("[name=path]") || {value:""}).value, "rating": getFilterRating(), "label": getFilterLabel(), "sort": new URLSearchParams(window.location.search).get("sort") || "date_desc", "page": "1", "stacks": getStackCollapse(), "nodefault": (document.getElementById("default-filter-cb") && !document.getElementById("default-filter-cb").checked) ? "1" : ""}'>
     {% include "filter_bar.html" %}
 </form>
 

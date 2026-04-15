@@ -15,6 +15,18 @@
             <input type="text" class="tag-filter-input" id="tag-input" placeholder="Filter by tags... (|xyz = starts with)" autocomplete="off" title="Substring search by default. Prefix with | to anchor to a hierarchy component start (e.g. |wed matches 'wedding' and 'events|wedding|...').">
             <div class="tag-autocomplete" id="tag-autocomplete"></div>
         </div>
+        {% if ai_enabled && !all_people.is_empty() %}
+        <!-- People filter — chip-based multi-select. Multiple chips are AND'd
+             (asset must contain ALL selected people). Mirrors the tag chip UX
+             so the filter bar stays consistent. -->
+        <div class="person-filter" id="person-filter">
+            <div class="person-filter-chips" id="person-chips"></div>
+            <input type="text" class="person-filter-input" id="person-input" placeholder="Filter by people..." autocomplete="off">
+            <div class="person-filter-dropdown" id="person-filter-dropdown" hidden></div>
+        </div>
+        <input type="hidden" name="person" value="{{ person }}" id="person-filter-id">
+        <script id="person-filter-data" type="application/json">[{% for p in all_people %}{"id":"{{ p.id }}","name":"{{ p.name|js_string|safe }}"}{% if !loop.last %},{% endif %}{% endfor %}]</script>
+        {% endif %}
         <input type="text" name="path" placeholder="Path (e.g. Pictures/2026 or */2026/*/party)" value="{{ path }}" class="path-filter-input" autocomplete="off" title="Use * as wildcard. Patterns with leading * trigger a full table scan and are slower.">
     </div>
     <div class="filter-row-bottom">
@@ -46,19 +58,6 @@
                 <option value="{{ c.name }}"{% if collection == c.name %} selected{% endif %}>{{ c.name }}</option>
                 {% endfor %}
             </select>
-            {% endif %}
-            {% if ai_enabled && !all_people.is_empty() %}
-            <!-- Person filter combobox — replaces a plain <select> so the picker
-                 stays usable when the catalog has hundreds of named people. The
-                 hidden input carries the selected person id for damFilterQuery()
-                 to read; the visible input is type-to-filter. -->
-            <div class="person-filter-combobox" id="person-filter-combobox">
-                <input type="hidden" name="person" value="{{ person }}" id="person-filter-id">
-                <input type="text" class="person-filter-input" id="person-filter-input" placeholder="All people" autocomplete="off">
-                <button type="button" class="person-filter-clear" id="person-filter-clear" title="Clear" hidden>&times;</button>
-                <div class="person-filter-dropdown" id="person-filter-dropdown" hidden></div>
-            </div>
-            <script id="person-filter-data" type="application/json">[{% for p in all_people %}{"id":"{{ p.id }}","name":"{{ p.name|js_string|safe }}"}{% if !loop.last %},{% endif %}{% endfor %}]</script>
             {% endif %}
             <select name="type">
                 <option value="">All types</option>
