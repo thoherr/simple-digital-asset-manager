@@ -2,6 +2,40 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.4.1 (2026-04-15)
+
+Follow-up to v4.4.0's face recognition rewrite — everything in this release is UX polish for the people workflow the new pipeline unlocked. Clustering produces good clusters but often leaves small splinter clusters of the same person alongside a main cluster, and the `/people` page and face-assign dropdown needed to scale beyond a handful of named people.
+
+### People page — merge-multiple-clusters UI *(Pro)*
+
+Select any number of person cards with the checkbox in the corner; a sticky toolbar appears showing the count. Click the ◎ badge on any selected card to pick the merge target (others become sources). Merge opens a confirmation modal with thumbnails and Target/Source badges. One click finalizes the merge. Batch merge goes through a single `POST /api/people/{target_id}/merge` with `source_ids: [...]` — the existing endpoint also accepts this plural form, so the CLI and single-source merges still work.
+
+### People page — automatic merge suggestions *(Pro)*
+
+A new "Merge suggestions" panel surfaces pairs of people whose centroid face embeddings are similar enough to likely be the same person. For each pair:
+
+- Both clusters side-by-side with thumbnails and face counts
+- A percentage match score and an arrow showing the default merge direction
+- **Swap** button to reverse direction; **Merge** to commit; **Not the same person** to dismiss for the session
+
+Smart defaults: if one side is named, it becomes the target (preserves naming); otherwise the larger cluster becomes the target (keeps the big cluster intact). Dismissals persist in `sessionStorage`; the Refresh button clears them and re-scans.
+
+Backend: `GET /api/people/merge-suggestions?threshold=0.4&limit=20` computes per-person centroid similarity on demand. Scales cleanly to ~2000 people (sub-second).
+
+### People page — filter by name
+
+A text input above the grid filters person cards client-side by name (including the synthesized "Unknown (abc12345)" labels for unnamed clusters). Live count shows "N of M matching". Esc clears. Handles low thousands of cards without any jank.
+
+### Asset detail page — searchable face-assign combobox *(Pro)*
+
+The "Assign to…" dropdown is now a typeahead input. Type to filter the people list, ↑/↓/Enter to navigate and pick, Esc to cancel. Always offers an inline "+ Create new person '\<query\>'" option when there's text. Results capped at 30 rows with a "showing first N of M" footer when truncated — so hundreds of named people don't turn the UI into an unusable scroll-fest.
+
+### Data model
+
+- `/api/people/{id}/merge` accepts either `{"source_id": "..."}` (singular, v4.4.0 API) or `{"source_ids": [...]}` (plural, used by the new batch merge UI).
+- New endpoint: `/api/people/merge-suggestions`.
+- New `FaceStore` methods: `merge_people_batch`, `suggest_person_merges`.
+
 ## v4.4.0 (2026-04-15)
 
 ### Face Recognition — Full Pipeline Rewrite *(Pro)*
