@@ -507,6 +507,157 @@
         pathInput.addEventListener('keyup', function(e) { e.stopPropagation(); });
     }
 
+    // --- Person filter combobox ---
+    // Searchable replacement for the old <select name=person>. Hidden input
+    // carries the ID (read by damFilterQuery); visible input is the filter.
+    var personBox = document.getElementById('person-filter-combobox');
+    if (personBox) {
+        var personIdInput = document.getElementById('person-filter-id');
+        var personInput = document.getElementById('person-filter-input');
+        var personClear = document.getElementById('person-filter-clear');
+        var personDropdown = document.getElementById('person-filter-dropdown');
+        var personData = [];
+        try {
+            var pdEl = document.getElementById('person-filter-data');
+            if (pdEl && pdEl.textContent.trim()) personData = JSON.parse(pdEl.textContent);
+        } catch (e) { /* empty list */ }
+
+        // Initialize the visible input with the currently-selected person's name.
+        // The URL may contain either an ID (new) or a name (legacy shared links),
+        // so match on either.
+        var initialId = personIdInput.value;
+        if (initialId) {
+            var match = personData.find(function(p) { return p.id === initialId || p.name === initialId; });
+            if (match) {
+                personInput.value = match.name;
+                personIdInput.value = match.id;
+                personInput.dataset.name = match.name;
+                personClear.hidden = false;
+            }
+        }
+
+        var personActiveIdx = -1;
+        var personItems = [];
+
+        function closePersonDropdown() {
+            personDropdown.hidden = true;
+            personDropdown.innerHTML = '';
+            personActiveIdx = -1;
+            personItems = [];
+        }
+
+        function renderPersonDropdown() {
+            var q = personInput.value.trim().toLowerCase();
+            var matches = personData;
+            if (q && q !== (personInput.dataset.name || '').toLowerCase()) {
+                matches = personData.filter(function(p) {
+                    return p.name.toLowerCase().indexOf(q) !== -1;
+                });
+            }
+            var cap = 30;
+            var truncated = matches.length > cap;
+            var shown = truncated ? matches.slice(0, cap) : matches;
+            personItems = shown;
+            personDropdown.innerHTML = '';
+            if (personItems.length === 0) {
+                personDropdown.hidden = true;
+                return;
+            }
+            personItems.forEach(function(p, i) {
+                var row = document.createElement('div');
+                row.className = 'person-filter-option';
+                row.textContent = p.name;
+                row.addEventListener('mousedown', function(e) {
+                    e.preventDefault();
+                    selectPerson(p);
+                });
+                row.addEventListener('mouseenter', function() {
+                    personActiveIdx = i;
+                    updatePersonActive();
+                });
+                personDropdown.appendChild(row);
+            });
+            if (truncated) {
+                var info = document.createElement('div');
+                info.className = 'person-filter-truncated';
+                info.textContent = 'Showing first ' + cap + ' of ' + matches.length + ' — keep typing to narrow.';
+                personDropdown.appendChild(info);
+            }
+            personActiveIdx = 0;
+            updatePersonActive();
+            personDropdown.hidden = false;
+        }
+
+        function updatePersonActive() {
+            var rows = personDropdown.querySelectorAll('.person-filter-option');
+            rows.forEach(function(r, i) { r.classList.toggle('active', i === personActiveIdx); });
+            var activeRow = rows[personActiveIdx];
+            if (activeRow) activeRow.scrollIntoView({block: 'nearest'});
+        }
+
+        function selectPerson(p) {
+            personIdInput.value = p.id;
+            personInput.value = p.name;
+            personInput.dataset.name = p.name;
+            personClear.hidden = false;
+            closePersonDropdown();
+            onFilterChange();
+        }
+
+        function clearPerson() {
+            personIdInput.value = '';
+            personInput.value = '';
+            personInput.dataset.name = '';
+            personClear.hidden = true;
+            closePersonDropdown();
+            onFilterChange();
+        }
+
+        personInput.addEventListener('focus', renderPersonDropdown);
+        personInput.addEventListener('input', renderPersonDropdown);
+        personInput.addEventListener('keydown', function(e) {
+            if (personDropdown.hidden && (e.key === 'ArrowDown' || e.key === 'Enter')) {
+                renderPersonDropdown();
+                return;
+            }
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (personItems.length === 0) return;
+                personActiveIdx = Math.min(personActiveIdx + 1, personItems.length - 1);
+                updatePersonActive();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (personItems.length === 0) return;
+                personActiveIdx = Math.max(personActiveIdx - 1, 0);
+                updatePersonActive();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (personActiveIdx >= 0 && personItems[personActiveIdx]) {
+                    selectPerson(personItems[personActiveIdx]);
+                } else if (personInput.value.trim() === '') {
+                    clearPerson();
+                }
+            } else if (e.key === 'Escape') {
+                // Restore previously-selected name; closes the dropdown.
+                personInput.value = personInput.dataset.name || '';
+                closePersonDropdown();
+                personInput.blur();
+            }
+            e.stopPropagation();
+        });
+        personInput.addEventListener('blur', function() {
+            // Give click handlers a tick to fire, then close and also restore
+            // the displayed name if the user abandoned an in-progress edit.
+            setTimeout(function() {
+                if (personInput.value !== (personInput.dataset.name || '')) {
+                    personInput.value = personInput.dataset.name || '';
+                }
+                closePersonDropdown();
+            }, 120);
+        });
+        personClear.addEventListener('click', clearPerson);
+    }
+
     // --- Default filter toggle ---
     var dfCb = document.getElementById('default-filter-cb');
     if (dfCb) {
@@ -583,11 +734,21 @@
             if (colName.indexOf(' ') !== -1) { parts.push('collection:"' + colName + '"'); }
             else { parts.push('collection:' + colName); }
         }
-        var personEl = document.querySelector('.filter-row [name=person]');
-        if (personEl && personEl.value) {
-            var personName = personEl.options[personEl.selectedIndex].textContent.trim();
-            if (personName.indexOf(' ') !== -1) { parts.push('person:"' + personName + '"'); }
-            else { parts.push('person:' + personName); }
+        // Person: the hidden input holds the ID, and the sibling text input's
+        // dataset.name carries the display name we emit into the query string.
+        // Falls back to the text input's own value for backward compatibility
+        // (e.g. handlers rendered by older templates that still use <select>).
+        var personIdEl = document.querySelector('.filter-row [name=person]');
+        if (personIdEl && personIdEl.value) {
+            var displayEl = document.getElementById('person-filter-input');
+            var personName = (displayEl && (displayEl.dataset.name || displayEl.value)) || '';
+            if (!personName && personIdEl.tagName === 'SELECT') {
+                personName = personIdEl.options[personIdEl.selectedIndex].textContent.trim();
+            }
+            if (personName) {
+                if (personName.indexOf(' ') !== -1) { parts.push('person:"' + personName + '"'); }
+                else { parts.push('person:' + personName); }
+            }
         }
         var pathEl = document.querySelector('.filter-row [name=path]');
         if (pathEl && pathEl.value) {

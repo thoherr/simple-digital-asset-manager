@@ -48,12 +48,17 @@
             </select>
             {% endif %}
             {% if ai_enabled && !all_people.is_empty() %}
-            <select name="person">
-                <option value="">All people</option>
-                {% for p in all_people %}
-                <option value="{{ p.id }}"{% if person == p.id || person == p.name %} selected{% endif %}>{{ p.name }}</option>
-                {% endfor %}
-            </select>
+            <!-- Person filter combobox — replaces a plain <select> so the picker
+                 stays usable when the catalog has hundreds of named people. The
+                 hidden input carries the selected person id for damFilterQuery()
+                 to read; the visible input is type-to-filter. -->
+            <div class="person-filter-combobox" id="person-filter-combobox">
+                <input type="hidden" name="person" value="{{ person }}" id="person-filter-id">
+                <input type="text" class="person-filter-input" id="person-filter-input" placeholder="All people" autocomplete="off">
+                <button type="button" class="person-filter-clear" id="person-filter-clear" title="Clear" hidden>&times;</button>
+                <div class="person-filter-dropdown" id="person-filter-dropdown" hidden></div>
+            </div>
+            <script id="person-filter-data" type="application/json">[{% for p in all_people %}{"id":"{{ p.id }}","name":"{{ p.name|js_string|safe }}"}{% if !loop.last %},{% endif %}{% endfor %}]</script>
             {% endif %}
             <select name="type">
                 <option value="">All types</option>
