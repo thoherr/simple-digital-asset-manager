@@ -2,7 +2,7 @@
 
 Living document tracking planned enhancements. Previous proposals (all implemented or deferred) are in `archive/`. Active proposals are in `doc/proposals/`.
 
-Current version: **v4.3.10** (2026-04-06)
+Current version: **v4.4.0** (2026-04-15)
 
 ---
 
@@ -120,18 +120,6 @@ Surface drive health and verification staleness proactively.
 
 **Complexity:** Low.
 
-### Video Proxy Generation
-
-Transcode non-browser-playable video formats (ProRes, AVCHD, MTS) to MP4 for web playback. Currently these formats show a thumbnail but can't play in the browser.
-
-**Scope:**
-- `maki generate-previews --video-proxy` generates MP4 proxies for non-playable formats
-- Stored alongside smart previews (e.g. `video_proxies/<hash>.mp4`)
-- Web UI `/video/{hash}` route serves the proxy when the original isn't browser-playable
-- ffmpeg-based transcoding with sensible defaults (H.264, AAC, reasonable bitrate)
-
-**Complexity:** Medium. ffmpeg transcoding is well-understood; storage and routing logic already exists.
-
 ---
 
 ## Tier 3 — Polish & Future
@@ -195,3 +183,6 @@ Design documents for completed features are in `doc/proposals/archive/`. Key mil
 - **v4.3.x**: Tag hierarchy separator aligned with LR/C1 (`|` and `>`), tag rename/clear/expand-ancestors/export-vocabulary subcommands, ancestor expansion matching CaptureOne convention, vocabulary.yaml for planned tag hierarchy with autocomplete integration, git-based catalog backup, BTreeMap for deterministic YAML, Tagging Guide chapter, configurable `[group] session_root_pattern` regex
 - **v4.3.12**: Volumes page in web UI with register/rename/purpose/remove and import dialog with live SSE progress, `*` wildcards in `path:` filter (full pattern matching with leading-`*` opt-in for slow scans), SigLIP 2 multilingual model variants (`siglip2-base-256-multi`, `siglip2-large-256-multi`) for `text:` search in German, French, Spanish, Italian, Japanese, Chinese, etc. — see `archive/proposal-multilingual-text-search.md`
 - **v4.3.13**: License compliance infrastructure — `cargo-about` generates `THIRD_PARTY_LICENSES.md` shipped in every release archive, `cargo-deny` validates allowed-license allowlist on every CI run, new `maki licenses` CLI command, new manual appendix `reference/11-licenses.md` covering MAKI license / Rust crates / AI models / external tools. Dropped `viuer` dependency (last LGPL-3.0 transitive dep) → fully permissive dependency tree. Simplified `maki preview` to always open in OS default viewer (removed inline terminal display and `--open` flag). Doc fix: clarified `maki embed` does NOT need `--force` when switching AI models — embeddings are keyed per `(asset_id, model_id)`, so a model switch only generates the missing embeddings. New "Switching models" section in setup guide.
+- **v4.3.14–v4.3.19**: Tag rename in web UI (pencil icon + autocomplete modal), `scattered:`/`copies:` semantics fixes (distinct session roots / distinct volumes), new default subject vocabulary branches (style / condition / mood), code-quality pass (route handler deduplication, `unwrap()` → `expect()`, lowercase error messages, section markers in the 3 largest source files).
+- **v4.3.20**: `label:none` search filter and browse UI icon (matching `rating:0` / `volume:none` patterns), stronger active-state styling on ∅ filter icons, `tag rename =` now uses leaf-only semantics (consistent with search `=`), hierarchical tag search matches at any level (`tag:Altstätten` finds `location|Switzerland|Altstätten`), quoting hint on empty search results, asset-ID whitespace trimming (handles copy-paste NBSP), browse page person filter preserved across pagination/sort, unnamed face clusters browseable from people page and asset detail, `stack from-tag --remove-tags` cleans up orphan tags too (not just newly-stacked), quickref cheat sheet trimmed to 2 pages.
+- **v4.4.0**: Face recognition pipeline rewrite — ArcFace ResNet-100 **FP32** model (replacing INT8) with proper **5-point landmark alignment** to the canonical 112×112 template, **corrected preprocessing** (raw pixel values; the model's internal Sub/Mul nodes do the normalization — external normalization was double-normalizing and collapsing embeddings), **agglomerative hierarchical clustering** (average linkage / UPGMA, order-independent) replacing greedy single-linkage, **model version tracking** via new `recognition_model` column on faces (schema v5→v6, faces from an older model variant are skipped by clustering with a warning), new defaults (`face_cluster_threshold` 0.5→0.35, `face_min_confidence` 0.5→0.7), three new diagnostic/maintenance commands: `maki faces clean` (delete unassigned orphans), `maki faces similarity` (histogram + percentile stats for picking a threshold), `maki faces dump-aligned` (save the 112×112 aligned crops for visual verification), `--min-confidence` flag on `cluster`, `--force` on `detect`. Full upgrade path documented in the user guide and CHANGELOG.

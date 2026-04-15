@@ -187,8 +187,9 @@ A detected face within an asset image, with bounding box, confidence, recognitio
 | `bbox_w` | f32 | Bounding box width (normalized 0–1). |
 | `bbox_h` | f32 | Bounding box height (normalized 0–1). |
 | `confidence` | f32 | Detection confidence score (0–1). |
-| `embedding` | Blob | 512-dimensional float32 ArcFace vector (2048 bytes), stored as little-endian binary. |
+| `embedding` | Blob | 512-dimensional float32 ArcFace vector (2048 bytes), stored as little-endian binary. The face is aligned to a canonical 112×112 template via a 5-point similarity transform before embedding. |
 | `crop_path` | Option\<String\> | Path to 150×150 JPEG face crop thumbnail (relative to catalog root). |
+| `recognition_model` | Option\<String\> | Identifier of the ArcFace variant that produced this embedding (e.g. `arcface-resnet100-fp32-aligned-v2`). Added in schema v6. Clustering only mixes embeddings from the same model — older ones are skipped with a warning until re-embedded via `maki faces detect --force`. |
 | `created_at` | DateTime\<Utc\> | When the face was detected. |
 
 Storage overhead: ~2 KB per face (embedding + metadata). Face crops: ~5–15 KB each as JPEG.
