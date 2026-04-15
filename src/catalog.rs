@@ -784,10 +784,46 @@ impl Catalog {
     }
 
     /// Open and run schema migrations. Call once at program startup.
+    ///
+    /// After schema migrations, propagates any SQLite-only data back to YAML
+    /// for migrations that touched YAML-backed columns — preserving the
+    /// invariant that SQLite is fully derivable from YAML. Specifically:
+    /// the v5→v6 migration backfills `faces.recognition_model`, which is
+    /// now a persisted YAML field. Without this sync, a `rebuild-catalog`
+    /// immediately after the v5→v6 upgrade would strip the tag.
     pub fn open_and_migrate(catalog_root: &Path) -> Result<Self> {
         let catalog = Self::open(catalog_root)?;
+        let before = catalog.schema_version();
         catalog.run_migrations();
+        catalog.post_migration_sync(catalog_root, before);
         Ok(catalog)
+    }
+
+    /// Post-migration YAML sync for migrations that modified YAML-backed
+    /// data. Called once at catalog-open time after `run_migrations()`.
+    ///
+    /// `previous_version` is the schema version *before* migration ran, so
+    /// we know which migrations just happened.
+    fn post_migration_sync(&self, catalog_root: &Path, previous_version: u32) {
+        // v5 → v6: `faces.recognition_model` added and backfilled. Re-export
+        // faces.yaml so the tag propagates to the source-of-truth sidecar.
+        // Cheap relative to the migration itself (one small file write per
+        // thousand faces), and runs exactly once per catalog.
+        #[cfg(feature = "ai")]
+        if previous_version < 6 {
+            let store = crate::face_store::FaceStore::new(&self.conn);
+            let _ = store.save_all_yaml(catalog_root);
+        }
+        // v6 → v7: `assets.face_scan_status` added — this lives on the Asset
+        // YAML sidecar, which is per-file. Re-writing every sidecar during
+        // migration would be slow on large catalogs, so we instead rely on
+        // the rebuild-catalog fallback (stamps `face_scan_status='done'` on
+        // any asset with face records) and on detect_faces writing the flag
+        // to YAML for assets it touches from here on.
+        // Silence unused-var warnings in non-AI builds, where the only active
+        // branch above is gated out.
+        let _ = previous_version;
+        let _ = catalog_root;
     }
 
     /// Read the stored schema version (0 if table doesn't exist yet).
