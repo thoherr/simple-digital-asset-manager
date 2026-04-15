@@ -67,7 +67,8 @@ Filters combine with \textbf{AND}. Free-text tokens search names, filenames, des
 \hline\\[-6pt]
 Asset type          & \cmd{type:<type>}                     & \cmd{type:image}, \cmd{type:video} \\
 Tag                 & \cmd{tag:<name>}                      & \cmd{tag:landscape}, \cmd{tag:"Fools Theater"} \\
-Tag exact level     & \cmd{tag:=<name>}                     & \cmd{tag:=animal|bird} (no descendants) \\
+Tag leaf only       & \cmd{tag:=<name>}                     & \cmd{tag:=animal|bird} (no descendants) \\
+Tag whole path      & \cmd{tag:/<name>}                     & \cmd{tag:/Legoland} (exact value, not leaves elsewhere) \\
 Tag case-sensitive  & \cmd{tag:\textasciicircum<name>}      & \cmd{tag:\textasciicircum Landscape} (not "landscape") \\
 Tag prefix anchor   & \cmd{tag:|<text>}                     & \cmd{tag:|wed} (wedding, wedding-2024, ...) \\
 Exclude tag         & \cmd{-tag:<name>}                     & \cmd{-tag:rejected} \\

@@ -3454,11 +3454,21 @@ impl Catalog {
     /// Build SQL clauses for a `tag:` filter value.
     ///
     /// Prefix markers (any order, all stackable):
-    /// - `=` — exact level only (no descendants)
+    /// - `=` — exact level only: tag matches at any hierarchy level but only
+    ///   as a leaf (no descendants). `tag:=Legoland` matches `Legoland`
+    ///   (standalone) and `location|Denmark|Legoland` (leaf) but not
+    ///   `Legoland|ride-photos`.
+    /// - `/` — whole-path match: tag matches if and only if the **full path**
+    ///   equals the given value. `tag:/Legoland` matches ONLY the standalone
+    ///   `Legoland` tag, never `location|Denmark|Legoland`. Use this when a
+    ///   root-level tag shares a name with a leaf elsewhere in the hierarchy
+    ///   and you need to disambiguate. Implies no descendants (supersedes
+    ///   `=`). Works with any depth: `tag:/location|Denmark|Legoland` matches
+    ///   only that exact path.
     /// - `^` — case-sensitive (SQLite GLOB instead of LIKE)
     /// - `|` — anchored prefix: match any tag whose hierarchy component STARTS
     ///   with the rest of the value, at any level. Mutually exclusive with `=`
-    ///   (a prefix-anchor implicitly includes descendants by definition).
+    ///   and `/` (a prefix-anchor can't also be an exact or whole-path match).
     ///   Examples: `tag:|wed` matches `wedding`, `wedding-2024`, `events|wedding`,
     ///   `events|wedding|2024-05`. `tag:^|Wed` matches the same set
     ///   case-sensitively.
@@ -3471,21 +3481,28 @@ impl Catalog {
     /// - Raw: `""Sir" Oliver Mally"` (legacy/malformed JSON)
     /// We match both forms.
     fn tag_like_parts(params: &mut Vec<Box<dyn rusqlite::types::ToSql>>, tag: &str) -> Vec<String> {
-        // Strip the `=`, `^`, and `|` prefix markers in any order.
+        // Strip the `=`, `/`, `^`, and `|` prefix markers in any order.
         let mut rest = tag;
         let mut exact_only = false;
+        let mut path_exact = false;
         let mut case_sensitive = false;
         let mut prefix_anchor = false;
         loop {
             if let Some(s) = rest.strip_prefix('=') { exact_only = true; rest = s; }
+            else if let Some(s) = rest.strip_prefix('/') { path_exact = true; rest = s; }
             else if let Some(s) = rest.strip_prefix('^') { case_sensitive = true; rest = s; }
             else if let Some(s) = rest.strip_prefix('|') { prefix_anchor = true; rest = s; }
             else { break; }
         }
-        // `=` and `|` are conceptually mutually exclusive: an anchored prefix
-        // search always includes descendants. If both are given, `|` wins
-        // (the more specific search) and `=` is silently ignored.
-        if prefix_anchor { exact_only = false; }
+        // Conflict resolution:
+        // - Prefix-anchor (`|`) conceptually includes descendants and matches
+        //   by component prefix, so it can't combine with `=` or `/`; when
+        //   paired, the stricter anchor semantic wins and the exact/whole-path
+        //   flags are silently dropped.
+        // - `/` (whole-path) is stricter than `=` (leaf-only at any level);
+        //   when both given, `/` wins and `=` is redundant.
+        if prefix_anchor { exact_only = false; path_exact = false; }
+        if path_exact { exact_only = false; }
         let tag_value = rest;
         let stored = crate::tag_util::tag_input_to_storage(tag_value);
         let mut exprs = Vec::new();
@@ -3512,6 +3529,32 @@ impl Catalog {
             // Don't bother with the legacy "input form differs from stored"
             // path: prefix-anchor mode is a power-user shortcut, the user
             // should use the storage form (`|`) directly.
+            return exprs;
+        }
+
+        if path_exact {
+            // Whole-path match: the full tag value equals `stored`, bounded
+            // by the JSON quotes. Matches nothing else — no level sliding,
+            // no descendants, no leaf-of-hierarchy variants.
+            //
+            // Use case: disambiguate a root-level tag from same-named leaves
+            // elsewhere in the hierarchy. `tag:/Legoland` matches only the
+            // standalone "Legoland" tag, not "location|Denmark|Legoland" or
+            // "location|Germany|Legoland".
+            params.push(Box::new(pat(&format!("\"{stored}\""))));
+            exprs.push(format!("a.tags {op} ?"));
+            // Input-form fallback (e.g. user typed `>` for hierarchy and the
+            // stored form has `|`).
+            if tag_value != stored {
+                params.push(Box::new(pat(&format!("\"{tag_value}\""))));
+                exprs.push(format!("a.tags {op} ?"));
+            }
+            // JSON-escape variant for tags containing `"`.
+            if tag_value.contains('"') {
+                let json_escaped = tag_value.replace('"', "\\\"");
+                params.push(Box::new(pat(&format!("\"{json_escaped}\""))));
+                exprs.push(format!("a.tags {op} ?"));
+            }
             return exprs;
         }
 
@@ -6082,6 +6125,82 @@ mod tests {
         let results = catalog.search_assets(None, None, Some("landscape"), None, None, None).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name.as_deref(), Some("sunset photo"));
+    }
+
+    #[test]
+    fn search_tag_whole_path_match() {
+        // `/` prefix means "match the tag path exactly and only". Distinguishes
+        // a root-level tag from same-named leaves elsewhere in the hierarchy —
+        // the case that `=` (leaf-only-at-any-level) can't disambiguate.
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        // Asset 1: root-level Legoland only
+        let mut a1 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:wp1");
+        a1.tags = vec!["Legoland".to_string()];
+        let v1 = crate::models::Variant {
+            content_hash: "sha256:wp1".to_string(), asset_id: a1.id.clone(),
+            role: crate::models::VariantRole::Original, format: "jpg".to_string(),
+            file_size: 100, original_filename: "a.jpg".to_string(),
+            source_metadata: Default::default(), locations: vec![],
+        };
+        a1.variants.push(v1.clone());
+        catalog.insert_asset(&a1).unwrap();
+        catalog.insert_variant(&v1).unwrap();
+
+        // Asset 2: Legoland as a leaf under location|Denmark
+        let mut a2 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:wp2");
+        a2.tags = vec!["location|Denmark|Legoland".to_string()];
+        let v2 = crate::models::Variant {
+            content_hash: "sha256:wp2".to_string(), asset_id: a2.id.clone(),
+            role: crate::models::VariantRole::Original, format: "jpg".to_string(),
+            file_size: 100, original_filename: "b.jpg".to_string(),
+            source_metadata: Default::default(), locations: vec![],
+        };
+        a2.variants.push(v2.clone());
+        catalog.insert_asset(&a2).unwrap();
+        catalog.insert_variant(&v2).unwrap();
+
+        // Asset 3: Legoland under a different country
+        let mut a3 = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:wp3");
+        a3.tags = vec!["location|Germany|Legoland".to_string()];
+        let v3 = crate::models::Variant {
+            content_hash: "sha256:wp3".to_string(), asset_id: a3.id.clone(),
+            role: crate::models::VariantRole::Original, format: "jpg".to_string(),
+            file_size: 100, original_filename: "c.jpg".to_string(),
+            source_metadata: Default::default(), locations: vec![],
+        };
+        a3.variants.push(v3.clone());
+        catalog.insert_asset(&a3).unwrap();
+        catalog.insert_variant(&v3).unwrap();
+
+        // Baseline: without any marker, all three match (Legoland appears at
+        // some hierarchy level in each).
+        let results = catalog.search_assets(None, None, Some("Legoland"), None, None, None).unwrap();
+        assert_eq!(results.len(), 3, "plain tag:Legoland matches at any level");
+
+        // Existing `=` leaf-only: still matches all three (each Legoland is a leaf).
+        let results = catalog.search_assets(None, None, Some("=Legoland"), None, None, None).unwrap();
+        assert_eq!(results.len(), 3, "tag:=Legoland matches all leaf occurrences");
+
+        // New `/` whole-path: matches only the root-level Legoland.
+        let results = catalog.search_assets(None, None, Some("/Legoland"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:/Legoland matches only standalone root-level tag");
+        assert_eq!(results[0].content_hash, "sha256:wp1");
+
+        // Whole-path match at depth: selects exactly one asset.
+        let results = catalog.search_assets(None, None, Some("/location|Denmark|Legoland"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:/location|Denmark|Legoland matches that exact path");
+        assert_eq!(results[0].content_hash, "sha256:wp2");
+
+        // Whole-path match with a prefix-of-a-path: no results (there's no
+        // asset where the full tag is 'location|Denmark').
+        let results = catalog.search_assets(None, None, Some("/location|Denmark"), None, None, None).unwrap();
+        assert!(results.is_empty(), "tag:/location|Denmark matches no full paths exactly");
+
+        // Whole-path match for a non-existent path: no results.
+        let results = catalog.search_assets(None, None, Some("/nosuchtag"), None, None, None).unwrap();
+        assert!(results.is_empty());
     }
 
     #[test]

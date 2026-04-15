@@ -2128,17 +2128,24 @@ impl QueryEngine {
         let online = Self::load_online_volumes(&self.catalog_root);
         let content_store = ContentStore::new(&self.catalog_root);
 
-        // Strip the optional =/^/| markers from `old_tag`. The new_tag is always
+        // Strip the optional =/^/|// markers from `old_tag`. The new_tag is always
         // taken literally — we never want to rename to a marker-prefixed value.
         // The `|` marker (prefix anchor) is parsed but rejected for rename: it
         // would mean "rename every tag starting with X to Y", which collapses
         // distinct tags into one and is rarely what a user actually wants. We
         // bail with a clear error so users compose multiple targeted renames.
+        //
+        // `/` (whole-path match in search) is accepted as an alias for `=`.
+        // For rename, `assets_with_tag_or_prefix(exact_only=true)` already uses
+        // `je.value = ?` (SQL equality on individual tag values), which is
+        // whole-path by construction — the same semantic `/` provides in
+        // search. So the two markers converge in this context.
         let mut rest = old_tag;
         let mut exact_only = false;
         let mut case_sensitive = false;
         loop {
             if let Some(s) = rest.strip_prefix('=') { exact_only = true; rest = s; }
+            else if let Some(s) = rest.strip_prefix('/') { exact_only = true; rest = s; }
             else if let Some(s) = rest.strip_prefix('^') { case_sensitive = true; rest = s; }
             else if rest.starts_with('|') {
                 anyhow::bail!(

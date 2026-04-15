@@ -24,26 +24,29 @@
     }
 
     // Rebuild the chip's `data-tag` attribute from its name + toggle state.
-    // Prefix order: `=` (exact level) before `^` (case-sensitive). The backend
-    // accepts either order; we pick one for consistency.
+    // Mode is tri-state: "desc" (default, include descendants), "exact"
+    // (leaf-only at any level, `=`), or "path" (whole-path match, `/`).
+    // Case-sensitivity toggles orthogonally via `^`.
     function updateChipDataTag(chip, name) {
-        var exact = chip.getAttribute('data-exact') === '1';
+        var mode = chip.getAttribute('data-mode') || 'desc';
         var caseSensitive = chip.getAttribute('data-case') === '1';
-        var prefix = (exact ? '=' : '') + (caseSensitive ? '^' : '');
+        var modePrefix = (mode === 'exact') ? '=' : (mode === 'path') ? '/' : '';
+        var prefix = modePrefix + (caseSensitive ? '^' : '');
         chip.setAttribute('data-tag', prefix + name);
     }
 
-    // Strip `=` and `^` prefix markers from a raw tag name (user may type
-    // them manually in the input field).
+    // Strip `=`, `/`, and `^` prefix markers from a raw tag name (user may
+    // type them manually in the input field).
     function stripTagPrefixes(raw) {
-        var exact = false, caseSensitive = false, name = raw;
+        var mode = 'desc', caseSensitive = false, name = raw;
         var changed = true;
         while (changed) {
             changed = false;
-            if (name.charAt(0) === '=') { exact = true; name = name.substring(1); changed = true; }
+            if (name.charAt(0) === '=') { mode = 'exact'; name = name.substring(1); changed = true; }
+            else if (name.charAt(0) === '/') { mode = 'path'; name = name.substring(1); changed = true; }
             else if (name.charAt(0) === '^') { caseSensitive = true; name = name.substring(1); changed = true; }
         }
-        return { name: name, exact: exact, caseSensitive: caseSensitive };
+        return { name: name, mode: mode, caseSensitive: caseSensitive };
     }
 
     function addTag(raw) {
@@ -64,7 +67,7 @@
         var chip = document.createElement('span');
         chip.className = 'tag-chip';
         chip.setAttribute('data-name', name);
-        chip.setAttribute('data-exact', parsed.exact ? '1' : '0');
+        chip.setAttribute('data-mode', parsed.mode);
         chip.setAttribute('data-case', parsed.caseSensitive ? '1' : '0');
         updateChipDataTag(chip, name);
 
@@ -72,26 +75,38 @@
         label.textContent = tagToDisplay(name);
         chip.appendChild(label);
 
-        // Exact-level toggle: ▼ (include descendants) / = (this level only)
-        var exactToggle = document.createElement('button');
-        exactToggle.type = 'button';
-        exactToggle.className = 'tag-mode-toggle';
-        function renderExact() {
-            var isExact = chip.getAttribute('data-exact') === '1';
-            exactToggle.textContent = isExact ? '=' : '\u25BC';
-            exactToggle.title = isExact
-                ? 'This level only (click to include descendants)'
-                : 'Including descendants (click for this level only)';
+        // Mode toggle cycles through three states:
+        //   ▼ (default) — include descendants, match at any level
+        //   =           — leaf only (tag appears but has no descendants)
+        //   /           — whole path match (exact tag value only; disambiguates
+        //                 a root-level tag from same-named leaves in a hierarchy)
+        var modeToggle = document.createElement('button');
+        modeToggle.type = 'button';
+        modeToggle.className = 'tag-mode-toggle';
+        function renderMode() {
+            var mode = chip.getAttribute('data-mode') || 'desc';
+            if (mode === 'exact') {
+                modeToggle.textContent = '=';
+                modeToggle.title = 'Leaf only at any level — click for whole-path match';
+            } else if (mode === 'path') {
+                modeToggle.textContent = '/';
+                modeToggle.title = 'Whole-path match (exact tag value only) — click to include descendants';
+            } else {
+                modeToggle.textContent = '\u25BC';
+                modeToggle.title = 'Including descendants — click for leaf-only';
+            }
         }
-        renderExact();
-        exactToggle.onclick = function() {
-            var isExact = chip.getAttribute('data-exact') === '1';
-            chip.setAttribute('data-exact', isExact ? '0' : '1');
+        renderMode();
+        modeToggle.onclick = function() {
+            // Cycle: desc → exact → path → desc
+            var mode = chip.getAttribute('data-mode') || 'desc';
+            var next = (mode === 'desc') ? 'exact' : (mode === 'exact') ? 'path' : 'desc';
+            chip.setAttribute('data-mode', next);
             updateChipDataTag(chip, name);
-            renderExact();
+            renderMode();
             onFilterChange();
         };
-        chip.appendChild(exactToggle);
+        chip.appendChild(modeToggle);
 
         // Case-sensitivity toggle: cc (insensitive, default) / Cc (sensitive)
         var caseToggle = document.createElement('button');

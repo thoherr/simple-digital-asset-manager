@@ -93,21 +93,25 @@ maki search "type:video rating:3+"
 
 ## tag
 
-**Syntax:** `tag:<name>`, `tag:"<multi-word name>"`, `tag:=<name>` (exact level), `tag:^<name>` (case-sensitive), or `tag:|<name>` (prefix anchor)
+**Syntax:** `tag:<name>`, `tag:"<multi-word name>"`, `tag:=<name>` (leaf only), `tag:/<name>` (whole path), `tag:^<name>` (case-sensitive), or `tag:|<name>` (prefix anchor)
 
 **Description:** Filters to assets that have a specific tag. Supports quoted values for multi-word tags.
 
 **Hierarchical matching:** Tags can be organized hierarchically using `|` as a separator (e.g., `animal|bird|eagle`), aligned with Lightroom and CaptureOne conventions. `>` is also accepted as an alternative separator. Searching for a tag name matches it at any level in the hierarchy: `tag:eagle` finds assets tagged `animal|bird|eagle`, `tag:bird` finds both `animal|bird` and `animal|bird|eagle`. Parent-to-child matching also works: `tag:animal` finds `animal`, `animal|bird`, and `animal|bird|eagle`. Only exact component names match — `tag:eag` does NOT match `eagle`.
 
-**This-level-only match:** Prefix with `=` to match assets tagged at exactly this level, excluding those with deeper tags in the same branch. `tag:=location|Germany|Bayern` matches assets whose deepest tag in this branch is `Bayern` — NOT assets that also have `location|Germany|Bayern|München`. In the web UI, click the `▼` indicator on a tag chip to toggle to `=` (this-level-only) mode.
+**Leaf-only match (`=`):** Prefix with `=` to match assets tagged at any hierarchy level but only where the tag is a **leaf** (nothing deeper in the same branch). `tag:=location|Germany|Bayern` matches assets whose deepest tag in this branch is `Bayern` — NOT assets that also have `location|Germany|Bayern|München`. In the web UI, click the mode indicator on a tag chip to cycle through the three modes.
 
-**Case-sensitive match:** Tag matching is case-insensitive by default (`tag:landscape` matches both `landscape` and `Landscape`). Prefix with `^` to make the match case-sensitive — useful when cleaning up tag duplicates like `landscape` vs `Landscape`, which the tags page shows as distinct entries. In the web UI, each tag chip has a small `cc`/`Cc` toggle next to the `▼`/`=` mode toggle: click it to flip that specific chip between case-insensitive (`cc`) and case-sensitive (`Cc`) matching.
+**Whole-path match (`/`):** Prefix with `/` to match the full tag value **exactly** — no level sliding, no descendants, no leaf variants. Use when a root-level tag shares a name with a leaf elsewhere in the hierarchy and you need to disambiguate.
 
-**Prefix anchor:** Prefix the value with `|` to match any hierarchy component that **starts with** the rest of the value, at any level (root or descendant). `tag:|wed` matches assets tagged `wedding`, `wedding-2024`, `events|wedding`, `events|wedding|2024-05-12`, etc. — anything where the letter combination "wed" begins a tag component. This is the search-side counterpart of the `|xyz` autocomplete syntax in the web UI tag filter and tags page. Useful for finding tag families with shared prefixes (e.g. all date-stamped tags `2024-*`, all event tags `wedding-*`). The `|` marker implicitly includes descendants (the `=` exact-level marker is silently ignored when `|` is present, since they conflict).
+Concrete example: if your catalog has three tags `Legoland`, `location|Denmark|Legoland`, and `location|Germany|Legoland`, `tag:Legoland` matches all three and `tag:=Legoland` also matches all three (each is a leaf). Only `tag:/Legoland` isolates the root-level one. Works at any depth: `tag:/location|Denmark|Legoland` matches exactly that path and nothing else.
 
-The `=`, `^`, and `|` prefixes can be combined in any order: `tag:=^Foo`, `tag:^|Wed`, etc. `=` and `|` together is contradictory and resolves to `|`.
+**Case-sensitive match (`^`):** Tag matching is case-insensitive by default (`tag:landscape` matches both `landscape` and `Landscape`). Prefix with `^` to make the match case-sensitive — useful when cleaning up tag duplicates like `landscape` vs `Landscape`, which the tags page shows as distinct entries. In the web UI, each tag chip has a small `cc`/`Cc` toggle: click it to flip that specific chip between case-insensitive (`cc`) and case-sensitive (`Cc`) matching.
 
-`/` is treated as a literal character in tag names (e.g., `f/1.4` works naturally without escaping).
+**Prefix anchor (`|`):** Prefix the value with `|` to match any hierarchy component that **starts with** the rest of the value, at any level (root or descendant). `tag:|wed` matches assets tagged `wedding`, `wedding-2024`, `events|wedding`, `events|wedding|2024-05-12`, etc. — anything where the letter combination "wed" begins a tag component. This is the search-side counterpart of the `|xyz` autocomplete syntax in the web UI tag filter and tags page. Useful for finding tag families with shared prefixes (e.g. all date-stamped tags `2024-*`, all event tags `wedding-*`). The `|` marker implicitly includes descendants (the `=` and `/` markers are silently ignored when `|` is present, since they conflict).
+
+The `=`, `/`, `^`, and `|` prefixes can be combined in any order: `tag:/^Foo`, `tag:=^Foo`, `tag:^|Wed`, etc. `=` and `/` together resolve to `/` (whole-path is stricter). `|` paired with `=` or `/` resolves to `|`.
+
+`/` when positioned after a modifier or inside the name is treated as a literal character in tag names (e.g., `f/1.4` works naturally without escaping). Only a **leading** `/` is the whole-path modifier.
 
 **Examples:**
 
@@ -118,15 +122,18 @@ maki search 'tag:"Black and White" rating:4+'
 maki search "tag:animal"                       # matches animal, animal|bird, animal|bird|eagle
 maki search "tag:eagle"                        # matches animal|bird|eagle (any level in hierarchy)
 maki search "tag:animal|bird"                  # matches animal|bird and animal|bird|eagle
-maki search "tag:=animal|bird"                 # this level only: has bird but no deeper tag
+maki search "tag:=animal|bird"                 # leaf only: has bird but no deeper tag
+maki search "tag:/Legoland"                    # whole path: only the standalone Legoland
+maki search 'tag:/"location|Denmark|Legoland"' # only that exact path
 maki search 'tag:="location|Germany|Bayern"'   # Bayern level only, not cities/venues below
 maki search "tag:^Landscape"                   # case-sensitive: matches "Landscape" but NOT "landscape"
-maki search "tag:=^Animals"                    # exact level AND case-sensitive
+maki search "tag:=^Animals"                    # leaf only AND case-sensitive
+maki search "tag:/^Legoland"                   # whole path AND case-sensitive
 maki search "tag:|wed"                          # prefix anchor: wedding, wedding-2024, events|wedding, ...
 maki search "tag:^|Wed"                         # case-sensitive prefix anchor: Wedding but not wedding
 ```
 
-**SQL behavior:** Four LIKE patterns match the tag at any hierarchy level: `%"stored"%` (standalone), `%"stored|%` (parent from root), `%|stored"%` (leaf child), `%|stored|%` (mid-path). The JSON quoting provides natural word boundaries — `tag:eagle` cannot match `eagles`. With `=` prefix: `WHERE (LIKE '%"stored"%' OR LIKE '%|stored"%') AND NOT LIKE '%"stored|%' AND NOT LIKE '%|stored|%'` — matches the tag at any level but only as a leaf (no descendants). With `^` prefix: SQLite `GLOB` is used instead of `LIKE` — GLOB is case-sensitive and uses `*` as the wildcard (literal `*` and `?` in tag names are an unsupported edge case for case-sensitive search).
+**SQL behavior:** Four LIKE patterns match the tag at any hierarchy level: `%"stored"%` (standalone), `%"stored|%` (parent from root), `%|stored"%` (leaf child), `%|stored|%` (mid-path). The JSON quoting provides natural word boundaries — `tag:eagle` cannot match `eagles`. With `=` prefix: `WHERE (LIKE '%"stored"%' OR LIKE '%|stored"%') AND NOT LIKE '%"stored|%' AND NOT LIKE '%|stored|%'` — matches the tag at any level but only as a leaf (no descendants). With `/` prefix: a single `LIKE '%"stored"%'` — whole-path equality, bounded by the JSON quotes. With `^` prefix: SQLite `GLOB` is used instead of `LIKE` — GLOB is case-sensitive and uses `*` as the wildcard (literal `*` and `?` in tag names are an unsupported edge case for case-sensitive search).
 
 ---
 

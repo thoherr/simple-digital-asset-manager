@@ -322,8 +322,8 @@ All filters work in CLI \cmd{maki search} and web UI search box.
 
 \subsection{Text \& Metadata}
 \begin{tabularx}{\columnwidth}{@{}lX@{}}
-\cmd{tag:landscape} & Tag match (hierarchical) \\
-\cmd{tag:=landscape} & Exact level only (no descendants) \\
+\cmd{tag:landscape} & Tag match (any level) \\
+\cmd{tag:=} / \cmd{tag:/} & \cmd{=}\,leaf only;\, \cmd{/}\,whole path (exact value) \\
 \cmd{tag:\textasciicircum Landscape} & Case-sensitive (not ``landscape'') \\
 \cmd{tag:|wed} & Prefix anchor (wedding, wedding-2024, ...) \\
 \cmd{-tag:rejected} & Exclude tag \\
