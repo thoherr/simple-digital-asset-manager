@@ -828,6 +828,15 @@ maki search "faces:2+ tag:portrait"         # portraits with multiple people
 
 **Description:** Filters to assets that contain at least one face assigned to the named person. Supports quoted values for multi-word names.
 
+**Multiple people:** Repeat the filter to require multiple people in the same asset (AND). Use commas within a single filter to match any of a list (OR). Matches tag semantics.
+
+```
+maki search "person:Alice person:Bob"       # assets with BOTH Alice and Bob
+maki search "person:Alice,Bob"              # assets with EITHER Alice or Bob
+```
+
+In the web UI browse filter, each person chip is one `person:` entry, so multiple chips AND together. Type a comma-separated list (`Alice,Bob`) in the query input to get OR semantics.
+
 **Examples:**
 
 ```
@@ -835,6 +844,7 @@ maki search "person:Alice"
 maki search 'person:"John Smith"'
 maki search "person:Alice rating:4+"
 maki search "-person:Alice"                 # exclude assets with Alice
+maki search "person:Alice person:Bob"       # both in the photo
 ```
 
 **SQL behavior:** Looks up the person ID by name, then filters via `WHERE EXISTS (SELECT 1 FROM faces WHERE faces.asset_id = a.id AND faces.person_id = ?)`.

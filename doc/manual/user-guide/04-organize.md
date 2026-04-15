@@ -749,9 +749,12 @@ maki search "person:Alice rating:4+"    # Alice's best photos
 
 The web UI provides the full face management experience:
 
-- **People page** (`/people`) — gallery of person cards with thumbnails, names, and face counts. Inline rename, merge, delete. Clicking any card (named or "Unknown") navigates to the browse view filtered to that person's assets.
-- **Asset detail page** — faces section with crop thumbnails, confidence, and assignment controls. Already-assigned faces show the person name (or "Unknown (...)" for unnamed clusters) as a clickable link.
-- **Browse filters** — person dropdown in the filter row; `faces:` and `person:` filters in the query input. The person filter persists across pagination and sort changes.
+- **People page** (`/people`) — gallery of person cards with thumbnails, names, and face counts. Clicking any card (named or "Unknown") navigates to the browse view filtered to that person's assets. Inline rename (pencil icon) and delete (×).
+  - **Filter input** above the grid does client-side substring matching against names — useful when you have hundreds of people.
+  - **Merge suggestions** panel appears above the grid when MAKI detects pairs of clusters whose centroid embeddings are similar enough to likely be the same person (common after clustering, where splinter clusters often form alongside a main one). Each suggestion shows both sides with a match score, a swap button to flip merge direction, and **Merge** / **Not the same person** actions.
+  - **Batch merge** — check the box on any two or more person cards and a toolbar appears. Click the bullseye badge on any selected card to pick the merge target; others become sources. Confirmation modal shows the target + sources with thumbnails before committing.
+- **Asset detail page** — faces section with crop thumbnails, confidence, and assignment controls. Already-assigned faces show the person name (or "Unknown (...)" for unnamed clusters) as a clickable link. Unassigned faces get a **searchable combobox** (type to filter, ↑/↓/Enter to pick, or "+ Create new person" always offered at the bottom) — scales cleanly to hundreds of people.
+- **Browse filters** — people are chips on the top filter row, next to the tag chips. Layout: `[tags] [people] [path]`. Type to filter; ↑/↓/Enter adds a chip; backspace in the empty input removes the last chip. Multiple chips **AND** (asset must contain all selected people). `faces:` and `person:` filters in the query input work as documented. Chips and filters persist across pagination and sort changes.
 - **Batch toolbar** — "Detect faces" processes all selected assets in one go.
 
 ### Configuration
