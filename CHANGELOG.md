@@ -2,6 +2,38 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.4.3 (2026-04-15)
+
+User-visible UX win plus a round of data-integrity fixes prompted by living with the v4.4.x face workflow.
+
+### `maki faces detect` no longer re-scans zero-face assets
+
+Previously, every run of `maki faces detect --query "*" --apply` re-scanned every asset without a face record — landscapes, product shots, documents — because the skip logic relied on "does this asset have any face records?" rather than "has this asset ever been scanned?" On large catalogs the wasted work added up to hours per run, and worse, deleting a bad detection would silently recreate it on the next run.
+
+New `face_scan_status` column on `assets` (schema v6→v7) distinguishes "never scanned" from "scanned, regardless of outcome." Detection stamps the flag whenever it completes, and skips on the flag instead. The column is persisted to the Asset YAML sidecar too, so `rebuild-catalog` doesn't lose the scan history.
+
+Practical effect on a 50k-asset catalog with mostly landscapes: first `faces detect` run processes everything, subsequent runs touch only newly-imported assets. Deleted detections stay deleted.
+
+### Dual-storage invariant: data-integrity audit *(internal)*
+
+Audit of `faces.yaml` surfaced one SQLite-only field (`recognition_model`) that violated the "SQLite is derivable from YAML" invariant — a `rebuild-catalog` would have stripped the model tags. Fixed:
+
+- Added `recognition_model` to the YAML `FaceRecord` struct; updated `export_all_faces` and `import_faces_from_yaml` to round-trip it.
+- Added `post_migration_sync` hook in `Catalog::open_and_migrate`. When the v5→v6 migration runs (backfilling model tags in SQLite), the hook re-exports `faces.yaml` immediately so the tags also land in the source-of-truth sidecar. Catalogs migrated before this release can run `maki faces export` once to reach the same state.
+- The new `face_scan_status` field is in the Asset YAML sidecar from the start. `rebuild-catalog` has a legacy fallback that stamps it on any asset with face records whose sidecar predates the field.
+
+No user-visible behaviour change from the audit — these were bugs lurking behind the `rebuild-catalog` path that would have surfaced later. After this release, `rebuild-catalog` is fully faithful for all face-related state.
+
+### User guide: new "Visual Discovery" chapter
+
+New user-guide chapter (12) covering face recognition, similarity search, and stroll as **workflows** rather than command references. Follows the established Tagging Guide pattern: Why It Matters → three topical workflows → Common Problems → cheat sheet → reference pointers.
+
+Notable content: when to cluster vs. assign per-asset (the "I ran cluster and nothing happened" case is the first Common Problems entry), how to read the `maki faces similarity` histogram to pick a threshold, the three stroll modes and when to use each, maintenance rhythm for face recognition over time.
+
+The chapter title deliberately frames the feature set as "finding photos by what they look like" rather than "AI features" — the operative distinction is content vs. metadata, not implementation.
+
+Chapter order rearranged: Organizing → Tagging Guide → **Visual Discovery** → Archive Lifecycle. All working-with-the-catalog chapters now group together before the long-game storage chapter.
+
 ## v4.4.2 (2026-04-15)
 
 Filter bar UX polish — picking up where v4.4.1 left off after live-testing the new face workflow.
