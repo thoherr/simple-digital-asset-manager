@@ -116,9 +116,11 @@ Face recognition is not a one-time operation. New imports bring new faces; new f
 
 **Weekly (or after any big import):**
 ```
-maki faces detect --query "*" --apply    # scans only new assets by default
+maki faces detect --query "*" --apply    # rescans only assets with no faces yet
 maki faces cluster --apply               # clusters any newly-unassigned faces
 ```
+
+A note on what "already detected" means: without `--force`, detection skips any asset that has at least one face record in the catalog. If you delete a face manually (e.g. a bad detection you didn't want), that asset is no longer "done" from the catalog's point of view and will get re-scanned on the next run — which will recreate the same bad detection. Use `--force` on a targeted scope if you want to re-detect anyway, or accept that the bad face will keep coming back until you assign it to a person (assigned faces are still "faces" for this check). Assets where detection ran and found zero faces are currently re-scanned on every run; this is a known limitation on very large catalogs and will likely become a proper "scanned but no face" marker in a future release.
 
 **Occasionally, when clustering quality feels off:**
 - Run `faces similarity` on a scope to check the distribution
