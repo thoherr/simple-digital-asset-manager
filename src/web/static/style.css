@@ -3451,8 +3451,11 @@ body.has-batch-toolbar { padding-bottom: 60px; }
 .person-card.selected {
     box-shadow: 0 0 0 2px var(--primary);
 }
+/* Merge target stands out clearly from merely-selected: thick primary-colored
+   ring with an inner white line for depth, plus a subtle background tint. */
 .person-card.merge-target {
-    box-shadow: 0 0 0 3px var(--primary);
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 5px var(--primary);
+    background: rgba(232, 99, 74, 0.08);
 }
 .person-select-label {
     position: absolute;
@@ -3535,6 +3538,12 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     align-items: center;
     justify-content: center;
     z-index: 100;
+}
+/* `display: flex` above would otherwise override the HTML `hidden` attribute's
+   default user-agent `display: none`. Restore it explicitly so the modal stays
+   truly hidden until the JS unsets `hidden`. */
+.modal-overlay[hidden] {
+    display: none;
 }
 .modal-overlay .modal {
     background: var(--bg);

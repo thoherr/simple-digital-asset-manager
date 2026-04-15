@@ -31,7 +31,7 @@
         <label class="person-select-label" title="Select for merge">
             <input type="checkbox" class="person-select-cb" data-id="{{ p.id }}">
         </label>
-        <button class="person-target-btn" data-id="{{ p.id }}" title="Make this the merge target" hidden>&#10013;</button>
+        <button class="person-target-btn" data-id="{{ p.id }}" title="Make this the merge target" hidden>&#9678;</button>
         <a href="/?person={{ p.id }}" class="person-link">
             {% if let Some(url) = p.crop_url %}
             <img src="{{ url }}" class="person-thumb" alt="{{ p.name }}">
