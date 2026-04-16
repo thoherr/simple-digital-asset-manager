@@ -2128,18 +2128,21 @@ impl QueryEngine {
         let online = Self::load_online_volumes(&self.catalog_root);
         let content_store = ContentStore::new(&self.catalog_root);
 
-        // Strip the optional =/^/|// markers from `old_tag`. The new_tag is always
+        // Strip the optional =/^// markers from `old_tag`. The new_tag is always
         // taken literally — we never want to rename to a marker-prefixed value.
         // The `|` marker (prefix anchor) is parsed but rejected for rename: it
         // would mean "rename every tag starting with X to Y", which collapses
         // distinct tags into one and is rarely what a user actually wants. We
         // bail with a clear error so users compose multiple targeted renames.
         //
-        // `/` (whole-path match in search) is accepted as an alias for `=`.
-        // For rename, `assets_with_tag_or_prefix(exact_only=true)` already uses
-        // `je.value = ?` (SQL equality on individual tag values), which is
-        // whole-path by construction — the same semantic `/` provides in
-        // search. So the two markers converge in this context.
+        // Both `=` (whole-path match in search) and `/` (leaf-only-at-any-level
+        // in search) collapse to the same internal `exact_only` flag here:
+        // `assets_with_tag_or_prefix(exact_only=true)` uses `je.value = ?`
+        // (SQL equality on individual tag values), which is whole-path by
+        // construction. The descendant-skip logic below handles the leaf
+        // semantic. Both markers therefore behave identically in the rename
+        // context — the test suite asserts this convergence (see
+        // tag_rename_marker_order_independent and friends).
         let mut rest = old_tag;
         let mut exact_only = false;
         let mut case_sensitive = false;

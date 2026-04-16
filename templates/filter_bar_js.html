@@ -24,13 +24,13 @@
     }
 
     // Rebuild the chip's `data-tag` attribute from its name + toggle state.
-    // Mode is tri-state: "desc" (default, include descendants), "exact"
-    // (leaf-only at any level, `=`), or "path" (whole-path match, `/`).
+    // Mode is tri-state: "desc" (default, include descendants), "path"
+    // (whole-path match, `=`), or "exact" (leaf-only at any level, `/`).
     // Case-sensitivity toggles orthogonally via `^`.
     function updateChipDataTag(chip, name) {
         var mode = chip.getAttribute('data-mode') || 'desc';
         var caseSensitive = chip.getAttribute('data-case') === '1';
-        var modePrefix = (mode === 'exact') ? '=' : (mode === 'path') ? '/' : '';
+        var modePrefix = (mode === 'path') ? '=' : (mode === 'exact') ? '/' : '';
         var prefix = modePrefix + (caseSensitive ? '^' : '');
         chip.setAttribute('data-tag', prefix + name);
     }
@@ -42,8 +42,8 @@
         var changed = true;
         while (changed) {
             changed = false;
-            if (name.charAt(0) === '=') { mode = 'exact'; name = name.substring(1); changed = true; }
-            else if (name.charAt(0) === '/') { mode = 'path'; name = name.substring(1); changed = true; }
+            if (name.charAt(0) === '=') { mode = 'path'; name = name.substring(1); changed = true; }
+            else if (name.charAt(0) === '/') { mode = 'exact'; name = name.substring(1); changed = true; }
             else if (name.charAt(0) === '^') { caseSensitive = true; name = name.substring(1); changed = true; }
         }
         return { name: name, mode: mode, caseSensitive: caseSensitive };
@@ -75,32 +75,35 @@
         label.textContent = tagToDisplay(name);
         chip.appendChild(label);
 
-        // Mode toggle cycles through three states:
+        // Mode toggle cycles through three states. `=` (whole-path) comes
+        // first after the default because it's the more useful narrow mode —
+        // matches the tag value exactly, ignoring same-named leaves elsewhere
+        // in the hierarchy. `/` (leaf-only) is a niche second click.
         //   ▼ (default) — include descendants, match at any level
-        //   =           — leaf only (tag appears but has no descendants)
-        //   /           — whole path match (exact tag value only; disambiguates
+        //   =           — whole path match (exact tag value only; disambiguates
         //                 a root-level tag from same-named leaves in a hierarchy)
+        //   /           — leaf only at any level (no descendants in branch)
         var modeToggle = document.createElement('button');
         modeToggle.type = 'button';
         modeToggle.className = 'tag-mode-toggle';
         function renderMode() {
             var mode = chip.getAttribute('data-mode') || 'desc';
-            if (mode === 'exact') {
+            if (mode === 'path') {
                 modeToggle.textContent = '=';
-                modeToggle.title = 'Leaf only at any level — click for whole-path match';
-            } else if (mode === 'path') {
+                modeToggle.title = 'Whole-path match (exact tag value only) — click for leaf-only';
+            } else if (mode === 'exact') {
                 modeToggle.textContent = '/';
-                modeToggle.title = 'Whole-path match (exact tag value only) — click to include descendants';
+                modeToggle.title = 'Leaf only at any level — click to include descendants';
             } else {
                 modeToggle.textContent = '\u25BC';
-                modeToggle.title = 'Including descendants — click for leaf-only';
+                modeToggle.title = 'Including descendants — click for whole-path match';
             }
         }
         renderMode();
         modeToggle.onclick = function() {
-            // Cycle: desc → exact → path → desc
+            // Cycle: desc → path (=) → exact (/) → desc
             var mode = chip.getAttribute('data-mode') || 'desc';
-            var next = (mode === 'desc') ? 'exact' : (mode === 'exact') ? 'path' : 'desc';
+            var next = (mode === 'desc') ? 'path' : (mode === 'path') ? 'exact' : 'desc';
             chip.setAttribute('data-mode', next);
             updateChipDataTag(chip, name);
             renderMode();

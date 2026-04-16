@@ -3454,21 +3454,23 @@ impl Catalog {
     /// Build SQL clauses for a `tag:` filter value.
     ///
     /// Prefix markers (any order, all stackable):
-    /// - `=` — exact level only: tag matches at any hierarchy level but only
-    ///   as a leaf (no descendants). `tag:=Legoland` matches `Legoland`
-    ///   (standalone) and `location|Denmark|Legoland` (leaf) but not
-    ///   `Legoland|ride-photos`.
-    /// - `/` — whole-path match: tag matches if and only if the **full path**
-    ///   equals the given value. `tag:/Legoland` matches ONLY the standalone
+    /// - `=` — whole-path match: tag matches if and only if the **full path**
+    ///   equals the given value. `tag:=Legoland` matches ONLY the standalone
     ///   `Legoland` tag, never `location|Denmark|Legoland`. Use this when a
     ///   root-level tag shares a name with a leaf elsewhere in the hierarchy
-    ///   and you need to disambiguate. Implies no descendants (supersedes
-    ///   `=`). Works with any depth: `tag:/location|Denmark|Legoland` matches
-    ///   only that exact path.
+    ///   and you need to disambiguate. The `=` reads naturally as "equals",
+    ///   matching the user's mental model of exact equality. Works with any
+    ///   depth: `tag:=location|Denmark|Legoland` matches only that exact path.
+    /// - `/` — leaf only at any level: tag matches at any hierarchy level
+    ///   but only as a leaf (no descendants in the same branch).
+    ///   `tag:/location|Germany|Bayern` matches assets whose deepest tag in
+    ///   this branch is `Bayern` — NOT assets that also have
+    ///   `location|Germany|Bayern|München`. Niche use case for distinguishing
+    ///   "this is the deepest tagged level" from "this is a parent."
     /// - `^` — case-sensitive (SQLite GLOB instead of LIKE)
     /// - `|` — anchored prefix: match any tag whose hierarchy component STARTS
     ///   with the rest of the value, at any level. Mutually exclusive with `=`
-    ///   and `/` (a prefix-anchor can't also be an exact or whole-path match).
+    ///   and `/` (a prefix-anchor can't also be an exact or leaf-only match).
     ///   Examples: `tag:|wed` matches `wedding`, `wedding-2024`, `events|wedding`,
     ///   `events|wedding|2024-05`. `tag:^|Wed` matches the same set
     ///   case-sensitively.
@@ -3480,16 +3482,22 @@ impl Catalog {
     /// - Unescaped: `"\"Sir\" Oliver Mally"` (serde_json proper)
     /// - Raw: `""Sir" Oliver Mally"` (legacy/malformed JSON)
     /// We match both forms.
+    ///
+    /// Note: prior to v4.4.4 the `=` and `/` markers were swapped — `=` meant
+    /// leaf-only-at-any-level and `/` meant whole-path. The swap was made
+    /// because `=` reads as "equals", which most users expect to mean exact
+    /// value equality.
     fn tag_like_parts(params: &mut Vec<Box<dyn rusqlite::types::ToSql>>, tag: &str) -> Vec<String> {
         // Strip the `=`, `/`, `^`, and `|` prefix markers in any order.
+        // `=` → path_exact (whole-path equality). `/` → exact_only (leaf-only at any level).
         let mut rest = tag;
         let mut exact_only = false;
         let mut path_exact = false;
         let mut case_sensitive = false;
         let mut prefix_anchor = false;
         loop {
-            if let Some(s) = rest.strip_prefix('=') { exact_only = true; rest = s; }
-            else if let Some(s) = rest.strip_prefix('/') { path_exact = true; rest = s; }
+            if let Some(s) = rest.strip_prefix('=') { path_exact = true; rest = s; }
+            else if let Some(s) = rest.strip_prefix('/') { exact_only = true; rest = s; }
             else if let Some(s) = rest.strip_prefix('^') { case_sensitive = true; rest = s; }
             else if let Some(s) = rest.strip_prefix('|') { prefix_anchor = true; rest = s; }
             else { break; }
@@ -3497,10 +3505,11 @@ impl Catalog {
         // Conflict resolution:
         // - Prefix-anchor (`|`) conceptually includes descendants and matches
         //   by component prefix, so it can't combine with `=` or `/`; when
-        //   paired, the stricter anchor semantic wins and the exact/whole-path
-        //   flags are silently dropped.
-        // - `/` (whole-path) is stricter than `=` (leaf-only at any level);
-        //   when both given, `/` wins and `=` is redundant.
+        //   paired, the prefix-anchor semantic wins and the other flags are
+        //   silently dropped.
+        // - `=` (whole-path, path_exact) is stricter than `/` (leaf-only at
+        //   any level, exact_only); when both given, `=` wins and `/` is
+        //   redundant.
         if prefix_anchor { exact_only = false; path_exact = false; }
         if path_exact { exact_only = false; }
         let tag_value = rest;
@@ -6079,16 +6088,32 @@ mod tests {
         catalog.insert_asset(&a2).unwrap();
         catalog.insert_variant(&v2).unwrap();
 
-        // tag:=Holzkirchen should match ONLY ae2 (Holzkirchen is leaf),
-        // NOT ae1 (Holzkirchen has Marktplatz below it)
-        let tags = vec!["=Holzkirchen".to_string()];
+        // tag:/Holzkirchen (leaf-only-at-any-level) should match ONLY ae2:
+        // Holzkirchen is a leaf there. ae1 has Marktplatz below the deep
+        // Holzkirchen path, so Holzkirchen is not a leaf in the deep branch
+        // — but ae1 ALSO has the standalone "Holzkirchen" via ancestor
+        // expansion, which IS a leaf. So both ae1 and ae2 should match `/Holzkirchen`?
+        // No — the leaf-only check examines whether the asset has ANY
+        // descendant of Holzkirchen anywhere in its tag list. ae1 does
+        // (location|...|Holzkirchen|Marktplatz contains "Holzkirchen|"),
+        // so it gets rejected; ae2 doesn't, so it matches.
+        let tags = vec!["/Holzkirchen".to_string()];
         let opts = SearchOptions { tags: &tags, per_page: u32::MAX, ..Default::default() };
         let results = catalog.search_paginated(&opts).unwrap();
         let names: Vec<&str> = results.iter().map(|r| r.original_filename.as_str()).collect();
-        assert_eq!(results.len(), 1, "tag:=Holzkirchen should match only ae2. Got: {names:?}");
+        assert_eq!(results.len(), 1, "tag:/Holzkirchen should match only ae2. Got: {names:?}");
         assert_eq!(results[0].original_filename, "ae2.jpg");
 
-        // tag:Holzkirchen (without =) should match BOTH
+        // tag:=Holzkirchen (whole-path) matches BOTH because both have the
+        // standalone "Holzkirchen" tag from ancestor expansion. The whole-path
+        // check is purely about the JSON value equality; it doesn't care what
+        // OTHER tags an asset has.
+        let tags_eq = vec!["=Holzkirchen".to_string()];
+        let opts_eq = SearchOptions { tags: &tags_eq, per_page: u32::MAX, ..Default::default() };
+        let results_eq = catalog.search_paginated(&opts_eq).unwrap();
+        assert_eq!(results_eq.len(), 2, "tag:=Holzkirchen should match both (both have standalone Holzkirchen)");
+
+        // tag:Holzkirchen (no marker) should match both via root-level standalone match.
         let tags_no_eq = vec!["Holzkirchen".to_string()];
         let opts_no_eq = SearchOptions { tags: &tags_no_eq, per_page: u32::MAX, ..Default::default() };
         let results_no_eq = catalog.search_paginated(&opts_no_eq).unwrap();
@@ -6129,9 +6154,10 @@ mod tests {
 
     #[test]
     fn search_tag_whole_path_match() {
-        // `/` prefix means "match the tag path exactly and only". Distinguishes
+        // `=` prefix means "match the tag path exactly and only". Distinguishes
         // a root-level tag from same-named leaves elsewhere in the hierarchy —
-        // the case that `=` (leaf-only-at-any-level) can't disambiguate.
+        // the case that the default level-sliding match and `/` (leaf-only at
+        // any level) can't disambiguate.
         let catalog = Catalog::open_in_memory().unwrap();
         catalog.initialize().unwrap();
 
@@ -6179,27 +6205,28 @@ mod tests {
         let results = catalog.search_assets(None, None, Some("Legoland"), None, None, None).unwrap();
         assert_eq!(results.len(), 3, "plain tag:Legoland matches at any level");
 
-        // Existing `=` leaf-only: still matches all three (each Legoland is a leaf).
-        let results = catalog.search_assets(None, None, Some("=Legoland"), None, None, None).unwrap();
-        assert_eq!(results.len(), 3, "tag:=Legoland matches all leaf occurrences");
-
-        // New `/` whole-path: matches only the root-level Legoland.
+        // `/` leaf-only-at-any-level: still matches all three (each Legoland
+        // is a leaf in its own branch — none has a Legoland|child).
         let results = catalog.search_assets(None, None, Some("/Legoland"), None, None, None).unwrap();
-        assert_eq!(results.len(), 1, "tag:/Legoland matches only standalone root-level tag");
+        assert_eq!(results.len(), 3, "tag:/Legoland matches all leaf occurrences");
+
+        // `=` whole-path: matches only the root-level Legoland.
+        let results = catalog.search_assets(None, None, Some("=Legoland"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:=Legoland matches only standalone root-level tag");
         assert_eq!(results[0].content_hash, "sha256:wp1");
 
         // Whole-path match at depth: selects exactly one asset.
-        let results = catalog.search_assets(None, None, Some("/location|Denmark|Legoland"), None, None, None).unwrap();
-        assert_eq!(results.len(), 1, "tag:/location|Denmark|Legoland matches that exact path");
+        let results = catalog.search_assets(None, None, Some("=location|Denmark|Legoland"), None, None, None).unwrap();
+        assert_eq!(results.len(), 1, "tag:=location|Denmark|Legoland matches that exact path");
         assert_eq!(results[0].content_hash, "sha256:wp2");
 
         // Whole-path match with a prefix-of-a-path: no results (there's no
         // asset where the full tag is 'location|Denmark').
-        let results = catalog.search_assets(None, None, Some("/location|Denmark"), None, None, None).unwrap();
-        assert!(results.is_empty(), "tag:/location|Denmark matches no full paths exactly");
+        let results = catalog.search_assets(None, None, Some("=location|Denmark"), None, None, None).unwrap();
+        assert!(results.is_empty(), "tag:=location|Denmark matches no full paths exactly");
 
         // Whole-path match for a non-existent path: no results.
-        let results = catalog.search_assets(None, None, Some("/nosuchtag"), None, None, None).unwrap();
+        let results = catalog.search_assets(None, None, Some("=nosuchtag"), None, None, None).unwrap();
         assert!(results.is_empty());
     }
 

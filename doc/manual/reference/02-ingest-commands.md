@@ -357,18 +357,21 @@ Finds all assets tagged with OLD_TAG and replaces that tag with NEW_TAG. This is
 
 By default, matching is **case-insensitive** and **cascades to descendant tags**, consistent with the default `tag:` search filter behavior. `maki tag rename "Concert" "concert"` finds and renames "Concert", "CONCERT", and "concert" variants. The stored result uses the exact case specified in NEW_TAG.
 
-**Prefix markers** for OLD_TAG match the `tag:` search syntax exactly, so the rename behavior is 100% consistent with what you see in search results. The markers can be combined in any order:
+**Prefix markers** for OLD_TAG mirror the `tag:` search syntax. The markers can be combined in any order:
 
 | OLD_TAG syntax | Behavior |
 |----------------|----------|
 | `Foo` | Case-insensitive, includes descendants (default) |
-| `=Foo` | Exact level only — does NOT touch `Foo|child` tags |
+| `=Foo` | Whole path only — does NOT touch `Foo|child` tags or other Foo occurrences |
+| `/Foo` | Same as `=Foo` in rename context (both mean exact value match) |
 | `^Foo` | Case-sensitive — `Foo` and `foo` are different tags |
-| `=^Foo` or `^=Foo` | Both: exact level AND case-sensitive |
+| `=^Foo` or `^=Foo` | Both: whole path AND case-sensitive |
+
+In rename, `=` and `/` collapse to the same behavior because the underlying SQL uses equality on each individual tag value (which is whole-path by construction). The descendant-skip logic on top makes `=` behave correctly as "rename this exact tag, leave its children alone."
 
 NEW_TAG is always taken literally (no prefix parsing) and is stored with the exact case given.
 
-**Ancestor expansion:** When renaming a flat tag to a hierarchical one (e.g., "Munich" to "location|Germany|Bavaria|Munich"), all ancestor paths are automatically added (`location`, `location|Germany`, `location|Germany|Bavaria`). This matches the CaptureOne/Lightroom convention. The rename cascades to descendant tags by default — renaming a parent renames all children — unless you use the `=` exact-level marker.
+**Ancestor expansion:** When renaming a flat tag to a hierarchical one (e.g., "Munich" to "location|Germany|Bavaria|Munich"), all ancestor paths are automatically added (`location`, `location|Germany`, `location|Germany|Bavaria`). This matches the CaptureOne/Lightroom convention. The rename cascades to descendant tags by default — renaming a parent renames all children — unless you use the `=` whole-path marker.
 
 If an asset already has NEW_TAG (in any case variant), the old tag is simply removed without creating a duplicate.
 

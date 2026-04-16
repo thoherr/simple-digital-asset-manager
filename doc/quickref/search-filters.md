@@ -7,8 +7,8 @@ Filters combine with **AND** — every filter must match. Free-text tokens that 
 |--------|--------|---------|
 | Asset type | `type:<type>` | `type:image`, `type:video` |
 | Tag | `tag:<name>` | `tag:landscape`, `tag:"Fools Theater"` |
-| Tag leaf only | `tag:=<name>` | `tag:=animals\|birds` (no descendants) |
-| Tag whole path | `tag:/<name>` | `tag:/Legoland` (exact value, not leaves elsewhere) |
+| Tag whole path | `tag:=<name>` | `tag:=Legoland` (exact value, not leaves elsewhere) |
+| Tag leaf only | `tag:/<name>` | `tag:/animals\|birds` (no descendants) |
 | Tag case-sensitive | `tag:^<name>` | `tag:^Landscape` (not "landscape") |
 | Tag prefix anchor | `tag:\|<text>` | `tag:\|wed` (wedding, wedding-2024, ...) |
 | Exclude tag | `-tag:<name>` | `-tag:rejected` |
