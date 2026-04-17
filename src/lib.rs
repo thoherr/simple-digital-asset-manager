@@ -34,6 +34,7 @@ impl Verbosity {
 
 pub mod asset_service;
 pub mod catalog;
+pub mod cli_output;
 pub mod collection;
 pub mod config;
 pub mod contact_sheet;

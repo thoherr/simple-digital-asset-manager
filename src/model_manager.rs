@@ -182,19 +182,6 @@ impl ModelManager {
     }
 }
 
-/// Format a byte count as a human-readable string.
-pub fn format_size(bytes: u64) -> String {
-    if bytes < 1024 {
-        format!("{bytes} B")
-    } else if bytes < 1024 * 1024 {
-        format!("{:.1} KB", bytes as f64 / 1024.0)
-    } else if bytes < 1024 * 1024 * 1024 {
-        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
-    } else {
-        format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,26 +259,6 @@ mod tests {
         let spec_l = get_model_spec("siglip-vit-l16-256").unwrap();
         let url_l = hf_base_url(spec_l);
         assert!(url_l.contains("Xenova/siglip-large-patch16-256"));
-    }
-
-    #[test]
-    fn format_size_bytes() {
-        assert_eq!(format_size(500), "500 B");
-    }
-
-    #[test]
-    fn format_size_kilobytes() {
-        assert_eq!(format_size(1500), "1.5 KB");
-    }
-
-    #[test]
-    fn format_size_megabytes() {
-        assert_eq!(format_size(94 * 1024 * 1024), "94.0 MB");
-    }
-
-    #[test]
-    fn format_size_gigabytes() {
-        assert_eq!(format_size(2 * 1024 * 1024 * 1024), "2.00 GB");
     }
 
 }

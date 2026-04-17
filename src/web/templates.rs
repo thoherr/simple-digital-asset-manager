@@ -1,6 +1,7 @@
 use askama::Template;
 
 use crate::catalog::{AnalyticsData, AssetDetails, BackupStatusResult, CatalogStats, SearchRow};
+pub use crate::cli_output::format_size;
 
 /// Compute preview URL from a content hash like "sha256:abcdef...".
 pub fn preview_url(content_hash: &str, ext: &str) -> String {
@@ -32,23 +33,6 @@ pub fn format_video_duration(seconds: f64) -> String {
         format!("{h}:{m:02}:{s:02}")
     } else {
         format!("{m}:{s:02}")
-    }
-}
-
-/// Format a byte count for display.
-pub fn format_size(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = 1024 * KB;
-    const GB: u64 = 1024 * MB;
-
-    if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.1} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{bytes} B")
     }
 }
 

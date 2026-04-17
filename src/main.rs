@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use maki::asset_service::AssetService;
 use maki::catalog::Catalog;
+use maki::cli_output::{format_duration, format_size, item_status};
 use maki::config::CatalogConfig;
 use maki::device_registry::DeviceRegistry;
 use maki::metadata_store::MetadataStore;
@@ -1828,7 +1829,7 @@ fn run_faces_command(
                     if show_log {
                         let short_id = &aid[..8.min(aid.len())];
                         if n == 0 {
-                            eprintln!("  {short_id} — skipped ({})", format_duration(elapsed));
+                            item_status(short_id, "skipped", Some(elapsed));
                         } else {
                             eprintln!(
                                 "  {short_id} — {} face{} detected ({})",
@@ -2542,21 +2543,21 @@ faces/\n\
                                     let name = path.file_name()
                                         .and_then(|n| n.to_str())
                                         .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                                    eprintln!("  {} — removed ({})", name, format_duration(elapsed));
+                                    item_status(name, "removed", Some(elapsed));
                                 }
                                 CleanupStatus::LocationlessVariant => {
                                     let name = path.to_str().unwrap_or("?");
-                                    eprintln!("  {} — locationless variant removed ({})", name, format_duration(elapsed));
+                                    item_status(name, "locationless variant removed", Some(elapsed));
                                 }
                                 CleanupStatus::OrphanedAsset => {
                                     let name = path.to_str().unwrap_or("?");
-                                    eprintln!("  {} — orphaned asset removed ({})", name, format_duration(elapsed));
+                                    item_status(name, "orphaned asset removed", Some(elapsed));
                                 }
                                 CleanupStatus::OrphanedFile => {
                                     let name = path.file_name()
                                         .and_then(|n| n.to_str())
                                         .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                                    eprintln!("  {} — orphaned file removed ({})", name, format_duration(elapsed));
+                                    item_status(name, "orphaned file removed", Some(elapsed));
                                 }
                                 _ => {}
                             }
@@ -2620,7 +2621,7 @@ faces/\n\
                     apply,
                     |asset_id, elapsed| {
                         if show_log {
-                            eprintln!("  {} — updated ({})", asset_id, format_duration(elapsed));
+                            item_status(asset_id, "updated", Some(elapsed));
                         }
                     },
                 )?;
@@ -2673,7 +2674,7 @@ faces/\n\
                     apply,
                     |asset_id, elapsed| {
                         if show_log {
-                            eprintln!("  {} — updated ({})", asset_id, format_duration(elapsed));
+                            item_status(asset_id, "updated", Some(elapsed));
                         }
                     },
                 )?;
@@ -2864,7 +2865,7 @@ faces/\n\
                     let name = path.file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                    eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
+                    item_status(name, label, Some(elapsed));
                 })?
             } else {
                 service.import_with_callback(&canonical_paths, &volume, &filter, &import_config.exclude, &all_tags, dry_run, smart, |_, _, _| {})?
@@ -3090,7 +3091,7 @@ faces/\n\
                                 let short = &aid[..8.min(aid.len())];
                                 match status {
                                     maki::vlm::DescribeStatus::Described => {
-                                        eprintln!("  {short} — described ({})", format_duration(elapsed));
+                                        item_status(short, "described", Some(elapsed));
                                     }
                                     maki::vlm::DescribeStatus::Skipped(msg) => {
                                         eprintln!("  {short} — skipped: {msg}");
@@ -3991,10 +3992,10 @@ faces/\n\
                         let short_id = &id[..8.min(id.len())];
                         match status {
                             maki::asset_service::DeleteStatus::Deleted => {
-                                eprintln!("  {short_id} — deleted ({})", format_duration(elapsed));
+                                item_status(short_id, "deleted", Some(elapsed));
                             }
                             maki::asset_service::DeleteStatus::NotFound => {
-                                eprintln!("  {short_id} — not found");
+                                item_status(short_id, "not found", None);
                             }
                             maki::asset_service::DeleteStatus::Error(msg) => {
                                 eprintln!("  {short_id} — error: {msg}");
@@ -4275,7 +4276,7 @@ faces/\n\
             asset_ids,
         } => {
             let (query, asset) = merge_trailing_ids(query, asset, &asset_ids);
-            use maki::model_manager::{ModelManager, format_size};
+            use maki::model_manager::ModelManager;
 
             // List labels can work without a catalog (uses defaults)
             if list_labels {
@@ -4723,7 +4724,7 @@ faces/\n\
                 if !force && emb_store.has_embedding(aid, model_id) {
                     skipped += 1;
                     if cli.log {
-                        eprintln!("  {short_id} — skipped: already exists ({})", format_duration(asset_start.elapsed()));
+                        item_status(short_id, "skipped: already exists", Some(asset_start.elapsed()));
                     }
                     continue;
                 }
@@ -4773,7 +4774,7 @@ faces/\n\
                         }
                         embedded += 1;
                         if cli.log {
-                            eprintln!("  {short_id} — embedded ({})", format_duration(asset_start.elapsed()));
+                            item_status(short_id, "embedded", Some(asset_start.elapsed()));
                         }
                     }
                     Err(e) => {
@@ -5056,7 +5057,7 @@ faces/\n\
                         let name = path.file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                        eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
+                        item_status(name, label, Some(elapsed));
                     },
                 )?
             } else {
@@ -5160,7 +5161,7 @@ faces/\n\
                         let name = path.file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                        eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
+                        item_status(name, label, Some(elapsed));
                     },
                 )?
             } else {
@@ -5270,7 +5271,7 @@ faces/\n\
                             let name = path.file_name()
                                 .and_then(|n| n.to_str())
                                 .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                            eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
+                            item_status(name, label, Some(elapsed));
                         },
                     )?
                 } else {
@@ -5437,7 +5438,7 @@ faces/\n\
                         let name = path.file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                        eprintln!("  {} — {} ({})", name, label, format_duration(elapsed));
+                        item_status(name, label, Some(elapsed));
                     },
                 )?
             } else {
@@ -5592,33 +5593,33 @@ faces/\n\
                                 let name = path.file_name()
                                     .and_then(|n| n.to_str())
                                     .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                                eprintln!("  {} — ok ({})", name, format_duration(elapsed));
+                                item_status(name, "ok", Some(elapsed));
                             }
                             CleanupStatus::Stale => {
                                 let name = path.file_name()
                                     .and_then(|n| n.to_str())
                                     .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                                eprintln!("  {} — stale ({})", name, format_duration(elapsed));
+                                item_status(name, "stale", Some(elapsed));
                             }
                             CleanupStatus::Offline => {
                                 let name = path.file_name()
                                     .and_then(|n| n.to_str())
                                     .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                                eprintln!("  {} — offline", name);
+                                item_status(name, "offline", None);
                             }
                             CleanupStatus::LocationlessVariant => {
                                 let name = path.to_str().unwrap_or("?");
-                                eprintln!("  {} — locationless variant removed ({})", name, format_duration(elapsed));
+                                item_status(name, "locationless variant removed", Some(elapsed));
                             }
                             CleanupStatus::OrphanedAsset => {
                                 let name = path.to_str().unwrap_or("?");
-                                eprintln!("  {} — orphaned asset removed ({})", name, format_duration(elapsed));
+                                item_status(name, "orphaned asset removed", Some(elapsed));
                             }
                             CleanupStatus::OrphanedFile => {
                                 let name = path.file_name()
                                     .and_then(|n| n.to_str())
                                     .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                                eprintln!("  {} — orphaned file removed ({})", name, format_duration(elapsed));
+                                item_status(name, "orphaned file removed", Some(elapsed));
                             }
                             _ => {}
                         }
@@ -6089,11 +6090,11 @@ faces/\n\
                         match result {
                             Ok(Some(_)) => {
                                 generated += 1;
-                                if cli.log { eprintln!("  {} — generated ({})", name, format_duration(file_elapsed)); }
+                                if cli.log { item_status(name, "generated", Some(file_elapsed)); }
                             }
                             Ok(None) => {
                                 skipped += 1;
-                                if cli.log { eprintln!("  {} — skipped ({})", name, format_duration(file_elapsed)); }
+                                if cli.log { item_status(name, "skipped", Some(file_elapsed)); }
                             }
                             Err(e) => {
                                 eprintln!("  Failed for {}: {e:#} ({})", file_path.display(), format_duration(file_elapsed));
@@ -6193,11 +6194,11 @@ faces/\n\
                                 Ok(Some(_)) => {
                                     generated += 1;
                                     if upgrade { upgraded += 1; }
-                                    if cli.log { eprintln!("  {} — {} ({})", name, if upgrade { "upgraded" } else { "generated" }, format_duration(file_elapsed)); }
+                                    if cli.log { item_status(name, if upgrade { "upgraded" } else { "generated" }, Some(file_elapsed)); }
                                 }
                                 Ok(None) => {
                                     skipped += 1;
-                                    if cli.log { eprintln!("  {} — skipped ({})", name, format_duration(file_elapsed)); }
+                                    if cli.log { item_status(name, "skipped", Some(file_elapsed)); }
                                 }
                                 Err(e) => {
                                     eprintln!("  Failed for {}: {e:#} ({})", asset_data.id, format_duration(file_elapsed));
@@ -7147,13 +7148,13 @@ faces/\n\
                         .to_string_lossy();
                     match status {
                         ExportStatus::Copied => {
-                            eprintln!("  {name} — added ({})", format_duration(elapsed));
+                            item_status(&name, "added", Some(elapsed));
                         }
                         ExportStatus::Linked => {
-                            eprintln!("  {name} — linked ({})", format_duration(elapsed));
+                            item_status(&name, "linked", Some(elapsed));
                         }
                         ExportStatus::Skipped => {
-                            eprintln!("  {name} — skipped ({})", format_duration(elapsed));
+                            item_status(&name, "skipped", Some(elapsed));
                         }
                         ExportStatus::Error(msg) => {
                             eprintln!("  {name} — error: {msg}");
@@ -8024,38 +8025,6 @@ fn merge_trailing_ids(
         None => id_query,
     };
     (Some(combined), asset)
-}
-
-fn format_duration(d: std::time::Duration) -> String {
-    let total_millis = d.as_millis();
-    let hours = total_millis / 3_600_000;
-    let minutes = (total_millis % 3_600_000) / 60_000;
-    let seconds = (total_millis % 60_000) / 1_000;
-    let millis = total_millis % 1_000;
-
-    if hours > 0 {
-        format!("{hours}h {minutes:02}m {seconds:02}.{millis:03}s")
-    } else if minutes > 0 {
-        format!("{minutes}m {seconds:02}.{millis:03}s")
-    } else {
-        format!("{seconds}.{millis:03}s")
-    }
-}
-
-fn format_size(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = 1024 * KB;
-    const GB: u64 = 1024 * MB;
-
-    if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.1} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{bytes} B")
-    }
 }
 
 /// Resolve a person ID prefix to a full ID.
