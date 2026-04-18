@@ -83,13 +83,64 @@ A well-structured tag vocabulary has two layers:
 
 ```
 subject          what is in the image?
+event            which specific occasion is it from?
 location         where was it taken?
 person           who is in it? (named individuals)
 technique        how was it made?
 project          what project or assignment does it belong to?
+color            what is the dominant color? (optional)
 ```
 
-These five facets cover most tagging needs. Not every image needs all five -- a landscape might only need subject and location; a studio portrait might need subject, person, and technique.
+Not every image needs a tag from every facet -- a landscape might only need subject and location; a studio portrait might need subject, person, and technique. `event` and `color` are opt-in facets for photographers who care about those axes.
+
+### Thinking in facets: when to promote a branch to top-level
+
+Each facet answers a *distinct question* about the photo. That independence is the whole point. A concert photo taken at a specific wedding, of a specific musician, in a specific venue, with specific lighting, in a specific color palette carries a tag from each facet — and queries should be able to intersect any subset: "all photos of Alice at outdoor weddings in Bayern with golden-hour lighting."
+
+When you're considering adding a new branch to your vocabulary, the test is simple: **what question does this tag answer about the photo?** If it answers a question that's genuinely distinct from what the existing facets answer, promote it to top-level. If it's a refinement of an existing axis, nest it. Facets are cheap to add; wrong nesting is expensive to fix later.
+
+Two worked examples illustrate the choice.
+
+#### Worked example: events
+
+Many photographers start by filing events under `subject|event|*` — weddings, concerts, workshops. That feels natural at first, but there's friction: events are *date-driven instances*, while the rest of the subject tree is a *stable taxonomy*. New events get added every time one happens; the subject tree barely changes year over year. Jamming them together pollutes your subject vocabulary with names that are meaningful only in context ("Jane's Wedding 2025" is not a kind of thing photos can depict — it's a specific occasion).
+
+The cleaner choice is a top-level `event` facet.
+
+**Pros:**
+
+- Keeps the subject tree stable and navigable. *Subject* answers "what's depicted"; *event* answers "what occasion is this from". Distinct questions, distinct facets.
+- Event cardinality grows unboundedly (one new entry per wedding, per trip, per festival). Isolating it prevents the subject tree from getting skewed.
+- Event names become their own namespace — easy to keep consistent (`event|wedding-jane-2025`, or grouped by year: `event|2025|wedding-jane`).
+- Queries read clearly: `event:wedding-jane-2025 person:Alice` intersects two independent axes.
+- Migration is cheap — `maki tag rename "subject|event|wedding-jane-2025" "event|wedding-jane-2025" --apply` handles it per-event.
+
+**Cons:**
+
+- One more top-level to decide on when tagging.
+- You need to distinguish two different questions a photo can answer about an event: *what kind of scene is this* (generic type) vs *which particular occasion is this from* (specific instance). They coexist cleanly — a photo of Jane's wedding carries **both** `subject|event|wedding` (it's a wedding scene) and `event|wedding-jane-2025` (specifically hers). The three layers:
+    - `subject|performing arts|concert` — photo depicts a *performance*.
+    - `subject|event|wedding` — photo depicts a *ceremony or non-performance gathering*.
+    - `event|wedding-jane-2025` — photo is from *this specific occasion*.
+- Edge cases where event blurs with subject — a parade photo is arguably both (the event *is* the depicted scene). Tag both; this is a feature, not a bug.
+
+Recommendation: **add `event|` as a top-level facet** for specific instances, and keep `subject|event|*` for generic ceremony/gathering scene types that aren't performances. See the [event hierarchy](#event-hierarchy) section below.
+
+#### Worked example: color
+
+Similar reasoning applies when you start tagging dominant color. You have three plausible homes:
+
+- `subject|color|red` — treating color as a subject type
+- `technique|style|red` — treating color as a photographic technique
+- `color|red` — its own facet
+
+Color isn't really a subject (unless the photo is *about* red — an abstract color study). It isn't really a technique (red isn't a choice you make, it's an attribute of the scene). What it *is* is an independent axis — orthogonal to what's depicted, where it was taken, how it was shot. So color gets its own facet: `color|red`, `color|blue`, `color|monochrome`.
+
+One caveat: MAKI already has a first-class **color label** field (Red/Yellow/Green/Blue/Purple — the Lightroom-style editorial label). If you only ever tag the five standard colors, you're duplicating that label with more keystrokes. Content-color tagging earns its keep when you want finer distinctions (`teal`, `magenta`, `warm`, `cold`, `pastel`, `monochrome`) or dominant-color filtering across a catalog — which is a different use case from the workflow-oriented color label.
+
+#### The general rule
+
+Ask: *what distinct question does this tag answer about the photo?* If the answer matches an existing facet, nest it. If it's a new question — a new way someone might want to slice the catalog — promote it to top-level.
 
 ### subject hierarchy
 
@@ -121,12 +172,12 @@ subject
 │   ├── concert      (live music, musician, singer, guitarist, ...)
 │   ├── theatre      (actor, stage set, rehearsal, costume, ...)
 │   └── dance        (ballet, contemporary, ...)
-├── event
-│   ├── festival     (music festival, cultural festival, ...)
-│   ├── exhibition   (art exhibition, photo exhibition, ...)
+├── event            (ceremony / gathering scene types — not performances)
 │   ├── wedding
-│   ├── workshop     (photo workshop, ...)
-│   └── sports event (marathon, match, tournament, ...)
+│   ├── exhibition   (art exhibition, photo exhibition, ...)
+│   ├── workshop     (photo workshop, craft workshop, ...)
+│   ├── sports event (marathon, match, tournament, ...)
+│   └── festival     (food, cultural, craft — music festivals go under performing arts)
 ├── object
 │   ├── food         (coffee, wine, cake, cooking, restaurant, ...)
 │   ├── instrument   (guitar, piano, drum, saxophone, ...)
@@ -238,6 +289,61 @@ project
 
 Project names are proper nouns and keep their original capitalization. The category `project` itself is lowercase. Project tags are inherently personal and won't follow any standard. Use them to group assets that belong together by assignment or creative intent rather than by subject or location.
 
+### event hierarchy
+
+```
+event
+├── wedding-jane-2025
+├── workshop-la-2019
+├── concert-alice-viola-2024-11-15
+└── (your events)
+```
+
+Specific occasions — weddings, workshops, trips, named concerts — go here, one tag per event. You have two naming styles to pick from:
+
+- **Flat with date in name**: `event|wedding-jane-2025` — simplest, easy to type, each event is one leaf tag.
+- **Grouped by year**: `event|2025|wedding-jane`, `event|2024|workshop-la` — browsable by year in the tags tree, and year becomes a queryable ancestor (`tag:event|2025` finds everything from 2025).
+
+Pick one style and stay consistent. Flat naming works well for most people; year grouping pays off when you have many events per year and want to browse chronologically.
+
+**What belongs under top-level `event|` vs `subject|event|*`:**
+
+- **Specific instances** (`event|wedding-jane-2025`, `event|fuji-trip-2023`) — always top-level `event|`. This axis answers *which particular occasion is this photo from?*
+- **Generic ceremony / gathering scene types** (`subject|event|wedding`, `subject|event|exhibition`, `subject|event|sports event`) — stay under the subject tree. This axis answers *what kind of scene is this?*
+- **Performances** (concerts, theatre, dance) — `subject|performing arts|*`, not `subject|event|*`. Performances are distinct from ceremonies and gatherings; they get their own subject branch.
+- **Recurring annual events** — treat each year as its own specific instance (`event|christmas-2024`, `event|christmas-2023`), or group them (`event|recurring|christmas|2024`) if you want a single branch for all Christmases.
+
+A photo from Jane's wedding typically carries both `subject|event|wedding` and `event|wedding-jane-2025`: one tag describes the scene, the other the occasion.
+
+Event names are inherently personal — you won't find standard event taxonomies. Name them however you'll remember them, and keep the style consistent.
+
+### color (optional)
+
+If you tag dominant color as a searchable attribute of the image, use it as its own facet:
+
+```
+color
+├── red
+├── orange
+├── yellow
+├── green
+├── blue
+├── purple
+├── pink
+├── brown
+├── black
+├── white
+├── grey
+├── monochrome
+├── pastel
+├── warm
+└── cold
+```
+
+Low-cardinality vocabulary (15-30 terms covers almost everything). Keep it flat — a hierarchy like `color|warm|red` adds no real structure, since "red" is already obviously warm.
+
+**When to use it:** content-color tagging earns its keep when you want finer distinctions than MAKI's built-in color label (Red/Yellow/Green/Blue/Purple — which is an editorial workflow field, not a content descriptor), or when you want to filter a catalog by dominant color. If you only ever tag the five standard colors and only use them as a workflow marker, use the color label field instead — that's what it's for.
+
 ---
 
 ## How Many Tags?
@@ -250,11 +356,13 @@ Aim for **5-15 tags per image**:
 - 1-2 location tags (where, if relevant and not covered by GPS)
 - 0-2 person tags (who, if relevant)
 - 1-2 technique tags (how, if noteworthy)
-- 0-1 project/event tag
+- 0-1 event tag (which specific occasion, if this photo belongs to one)
+- 0-1 project tag
+- 0-1 color tag (if you tag dominant color)
 
-Example: a concert photo might carry `subject|performing arts|concert`, `subject|performing arts|concert|guitarist`, `location|Germany|Bayern|Gelting|Kulturbühne Hinterhalt`, `technique|lighting|stage lighting` — four intentional tags that you choose.
+Example: a concert photo might carry `subject|performing arts|concert`, `subject|performing arts|concert|guitarist`, `location|Germany|Bayern|Gelting|Kulturbühne Hinterhalt`, `technique|lighting|stage lighting`, `event|concert-alice-viola-2024-11-15` — five intentional tags that you choose.
 
-These counts refer to the **leaf-level tags you consciously assign**, not the total number of tags stored. MAKI automatically expands each hierarchical tag to include all ancestor paths (e.g., `subject|performing arts|concert|guitarist` also stores `subject`, `subject|performing arts`, and `subject|performing arts|concert`). The four tags in the example produce 14 stored entries — but you only think about the four leaves.
+These counts refer to the **leaf-level tags you consciously assign**, not the total number of tags stored. MAKI automatically expands each hierarchical tag to include all ancestor paths (e.g., `subject|performing arts|concert|guitarist` also stores `subject`, `subject|performing arts`, and `subject|performing arts|concert`). The five tags in the example produce 15 stored entries — but you only think about the five leaves.
 
 Fewer intentional tags means poor discoverability. More than 20 usually means you're tagging noise or duplicating information that belongs elsewhere.
 
@@ -269,7 +377,9 @@ For a serious amateur with 100k+ images:
 | `person/` names | varies (consider face recognition) |
 | `technique/` terms | 30-50 |
 | `project/` entries | varies |
-| **Total (excl. names)** | **250-500** |
+| `event/` entries | varies (grows with life) |
+| `color/` terms | 15-30 (if used) |
+| **Total (excl. names/events)** | **250-500** |
 
 If your unique tag count is climbing past 1,000 (excluding person names and event-specific tags), it's time to review for duplicates, typos, and over-specificity.
 
@@ -535,7 +645,7 @@ If you're starting fresh or resetting your tagging approach:
 
 1. Choose a language (English recommended)
 2. Choose a case convention (lowercase, proper nouns capitalized)
-3. Define your top-level facets (subject, location, person, technique, project)
+3. Define your top-level facets — start with the five essentials (subject, location, person, technique, project) and add `event` and/or `color` if you'll use them
 4. Edit `vocabulary.yaml` in your catalog root to reflect your planned hierarchy
 5. Write 50-100 tags for your most common subjects
 6. Save them as your label vocabulary for auto-tagging (`labels = "my-labels.txt"` in `maki.toml`)
