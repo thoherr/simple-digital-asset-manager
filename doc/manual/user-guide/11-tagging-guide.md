@@ -639,6 +639,30 @@ The vocabulary file and the auto-tagging label file (`labels` in `[ai]` config) 
 
 ---
 
+## Putting it all together
+
+Every principle in this chapter plays out on a single photo. Consider a shot from Jane's wedding reception in Bayern:
+
+![One photo, nine tags, seven facets — each answering a different question.](../images/maki-tagging.png){width=90%}
+
+Nine leaf tags across seven facets. Ancestor expansion bumps the stored count to roughly fifteen — but you only think about the nine leaves you picked.
+
+Each tag answers a different question about the same image:
+
+- **Subject tags** describe *what the photo depicts* — a wedding scene, a group of people, a joyful mood. These are conceptually the deepest tree; most of your vocabulary lives here.
+- **Event** ties the photo to a *specific occasion* — Jane's 2025 wedding, not any wedding. A date-driven instance that doesn't belong in the stable subject taxonomy.
+- **Location** says *where in the world* it was taken — structured from country (English) down to local venue names.
+- **Person** names *who* is in the frame. On a large catalogue, face recognition handles most of this automatically; person tags are useful for named individuals who won't be picked up by faces (or for precision when faces are ambiguous).
+- **Technique** captures *how* it was made — golden hour lighting, silhouette composition. Two tags from the same facet but different sub-axes, because technique has multiple meaningful ones (lighting, style, composition, effect).
+- **Color** records the *dominant palette* — useful when you later want to assemble a warm-toned or monochrome gallery across the catalog.
+- **Project** would tie it to an assignment or body of work (a photo book, a 365 project) if applicable. Not every photo has one.
+
+A search like `event:wedding-jane-2025 person:Jane color:warm` intersects three independent axes. You can recombine them however the question of the moment demands — `technique:golden` across every event, or `color:monochrome subject:nature|landscape` across every location. The catalog becomes a dense multidimensional space you can slice any way you want, rather than a tree you have to walk in a fixed order.
+
+That's the whole point of faceted tagging: invest up front in the vocabulary structure, and every photo you've ever tagged becomes available to arbitrary future queries you didn't think to ask when you tagged it.
+
+---
+
 ## Quick-Start Checklist
 
 If you're starting fresh or resetting your tagging approach:
