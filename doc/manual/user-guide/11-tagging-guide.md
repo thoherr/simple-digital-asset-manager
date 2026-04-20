@@ -639,6 +639,10 @@ The vocabulary file and the auto-tagging label file (`labels` in `[ai]` config) 
 
 ---
 
+```{=latex}
+\clearpage
+```
+
 ## Putting it all together
 
 Every principle in this chapter plays out on a single photo. Consider a shot from Jane's wedding reception in Bayern:
