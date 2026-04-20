@@ -1671,6 +1671,13 @@ details[open] summary { margin-bottom: 0.5rem; }
     opacity: 0;
     transition: opacity 0.15s;
 }
+.tag-split-btn {
+    /* Inline-flex so the inline SVG sits on the same baseline as the pencil character. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
 .tag-entry:hover .tag-rename-btn,
 .tag-entry:hover .tag-split-btn { opacity: 0.6; }
 .tag-rename-btn:hover,

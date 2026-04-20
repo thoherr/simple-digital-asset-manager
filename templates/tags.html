@@ -42,7 +42,11 @@
         </span>
         <button class="tag-rename-btn" title="Rename tag" data-tag="{{ t.name }}">&#9998;</button>
         {% if !t.has_children %}
-        <button class="tag-split-btn" title="Replace this tag with two or more (or add alongside with Keep)" data-tag="{{ t.name }}">&#9638;</button>
+        <button class="tag-split-btn" title="Replace this tag with two or more (or add alongside with Keep)" data-tag="{{ t.name }}" aria-label="Split tag">
+            <svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <path d="M6 2 L6 6 M6 6 L3 10 M6 6 L9 10"/>
+            </svg>
+        </button>
         {% else %}
         <span class="tag-split-placeholder"></span>
         {% endif %}
