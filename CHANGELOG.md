@@ -2,6 +2,72 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.4.6 (2026-04-20)
+
+Feature release: new `tag split` operation for one-to-many tag restructuring (CLI + web UI), a printable "Tagging Quick Guide" poster, and a capstone illustration in the tagging-guide chapter.
+
+### `maki tag split OLD NEW1 [NEW2 ...] [--keep] [--apply]`
+
+When restructuring tags you often want *one* tag to become *several* at once — the classic cases are migrating an event tag into the canonical pair (`subject|event|wedding-jane-2025` → `event|wedding-jane-2025` + `subject|event|wedding`) and separating a combined tag (`"A & B"` → `"A"` and `"B"`). Previously this required two passes or ad-hoc shell pipelines. `tag split` does it atomically.
+
+```bash
+# Restructure into scene-type + specific-occasion in one pass:
+maki tag split "subject|event|wedding-jane-2025" \
+    "event|wedding-jane-2025" "subject|event|wedding" --apply
+
+# Separate a combined tag:
+maki tag split "A & B" "A" "B" --apply
+
+# Add a broader tag alongside the original (additive / copy — keep source in place):
+maki tag split "sunset" "color|warm" --keep --apply
+```
+
+Semantics:
+
+- **Exact-tag-only**. Operates on assets where OLD is a leaf on that asset. Assets where OLD has descendants (e.g. they also carry `OLD|foo`) are skipped — non-leaf split has ambiguous semantics; use `tag rename` for cascading renames.
+- Target tags are expanded to include all ancestor paths, same as regular `tag`.
+- **`--keep`** preserves OLD in place (additive / copy mode).
+- Accepts the same optional markers on OLD as `tag rename` (`=`, `/`, `^`). The `|` prefix-anchor marker is rejected — split operates on one tag at a time.
+- Dry-run by default; `--apply` commits. `--log` shows per-asset action. XMP writeback wired in when enabled.
+
+Seven engine-level unit tests and three CLI integration tests cover basic split, `--keep`, dry-run, non-leaf skip, target-already-present dedup, empty-targets error, and `|` marker rejection.
+
+### Web UI: split-tag modal on the tags page
+
+Matching UI on `/tags`: a second button next to the rename pencil — only on **leaf** rows (non-leaf rows get an invisible alignment placeholder so the grid stays even). Click opens a modal with:
+
+- Source tag shown read-only.
+- Two target inputs by default; "+ Add another target" to grow, per-row ✕ to remove.
+- "Keep source tag (add alongside instead of replacing)" checkbox — the dialog title flips between **"Replace Tag with Multiple"** and **"Add Tags Alongside"** based on the checkbox so the user sees the mode at a glance.
+- Preview → Apply flow identical to the rename modal. Preview shows `N split (of M matched)` without mutating; Apply commits and reloads the page.
+
+Restricting the button to leaves (via the `has_children` flag on the tag-tree entry) avoids the UX confusion where split silently skipped non-leaf-on-asset cases. Backend is a thin `POST /api/tag/split` wrapping `engine.tag_split()`. The button icon is an inline SVG Y-split rather than a font glyph — renders consistently regardless of font support and inherits the button's `currentColor`.
+
+### Tagging Quick Guide poster
+
+New printable quickref at `doc/quickref/tagging.pdf` — A3 landscape, one page, intended as a wall poster beside the monitor. Three bands:
+
+1. **Principles** — 8 short rules in a 4×2 grid with a thin rule between rows for optical separation.
+2. **The Facets** — 4×2 grid of coloured facet cards (subject, event, location, person, technique, project, color) with the "When to promote to top-level" decision helper filling the 8th slot. All cards equal height via tcolorbox's `equal height group`. Beside them, a worked-example sidebar shows one photo from Jane's wedding with 9 single-line tags colour-coded by facet, plus a "three places for event-related tags" example distinguishing performing arts / generic gathering scene / specific occasion.
+3. **Tag commands** — two-column reference: CLI operations (add / remove / clear / rename / split / expand-ancestors / export-vocabulary) on the left, `tag:` search-filter syntax on the right.
+
+Brand palette consistent with the existing `cheat-sheet.tex` / `search-filters.tex` quickref family. Facet colours (subject=blue, event=salmon, location=teal, person=purple, technique=stone, project=amber, color=rose) are intended for future web-UI facet chips too. New build script `doc/quickref/build-tagging-pdf.sh` matches the existing `build-search-filters-pdf.sh` convention. Release workflow (`.github/workflows/release.yml`) attaches `tagging.pdf` to every future release. Discoverable from the CLI via `maki doc tagging`.
+
+### Tagging guide: capstone illustration
+
+The "Putting it all together" section of the tagging guide now has a proper faceted illustration — a central photo with 9 tag chips arranged in a horizontal ring around it, each chip coloured by its facet. Produced as SVG in the maki-marketing sibling repo (`brand/illustrations/tagging-facets.svg`), rendered to `doc/images/maki-tagging.png` for the manual. Replaces the earlier mermaid flowchart which was structurally incapable of a radial/orthogonal layout.
+
+Supporting fix: the chapter gets an explicit `\clearpage` before this section so the illustration lands on its own page with heading, intro sentence, figure, and all seven facet bullets reading as one coherent unit — instead of the image floating to the next page while the surrounding prose ran on the previous page (the pandoc default).
+
+Prose updates aligned with the new image: the example search query uses `person:Jane` (matching the `person|friend|Jane` chip), and the technique paragraph mentions "silhouette composition" (matching the `technique|composition|silhouette` chip that illustrates a different sub-axis than golden-hour lighting).
+
+### Default vocabulary and docs
+
+- `doc/manual/reference/02-ingest-commands.md` — full command-reference entry for `tag split` between `tag rename` and `tag clear`, with SYNOPSIS / DESCRIPTION / ARGUMENTS / OPTIONS / EXAMPLES / SEE ALSO.
+- `doc/manual/user-guide/11-tagging-guide.md` — the migration example in the event-facet discussion now demonstrates `tag split` handling the "one old tag → specific-occasion + scene-type" case in a single command.
+- `doc/manual/index.md` — TOC tag subcommand list updated to include `split`.
+- Command count in CLAUDE.md: 86 → 87 subcommands (top-level count unchanged at 44).
+
 ## v4.4.5 (2026-04-18)
 
 Maintenance release: internal refactoring of the largest files plus a substantial expansion of the tagging guide. No user-visible behaviour changes; all tests pass on both standard and `ai` feature builds.
