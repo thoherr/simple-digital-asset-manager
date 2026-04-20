@@ -1,0 +1,304 @@
+\documentclass[a3paper,landscape,10pt]{article}
+% Extra top room so the \Huge title doesn't collide with the fancy header.
+\usepackage[top=1.8cm,bottom=1.1cm,left=1.1cm,right=1.1cm]{geometry}
+\setlength{\headheight}{14pt}
+\setlength{\headsep}{14pt}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\graphicspath{{../images/}}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{ragged2e}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage[most]{tcolorbox}
+
+% === Brand palette (matches cheat-sheet.tex) =========================
+\definecolor{maki-salmon}{HTML}{e8634a}
+\definecolor{maki-nori}{HTML}{1a2332}
+\definecolor{maki-teal}{HTML}{2ea8a0}
+\definecolor{maki-stone}{HTML}{6b7b8d}
+\definecolor{maki-cream}{HTML}{f0ebe3}
+\definecolor{maki-blue}{HTML}{3868c8}
+
+% === Facet palette (each facet gets its own accent colour) ===========
+% Picked for distinctness at a glance, with the brand salmon reserved
+% for `event` (which is conceptually the "MAKI-specific" facet that
+% justifies the poster's existence).
+\definecolor{fc-subject}{HTML}{3868c8}    % blue
+\definecolor{fc-event}{HTML}{e8634a}      % salmon
+\definecolor{fc-location}{HTML}{2ea8a0}   % teal
+\definecolor{fc-person}{HTML}{8d5eb7}     % purple
+\definecolor{fc-technique}{HTML}{6b7b8d}  % stone
+\definecolor{fc-project}{HTML}{c08a2e}    % amber
+\definecolor{fc-color}{HTML}{d06b8c}      % rose
+
+% === Layout ==========================================================
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{2pt}
+\raggedright
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\fancyhead[L]{\raisebox{-2pt}{\includegraphics[height=10pt]{maki-icon-header.png}}\;\small\color{maki-stone} MAKI v4.4.5}
+\fancyhead[R]{\small\color{maki-stone} maki-dam.com}
+
+% === Macros ==========================================================
+\newcommand{\cmd}[1]{\texttt{\small #1}}
+\newcommand{\opt}[1]{\texttt{\footnotesize\color{maki-stone} #1}}
+\newcommand{\secthead}[2]{%
+  \textcolor{maki-salmon}{\bfseries\normalsize #1}\hspace{1em}%
+  \textcolor{maki-stone}{\footnotesize\itshape #2}\\[2pt]%
+  {\color{maki-salmon!40}\hrule height 0.4pt}\vspace{6pt}%
+}
+
+% Facet card — a compact tcolorbox with a coloured header stripe
+% and a short hierarchy example list. `equal height group` makes
+% every card with the same group key settle to the tallest card's
+% height on the second xelatex pass, which keeps the grid visually
+% calm despite different content lengths per card.
+\newtcolorbox{facetcard}[2]{
+  colback=#1!6, colframe=#1, boxrule=0.6pt, arc=2.5pt,
+  left=5pt, right=5pt, top=3pt, bottom=3pt,
+  equal height group=facetgrp,
+  title={\bfseries #2}, coltitle=white,
+  colbacktitle=#1, fonttitle=\bfseries\small,
+  attach boxed title to top center={yshift=-2pt, yshifttext=-2pt},
+  boxed title style={sharp corners, boxrule=0pt, arc=0pt, left=6pt, right=6pt, top=1pt, bottom=1pt},
+}
+
+% === Document ========================================================
+\begin{document}
+
+\begin{center}
+  {\Huge\bfseries\color{maki-salmon} MAKI Tagging — Quick Guide}\\[2pt]
+  {\small\color{maki-stone}\itshape Each tag answers a distinct question about the photo. Carry one from each facet; intersect in search.}
+\end{center}
+\vspace{4pt}
+
+% =====================================================================
+% 1) Principles band — 8 short rules across 4 columns × 2 rows
+% =====================================================================
+\secthead{Principles}{rules that keep the tag catalogue coherent over years}
+
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\textwidth}{@{}>{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}X@{}}
+  \textbf{\color{maki-nori}1. Tag in hierarchies.} Separator is \cmd{|}. Ancestors auto-expand: \cmd{subject|nature|landscape} also stores \cmd{subject|nature} and \cmd{subject}. &
+  \textbf{\color{maki-nori}2. Generic lowercase, proper nouns keep case.} \cmd{concert} not \cmd{Concert}; \cmd{Peter Schneider} stays capitalised; \cmd{Germany} in English but \cmd{München} local. &
+  \textbf{\color{maki-nori}3. One language.} Pick one and stick with it. Place names: English for countries, local from region down. &
+  \textbf{\color{maki-nori}4. Facets are orthogonal.} Independent axes, not nested. Intersect in queries; don't mash into one tree. \\[10pt]
+  \multicolumn{4}{@{}l@{}}{\color{maki-cream!70!maki-stone}\rule{\textwidth}{0.4pt}} \\[8pt]
+  \textbf{\color{maki-nori}5. Tag what you see.} Primary tags describe visible content; context goes in secondary tags. &
+  \textbf{\color{maki-nori}6. Don't duplicate metadata.} Camera, lens, date, GPS are EXIF; folders are path. Don't tag them. &
+  \textbf{\color{maki-nori}7. Aim for 5\,--\,15 tags per image.} Fewer is poor discoverability; more is usually noise. &
+  \textbf{\color{maki-nori}8. Separate workflow from content.} Ratings / color labels / saved searches for state. Tags for content. \\
+\end{tabularx}
+
+\vspace{14pt}
+{\color{maki-cream}\hrule height 2pt}
+\vspace{10pt}
+
+% =====================================================================
+% 2) Main body — facet cards (left 2/3) + worked example (right 1/3)
+% =====================================================================
+\noindent
+\begin{minipage}[t]{0.64\textwidth}
+  \secthead{The Facets}{one question per axis — any photo can carry a tag from each}
+
+  % Row 1: subject, event, location, person
+  \noindent
+  \begin{minipage}[t]{0.244\textwidth}\begin{facetcard}{fc-subject}{\texttt{subject|}\,*}
+    \textit{\small What is in the image?}\\[3pt]
+    \scriptsize
+    \cmd{subject|nature|landscape}\\
+    \cmd{subject|animal|bird}\\
+    \cmd{subject|urban|architecture}\\
+    \cmd{subject|person|portrait}\\
+    \cmd{subject|performing arts|concert}\\
+    \cmd{subject|event|wedding}\\
+    \cmd{subject|object|food}\\
+    \cmd{subject|mood|dramatic}
+  \end{facetcard}\end{minipage}\hfill
+  \begin{minipage}[t]{0.244\textwidth}\begin{facetcard}{fc-event}{\texttt{event|}\,*}
+    \textit{\small Which specific occasion?}\\[3pt]
+    \scriptsize
+    \cmd{event|wedding-jane-2025}\\
+    \cmd{event|fuji-trip-2023}\\
+    \cmd{event|workshop-la-2019}\\[2pt]
+    {\color{maki-stone} Date-driven, grows unboundedly.
+    Flat naming or \cmd{event|2025|...}.
+    Separate from \cmd{subject|event|*},
+    which is the generic scene type.}
+  \end{facetcard}\end{minipage}\hfill
+  \begin{minipage}[t]{0.244\textwidth}\begin{facetcard}{fc-location}{\texttt{location|}\,*}
+    \textit{\small Where was it taken?}\\[3pt]
+    \scriptsize
+    \cmd{location|Germany}\\
+    \cmd{location|Germany|Bayern}\\
+    \cmd{location|Germany|Bayern|München}\\
+    \cmd{location|Germany|Bayern|}\\
+    \hspace*{1em}\cmd{Gelting|Kulturbühne Hinterhalt}\\[2pt]
+    {\color{maki-stone} Countries in English; local names
+    from region down.}
+  \end{facetcard}\end{minipage}\hfill
+  \begin{minipage}[t]{0.244\textwidth}\begin{facetcard}{fc-person}{\texttt{person|}\,*}
+    \textit{\small Who is in it?}\\[3pt]
+    \scriptsize
+    \cmd{person|family}\\
+    \cmd{person|friend|Alice Müller}\\
+    \cmd{person|artist|musician|}\\
+    \hspace*{1em}\cmd{Peter Schneider}\\
+    \cmd{person|ensemble|band|}\\
+    \hspace*{1em}\cmd{Alice Viola Trio}\\[2pt]
+    {\color{maki-stone} For large catalogues, consider face
+    recognition instead of manual person tags.}
+  \end{facetcard}\end{minipage}
+
+  \vspace{10pt}
+
+  % Row 2: technique, project, color, decision helper
+  \noindent
+  \begin{minipage}[t]{0.244\textwidth}\begin{facetcard}{fc-technique}{\texttt{technique|}\,*}
+    \textit{\small How was it made?}\\[3pt]
+    \scriptsize
+    \cmd{technique|style|black and white}\\
+    \cmd{technique|lighting|golden hour}\\
+    \cmd{technique|lighting|stage lighting}\\
+    \cmd{technique|exposure|long exposure}\\
+    \cmd{technique|composition|symmetry}\\
+    \cmd{technique|effect|bokeh}
+  \end{facetcard}\end{minipage}\hfill
+  \begin{minipage}[t]{0.244\textwidth}\begin{facetcard}{fc-project}{\texttt{project|}\,*}
+    \textit{\small Which project/assignment?}\\[3pt]
+    \scriptsize
+    \cmd{project|365 pictures 2018}\\
+    \cmd{project|Bricking Bavaria}\\
+    \cmd{project|Workshop LA 2019}\\[2pt]
+    {\color{maki-stone} Purely personal. Names are proper
+    nouns; keep original case.}
+  \end{facetcard}\end{minipage}\hfill
+  \begin{minipage}[t]{0.244\textwidth}\begin{facetcard}{fc-color}{\texttt{color|}\,* \ \scriptsize(optional)}
+    \textit{\small Dominant content colour?}\\[3pt]
+    \scriptsize
+    \cmd{color|red} \quad \cmd{color|blue}\\
+    \cmd{color|warm} \quad \cmd{color|cold}\\
+    \cmd{color|monochrome}\\
+    \cmd{color|pastel} \quad \cmd{color|muted}\\[2pt]
+    {\color{maki-stone} Keep flat. Content colour is
+    different from MAKI's editorial
+    color-label field (5 fixed values).}
+  \end{facetcard}\end{minipage}\hfill
+  \begin{minipage}[t]{0.244\textwidth}\begin{facetcard}{maki-stone}{When to promote to top-level}
+    \textit{\small Ask: what distinct question does this answer?}\\[3pt]
+    \scriptsize
+    $\bullet$ New question → \textbf{top-level facet}.\\
+    $\bullet$ Refines an existing axis → \textbf{nest it}.\\
+    $\bullet$ Date-driven instance (weddings, trips) → top-level.\\
+    $\bullet$ Visual property (colour, tone) → top-level.\\
+    $\bullet$ Nameable \& scoped (projects) → top-level.\\[2pt]
+    {\color{maki-stone} Facets are cheap to add; wrong
+    nesting is expensive to fix later.}
+  \end{facetcard}\end{minipage}
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.335\textwidth}
+  \secthead{One photo, many facets}{a photo from Jane's 2025 wedding reception}
+
+  % Facet dot: a small coloured square aligned to the baseline so tags
+  % read like list bullets. Keeps each tag on a single line (no line
+  % breaks inside a tag).
+  \newcommand{\fdot}[1]{\raisebox{0.15ex}{\color{#1}\rule{0.6em}{0.6em}}\,}
+
+  \begin{tcolorbox}[colback=maki-cream, colframe=maki-nori, boxrule=0.6pt, arc=3pt,
+      left=8pt, right=8pt, top=6pt, bottom=6pt]
+    \small\bfseries\color{maki-nori}
+    A single photo can intersect every facet. Each tag answers a
+    different question about the same image:\\[4pt]
+
+    \scriptsize\normalfont
+    \setlength{\parskip}{1.5pt}
+    \fdot{fc-subject}\cmd{subject|event|wedding}\hfill{\color{maki-stone}\itshape scene type}\\
+    \fdot{fc-subject}\cmd{subject|person|group}\hfill{\color{maki-stone}\itshape composition}\\
+    \fdot{fc-subject}\cmd{subject|mood|joyful}\hfill{\color{maki-stone}\itshape mood}\\
+    \fdot{fc-event}\cmd{event|wedding-jane-2025}\hfill{\color{maki-stone}\itshape specific occasion}\\
+    \fdot{fc-location}\cmd{location|Germany|Bayern|München}\hfill{\color{maki-stone}\itshape where}\\
+    \fdot{fc-person}\cmd{person|friend|Alice M.}\hfill{\color{maki-stone}\itshape who}\\
+    \fdot{fc-technique}\cmd{technique|lighting|golden hour}\hfill{\color{maki-stone}\itshape how lit}\\
+    \fdot{fc-technique}\cmd{technique|style|documentary}\hfill{\color{maki-stone}\itshape how shot}\\
+    \fdot{fc-color}\cmd{color|warm}\hfill{\color{maki-stone}\itshape dominant colour}\\[4pt]
+
+    {\color{maki-stone}\itshape
+    9 leaf tags across 7 facets. With ancestor expansion,
+    \textasciitilde 15 tags stored. Search ``\cmd{event:wedding-jane-2025
+    person:Alice color:warm}'' intersects three orthogonal axes.}
+  \end{tcolorbox}
+
+  \vspace{6pt}
+
+  \secthead{Three places for event-related tags}{three different questions, three different tags — they coexist on the same photo}
+
+  \scriptsize
+  \renewcommand{\arraystretch}{1.35}
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.56\textwidth} >{\raggedright\arraybackslash}p{0.38\textwidth}@{}}
+    \textcolor{fc-subject}{\bfseries\cmd{subject|performing arts|concert}} &
+      photo \emph{depicts a performance} \\
+    \textcolor{fc-subject}{\bfseries\cmd{subject|event|wedding}} &
+      photo \emph{depicts a ceremony / gathering} \\
+    \textcolor{fc-event}{\bfseries\cmd{event|wedding-jane-2025}} &
+      photo \emph{is from this specific occasion} \\
+  \end{tabular}\\[4pt]
+  {\scriptsize\color{maki-stone}\itshape A wedding photo can carry both \cmd{subject|event|wedding} and \cmd{event|wedding-jane-2025}. A concert photo fits under \cmd{subject|performing arts|concert}, not \cmd{subject|event|*}.}
+\end{minipage}
+
+\vspace{14pt}
+{\color{maki-cream}\hrule height 2pt}
+\vspace{10pt}
+
+% =====================================================================
+% 3) Commands band
+% =====================================================================
+\secthead{Tag commands}{CLI and web UI share the same operations and the same semantics}
+
+\renewcommand{\arraystretch}{1.15}
+\noindent
+\begin{minipage}[t]{0.50\textwidth}
+  \small
+  \begin{tabularx}{\textwidth}{@{}l >{\RaggedRight\arraybackslash}X@{}}
+    \cmd{maki tag \textit{ID} foo bar}            & Add tags (ancestors auto-expanded). \\
+    \cmd{maki tag \textit{ID} --remove foo}       & Remove tags (orphaned ancestors cleaned). \\
+    \cmd{maki tag clear \textit{ID}}              & Remove all tags from an asset. \\
+    \cmd{maki tag rename \textit{OLD} \textit{NEW} --apply} & Rename a tag everywhere. Cascades to descendants. \\
+    \cmd{maki tag split \textit{OLD} \textit{A B...} --apply} & Replace one tag with multiple (variadic). \\
+    \cmd{~~...\ --keep}                           & Keep source alongside (additive / copy). \\
+    \cmd{maki tag expand-ancestors --apply}       & Backfill ancestor paths on existing tags. \\
+    \cmd{maki tag export-vocabulary}              & Export the tag tree as \cmd{vocabulary.yaml}. \\
+    \cmd{~~...\ --default}                        & Export the built-in starter vocabulary (ignores catalogue). \\
+  \end{tabularx}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.47\textwidth}
+  \small
+  \begin{tabularx}{\textwidth}{@{}l >{\RaggedRight\arraybackslash}X@{}}
+    \cmd{tag:landscape}                           & Tag match at any level (default). \\
+    \cmd{tag:=landscape}                          & Whole-path match (exact tag value). \\
+    \cmd{tag:/landscape}                          & Leaf only at any level. \\
+    \cmd{tag:\textasciicircum Landscape}          & Case-sensitive. \\
+    \cmd{tag:|wed}                                & Prefix anchor (\cmd{wedding}, \cmd{wedding-...}). \\
+    \cmd{-tag:rejected}                           & Exclude. \\
+    \cmd{tag:a,b}                                 & Either \cmd{a} or \cmd{b}. \\
+    \cmd{tag:a tag:b}                             & Both \cmd{a} and \cmd{b}. \\
+    \cmd{event:jane person:Alice color:warm}      & Intersect three facets. \\
+  \end{tabularx}\\[2pt]
+  {\scriptsize\color{maki-stone}\itshape Same filters work in CLI \cmd{maki search} and in the web UI search box.}
+\end{minipage}
+
+\vfill
+
+\begin{center}
+  \includegraphics[height=1.0cm]{maki-wordmark-tagline.png}\\[3pt]
+  {\footnotesize\color{maki-stone} \texttt{https://maki-dam.com/} \quad — \quad \textit{full details in the Tagging Guide chapter of the manual}}
+\end{center}
+
+\end{document}

@@ -1032,7 +1032,7 @@ enum Commands {
     /// Open documentation in the browser
     #[command(display_order = 55)]
     Doc {
-        /// Which document: manual, cheatsheet, filters (default: manual)
+        /// Which document: manual, cheatsheet, filters, tagging (default: manual)
         #[arg(default_value = "manual")]
         document: String,
     },
@@ -1594,7 +1594,7 @@ Retrieve:
   duplicates         Find duplicate files
   stats              Show catalog statistics
   backup-status      Check backup coverage and find under-backed-up assets
-  doc                Open documentation in the browser (manual, cheatsheet, filters)
+  doc                Open documentation in the browser (manual, cheatsheet, filters, tagging)
   licenses           Show MAKI license and third-party crate licenses
 
 Maintain:
@@ -7060,8 +7060,9 @@ faces/\n\
                 "manual" | "man" | "guide" => "https://github.com/thoherr/maki/releases/latest/download/maki-manual.pdf",
                 "cheatsheet" | "cheat" | "cs" => "https://github.com/thoherr/maki/releases/latest/download/cheat-sheet.pdf",
                 "filters" | "search" | "filter" | "sf" => "https://github.com/thoherr/maki/releases/latest/download/search-filters.pdf",
+                "tagging" | "tags" | "tag" => "https://github.com/thoherr/maki/releases/latest/download/tagging.pdf",
                 _ => {
-                    anyhow::bail!("unknown document '{}'. Available: manual, cheatsheet, filters", document);
+                    anyhow::bail!("unknown document '{}'. Available: manual, cheatsheet, filters, tagging", document);
                 }
             };
             if cli.json {
