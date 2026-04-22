@@ -903,20 +903,20 @@ pub async fn paths_api(
             .replace('_', "\\_");
         let like_pattern = format!("{escaped}%");
 
-        // Query far more rows than `limit` so we have enough raw paths
-        // to find `limit` *unique* next-segment completions after the
-        // prefix. 500 rows is a reasonable ceiling.
-        let query_limit: i64 = (limit as i64).saturating_mul(50).max(500);
+        // Character count (not byte count) because SQLite's substr/instr
+        // operate on characters for TEXT columns. `\.chars().count()` gives
+        // us Unicode scalar values, which matches SQLite's semantics.
+        let prefix_len = normalized_prefix.chars().count() as i64;
 
-        let rows: Vec<String> = if let Some(ref vol) = volume_id {
-            fetch_paths_volume(catalog.conn(), &like_pattern, vol, query_limit)?
-        } else {
-            fetch_paths_all(catalog.conn(), &like_pattern, query_limit)?
-        };
+        let rows = path_completions_sql(
+            catalog.conn(),
+            &like_pattern,
+            prefix_len,
+            volume_id.as_deref(),
+            limit as i64,
+        )?;
 
-        Ok(serde_json::json!(
-            extract_path_completions(&rows, &normalized_prefix, limit)
-        ))
+        Ok(serde_json::json!(rows))
     })
     .await;
 
@@ -927,160 +927,226 @@ pub async fn paths_api(
     }
 }
 
-fn fetch_paths_all(
+/// Aggregate next-segment path completions for a prefix, deduping in SQL.
+///
+/// **Why SQL-side GROUP BY instead of fetch-then-dedupe in Rust**: a
+/// row-limited sample would get monopolised by a single directory that
+/// holds thousands of files — we'd fill the sample before seeing the
+/// sibling directories. GROUP BY on the generated next-segment
+/// expression collapses each directory to one row *before* the LIMIT
+/// applies, so every sibling shows up regardless of how many files
+/// lives under it.
+///
+/// The `CASE` expression yields either:
+/// - the prefix + next `/`-terminated segment (directory completion, e.g.
+///   `Pictures/2026/2026-04-18/`), or
+/// - the whole path (file leaf, no trailing `/`, e.g.
+///   `Pictures/2026/2026-04-18/DSC_0001.jpg`).
+///
+/// `prefix_len` is in characters (not bytes) because SQLite's
+/// `substr()` and `instr()` operate on character positions for TEXT
+/// columns. Rust callers pass `prefix.chars().count() as i64`.
+pub(super) fn path_completions_sql(
     conn: &rusqlite::Connection,
     like_pattern: &str,
-    query_limit: i64,
+    prefix_len: i64,
+    volume_id: Option<&str>,
+    limit: i64,
 ) -> anyhow::Result<Vec<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT relative_path FROM file_locations \
-         WHERE relative_path LIKE ?1 ESCAPE '\\' LIMIT ?2",
-    )?;
-    let rows: Vec<String> = stmt
-        .query_map(rusqlite::params![like_pattern, query_limit], |r| {
-            r.get::<_, String>(0)
-        })?
-        .filter_map(Result::ok)
-        .collect();
-    Ok(rows)
-}
+    // The CASE expression computes the next-segment string for each row.
+    // The inner `instr(substr(relative_path, ?len + 1), '/')` finds the
+    // position of the next `/` after the prefix; if there is one, we
+    // keep the prefix + everything through that `/`, otherwise the row
+    // is a leaf file and we keep the whole path.
+    let sql = if volume_id.is_some() {
+        "SELECT CASE \
+           WHEN instr(substr(relative_path, ?2 + 1), '/') > 0 \
+             THEN substr(relative_path, 1, ?2 + instr(substr(relative_path, ?2 + 1), '/')) \
+           ELSE relative_path \
+         END AS completion \
+         FROM file_locations \
+         WHERE relative_path LIKE ?1 ESCAPE '\\' AND volume_id = ?3 \
+         GROUP BY completion \
+         ORDER BY completion \
+         LIMIT ?4"
+    } else {
+        "SELECT CASE \
+           WHEN instr(substr(relative_path, ?2 + 1), '/') > 0 \
+             THEN substr(relative_path, 1, ?2 + instr(substr(relative_path, ?2 + 1), '/')) \
+           ELSE relative_path \
+         END AS completion \
+         FROM file_locations \
+         WHERE relative_path LIKE ?1 ESCAPE '\\' \
+         GROUP BY completion \
+         ORDER BY completion \
+         LIMIT ?3"
+    };
 
-fn fetch_paths_volume(
-    conn: &rusqlite::Connection,
-    like_pattern: &str,
-    volume_id: &str,
-    query_limit: i64,
-) -> anyhow::Result<Vec<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT relative_path FROM file_locations \
-         WHERE relative_path LIKE ?1 ESCAPE '\\' AND volume_id = ?2 LIMIT ?3",
-    )?;
-    let rows: Vec<String> = stmt
-        .query_map(
-            rusqlite::params![like_pattern, volume_id, query_limit],
+    let mut stmt = conn.prepare(sql)?;
+    let rows: Vec<String> = if let Some(vol) = volume_id {
+        stmt.query_map(
+            rusqlite::params![like_pattern, prefix_len, vol, limit],
             |r| r.get::<_, String>(0),
         )?
         .filter_map(Result::ok)
-        .collect();
+        .collect()
+    } else {
+        stmt.query_map(
+            rusqlite::params![like_pattern, prefix_len, limit],
+            |r| r.get::<_, String>(0),
+        )?
+        .filter_map(Result::ok)
+        .collect()
+    };
     Ok(rows)
-}
-
-/// Given a set of full paths matching `prefix`, return the distinct
-/// "next-segment" completions. A completion ending in `/` is a directory
-/// (has more siblings/children in the catalogue). A completion without a
-/// trailing `/` is a file leaf.
-pub(super) fn extract_path_completions(
-    paths: &[String],
-    prefix: &str,
-    limit: usize,
-) -> Vec<String> {
-    use std::collections::BTreeSet;
-    let mut seen: BTreeSet<String> = BTreeSet::new();
-    for path in paths {
-        if !path.starts_with(prefix) {
-            continue;
-        }
-        let rest = &path[prefix.len()..];
-        if rest.is_empty() {
-            continue;
-        }
-        // Slice up to and including the next `/`, if any. If there's no
-        // slash, the whole rest is a file leaf.
-        let end = rest.find('/').map(|i| i + 1).unwrap_or(rest.len());
-        let completion = format!("{}{}", prefix, &rest[..end]);
-        seen.insert(completion);
-    }
-    seen.into_iter().take(limit).collect()
 }
 
 #[cfg(test)]
 mod path_completion_tests {
-    use super::extract_path_completions;
+    use super::path_completions_sql;
+
+    /// Spin up an in-memory SQLite with the minimal file_locations shape
+    /// and seed it with the given paths (all on a fake volume).
+    fn seed_conn(paths: &[&str]) -> rusqlite::Connection {
+        seed_conn_multi_vol(&paths.iter().map(|p| (*p, "vol-a")).collect::<Vec<_>>())
+    }
+
+    fn seed_conn_multi_vol(rows: &[(&str, &str)]) -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE file_locations (\
+               content_hash TEXT NOT NULL, \
+               volume_id TEXT NOT NULL, \
+               relative_path TEXT NOT NULL, \
+               verified_at TEXT\
+             )",
+            [],
+        )
+        .unwrap();
+        for (i, (path, vol)) in rows.iter().enumerate() {
+            conn.execute(
+                "INSERT INTO file_locations (content_hash, volume_id, relative_path) \
+                 VALUES (?1, ?2, ?3)",
+                rusqlite::params![format!("sha256:{i}"), vol, path],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    fn run(prefix: &str, conn: &rusqlite::Connection, limit: i64) -> Vec<String> {
+        let like = format!("{}%", prefix);
+        let plen = prefix.chars().count() as i64;
+        path_completions_sql(conn, &like, plen, None, limit).unwrap()
+    }
 
     #[test]
     fn extracts_unique_next_segments() {
-        let paths = vec![
-            "Capture/2024/a.jpg".to_string(),
-            "Capture/2024/b.jpg".to_string(),
-            "Capture/2025/x.jpg".to_string(),
-            "Other/y.jpg".to_string(),
-        ];
-        let got = extract_path_completions(&paths, "Capture/", 10);
-        assert_eq!(got, vec!["Capture/2024/", "Capture/2025/"]);
+        let conn = seed_conn(&[
+            "Capture/2024/a.jpg",
+            "Capture/2024/b.jpg",
+            "Capture/2025/x.jpg",
+            "Other/y.jpg",
+        ]);
+        assert_eq!(run("Capture/", &conn, 10), vec!["Capture/2024/", "Capture/2025/"]);
     }
 
     #[test]
     fn empty_prefix_returns_top_level() {
-        let paths = vec![
-            "Capture/a.jpg".to_string(),
-            "Other/b.jpg".to_string(),
-        ];
-        let got = extract_path_completions(&paths, "", 10);
-        assert_eq!(got, vec!["Capture/", "Other/"]);
+        let conn = seed_conn(&["Capture/a.jpg", "Other/b.jpg"]);
+        assert_eq!(run("", &conn, 10), vec!["Capture/", "Other/"]);
     }
 
     #[test]
     fn leaf_files_have_no_trailing_slash() {
-        let paths = vec![
-            "Capture/2024/a.jpg".to_string(),
-            "Capture/2024/b.jpg".to_string(),
-        ];
-        let got = extract_path_completions(&paths, "Capture/2024/", 10);
-        assert_eq!(got, vec!["Capture/2024/a.jpg", "Capture/2024/b.jpg"]);
+        let conn = seed_conn(&["Capture/2024/a.jpg", "Capture/2024/b.jpg"]);
+        assert_eq!(
+            run("Capture/2024/", &conn, 10),
+            vec!["Capture/2024/a.jpg", "Capture/2024/b.jpg"]
+        );
     }
 
     #[test]
     fn dedups_identical_next_segments() {
         // Hundreds of files under the same dir collapse to one dir entry.
-        let paths: Vec<String> = (0..50)
-            .map(|i| format!("Capture/2024/file{i}.jpg"))
-            .collect();
-        let got = extract_path_completions(&paths, "Capture/", 10);
-        assert_eq!(got, vec!["Capture/2024/"]);
+        let paths: Vec<String> = (0..50).map(|i| format!("Capture/2024/file{i}.jpg")).collect();
+        let slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+        let conn = seed_conn(&slices);
+        assert_eq!(run("Capture/", &conn, 10), vec!["Capture/2024/"]);
+    }
+
+    /// Regression for the "dense first sibling hides later siblings" bug.
+    /// Directory A has 5000 files, directory B has 1; both must show up.
+    #[test]
+    fn sibling_with_few_files_not_hidden_by_dense_neighbour() {
+        let mut paths: Vec<String> = (0..5000).map(|i| format!("root/A/f{i:05}.jpg")).collect();
+        paths.push("root/B/only.jpg".to_string());
+        let slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+        let conn = seed_conn(&slices);
+        assert_eq!(run("root/", &conn, 10), vec!["root/A/", "root/B/"]);
     }
 
     #[test]
     fn limit_truncates_results() {
-        let paths: Vec<String> = (0..50)
-            .map(|i| format!("Capture/dir{i:03}/x.jpg"))
-            .collect();
-        let got = extract_path_completions(&paths, "Capture/", 5);
+        let paths: Vec<String> = (0..50).map(|i| format!("Capture/dir{i:03}/x.jpg")).collect();
+        let slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+        let conn = seed_conn(&slices);
+        let got = run("Capture/", &conn, 5);
         assert_eq!(got.len(), 5);
-        // BTreeSet gives sorted output — the first 5 are dir000..dir004.
         assert_eq!(got[0], "Capture/dir000/");
         assert_eq!(got[4], "Capture/dir004/");
     }
 
     #[test]
-    fn non_matching_paths_are_ignored() {
-        let paths = vec![
-            "Capture/a.jpg".to_string(),
-            "Capture2/b.jpg".to_string(),  // prefix collision — shares "Capture"
-        ];
-        // With prefix "Capture/" only the first matches.
-        let got = extract_path_completions(&paths, "Capture/", 10);
-        assert_eq!(got, vec!["Capture/a.jpg"]);
-    }
-
-    #[test]
     fn mixed_dirs_and_files_at_same_level() {
-        let paths = vec![
-            "root/index.md".to_string(),
-            "root/assets/x.jpg".to_string(),
-            "root/assets/y.jpg".to_string(),
-            "root/readme.txt".to_string(),
-        ];
-        let got = extract_path_completions(&paths, "root/", 10);
-        assert_eq!(got, vec!["root/assets/", "root/index.md", "root/readme.txt"]);
+        let conn = seed_conn(&[
+            "root/index.md",
+            "root/assets/x.jpg",
+            "root/assets/y.jpg",
+            "root/readme.txt",
+        ]);
+        assert_eq!(
+            run("root/", &conn, 10),
+            vec!["root/assets/", "root/index.md", "root/readme.txt"]
+        );
     }
 
     #[test]
-    fn paths_not_starting_with_prefix_ignored() {
-        let paths = vec![
-            "foo/bar".to_string(),
-            "other/baz".to_string(),
-        ];
-        let got = extract_path_completions(&paths, "foo/", 10);
-        assert_eq!(got, vec!["foo/bar"]);
+    fn prefix_collision_does_not_match_sibling_root() {
+        // "Capture/..." and "Capture2/..." both pass LIKE 'Capture%', but
+        // with the slash in the prefix only the first belongs. The WHERE
+        // clause (plus the prefix-based substr position) does the right
+        // thing — Capture2 paths go into a different bucket that we skip.
+        let conn = seed_conn(&["Capture/a.jpg", "Capture2/b.jpg"]);
+        assert_eq!(run("Capture/", &conn, 10), vec!["Capture/a.jpg"]);
+    }
+
+    #[test]
+    fn volume_scope_filters_completions() {
+        let conn = seed_conn_multi_vol(&[
+            ("Capture/A/x.jpg", "vol-a"),
+            ("Capture/B/y.jpg", "vol-b"),
+        ]);
+        let plen = "Capture/".chars().count() as i64;
+        let got_a = path_completions_sql(&conn, "Capture/%", plen, Some("vol-a"), 10).unwrap();
+        let got_b = path_completions_sql(&conn, "Capture/%", plen, Some("vol-b"), 10).unwrap();
+        assert_eq!(got_a, vec!["Capture/A/"]);
+        assert_eq!(got_b, vec!["Capture/B/"]);
+    }
+
+    #[test]
+    fn unicode_prefix_with_multibyte_chars() {
+        // `München` in the prefix uses multi-byte UTF-8 — the SQL needs
+        // character-count positions (via `.chars().count()`), not bytes,
+        // or substr/instr would slice mid-codepoint.
+        let conn = seed_conn(&[
+            "location/München/bridge.jpg",
+            "location/München/tower.jpg",
+            "location/Köln/dom.jpg",
+        ]);
+        assert_eq!(
+            run("location/München/", &conn, 10),
+            vec!["location/München/bridge.jpg", "location/München/tower.jpg"]
+        );
     }
 }
