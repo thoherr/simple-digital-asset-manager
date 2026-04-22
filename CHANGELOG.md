@@ -2,6 +2,58 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.4.7 (2026-04-22)
+
+Small feature pack: `tagcount:` search filter, path autocomplete on the filter bar, and a proper in-CLI search filter reference via `--help`.
+
+### `tagcount:N` search filter — count the intentional tags
+
+New numeric filter counting **leaf tags** on each asset — the tags the user actually applied, excluding auto-expanded ancestor paths. An asset tagged `subject|nature|landscape` has 3 stored tags (`subject`, `subject|nature`, `subject|nature|landscape`) but only 1 leaf. `tagcount:` uses the leaf count because that matches what the user intended.
+
+```
+maki search "tagcount:0"          # completely untagged
+maki search "tagcount:1"          # single-tag assets
+maki search "tagcount:5+"         # heavily tagged
+maki search "tagcount:2-4"        # lightly-tagged range
+maki search "tagcount:0 rating:4+"  # untagged keepers worth reviewing
+```
+
+Uses the usual numeric-filter grammar (`N` / `N+` / `A-B` / `A,B`). Especially useful during tag restructuring: `tagcount:0` catches gaps, `tagcount:10+` surfaces noise candidates.
+
+**Storage**: denormalised into a new `leaf_tag_count` column on `assets` (schema v7 → v8) so the filter is a direct indexed comparison, not a JSON-each subquery per row. On large catalogues this is the difference between an interactive filter and a multi-second wait — restructuring queries rarely have other narrowing filters to pre-shrink the row set. The migration backfills existing rows once; all subsequent tag mutations (`tag add`/`remove`/`rename`/`split`/`clear`, reimport, auto-tag, VLM describe) already route through `insert_asset`, which recomputes the count.
+
+Tests: 7 unit tests for `tag_util::leaf_tag_count` (empty, singleton, deep single hierarchy, shared ancestors, mixed flat/hierarchical, case-insensitive, prefix-collision, duplicate guard); 4 parse tests for the filter syntax; end-to-end search test seeding 5 assets with varied tag shapes; regression test asserting the denormalised count stays in sync across tag mutations (catches future drift if a write path bypasses `insert_asset`).
+
+### Path autocomplete on the filter bar
+
+The Path input on the browse page now offers shell-style hierarchical completion. Type to get suggestions at the current directory level; accept a directory (trailing `/`) and the dropdown immediately fetches the next level; accept a file leaf to commit the filter. Focus the field to browse from scratch.
+
+- **Keyboard**: `↑`/`↓` to navigate, `Tab` or `Enter` to accept, `Escape` to close.
+- **Wildcards**: typing `*` anywhere suppresses autocomplete (the filter already handles `*` patterns).
+- **Absolute paths**: paste a path starting at a registered volume's mount point and the mount prefix is stripped automatically; the dropdown pins to that volume.
+- **Volume scoping**: if a volume is selected in the Volume dropdown, suggestions narrow to that volume.
+
+New `GET /api/paths?q=&volume=&limit=` backend (~80 LOC in `src/web/routes/browse.rs`) with SQL-side `GROUP BY` aggregation on a computed next-segment expression — critical for correctness on dense directories. A naive fetch-then-dedupe-in-Rust approach misses sibling directories when one holds thousands of files (the row sample gets monopolised by the dense directory and siblings never appear in the fetched set). With SQL aggregation each directory collapses to one row *before* `LIMIT` applies, so siblings always show up regardless of how many files lives under them. The `substr(relative_path, ?len + 1)` expression uses character-count positions (matching SQLite's TEXT semantics), so prefixes containing multi-byte UTF-8 (`München`, etc.) work correctly.
+
+Frontend (~140 LOC in `templates/filter_bar_js.html`): debounced input (120ms), late-response guard, keyboard nav, accept-and-continue for directories, accept-and-commit for files. Reuses the existing `.tag-autocomplete` dropdown styling.
+
+10 unit tests for the SQL aggregation using an in-memory SQLite, including a regression test for the "dense first sibling hides later siblings" bug (5000 files in directory A, 1 file in B — both must appear).
+
+### `maki search --help` embeds the filter reference
+
+Previously `-h` and `--help` both rendered the same one-line pointer, leaving no on-CLI way to learn the filter syntax. Now:
+
+- `maki search -h` — compact one-liner (unchanged behaviour).
+- `maki search --help` and `maki help search` — full categorised reference (~60 lines, fits one terminal screen), grouped into TEXT & METADATA, NUMERIC, DATE, STATUS, PRO, and COMBINING sections with one-line examples per filter.
+
+Implementation: `long_help` arg attribute pointing at a `SEARCH_QUERY_LONG_HELP` string const at the top of `main.rs`. The full per-filter manual page stays at `doc/manual/reference/06-search-filters.md` and the printable 2-page PDF at `maki doc filters`.
+
+### Polish & fixes
+
+- Tagging poster: slight layout fixes — `\raggedright` inside the worked-example tcolorbox so the closing note doesn't justify with wide word gaps; `\sectheadbreak` macro for the "Three places for event-related tags" heading so its two-line subtitle stacks below the title in the narrow sidebar; card-footer paragraphs in event/project/color cards broken into one-sentence-per-line for scannability.
+- Search filter quickref PDF: new `tagcount:` row in the numeric-filter table.
+- Dependency hygiene: bumped `lofty` to 0.24 (0.23.2 was yanked); transitive dep `core2` (unmaintained, all versions yanked) dropped out when `ravif` went to 0.13 via the `image` 0.25.10 bump. `cargo deny check` now passes clean in CI.
+
 ## v4.4.6 (2026-04-20)
 
 Feature release: new `tag split` operation for one-to-many tag restructuring (CLI + web UI), a printable "Tagging Quick Guide" poster, and a capstone illustration in the tagging-guide chapter.

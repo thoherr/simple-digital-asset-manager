@@ -1,6 +1,6 @@
 [package]
 name = "maki"
-version = "4.4.6"
+version = "4.4.7"
 edition = "2021"
 description = "A digital asset manager for large collections of images and videos"
 license = "Apache-2.0"
@@ -18,7 +18,7 @@ thiserror = "1"
 image = "0.25"
 imageproc = { version = "0.26", default-features = false, features = ["text"] }
 ab_glyph = "0.2"
-lofty = "0.23"
+lofty = "0.24"
 kamadak-exif = "0.5"
 quick-xml = "0.36"
 regex = "1"
@@ -33,7 +33,7 @@ tower-http = { version = "0.6", features = ["fs"] }
 askama = "0.12"
 printpdf = "0.7"
 zip = { version = "2", default-features = false, features = ["deflate"] }
-ort = { version = "2.0.0-rc.11", optional = true, default-features = false, features = ["std", "ndarray", "download-binaries", "tls-native", "copy-dylibs"] }
+ort = { version = "=2.0.0-rc.11", optional = true, default-features = false, features = ["std", "ndarray", "download-binaries", "tls-native", "copy-dylibs"] }
 ndarray = { version = "0.17", optional = true }
 tokenizers = { version = "0.20", optional = true, default-features = false, features = ["onig"] }
 
