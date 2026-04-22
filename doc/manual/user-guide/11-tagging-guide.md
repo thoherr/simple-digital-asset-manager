@@ -499,6 +499,17 @@ maki stats --tags
 
 In the web UI, the `/tags` page shows your complete tag tree with counts. Sort by count to see your most-used tags; sort by name to spot near-duplicates.
 
+**Find under- and over-tagged assets** with the `tagcount:` filter (counts intentional leaf tags, not auto-expanded ancestors):
+
+```bash
+maki search "tagcount:0" --format ids | wc -l     # completely untagged
+maki search "tagcount:1 rating:4+"                # under-tagged keepers
+maki search "tagcount:10+"                        # suspiciously heavy
+maki search "tagcount:2-3 date:2024"              # recent light tagging
+```
+
+`tagcount:0` is the most useful for catching gaps — any asset that escaped tagging shows up.
+
 ### Phase 2: Normalize
 
 Fix the mechanical issues first -- these can be done in bulk:

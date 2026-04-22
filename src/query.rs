@@ -141,6 +141,9 @@ pub struct ParsedSearch {
     pub scattered: Option<NumericFilter>,
     pub scattered_depth: Option<u32>,
     pub face_count: Option<NumericFilter>,
+    /// `tagcount:N` — number of leaf tags (intentional tags the user applied,
+    /// excluding auto-expanded ancestors). See `tag_util::leaf_tag_count`.
+    pub tag_count: Option<NumericFilter>,
     pub duration: Option<NumericFilter>,
     pub codec: Option<String>,
     pub stale_days: Option<NumericFilter>,
@@ -220,6 +223,7 @@ impl ParsedSearch {
         self.variant_count = NumericFilter::or(&self.variant_count, &other.variant_count);
         self.scattered = NumericFilter::or(&self.scattered, &other.scattered);
         self.face_count = NumericFilter::or(&self.face_count, &other.face_count);
+        self.tag_count = NumericFilter::or(&self.tag_count, &other.tag_count);
         self.stale_days = NumericFilter::or(&self.stale_days, &other.stale_days);
         if self.date_prefix.is_none() { self.date_prefix = other.date_prefix.clone(); }
         if self.date_from.is_none() { self.date_from = other.date_from.clone(); }
@@ -282,6 +286,7 @@ impl ParsedSearch {
             scattered: self.scattered.clone(),
             scattered_depth: self.scattered_depth,
             face_count: self.face_count.clone(),
+            tag_count: self.tag_count.clone(),
             duration: self.duration.clone(),
             codec: self.codec.clone(),
             stale_days: self.stale_days.clone(),
@@ -560,6 +565,12 @@ pub fn parse_search_query(query: &str) -> ParsedSearch {
             } else {
                 parsed.face_count = parse_numeric_filter(value);
             }
+        } else if let Some(value) = token_body.strip_prefix("tagcount:") {
+            // Number of intentional (leaf) tags on the asset — the tags
+            // the user actually applied, excluding auto-expanded ancestors.
+            // `tagcount:0` finds untagged assets; `tagcount:5+` finds
+            // heavily-tagged ones. Useful for tag restructuring.
+            parsed.tag_count = parse_numeric_filter(value);
         } else if let Some(value) = token_body.strip_prefix("embed:") {
             if value == "any" || value == "true" {
                 parsed.has_embed = Some(true);
@@ -4263,6 +4274,32 @@ mod tests {
     fn parse_iso_exact() {
         let p = parse_search_query("iso:3200");
         assert_eq!(p.iso, Some(NumericFilter::Exact(3200.0)));
+    }
+
+    #[test]
+    fn parse_tagcount_exact() {
+        let p = parse_search_query("tagcount:3");
+        assert_eq!(p.tag_count, Some(NumericFilter::Exact(3.0)));
+    }
+
+    #[test]
+    fn parse_tagcount_min() {
+        let p = parse_search_query("tagcount:5+");
+        assert_eq!(p.tag_count, Some(NumericFilter::Min(5.0)));
+    }
+
+    #[test]
+    fn parse_tagcount_range() {
+        let p = parse_search_query("tagcount:2-5");
+        assert_eq!(p.tag_count, Some(NumericFilter::Range(2.0, 5.0)));
+    }
+
+    #[test]
+    fn parse_tagcount_zero_finds_untagged() {
+        // tagcount:0 = no leaf tags = no intentional tags = untagged asset.
+        // Users restructuring a catalogue rely on this to find the gaps.
+        let p = parse_search_query("tagcount:0");
+        assert_eq!(p.tag_count, Some(NumericFilter::Exact(0.0)));
     }
 
     #[test]

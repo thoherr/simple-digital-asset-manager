@@ -114,6 +114,70 @@ pub fn expand_all_ancestors(tags: &[String]) -> Vec<String> {
     result
 }
 
+/// Count the "leaf" tags in a list — tags that are not an ancestor path
+/// of any other tag in the same list.
+///
+/// MAKI auto-expands each hierarchical tag to include all its ancestor
+/// paths (matching the Lightroom/CaptureOne convention). So for an asset
+/// with a single deliberate tag `subject|nature|landscape`, the stored
+/// list is `[subject, subject|nature, subject|nature|landscape]`. The
+/// *leaf count* here is 1 — the number of tags the user actually
+/// intended to apply. That's the quantity most users mean when they ask
+/// "how many tags does this asset have?" and the one most useful for
+/// catalogue restructuring ("find assets with 0 tags", "find assets
+/// with more than 10 tags").
+///
+/// Comparison is case-insensitive to match the rest of MAKI's tag
+/// semantics. An asset with only a single standalone tag (no hierarchy)
+/// has leaf count 1.
+///
+/// # Examples
+///
+/// ```
+/// use maki::tag_util::leaf_tag_count;
+///
+/// // Single leaf with its auto-expanded ancestors — one intentional tag.
+/// assert_eq!(leaf_tag_count(&[
+///     "subject".to_string(),
+///     "subject|nature".to_string(),
+///     "subject|nature|landscape".to_string(),
+/// ]), 1);
+///
+/// // Two distinct leaves plus shared ancestors.
+/// assert_eq!(leaf_tag_count(&[
+///     "subject".to_string(),
+///     "subject|nature".to_string(),
+///     "subject|nature|landscape".to_string(),
+///     "subject|nature|forest".to_string(),
+/// ]), 2);
+///
+/// // Flat tags are all leaves.
+/// assert_eq!(leaf_tag_count(&[
+///     "sunset".to_string(),
+///     "concert".to_string(),
+/// ]), 2);
+///
+/// // Empty list → 0.
+/// assert_eq!(leaf_tag_count(&[]), 0);
+/// ```
+pub fn leaf_tag_count(tags: &[String]) -> u32 {
+    // A tag T is a leaf iff no *other* tag O satisfies O.starts_with(T + '|').
+    // Case-insensitive to match tag search semantics.
+    let lowered: Vec<String> = tags.iter().map(|t| t.to_lowercase()).collect();
+    let mut count: u32 = 0;
+    for (i, t_lower) in lowered.iter().enumerate() {
+        let prefix = format!("{}|", t_lower);
+        let has_descendant = lowered
+            .iter()
+            .enumerate()
+            .any(|(j, o)| j != i && o.starts_with(&prefix));
+        if !has_descendant {
+            count += 1;
+        }
+    }
+    count
+}
+
 /// Check if removing a tag would leave any other descendant that keeps the
 /// ancestor alive. Returns the list of ancestor tags that should also be removed.
 pub fn orphaned_ancestors(tag_to_remove: &str, all_tags: &[String]) -> Vec<String> {
@@ -265,5 +329,77 @@ mod tests {
         assert!(orphaned.contains(&"location|Germany|Bayern".to_string()));
         assert!(orphaned.contains(&"location|Germany".to_string()));
         assert!(orphaned.contains(&"location".to_string()));
+    }
+
+    #[test]
+    fn leaf_count_empty_and_singleton() {
+        assert_eq!(leaf_tag_count(&[]), 0);
+        assert_eq!(leaf_tag_count(&["sunset".to_string()]), 1);
+    }
+
+    #[test]
+    fn leaf_count_deep_single_hierarchy() {
+        // One intentional tag + its 3 ancestors = 1 leaf.
+        let tags = vec![
+            "a".to_string(),
+            "a|b".to_string(),
+            "a|b|c".to_string(),
+            "a|b|c|d".to_string(),
+        ];
+        assert_eq!(leaf_tag_count(&tags), 1);
+    }
+
+    #[test]
+    fn leaf_count_two_branches_share_ancestor() {
+        let tags = vec![
+            "subject".to_string(),
+            "subject|nature".to_string(),
+            "subject|nature|landscape".to_string(),
+            "subject|nature|forest".to_string(),
+        ];
+        // Leaves are `landscape` and `forest`; `subject` and `subject|nature` have descendants.
+        assert_eq!(leaf_tag_count(&tags), 2);
+    }
+
+    #[test]
+    fn leaf_count_mixed_flat_and_hierarchical() {
+        let tags = vec![
+            "subject".to_string(),
+            "subject|nature".to_string(),
+            "subject|nature|landscape".to_string(),
+            "sunset".to_string(),
+            "golden-hour".to_string(),
+        ];
+        // Leaves: `landscape`, `sunset`, `golden-hour`.
+        assert_eq!(leaf_tag_count(&tags), 3);
+    }
+
+    #[test]
+    fn leaf_count_case_insensitive() {
+        // A user who typed the same hierarchical tag in mixed case at
+        // different levels shouldn't double-count. `SUBJECT` is the
+        // ancestor of `subject|nature` even though the case differs.
+        let tags = vec![
+            "SUBJECT".to_string(),
+            "subject|nature".to_string(),
+        ];
+        assert_eq!(leaf_tag_count(&tags), 1);
+    }
+
+    #[test]
+    fn leaf_count_prefix_collision_not_counted_as_ancestor() {
+        // `foo` and `foobar` share the first three characters but neither
+        // is the ancestor of the other — the separator is `|`. Both leaves.
+        let tags = vec!["foo".to_string(), "foobar".to_string()];
+        assert_eq!(leaf_tag_count(&tags), 2);
+    }
+
+    #[test]
+    fn leaf_count_does_not_double_count_duplicates() {
+        // Shouldn't happen in practice (insert_asset dedupes) but guard
+        // against it: two identical tags shouldn't claim to be each
+        // other's ancestor either. Both non-descendants → both counted.
+        let tags = vec!["a".to_string(), "a".to_string()];
+        assert_eq!(leaf_tag_count(&tags), 2);
     }
 }

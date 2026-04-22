@@ -699,6 +699,40 @@ maki search "variants:5+ type:image"  # images with many variants
 
 ---
 
+## tagcount
+
+**Syntax:** `tagcount:<N>` (exact) / `tagcount:<N>+` (minimum) / `tagcount:<A>-<B>` (range) / `tagcount:<A>,<B>` (OR list)
+
+**Values:** Non-negative integer
+
+**Description:** Filters by the number of **leaf tags** on an asset — the tags you intentionally applied, *not* including ancestor paths that MAKI auto-stores when you use hierarchical tags. An asset tagged with `subject|nature|landscape` has 3 stored tags (`subject`, `subject|nature`, `subject|nature|landscape`) but only 1 leaf. `tagcount:` uses the leaf count because that matches what you actually chose to apply.
+
+A tag is a leaf when no other tag on the same asset starts with it plus `|`.
+
+Common patterns:
+
+- `tagcount:0` — **untagged assets** (no leaf = no intentional tags)
+- `tagcount:1` — single-tag assets (often candidates for richer tagging)
+- `tagcount:5+` — heavily tagged assets (audit for noise tags)
+- `tagcount:10+` — suspiciously heavy, worth reviewing
+- `tagcount:2-4` — lightly tagged (might want to expand)
+
+Useful during tag restructuring: combine with other filters to narrow. `tagcount:0 type:image` finds untagged images specifically; `tagcount:1 date:2024` shows last year's under-tagged imports.
+
+**Examples:**
+
+```
+maki search "tagcount:0"                      # completely untagged
+maki search "tagcount:1"                      # single-tag assets
+maki search "tagcount:5+"                     # heavily tagged
+maki search "tagcount:0 rating:4+"            # untagged keepers (surprising)
+maki search "tagcount:1 tag:sunset"           # assets tagged ONLY with sunset
+```
+
+**SQL behavior:** Direct filter on the denormalized `a.leaf_tag_count` column, populated at write time (schema v8). No JSON scan or correlated subquery — scales to very large catalogues.
+
+---
+
 ## scattered
 
 **Syntax:** `scattered:<N>` or `scattered:<N>+`

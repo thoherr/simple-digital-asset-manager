@@ -491,6 +491,7 @@ pub struct SearchOptions<'a> {
     pub scattered_depth: Option<u32>,
     pub session_root_pattern: &'a str,
     pub face_count: Option<NumericFilter>,
+    pub tag_count: Option<NumericFilter>,
     pub duration: Option<NumericFilter>,
     pub codec: Option<String>,
     pub stale_days: Option<NumericFilter>,
@@ -559,6 +560,7 @@ impl<'a> Default for SearchOptions<'a> {
             scattered_depth: None,
             session_root_pattern: r"^\d{4}-\d{2}",
             face_count: None,
+            tag_count: None,
             duration: None,
             codec: None,
             stale_days: None,
@@ -672,7 +674,7 @@ fn next_date_bound(s: &str) -> String {
 }
 
 /// Current schema version. Bump this whenever `run_migrations()` changes.
-pub const SCHEMA_VERSION: u32 = 7;
+pub const SCHEMA_VERSION: u32 = 8;
 
 // ═══ CATALOG STRUCT & CONNECTION ═══
 
@@ -1065,6 +1067,31 @@ impl Catalog {
                 "CREATE INDEX IF NOT EXISTS idx_assets_face_scan_status ON assets(face_scan_status) WHERE face_scan_status IS NULL",
             );
         }
+        if current < 8 {
+            // Leaf tag count — the number of "intentional" tags on each asset
+            // (tags that are not the ancestor of any other tag on the same
+            // asset). Used by the `tagcount:` search filter; denormalised
+            // because the alternative is a JSON-scan subquery per row which
+            // gets slow on large catalogues.
+            let _ = self.conn.execute_batch(
+                "ALTER TABLE assets ADD COLUMN leaf_tag_count INTEGER NOT NULL DEFAULT 0",
+            );
+            // Backfill from existing tags. Uses a json_each correlated
+            // subquery — slow but one-shot per asset on migration.
+            let _ = self.conn.execute_batch(
+                "UPDATE assets SET leaf_tag_count = ( \
+                   SELECT COUNT(*) FROM json_each(assets.tags) je1 \
+                   WHERE NOT EXISTS ( \
+                     SELECT 1 FROM json_each(assets.tags) je2 \
+                     WHERE LOWER(je2.value) LIKE LOWER(je1.value) || '|%' \
+                   ) \
+                 ) \
+                 WHERE tags IS NOT NULL AND tags != '[]'",
+            );
+            let _ = self.conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_assets_leaf_tag_count ON assets(leaf_tag_count)",
+            );
+        }
 
         // Stamp the new schema version
         let _ = self.conn.execute_batch(
@@ -1152,12 +1179,17 @@ impl Catalog {
             .find_map(|v| v.source_metadata.get("video_duration")?.parse::<f64>().ok());
         let video_codec: Option<String> = asset.variants.iter()
             .find_map(|v| v.source_metadata.get("video_codec").cloned());
+        // Leaf tag count — denormalised for the `tagcount:` search filter.
+        // Computed from the current tags list, so any call that saves the
+        // asset (tag add/remove/rename/split/clear/reimport) picks up the
+        // new count for free.
+        let leaf_tag_count = crate::tag_util::leaf_tag_count(&asset.tags) as i64;
         // Use ON CONFLICT UPDATE instead of INSERT OR REPLACE to avoid
         // intermediate DELETE that triggers FK constraint violations on
         // variants/faces/collection_assets referencing this asset.
         self.conn.execute(
-            "INSERT INTO assets (id, name, created_at, asset_type, tags, description, rating, color_label, best_variant_hash, primary_variant_format, variant_count, latitude, longitude, preview_rotation, preview_variant, video_duration, video_codec, face_scan_status) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18) \
+            "INSERT INTO assets (id, name, created_at, asset_type, tags, description, rating, color_label, best_variant_hash, primary_variant_format, variant_count, latitude, longitude, preview_rotation, preview_variant, video_duration, video_codec, face_scan_status, leaf_tag_count) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19) \
              ON CONFLICT(id) DO UPDATE SET \
                name = excluded.name, \
                created_at = excluded.created_at, \
@@ -1175,7 +1207,8 @@ impl Catalog {
                preview_variant = excluded.preview_variant, \
                video_duration = excluded.video_duration, \
                video_codec = excluded.video_codec, \
-               face_scan_status = excluded.face_scan_status",
+               face_scan_status = excluded.face_scan_status, \
+               leaf_tag_count = excluded.leaf_tag_count",
             rusqlite::params![
                 asset.id.to_string(),
                 asset.name,
@@ -1195,6 +1228,7 @@ impl Catalog {
                 video_duration,
                 video_codec,
                 asset.face_scan_status.as_deref(),
+                leaf_tag_count,
             ],
         )?;
         Ok(())
@@ -3293,6 +3327,12 @@ impl Catalog {
             }
         }
         if let Some(ref f) = opts.face_count { Self::numeric_clause(f, "a.face_count", &mut clauses, &mut params); }
+
+        // tagcount: — number of intentional (leaf) tags per asset. Denormalised
+        // into assets.leaf_tag_count at write time (schema v8); query is a
+        // direct column comparison rather than a JSON-each subquery so it
+        // stays cheap on large catalogues.
+        if let Some(ref f) = opts.tag_count { Self::numeric_clause(f, "a.leaf_tag_count", &mut clauses, &mut params); }
         if let Some(ref f) = opts.duration { Self::numeric_clause(f, "a.video_duration", &mut clauses, &mut params); }
         if let Some(ref c) = opts.codec {
             clauses.push("a.video_codec LIKE ?".to_string());
@@ -5704,6 +5744,176 @@ mod tests {
         let results_up = catalog.search_paginated(&opts_up).unwrap();
         assert_eq!(results_up.len(), 1);
         assert_eq!(results_up[0].original_filename, "rl2.jpg");
+    }
+
+    #[test]
+    fn search_tagcount_end_to_end() {
+        // End-to-end exercise of the denormalised leaf_tag_count column:
+        // insert_asset populates it, search_paginated filters on it.
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        fn add(catalog: &Catalog, name: &str, tags: Vec<String>) {
+            let mut a = crate::models::Asset::new(
+                crate::models::AssetType::Image,
+                &format!("sha256:{name}"),
+            );
+            a.name = Some(name.to_string());
+            a.tags = tags;
+            let v = crate::models::Variant {
+                content_hash: format!("sha256:{name}"),
+                asset_id: a.id,
+                role: crate::models::VariantRole::Original,
+                format: "jpg".to_string(),
+                file_size: 100,
+                original_filename: format!("{name}.jpg"),
+                source_metadata: Default::default(),
+                locations: vec![],
+            };
+            a.variants.push(v.clone());
+            catalog.insert_asset(&a).unwrap();
+            catalog.insert_variant(&v).unwrap();
+        }
+
+        // a1: untagged (leaf count = 0)
+        add(&catalog, "a1", vec![]);
+        // a2: one leaf tag (a plain flat tag → 1 leaf)
+        add(&catalog, "a2", vec!["sunset".to_string()]);
+        // a3: one leaf in a 3-deep hierarchy (3 stored tags, 1 leaf)
+        add(
+            &catalog,
+            "a3",
+            vec![
+                "subject".to_string(),
+                "subject|nature".to_string(),
+                "subject|nature|landscape".to_string(),
+            ],
+        );
+        // a4: two leaves sharing ancestors (4 stored, 2 leaves)
+        add(
+            &catalog,
+            "a4",
+            vec![
+                "subject".to_string(),
+                "subject|nature".to_string(),
+                "subject|nature|landscape".to_string(),
+                "subject|nature|forest".to_string(),
+            ],
+        );
+        // a5: five flat leaves
+        add(
+            &catalog,
+            "a5",
+            vec![
+                "sunset".to_string(),
+                "concert".to_string(),
+                "portrait".to_string(),
+                "documentary".to_string(),
+                "bw".to_string(),
+            ],
+        );
+
+        let names = |rows: Vec<SearchRow>| -> Vec<String> {
+            rows.into_iter().map(|r| r.name.unwrap_or_default()).collect()
+        };
+
+        // tagcount:0 — the untagged ones (just a1)
+        let opts = SearchOptions {
+            tag_count: Some(NumericFilter::Exact(0.0)),
+            per_page: u32::MAX,
+            ..Default::default()
+        };
+        let r = names(catalog.search_paginated(&opts).unwrap());
+        assert_eq!(r, vec!["a1".to_string()]);
+
+        // tagcount:1 — exactly one leaf (a2, a3)
+        let opts = SearchOptions {
+            tag_count: Some(NumericFilter::Exact(1.0)),
+            per_page: u32::MAX,
+            ..Default::default()
+        };
+        let mut r = names(catalog.search_paginated(&opts).unwrap());
+        r.sort();
+        assert_eq!(r, vec!["a2".to_string(), "a3".to_string()]);
+
+        // tagcount:2+ — two or more leaves (a4, a5)
+        let opts = SearchOptions {
+            tag_count: Some(NumericFilter::Min(2.0)),
+            per_page: u32::MAX,
+            ..Default::default()
+        };
+        let mut r = names(catalog.search_paginated(&opts).unwrap());
+        r.sort();
+        assert_eq!(r, vec!["a4".to_string(), "a5".to_string()]);
+
+        // tagcount:2-3 — two or three (just a4, which has 2)
+        let opts = SearchOptions {
+            tag_count: Some(NumericFilter::Range(2.0, 3.0)),
+            per_page: u32::MAX,
+            ..Default::default()
+        };
+        let r = names(catalog.search_paginated(&opts).unwrap());
+        assert_eq!(r, vec!["a4".to_string()]);
+    }
+
+    #[test]
+    fn tagcount_updates_when_tags_change() {
+        // Regression guard: the denormalised column must stay in sync
+        // with tag mutations (add, remove, rename) because every tag
+        // write path goes through insert_asset. If someone adds a new
+        // SQL-only write path, this test will catch the drift.
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let mut asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:tc1");
+        asset.name = Some("x".to_string());
+        let v = crate::models::Variant {
+            content_hash: "sha256:tc1".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 100,
+            original_filename: "x.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        asset.variants.push(v.clone());
+
+        // Start with zero tags.
+        catalog.insert_asset(&asset).unwrap();
+        catalog.insert_variant(&v).unwrap();
+
+        fn lookup(catalog: &Catalog, asset_id: &str) -> i64 {
+            catalog
+                .conn()
+                .query_row(
+                    "SELECT leaf_tag_count FROM assets WHERE id = ?1",
+                    rusqlite::params![asset_id],
+                    |r| r.get::<_, i64>(0),
+                )
+                .unwrap()
+        }
+
+        assert_eq!(lookup(&catalog, &asset.id.to_string()), 0);
+
+        // Add one leaf tag (with ancestor expansion → 3 stored, 1 leaf).
+        asset.tags = vec![
+            "subject".to_string(),
+            "subject|nature".to_string(),
+            "subject|nature|landscape".to_string(),
+        ];
+        catalog.insert_asset(&asset).unwrap();
+        assert_eq!(lookup(&catalog, &asset.id.to_string()), 1);
+
+        // Add a second leaf in the same hierarchy.
+        asset.tags.push("subject|nature|forest".to_string());
+        catalog.insert_asset(&asset).unwrap();
+        assert_eq!(lookup(&catalog, &asset.id.to_string()), 2);
+
+        // Clear all tags.
+        asset.tags.clear();
+        catalog.insert_asset(&asset).unwrap();
+        assert_eq!(lookup(&catalog, &asset.id.to_string()), 0);
     }
 
     #[test]
