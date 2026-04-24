@@ -18,8 +18,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Install cargo-about and cargo-deny
+        # cargo-about 0.9.0 gated its CLI behind a `cli` feature that's not
+        # default, so a plain `cargo install cargo-about --locked` skips the
+        # binary with only a warning. Enable the feature explicitly.
         run: |
-          cargo install cargo-about --locked
+          cargo install cargo-about --locked --features cli
           cargo install cargo-deny --locked
       - name: Validate dependency licenses
         run: cargo deny check
