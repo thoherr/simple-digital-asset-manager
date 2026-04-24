@@ -307,6 +307,118 @@ pub fn tags_to_vocabulary_yaml(tags: &[(String, u64)]) -> String {
     output
 }
 
+/// Build a tab-indented keyword text file from a flat list of pipe-separated tags.
+///
+/// This is the format accepted by Adobe Lightroom ("Import Keywords") and
+/// Capture One ("Import Keywords" → Keyword Text File). Each keyword appears
+/// on its own line; hierarchy is expressed by the number of leading tabs.
+///
+/// Tag names are normalized for the target tools:
+/// - XML entities (`&amp;`, `&lt;`, …) are decoded (C1 rejects `&` outright).
+/// - Commas and semicolons are replaced with spaces (both tools treat them as
+///   keyword delimiters on import).
+/// - Runs of whitespace collapse to a single space; leading/trailing space is trimmed.
+/// - Tags empty after sanitization are skipped.
+///
+/// Returns the rendered text plus a list of `(before, after)` pairs for tags
+/// whose name changed — callers can surface these so the user knows what to
+/// rename in their catalog.
+///
+/// Example output:
+/// ```text
+/// location
+/// \tGermany
+/// \t\tBayern
+/// \t\t\tMünchen
+/// subject
+/// \tnature
+/// \t\tlandscape
+/// ```
+pub fn tags_to_keyword_text(tags: &[(String, u64)]) -> (String, Vec<(String, String)>) {
+    use std::collections::BTreeMap;
+
+    #[derive(Default)]
+    struct Node {
+        children: BTreeMap<String, Node>,
+    }
+
+    let mut root = Node::default();
+    let mut changes: Vec<(String, String)> = Vec::new();
+    for (tag, _count) in tags {
+        let mut sanitized_parts: Vec<String> = Vec::new();
+        let mut part_changed = false;
+        for part in tag.split('|') {
+            let clean = sanitize_keyword_part(part);
+            if clean != part {
+                part_changed = true;
+            }
+            if clean.is_empty() {
+                // An empty segment would collapse the hierarchy — skip the whole tag.
+                sanitized_parts.clear();
+                break;
+            }
+            sanitized_parts.push(clean);
+        }
+        if sanitized_parts.is_empty() {
+            if !tag.is_empty() {
+                changes.push((tag.clone(), String::new()));
+            }
+            continue;
+        }
+        let sanitized_tag = sanitized_parts.join("|");
+        if part_changed {
+            changes.push((tag.clone(), sanitized_tag.clone()));
+        }
+        let mut current = &mut root;
+        for part in sanitized_parts {
+            current = current.children.entry(part).or_default();
+        }
+    }
+
+    fn write_node(node: &Node, depth: usize, output: &mut String) {
+        for (name, child) in &node.children {
+            for _ in 0..depth {
+                output.push('\t');
+            }
+            output.push_str(name);
+            output.push('\n');
+            write_node(child, depth + 1, output);
+        }
+    }
+
+    let mut output = String::new();
+    write_node(&root, 0, &mut output);
+    (output, changes)
+}
+
+/// Normalize a single hierarchy segment for keyword-text export:
+/// decode XML entities, replace separators that break Lightroom/Capture One
+/// import (`,` and `;`), collapse whitespace, trim.
+fn sanitize_keyword_part(part: &str) -> String {
+    let decoded = unescape_xml_entities(part);
+    let stripped: String = decoded
+        .chars()
+        .map(|c| match c {
+            ',' | ';' => ' ',
+            // Keep real spaces but neutralize control chars
+            c if c.is_control() => ' ',
+            c => c,
+        })
+        .collect();
+    stripped.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Decode common XML/HTML entities (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;`,
+/// plus numeric `&#NN;` / `&#xHH;`) into their literal characters. Used when
+/// exporting tag names to external tools that don't understand XML escapes.
+/// Falls back to the input on failure — never lossy.
+fn unescape_xml_entities(s: &str) -> String {
+    match quick_xml::escape::unescape(s) {
+        Ok(cow) => cow.into_owned(),
+        Err(_) => s.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,6 +505,126 @@ technique:
         for leaf in ["color|red", "color|monochrome", "color|warm"] {
             assert!(tags.contains(&leaf.to_string()), "missing {leaf}");
         }
+    }
+
+    #[test]
+    fn keyword_text_flat_tags() {
+        let tags = vec![
+            ("red".to_string(), 1),
+            ("blue".to_string(), 2),
+            ("green".to_string(), 3),
+        ];
+        let (text, changes) = tags_to_keyword_text(&tags);
+        // BTreeMap sorts alphabetically
+        assert_eq!(text, "blue\ngreen\nred\n");
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn keyword_text_nested() {
+        let tags = vec![
+            ("location|Germany|Bayern|München".to_string(), 5),
+            ("location|Germany|Bayern|Gelting".to_string(), 2),
+            ("location|France|Paris".to_string(), 1),
+        ];
+        let (text, changes) = tags_to_keyword_text(&tags);
+        let expected = "location\n\tFrance\n\t\tParis\n\tGermany\n\t\tBayern\n\t\t\tGelting\n\t\t\tMünchen\n";
+        assert_eq!(text, expected);
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn keyword_text_deduplicates_shared_branches() {
+        // Two tags sharing a common ancestor should only emit each branch once
+        let tags = vec![
+            ("subject|nature|landscape".to_string(), 1),
+            ("subject|nature|flora".to_string(), 1),
+        ];
+        let (text, _) = tags_to_keyword_text(&tags);
+        // "subject" and "nature" should appear exactly once each
+        assert_eq!(text.matches("subject\n").count(), 1);
+        assert_eq!(text.matches("\tnature\n").count(), 1);
+        assert!(text.contains("\t\tflora\n"));
+        assert!(text.contains("\t\tlandscape\n"));
+    }
+
+    #[test]
+    fn keyword_text_deep_hierarchy() {
+        let tags = vec![("a|b|c|d|e".to_string(), 1)];
+        let (text, _) = tags_to_keyword_text(&tags);
+        assert_eq!(text, "a\n\tb\n\t\tc\n\t\t\td\n\t\t\t\te\n");
+    }
+
+    #[test]
+    fn keyword_text_empty() {
+        let tags: Vec<(String, u64)> = vec![];
+        let (text, changes) = tags_to_keyword_text(&tags);
+        assert_eq!(text, "");
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn keyword_text_decodes_xml_entities() {
+        // Catalog tags that originated from externally-authored XMP files may
+        // contain literal `&amp;` — Capture One rejects these on import.
+        let tags = vec![
+            ("person|artist|Conny K. &amp; The Boosters".to_string(), 3),
+            ("subject|M&amp;M".to_string(), 1),
+            ("subject|black &lt;and&gt; white".to_string(), 1),
+            ("subject|&#x41;&#65;".to_string(), 1), // &#x41; = A, &#65; = A
+        ];
+        let (text, changes) = tags_to_keyword_text(&tags);
+        assert!(text.contains("Conny K. & The Boosters"), "got:\n{text}");
+        assert!(!text.contains("&amp;"), "still has &amp; in:\n{text}");
+        assert!(text.contains("M&M"));
+        assert!(text.contains("black <and> white"));
+        assert!(text.contains("\tAA\n"));
+        assert_eq!(changes.len(), 4, "should report 4 sanitized tags");
+    }
+
+    #[test]
+    fn keyword_text_replaces_commas_and_semicolons() {
+        // Commas and semicolons are treated as keyword delimiters by
+        // Lightroom and Capture One on import — they must be sanitized.
+        let tags = vec![
+            ("color|red, gold, white, black".to_string(), 1),
+            ("subject|red; orange; blue".to_string(), 1),
+            ("plain|no-change".to_string(), 1),
+        ];
+        let (text, changes) = tags_to_keyword_text(&tags);
+        assert!(!text.contains(','), "comma leaked into output:\n{text}");
+        assert!(!text.contains(';'), "semicolon leaked into output:\n{text}");
+        assert!(text.contains("red gold white black"), "got:\n{text}");
+        assert!(text.contains("red orange blue"), "got:\n{text}");
+        // Two tags changed, one didn't
+        assert_eq!(changes.len(), 2);
+        assert!(changes.iter().any(|(b, _)| b.contains("red, gold")));
+        assert!(changes.iter().any(|(b, _)| b.contains("red; orange")));
+    }
+
+    #[test]
+    fn keyword_text_skips_empty_after_sanitize() {
+        // A tag that collapses to empty (e.g. pure control chars) is skipped
+        // rather than emitted as a bare hierarchy separator.
+        let tags = vec![
+            ("keep".to_string(), 1),
+            (",,,".to_string(), 1),
+            ("subject|,,,".to_string(), 1),
+        ];
+        let (text, changes) = tags_to_keyword_text(&tags);
+        assert_eq!(text, "keep\n");
+        // Both skipped tags should be reported as changes (with empty replacement)
+        assert_eq!(changes.len(), 2);
+    }
+
+    #[test]
+    fn keyword_text_no_comments_no_header() {
+        // Unlike the YAML variant, the text format must not emit comment lines —
+        // Lightroom/Capture One would import `#` lines as literal keywords.
+        let tags = vec![("location".to_string(), 1)];
+        let (text, _) = tags_to_keyword_text(&tags);
+        assert!(!text.contains('#'), "keyword text must not contain comments");
+        assert_eq!(text, "location\n");
     }
 
     #[test]

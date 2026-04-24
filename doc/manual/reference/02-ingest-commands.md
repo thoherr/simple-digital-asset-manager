@@ -622,18 +622,26 @@ maki-tag-export-vocabulary -- export the current tag tree as a vocabulary file
 
 ### SYNOPSIS
 
-    maki [GLOBAL FLAGS] tag export-vocabulary [--output <FILE>] [--prune] [--default]
+    maki [GLOBAL FLAGS] tag export-vocabulary [--output <FILE>] [--format yaml|text] [--prune] [--default]
 
 ### DESCRIPTION
 
-Generates a `vocabulary.yaml` file by merging the current catalog's tags with any existing vocabulary entries. Tags are grouped into a nested YAML hierarchy.
+Generates a vocabulary file by merging the current catalog's tags with any existing vocabulary entries. Tags are grouped into a nested hierarchy.
+
+Two output formats are supported:
+
+- **yaml** (default): MAKI's native `vocabulary.yaml` — used by the catalog itself for autocomplete of planned tags.
+- **text**: tab-indented keyword list compatible with Adobe Lightroom's *Import Keywords* and Capture One's *Import Keywords* (Keyword Text File). Use this to share your curated tag hierarchy with other tools so new ingest sessions there can autocomplete and tag against the same vocabulary.
 
 By default, planned-but-unused entries from the existing `vocabulary.yaml` are preserved in the export — the command adds new tags from usage without destroying your planned structure. Use `--prune` to remove unused entries and keep only tags that exist on at least one asset. Use `--default` to export only the built-in default vocabulary, ignoring both catalog tags and the existing vocabulary file.
 
 ### OPTIONS
 
 **--output \<FILE\>**
-: Output file path. Defaults to `vocabulary.yaml` in the catalog root.
+: Output file path. Defaults to `vocabulary.yaml` (or `vocabulary.txt` with `--format text`) in the catalog root.
+
+**--format \<FORMAT\>**
+: Output format: `yaml` (default) or `text`. The text format is tab-indented, one keyword per line, with hierarchy depth expressed by the number of leading tabs — the format accepted by Lightroom and Capture One for keyword import.
 
 **--prune**
 : Remove vocabulary entries that have no assets. Only keep tags from actual usage.
@@ -649,6 +657,14 @@ maki tag export-vocabulary --prune                          # only used tags
 maki tag export-vocabulary --output ~/my-vocab.yaml         # custom path
 maki tag export-vocabulary --default                        # built-in defaults only
 maki tag export-vocabulary --default --output defaults.yaml # compare with your vocabulary
+
+# Share the curated vocabulary with Lightroom / Capture One:
+maki tag export-vocabulary --format text                    # vocabulary.txt in catalog root
+maki tag export-vocabulary --format text --prune \
+    --output ~/Desktop/maki-keywords.txt                    # used tags only, for import
+
+# Lightroom:     Metadata → Import Keywords… → select maki-keywords.txt
+# Capture One:   Image → Keywords → Import Keywords → Keyword Text File
 ```
 
 ### SEE ALSO

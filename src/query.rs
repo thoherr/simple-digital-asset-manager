@@ -2067,11 +2067,36 @@ impl QueryEngine {
         let uuid: uuid::Uuid = full_id.parse()?;
         let mut asset = ctx.meta_store.load(uuid)?;
 
+        // On add: normalize inputs so disallowed delimiters (`,` / `;`) are auto-split
+        // and control chars / whitespace are collapsed before reaching storage.
+        // On remove: preserve the literal string so a user can remove an
+        // existing offending tag by its exact catalog value.
+        let normalized_storage;
+        let effective_tags: &[String] = if remove {
+            tags
+        } else {
+            let (normalized, changes) = crate::tag_util::normalize_tag_inputs(tags);
+            if !changes.is_empty() {
+                for (before, after) in &changes {
+                    let after_display = if after.is_empty() {
+                        "(dropped: empty after normalization)".to_string()
+                    } else {
+                        after.iter().map(|t| format!("{t:?}")).collect::<Vec<_>>().join(", ")
+                    };
+                    eprintln!(
+                        "note: tag {before:?} was normalized for storage → {after_display}"
+                    );
+                }
+            }
+            normalized_storage = normalized;
+            &normalized_storage
+        };
+
         let changed;
         if remove {
             // Collect tags to remove, including orphaned ancestors
             let mut all_to_remove = Vec::new();
-            for tag in tags {
+            for tag in effective_tags {
                 if asset.tags.iter().any(|t| t == tag) {
                     all_to_remove.push(tag.clone());
                 }
@@ -2081,7 +2106,7 @@ impl QueryEngine {
                 .filter(|t| !all_to_remove.contains(t))
                 .cloned()
                 .collect();
-            for tag in tags {
+            for tag in effective_tags {
                 for orphan in crate::tag_util::orphaned_ancestors(tag, &remaining_after) {
                     if !all_to_remove.contains(&orphan) && asset.tags.iter().any(|t| t == &orphan) {
                         all_to_remove.push(orphan);
@@ -2102,7 +2127,7 @@ impl QueryEngine {
             changed = actually_removed;
         } else {
             // Expand hierarchical tags to include all ancestor paths
-            let expanded = crate::tag_util::expand_all_ancestors(tags);
+            let expanded = crate::tag_util::expand_all_ancestors(effective_tags);
             let existing: std::collections::HashSet<String> =
                 asset.tags.iter().cloned().collect();
             let mut added = Vec::new();

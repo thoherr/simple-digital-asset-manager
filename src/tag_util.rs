@@ -29,6 +29,89 @@ pub fn tag_input_to_storage(input: &str) -> String {
     input.replace('>', "|")
 }
 
+/// Result of normalizing a single tag input for storage.
+///
+/// Returned by [`normalize_tag_for_storage`] so callers can emit a warning
+/// when splitting happens and so cleanup tooling can report what was rewritten.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagNormalization {
+    /// The normalized tags. May be empty (input was entirely invalid) or
+    /// contain multiple entries (input contained `,` or `;` separators).
+    pub tags: Vec<String>,
+    /// `true` if `tags` differs from a single-element `[tag_input_to_storage(input)]` —
+    /// i.e. the input got split, stripped, or normalized in some way.
+    pub changed: bool,
+}
+
+/// Normalize a single user-provided tag input for storage.
+///
+/// Applies, in order:
+/// 1. `>` → `|` hierarchy-separator conversion (via [`tag_input_to_storage`]).
+/// 2. Split on `,` and `;` — both are display delimiters in MAKI and
+///    Lightroom/Capture One; they cannot appear inside a tag name.
+/// 3. Strip control characters; collapse runs of whitespace; trim.
+/// 4. Drop empty segments.
+///
+/// Intended to be called at the tag-write chokepoint ([`QueryEngine::tag`][^1])
+/// so that bad input — CLI typos, AI label strings like `"red, gold, white"` —
+/// can never land as a literal comma-containing tag in the catalog.
+///
+/// [^1]: crate::query::QueryEngine::tag
+///
+/// # Examples
+///
+/// ```
+/// use maki::tag_util::normalize_tag_for_storage;
+///
+/// // Plain tags pass through unchanged.
+/// let n = normalize_tag_for_storage("subject|nature|landscape");
+/// assert_eq!(n.tags, vec!["subject|nature|landscape"]);
+/// assert!(!n.changed);
+///
+/// // Comma-joined tags auto-split into separate tags.
+/// let n = normalize_tag_for_storage("red, gold, white, black");
+/// assert_eq!(n.tags, vec!["red", "gold", "white", "black"]);
+/// assert!(n.changed);
+///
+/// // `>` still converts to `|` (existing behaviour; not flagged as "changed").
+/// let n = normalize_tag_for_storage("animals>birds>eagles");
+/// assert_eq!(n.tags, vec!["animals|birds|eagles"]);
+/// assert!(!n.changed);
+/// ```
+pub fn normalize_tag_for_storage(input: &str) -> TagNormalization {
+    let initial = tag_input_to_storage(input);
+    let mut out = Vec::new();
+    for segment in initial.split(|c| c == ',' || c == ';') {
+        let clean: String = segment
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect();
+        let collapsed: String = clean.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !collapsed.is_empty() {
+            out.push(collapsed);
+        }
+    }
+    let changed = out.len() != 1 || out.first().map(|s| s != &initial).unwrap_or(true);
+    TagNormalization { tags: out, changed }
+}
+
+/// Normalize a list of tag inputs, returning the flattened normalized list
+/// and a report of any inputs whose normalization changed their value or
+/// count. The report is `(original, normalized_list)` per changed input,
+/// and callers can forward it to the user as a warning.
+pub fn normalize_tag_inputs(inputs: &[String]) -> (Vec<String>, Vec<(String, Vec<String>)>) {
+    let mut normalized = Vec::with_capacity(inputs.len());
+    let mut changes = Vec::new();
+    for input in inputs {
+        let n = normalize_tag_for_storage(input);
+        if n.changed {
+            changes.push((input.clone(), n.tags.clone()));
+        }
+        normalized.extend(n.tags);
+    }
+    (normalized, changes)
+}
+
 /// Convert internal storage form to user-facing display form.
 ///
 /// Tags are displayed as stored — `|` is the visible hierarchy separator,
@@ -258,6 +341,86 @@ mod tests {
         assert_eq!(stored, "animals|birds|eagles");
         let displayed = tag_storage_to_display(&stored);
         assert_eq!(displayed, "animals|birds|eagles");
+    }
+
+    #[test]
+    fn normalize_plain_tag_is_unchanged() {
+        let n = normalize_tag_for_storage("landscape");
+        assert_eq!(n.tags, vec!["landscape"]);
+        assert!(!n.changed);
+    }
+
+    #[test]
+    fn normalize_hierarchy_is_unchanged() {
+        let n = normalize_tag_for_storage("subject|nature|landscape");
+        assert_eq!(n.tags, vec!["subject|nature|landscape"]);
+        assert!(!n.changed);
+    }
+
+    #[test]
+    fn normalize_greater_than_converts_to_pipe() {
+        // `>` → `|` is a routine CaptureOne/Lightroom-compat conversion;
+        // we don't flag it as "changed" (no user-visible warning).
+        let n = normalize_tag_for_storage("a>b>c");
+        assert_eq!(n.tags, vec!["a|b|c"]);
+        assert!(!n.changed, "routine >/| conversion should not warn");
+    }
+
+    #[test]
+    fn normalize_comma_splits() {
+        let n = normalize_tag_for_storage("red, gold, white, black");
+        assert_eq!(n.tags, vec!["red", "gold", "white", "black"]);
+        assert!(n.changed);
+    }
+
+    #[test]
+    fn normalize_semicolon_splits() {
+        let n = normalize_tag_for_storage("red;orange;blue");
+        assert_eq!(n.tags, vec!["red", "orange", "blue"]);
+        assert!(n.changed);
+    }
+
+    #[test]
+    fn normalize_collapses_whitespace() {
+        let n = normalize_tag_for_storage("  red   tones  ");
+        assert_eq!(n.tags, vec!["red tones"]);
+        assert!(n.changed);
+    }
+
+    #[test]
+    fn normalize_strips_control_chars() {
+        let n = normalize_tag_for_storage("red\ttones\n");
+        assert_eq!(n.tags, vec!["red tones"]);
+        assert!(n.changed);
+    }
+
+    #[test]
+    fn normalize_all_empty_returns_empty() {
+        let n = normalize_tag_for_storage(",,,");
+        assert!(n.tags.is_empty());
+        assert!(n.changed);
+    }
+
+    #[test]
+    fn normalize_slash_preserved() {
+        // `/` is a literal character even under normalization
+        let n = normalize_tag_for_storage("f/1.4");
+        assert_eq!(n.tags, vec!["f/1.4"]);
+        assert!(!n.changed);
+    }
+
+    #[test]
+    fn normalize_inputs_reports_changes() {
+        let inputs = vec![
+            "landscape".to_string(),
+            "red, gold".to_string(),
+            "plain".to_string(),
+        ];
+        let (flat, changes) = normalize_tag_inputs(&inputs);
+        assert_eq!(flat, vec!["landscape", "red", "gold", "plain"]);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].0, "red, gold");
+        assert_eq!(changes[0].1, vec!["red", "gold"]);
     }
 
     #[test]

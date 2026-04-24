@@ -637,6 +637,22 @@ maki tag export-vocabulary --default --output defaults.yaml
 
 This is useful after a MAKI upgrade that adds new default categories (e.g. `subject|style`, `subject|condition`, `subject|mood`) — you can compare the defaults with your existing vocabulary and merge what you want. The `--default` flag ignores both your catalog tags and your existing `vocabulary.yaml`; it outputs only the built-in starter vocabulary.
 
+### Sharing your vocabulary with Lightroom and Capture One
+
+The vocabulary you curate in MAKI is also useful inside your RAW processor — so that culling or initial tagging sessions in Lightroom or Capture One autocomplete against the same hierarchy. Export the tree as a tab-indented keyword text file:
+
+```bash
+maki tag export-vocabulary --format text --prune \
+    --output ~/Desktop/maki-keywords.txt
+```
+
+Then import it:
+
+- **Lightroom Classic**: *Metadata → Import Keywords…* and pick the file. Existing keywords are merged; the hierarchy is preserved.
+- **Capture One**: *Image → Keywords → Import Keywords → Keyword Text File*, pick the file. The keywords become available in the Keywords tool and in autocomplete.
+
+Re-run the export whenever your catalog grows enough new tags to be worth re-syncing. With `--prune`, you only push the subset that's actually in use; drop `--prune` to push the full planned hierarchy.
+
 ### Vocabulary vs. auto-tagging labels
 
 The vocabulary file and the auto-tagging label file (`labels` in `[ai]` config) serve different purposes:

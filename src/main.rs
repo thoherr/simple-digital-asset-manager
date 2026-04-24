@@ -1207,12 +1207,16 @@ enum TagCommands {
         asset_ids: Vec<String>,
     },
 
-    /// Export current tag tree as a vocabulary.yaml file
+    /// Export current tag tree as a vocabulary file
     #[command(name = "export-vocabulary")]
     ExportVocabulary {
-        /// Output file (default: vocabulary.yaml in catalog root)
+        /// Output file (default: vocabulary.yaml or vocabulary.txt in catalog root, depending on --format)
         #[arg(long)]
         output: Option<String>,
+
+        /// Output format: yaml (default, MAKI vocabulary file) or text (tab-indented keyword list for Lightroom/Capture One import)
+        #[arg(long, default_value = "yaml")]
+        format: String,
 
         /// Remove vocabulary entries that have no assets (only keep used tags)
         #[arg(long)]
@@ -3842,15 +3846,30 @@ faces/\n\
                     }
                     Ok(())
                 }
-                Some(TagCommands::ExportVocabulary { output, prune, default }) => {
+                Some(TagCommands::ExportVocabulary { output, format, prune, default }) => {
                     let catalog_root = maki::config::find_catalog_root()?;
+
+                    let format = format.to_lowercase();
+                    let (default_filename, is_text) = match format.as_str() {
+                        "yaml" | "yml" => ("vocabulary.yaml", false),
+                        "text" | "txt" => ("vocabulary.txt", true),
+                        other => anyhow::bail!("unknown --format '{}': expected 'yaml' or 'text'", other),
+                    };
 
                     if default {
                         // Export only the built-in default vocabulary
-                        let yaml = maki::vocabulary::default_vocabulary();
+                        let (content, sanitized) = if is_text {
+                            // Convert the built-in YAML vocabulary to tab-indented text
+                            let flat = maki::vocabulary::parse_vocabulary(maki::vocabulary::default_vocabulary());
+                            let pairs: Vec<(String, u64)> = flat.into_iter().map(|t| (t, 0)).collect();
+                            maki::vocabulary::tags_to_keyword_text(&pairs)
+                        } else {
+                            (maki::vocabulary::default_vocabulary().to_string(), Vec::new())
+                        };
                         let out_path = output.map(std::path::PathBuf::from)
-                            .unwrap_or_else(|| catalog_root.join("vocabulary.yaml"));
-                        std::fs::write(&out_path, yaml)?;
+                            .unwrap_or_else(|| catalog_root.join(default_filename));
+                        std::fs::write(&out_path, content)?;
+                        report_sanitized_tags(&sanitized);
                         println!("Exported default vocabulary to {}", out_path.display());
                         return Ok(());
                     }
@@ -3871,10 +3890,16 @@ faces/\n\
                     }
                     all_tags.sort_by(|a, b| a.0.cmp(&b.0));
 
-                    let yaml = maki::vocabulary::tags_to_vocabulary_yaml(&all_tags);
+                    let (content, sanitized) = if is_text {
+                        maki::vocabulary::tags_to_keyword_text(&all_tags)
+                    } else {
+                        (maki::vocabulary::tags_to_vocabulary_yaml(&all_tags), Vec::new())
+                    };
                     let out_path = output.map(std::path::PathBuf::from)
-                        .unwrap_or_else(|| catalog_root.join("vocabulary.yaml"));
-                    std::fs::write(&out_path, &yaml)?;
+                        .unwrap_or_else(|| catalog_root.join(default_filename));
+                    std::fs::write(&out_path, &content)?;
+
+                    report_sanitized_tags(&sanitized);
 
                     let used = all_tags.iter().filter(|(_, c)| *c > 0).count();
                     let planned = all_tags.len() - used;
@@ -8163,6 +8188,28 @@ faces/\n\
     })();
 
     result.map(|()| _asset_ids)
+}
+
+/// Print a warning to stderr listing tags that were modified during
+/// keyword-text sanitization (XML entity decode, comma/semicolon stripping).
+/// Helps the user find tags they may want to rename at the source.
+fn report_sanitized_tags(changes: &[(String, String)]) {
+    if changes.is_empty() {
+        return;
+    }
+    eprintln!(
+        "\nwarning: {} tag(s) were sanitized for Lightroom/Capture One compatibility.",
+        changes.len(),
+    );
+    eprintln!("         Consider renaming them in your catalog (see `maki tag rename`):");
+    for (before, after) in changes {
+        if after.is_empty() {
+            eprintln!("         - {before:?} -> (skipped: empty after sanitize)");
+        } else {
+            eprintln!("         - {before:?} -> {after:?}");
+        }
+    }
+    eprintln!();
 }
 
 /// Merge trailing asset IDs (from shell variable expansion) into query/asset.
