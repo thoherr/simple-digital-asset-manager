@@ -144,16 +144,52 @@
     var badge = document.getElementById('nav-import-badge');
     if (!link || !badge) return;
 
+    // Poll cadences:
+    //   ACTIVE (job running)  4 s — keeps the pulse responsive
+    //   IDLE   (nothing run)  30 s — catches CLI-started jobs without
+    //                                 chattering at an idle catalog
+    //   HIDDEN tab            stop entirely; resume on visibilitychange
+    var ACTIVE_MS = 4000;
+    var IDLE_MS = 30000;
+
     var running = false;
+    var timer = null;
+    var currentMs = 0;
+
     function refresh() {
         return fetch('/api/import/status')
             .then(function(r) { return r.ok ? r.json() : { running: false }; })
             .then(function(s) {
-                running = !!s.running;
-                badge.style.display = running ? 'inline-block' : 'none';
+                var nowRunning = !!s.running;
+                badge.style.display = nowRunning ? 'inline-block' : 'none';
+                // If the cadence implied by the new state differs, swap timers
+                // so we tighten up the moment a job starts and back off the
+                // moment it ends — without waiting for the next tick.
+                if (nowRunning !== running) {
+                    running = nowRunning;
+                    schedule();
+                }
             })
             .catch(function() {});
     }
+
+    function schedule() {
+        if (timer) { clearInterval(timer); timer = null; }
+        if (document.visibilityState === 'hidden') return;
+        currentMs = running ? ACTIVE_MS : IDLE_MS;
+        timer = setInterval(refresh, currentMs);
+    }
+
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            // Tab came back into focus: refresh immediately so the badge
+            // reflects reality before the next tick, then resume polling.
+            refresh();
+            schedule();
+        } else {
+            if (timer) { clearInterval(timer); timer = null; }
+        }
+    });
 
     link.addEventListener('click', function(e) {
         e.preventDefault();
@@ -166,13 +202,18 @@
         }
     });
 
-    window.makiImportStatus = { refresh: refresh, isRunning: function() { return running; } };
+    window.makiImportStatus = {
+        refresh: function() {
+            // External callers (e.g. dialog "import started" / "import done")
+            // use this to force an immediate badge update without waiting for
+            // the next tick. Reschedule afterwards so the cadence matches the
+            // new running state.
+            return refresh().then(schedule);
+        },
+        isRunning: function() { return running; }
+    };
 
-    refresh();
-    // Poll every 4s. Cheap (single SQL-free query, just a Mutex peek), and
-    // means status updates within a few seconds of a job starting/finishing
-    // even on pages the user leaves open in a background tab.
-    setInterval(refresh, 4000);
+    refresh().then(schedule);
 })();
 </script>
 <script>
