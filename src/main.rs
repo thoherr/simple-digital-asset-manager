@@ -3313,6 +3313,32 @@ faces/\n\
                         ag.total_variants_moved,
                     );
                 }
+
+                // Tier-A hints: if the user imported assets without engaging
+                // the AI/Pro post-import phases (and neither was opted into
+                // via [import] config), tell them what's available.
+                if !dry_run && result.imported > 0 {
+                    #[cfg(feature = "ai")]
+                    {
+                        if !embed && !import_config.embeddings {
+                            println!(
+                                "  Tip: run 'maki embed' to generate visual-similarity \
+                                 embeddings (or pass --embed on import / set \
+                                 [import] embeddings = true in maki.toml)."
+                            );
+                        }
+                    }
+                    #[cfg(feature = "pro")]
+                    {
+                        if !describe && !import_config.descriptions {
+                            println!(
+                                "  Tip: run 'maki describe' to generate VLM \
+                                 descriptions (or pass --describe on import / set \
+                                 [import] descriptions = true in maki.toml)."
+                            );
+                        }
+                    }
+                }
             }
             Ok(())
         }
@@ -5039,6 +5065,18 @@ faces/\n\
                 if !apply {
                     eprintln!("Dry run — use --apply to merge");
                 }
+                // Merging variants into a target reorders variants and may
+                // change which one is the best-preview pick. Cached previews
+                // for the target still reflect the pre-merge best — refresh
+                // with `generate-previews --upgrade`.
+                if apply && result.total_donors_merged > 0 {
+                    println!(
+                        "  Tip: {} group(s) gained variants. Run \
+                         'maki generate-previews --upgrade' to refresh \
+                         previews for assets whose best variant changed.",
+                        result.groups.len()
+                    );
+                }
             }
             Ok(())
         }
@@ -5404,6 +5442,19 @@ faces/\n\
                 }
                 if result.new_files > 0 {
                     println!("  Tip: run 'maki import' to import new files.");
+                }
+                // After sync, variants whose only locations were removed linger
+                // in the catalog (often as the asset's selected best-preview
+                // variant). They confuse subsequent `preview`/`generate-previews`
+                // calls — `maki cleanup --apply` removes them and their derived
+                // preview/embedding/face files.
+                if result.locationless_after > 0 {
+                    println!(
+                        "  Tip: {} variant(s) have no remaining locations. \
+                         Run 'maki cleanup --apply' to remove them and their \
+                         orphaned previews/embeddings/face files.",
+                        result.locationless_after
+                    );
                 }
             }
 
@@ -5973,6 +6024,24 @@ faces/\n\
                         recipe_msg,
                         format_size(result.bytes_freed),
                     );
+                    // Same trap as sync: removing redundant locations leaves
+                    // variants that no longer have any locations. They linger
+                    // — sometimes as the asset's selected best-preview variant
+                    // — until `cleanup --apply` removes them.
+                    if result.locations_removed > 0 {
+                        if let Ok(catalog) = maki::catalog::Catalog::open(&catalog_root) {
+                            if let Ok(locationless) = catalog.list_locationless_variants() {
+                                if !locationless.is_empty() {
+                                    println!(
+                                        "  Tip: {} variant(s) have no remaining locations. \
+                                         Run 'maki cleanup --apply' to remove them and their \
+                                         orphaned previews/embeddings/face files.",
+                                        locationless.len()
+                                    );
+                                }
+                            }
+                        }
+                    }
                 } else {
                     let recipe_msg = if result.recipes_removed > 0 {
                         format!(", {} recipe files", result.recipes_removed)
@@ -6217,6 +6286,10 @@ faces/\n\
             let mut skipped = 0usize;
             let mut failed = 0usize;
             let mut upgraded = 0usize;
+            // Volumes that held the only locations of variants we couldn't
+            // process because they're offline. Surfaced at the end so the user
+            // knows which disk to mount instead of seeing a silent skip.
+            let mut offline_blockers: std::collections::HashSet<String> = std::collections::HashSet::new();
 
             // Canonicalize input paths
             let canonical_paths: Vec<PathBuf> = paths
@@ -6357,6 +6430,19 @@ faces/\n\
                             })
                         });
 
+                        // If we couldn't reach the file, record any offline volume
+                        // that held a location — so the end-of-run hint can tell
+                        // the user which disk to mount.
+                        if source_path.is_none() {
+                            for loc in &variant.locations {
+                                if let Some(v) = volumes.iter().find(|v| v.id == loc.volume_id) {
+                                    if !v.is_online {
+                                        offline_blockers.insert(v.label.clone());
+                                    }
+                                }
+                            }
+                        }
+
                         if let Some(path) = source_path {
                             // Backfill video metadata if missing
                             if maki::asset_service::determine_asset_type(&variant.format) == maki::models::AssetType::Video
@@ -6436,6 +6522,17 @@ faces/\n\
                         generated, preview_label, skipped, failed
                     );
                 }
+                // Tell the user which volumes blocked some skips so they don't
+                // wonder why a file count looks low.
+                if !offline_blockers.is_empty() {
+                    let mut labels: Vec<String> = offline_blockers.into_iter().collect();
+                    labels.sort();
+                    println!(
+                        "  Tip: some assets were skipped because their files \
+                         live on offline volume(s): {}. Mount and re-run.",
+                        labels.join(", ")
+                    );
+                }
             }
             Ok(())
         }
@@ -6489,6 +6586,17 @@ faces/\n\
 
                 if !apply && result.fixed > 0 {
                     println!("  Run with --apply to make changes.");
+                }
+                // Reordering variant roles changes which variant is selected for
+                // preview generation. Cached previews still reflect the *old*
+                // best variant — `generate-previews --upgrade` regenerates them
+                // for assets whose best changed.
+                if apply && result.fixed > 0 {
+                    println!(
+                        "  Tip: best-preview variant changed for {} asset(s). \
+                         Run 'maki generate-previews --upgrade' to refresh their previews.",
+                        result.fixed
+                    );
                 }
             }
 
@@ -7104,6 +7212,42 @@ faces/\n\
                 }
                 if result.errors > 0 {
                     println!("  {} error(s) encountered", result.errors);
+                }
+
+                // After rebuild, count assets that ended up without AI-derived
+                // data — those whose embedding binaries weren't on disk, or
+                // that were imported on a build without the AI feature. The
+                // user often forgets to re-run `embed` / `faces detect` after
+                // a rebuild and only notices much later when similarity search
+                // returns empty / face cluster is missing recent assets.
+                #[cfg(feature = "ai")]
+                {
+                    let total_assets = catalog.conn().query_row(
+                        "SELECT COUNT(*) FROM assets", [], |r| r.get::<_, i64>(0)
+                    ).unwrap_or(0);
+                    let with_embeddings = catalog.conn().query_row(
+                        "SELECT COUNT(DISTINCT asset_id) FROM embeddings", [], |r| r.get::<_, i64>(0)
+                    ).unwrap_or(0);
+                    let missing_embeddings = (total_assets - with_embeddings).max(0);
+                    if missing_embeddings > 0 {
+                        println!(
+                            "  Tip: {} asset(s) have no embedding. Run 'maki embed' \
+                             for visual similarity / text search.",
+                            missing_embeddings
+                        );
+                    }
+                    let unscanned_for_faces = catalog.conn().query_row(
+                        "SELECT COUNT(*) FROM assets \
+                         WHERE (face_scan_status IS NULL OR face_scan_status = 'pending')",
+                        [], |r| r.get::<_, i64>(0)
+                    ).unwrap_or(0);
+                    if unscanned_for_faces > 0 {
+                        println!(
+                            "  Tip: {} asset(s) haven't been scanned for faces. \
+                             Run 'maki faces detect' to populate.",
+                            unscanned_for_faces
+                        );
+                    }
                 }
             }
             Ok(())

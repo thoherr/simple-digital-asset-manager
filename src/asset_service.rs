@@ -295,6 +295,14 @@ pub struct SyncResult {
     pub missing: usize,
     pub stale_removed: usize,
     pub orphaned_cleaned: usize,
+    /// Number of variants that ended up with zero file_locations after sync,
+    /// but whose asset still has other variants (so the asset itself wasn't
+    /// orphaned and removed). These are the "selected for preview but offline"
+    /// variants that confuse subsequent preview/regenerate calls — `maki
+    /// cleanup --apply` removes them. The CLI uses this to surface a
+    /// next-step hint after `sync --apply --remove-stale`.
+    #[serde(default)]
+    pub locationless_after: usize,
     pub errors: Vec<String>,
 }
 
@@ -2470,6 +2478,7 @@ impl AssetService {
             missing: 0,
             stale_removed: 0,
             orphaned_cleaned: 0,
+            locationless_after: 0,
             errors: Vec::new(),
         };
 
@@ -2744,6 +2753,18 @@ impl AssetService {
                     result.orphaned_cleaned += 1;
                 }
             }
+        }
+
+        // After sync: count variants that have lost all their locations but
+        // whose asset still has other variants (so it wasn't removed above).
+        // These linger in the catalog — including, often, as the *selected*
+        // best variant for preview — until `maki cleanup --apply` removes
+        // them. The CLI uses this count to surface a next-step hint.
+        //
+        // Always computed (apply or dry-run) so dry-runs can hint about
+        // pre-existing locationless variants too.
+        if let Ok(locationless) = catalog.list_locationless_variants() {
+            result.locationless_after = locationless.len();
         }
 
         Ok(result)
