@@ -1176,9 +1176,17 @@ select.badge {
     font-size: 0.85em;
 }
 
-/* Wrapper that positions an autocomplete dropdown beneath a path input. */
+/* Wrapper that positions an autocomplete dropdown beneath a path input.
+   The wrapper is a block element inside the dialog's flex column so it
+   already stretches; the inner <input> needs `width: 100%` to follow,
+   matching the default-stretching behaviour of direct flex children
+   (other inputs / selects in the same form). */
 .path-input-wrap {
     position: relative;
+}
+.path-input-wrap > input {
+    width: 100%;
+    box-sizing: border-box;
 }
 /* File/folder icon badge inside a path-suggestion item. */
 .path-entry-icon {

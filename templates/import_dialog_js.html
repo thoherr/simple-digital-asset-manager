@@ -131,7 +131,26 @@
         if (data.previews_generated) parts.push(data.previews_generated + ' previews');
         document.getElementById('import-result-text').textContent =
             parts.join(', ') || 'Nothing to import.';
-        document.getElementById('import-browse-link').href = '/?sort=date_desc';
+        // Build a "Browse imported" link that actually scopes the result to
+        // what was just imported. Two strategies depending on count:
+        //   - Small batches (≤80 IDs): exact `id:` filter — guarantees only
+        //     the just-imported assets are shown.
+        //   - Larger batches: volume + subfolder filter — keeps URL short
+        //     and matches the user's mental model ("the folder I imported
+        //     from"). Sort=date_desc bubbles fresh imports to the top if
+        //     the folder also held earlier imports.
+        var ids = data.new_asset_ids || [];
+        var link = '/?sort=date_desc';
+        if (ids.length > 0 && ids.length <= 80) {
+            var q = ids.map(function(id) { return 'id:' + id; }).join(' ');
+            link = '/?sort=date_desc&q=' + encodeURIComponent(q);
+        } else {
+            var volId = document.getElementById('import-vol-id').value;
+            var subfolder = document.getElementById('import-subfolder').value.trim();
+            if (volId) link += '&volume=' + encodeURIComponent(volId);
+            if (subfolder) link += '&path=' + encodeURIComponent(subfolder);
+        }
+        document.getElementById('import-browse-link').href = link;
         // Refresh status badge so the "Importing…" indicator clears.
         if (window.makiImportStatus && window.makiImportStatus.refresh) {
             window.makiImportStatus.refresh();

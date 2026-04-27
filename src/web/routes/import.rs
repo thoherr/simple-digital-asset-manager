@@ -147,6 +147,7 @@ fn run_import(
         "recipes_attached": result.recipes_attached,
         "recipes_updated": result.recipes_updated,
         "previews_generated": result.previews_generated,
+        "new_asset_ids": result.new_asset_ids,
     }))
 }
 
@@ -269,6 +270,7 @@ fn run_import_with_progress(
         "recipes_attached": result.recipes_attached,
         "recipes_updated": result.recipes_updated,
         "previews_generated": result.previews_generated,
+        "new_asset_ids": result.new_asset_ids,
     }))
 }
 
