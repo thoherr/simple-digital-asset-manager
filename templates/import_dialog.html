@@ -48,7 +48,12 @@
             </label>
 
             <label>Additional tags
-                <input type="text" id="import-tags" placeholder="Comma-separated tags" class="form-input">
+                <div class="tag-filter import-tags-wrap">
+                    <div class="tag-filter-chips" id="import-tags-chips"></div>
+                    <input type="text" class="tag-filter-input" id="import-tags-input"
+                        placeholder="Type to add tags…" autocomplete="off">
+                    <div class="tag-autocomplete" id="import-tags-autocomplete" style="display:none"></div>
+                </div>
             </label>
 
             <div class="import-checkboxes">

@@ -80,7 +80,7 @@
     function openDialog(volId, volLabel) {
         // Reset form state
         document.getElementById('import-subfolder').value = '';
-        document.getElementById('import-tags').value = '';
+        importTagChips.clear();
         document.getElementById('import-dry-result').style.display = 'none';
 
         loadProfiles();
@@ -107,8 +107,10 @@
     }
 
     function getImportParams(dryRun) {
-        var tags = document.getElementById('import-tags').value.trim();
-        var tagList = tags ? tags.split(',').map(function(t) { return t.trim(); }).filter(Boolean) : [];
+        // Commit any half-typed tag the user didn't yet hit Enter on, so it
+        // doesn't get silently dropped when they click Import / Dry Run.
+        importTagChips.commitPending();
+        var tagList = importTagChips.getTags();
         var profileEl = document.getElementById('import-profile');
         return {
             volume_id: document.getElementById('import-vol-id').value,
@@ -156,6 +158,200 @@
             window.makiImportStatus.refresh();
         }
     }
+
+    // ── Additional-tags chip picker ────────────────────────
+    // Mirrors the filter-bar tag UX (chip list + autocomplete) so users
+    // adding tags during import use the same grammar as everywhere else
+    // in the app. Simpler than the filter-bar version though: tags here
+    // are *applied* to the imported assets, so there are no per-chip
+    // mode (`=` / `/`) or case (`cc`/`Cc`) toggles — those only make
+    // sense for searching.
+    var importTagChips = (function() {
+        var chipsEl = document.getElementById('import-tags-chips');
+        var inputEl = document.getElementById('import-tags-input');
+        var acEl = document.getElementById('import-tags-autocomplete');
+        if (!chipsEl || !inputEl || !acEl) {
+            return { clear: function() {}, getTags: function() { return []; } };
+        }
+
+        var allTags = [];
+        var allTagsLoaded = false;
+        var acIndex = -1;
+
+        function fetchAllTags() {
+            if (allTagsLoaded) return Promise.resolve();
+            return fetch('/api/tags')
+                .then(function(r) { return r.ok ? r.json() : []; })
+                .then(function(data) {
+                    allTags = (data || []).map(function(t) { return t[0]; });
+                    allTagsLoaded = true;
+                })
+                .catch(function() { allTagsLoaded = true; });
+        }
+
+        function getTags() {
+            return Array.prototype.slice.call(chipsEl.querySelectorAll('.tag-chip'))
+                .map(function(c) { return c.getAttribute('data-name'); })
+                .filter(Boolean);
+        }
+
+        function clear() {
+            chipsEl.innerHTML = '';
+            inputEl.value = '';
+            hide();
+        }
+
+        function hide() { acEl.style.display = 'none'; acIndex = -1; }
+
+        function addTag(raw) {
+            var name = (raw || '').trim().replace(/>/g, '|'); // CaptureOne shorthand
+            if (!name) return;
+            // De-dupe: don't add the same tag twice
+            if (getTags().indexOf(name) !== -1) {
+                inputEl.value = '';
+                hide();
+                return;
+            }
+            var chip = document.createElement('span');
+            chip.className = 'tag-chip';
+            chip.setAttribute('data-name', name);
+
+            var label = document.createElement('span');
+            label.textContent = name;
+            chip.appendChild(label);
+
+            var remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'remove-tag';
+            remove.innerHTML = '&times;';
+            remove.onclick = function() { chip.remove(); };
+            chip.appendChild(remove);
+
+            chipsEl.appendChild(chip);
+            inputEl.value = '';
+            hide();
+        }
+
+        function escHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        }
+
+        function showSuggestions(query) {
+            query = query.toLowerCase();
+            var anchored = false;
+            if (query.charAt(0) === '|') {
+                anchored = true;
+                query = query.substring(1);
+            }
+            var queryStorage = query.replace(/>/g, '|');
+            var selected = getTags();
+
+            function tagMatches(tl) {
+                if (anchored) {
+                    return tl.indexOf('|' + query) !== -1
+                        || tl.indexOf('|' + queryStorage) !== -1
+                        || tl.indexOf(query) === 0
+                        || tl.indexOf(queryStorage) === 0;
+                }
+                return tl.indexOf(query) !== -1 || tl.indexOf(queryStorage) !== -1;
+            }
+
+            var matches = allTags.filter(function(t) {
+                return tagMatches(t.toLowerCase()) && selected.indexOf(t) === -1;
+            }).slice(0, 10);
+
+            if (matches.length === 0) { hide(); return; }
+
+            acEl.innerHTML = '';
+            acIndex = -1;
+            matches.forEach(function(t) {
+                var div = document.createElement('div');
+                div.className = 'tag-suggestion';
+                div.setAttribute('data-tag', t);
+                var parts = t.split('|');
+                if (parts.length > 1) {
+                    var prefix = parts.slice(0, -1).join('|') + '|';
+                    div.innerHTML = '<span class="tag-path-prefix">' +
+                        escHtml(prefix) + '</span>' + escHtml(parts[parts.length - 1]);
+                } else {
+                    div.textContent = t;
+                }
+                div.onmousedown = function(e) {
+                    e.preventDefault();
+                    addTag(t);
+                };
+                acEl.appendChild(div);
+            });
+            acEl.style.display = 'block';
+        }
+
+        function highlight(idx) {
+            var items = acEl.querySelectorAll('.tag-suggestion');
+            items.forEach(function(el, i) { el.classList.toggle('active', i === idx); });
+            if (idx >= 0 && items[idx]) items[idx].scrollIntoView({block: 'nearest'});
+        }
+
+        inputEl.addEventListener('input', function() {
+            var v = this.value.trim();
+            if (v.length > 0) showSuggestions(v); else hide();
+        });
+        inputEl.addEventListener('focus', function() {
+            fetchAllTags().then(function() {
+                var v = inputEl.value.trim();
+                if (v.length > 0) showSuggestions(v);
+            });
+        });
+        inputEl.addEventListener('blur', function() { setTimeout(hide, 150); });
+        inputEl.addEventListener('keydown', function(e) {
+            var items = acEl.querySelectorAll('.tag-suggestion');
+            var open = acEl.style.display === 'block' && items.length > 0;
+            if (e.key === 'ArrowDown' && open) {
+                e.preventDefault();
+                acIndex = Math.min(acIndex + 1, items.length - 1);
+                highlight(acIndex);
+            } else if (e.key === 'ArrowUp' && open) {
+                e.preventDefault();
+                acIndex = Math.max(acIndex - 1, 0);
+                highlight(acIndex);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (open && acIndex >= 0) {
+                    addTag(items[acIndex].getAttribute('data-tag'));
+                } else if (this.value.trim()) {
+                    addTag(this.value);
+                }
+            } else if (e.key === ',') {
+                // Comma also commits — matches the old free-text input UX
+                // and aligns with how the CLI parses `--add-tag` lists.
+                e.preventDefault();
+                if (this.value.trim()) addTag(this.value);
+            } else if (e.key === 'Escape' && open) {
+                e.preventDefault();
+                hide();
+            } else if (e.key === 'Backspace' && this.value === '') {
+                var chips = chipsEl.querySelectorAll('.tag-chip');
+                if (chips.length > 0) chips[chips.length - 1].remove();
+            }
+            e.stopPropagation();
+        });
+        // Click on the wrapper background focuses the input — same UX
+        // affordance as the filter bar.
+        chipsEl.parentElement.addEventListener('click', function(e) {
+            if (e.target === this || e.target === chipsEl) inputEl.focus();
+        });
+
+        function commitPending() {
+            var v = inputEl.value.trim();
+            if (v) addTag(v);
+        }
+
+        return {
+            clear: clear,
+            getTags: getTags,
+            fetchAllTags: fetchAllTags,
+            commitPending: commitPending,
+        };
+    })();
 
     // ── Subfolder autocomplete ──────────────────────────────
     // Hierarchical filesystem completion via /api/volumes/{id}/browse.
