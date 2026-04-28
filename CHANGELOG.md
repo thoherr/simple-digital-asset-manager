@@ -2,6 +2,73 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.4.10 (2026-04-28)
+
+Headline: a new `maki status` command. Plus smarter status-badge polling on the web UI.
+
+### `maki status` — catalog health at a glance
+
+Read-only survey that aggregates signals already exposed by other commands (cleanup dry-run, backup-status, schema-version, embedding / face-scan coverage queries) into one prioritized report. Every actionable item ends with a `→ command` suggestion so users don't have to consult docs to know the next step.
+
+```
+$ maki status
+Gathering catalog status (scanning derived files; may take a moment)...
+MAKI catalog status — /Users/you/.maki
+
+Catalog
+  Schema:   v8 (current)
+  Counts:   12,847 assets · 18,203 variants · 9,614 recipes · 21,118 file locations
+  Storage:  1.8 TB across 3 volume(s) (2 online, 1 offline)
+
+Cleanup
+  ✗ 5 locationless variant(s)                          → maki cleanup --apply
+  ✗ 47 orphaned embedding file(s) on disk              → maki cleanup --apply
+
+Pending work
+  ✗ 28 pending XMP writeback(s) on offline volume(s)   → mount the volumes, then `maki writeback`
+  ✗ 142 asset(s) without an embedding                  → maki embed
+
+Backup coverage
+  ✗ 124 of 12847 asset(s) (1.0%) have fewer than 2 copies → maki backup-status --at-risk
+
+Volumes
+  ● Photos       /Volumes/Photos    10234 asset(s), 1.2 TB [media]
+  ● Backup-A     /Volumes/Backup-A  10234 asset(s), 1.2 TB [backup]
+  ○ Travel-2026  /Volumes/Travel    810 asset(s), 35 GB [working] (offline)
+```
+
+Sections:
+
+- **Catalog**: schema version (with a `run maki migrate` hint if the stored version is older than the constant), asset / variant / recipe / file-location counts, total bytes rolled up from `variants.file_size`, online/offline volume split.
+- **Cleanup**: locationless variants and orphan-on-disk counts (previews / smart previews / embeddings / face crops). Reuses the existing `service.cleanup(None, None, false, ...)` dry-run — same passes, same SQL, same disk scan — so the cost matches `maki cleanup --dry-run`. On a 12k-asset catalog this dominates runtime at ~30s; a one-line stderr prelude announces the wait so users don't think the command hung. Suppressed under `--json`.
+- **Pending work**: pending XMP writebacks split by online/offline target volume (different message when `[writeback] enabled = false`), assets without an embedding (AI builds), assets with NULL `face_scan_status` (AI builds). All AI fields are `null` on standard builds.
+- **Backup coverage**: at-risk count vs total at the configured `--min-copies` (default 2, matching `backup-status`).
+- **Volumes**: registered volumes sorted online-first with per-volume asset count + size + purpose tag. `●` = online, `○` = offline.
+
+`--json` emits the full `StatusReport` struct for scripting. Always exits 0 — `status` is informational, not a check.
+
+### Web nav badge: smarter polling
+
+The import-status badge polled `/api/import/status` every 4 seconds unconditionally — fine during an active import, wasteful on an idle tab left open all day (~900 requests/hour for an endpoint with no work to do).
+
+Now:
+
+- **4 s** while a job is running (unchanged responsiveness during imports).
+- **30 s** when idle (catches CLI-started jobs without chattering).
+- **0** when the tab is hidden — paused entirely until `visibilitychange`, with an immediate refresh on resume so the badge reflects reality before the next tick.
+- Cadence swaps the moment `running` flips, no waiting a full cycle to tighten/loosen.
+
+Trade-off: a CLI-started import takes up to 30 s to surface in an open browser tab (vs ~4 s before). That feels right — the user who started a CLI import isn't watching the browser anyway.
+
+### Polish
+
+- User guide chapter 5 (Browse & Search) gains a new "Catalog Health" section explaining when to use `status` vs `stats`.
+- New reference page in `doc/manual/reference/04-retrieve-commands.md` with full options, examples, and `SEE ALSO` cross-refs.
+- Cheat sheet adds a one-liner; `stats`'s description tightened to "statistics breakdown" to clarify it's no longer the catch-all health command.
+- CLAUDE.md command count bumped (44 → 45 / 87 → 88).
+
+Tests: 753 unit + 249 CLI integration + 14 doc on standard build. No new tests for `status` itself — it's pure aggregation of already-tested primitives, and the empty-catalog smoke test confirms structure.
+
 ## v4.4.9 (2026-04-27)
 
 Two themes: web import is now reachable from anywhere and survives page reloads; the CLI is more talkative about follow-up commands so users don't get stuck mid-workflow.

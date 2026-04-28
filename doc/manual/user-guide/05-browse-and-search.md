@@ -554,6 +554,43 @@ maki stats --all --json
 
 ---
 
+## Catalog Health
+
+Where `maki stats` answers *what's in the catalog*, `maki status` answers *what needs attention*. It's a read-only survey that aggregates signals from cleanup, backup-status, and the AI/embedding stores into one prioritized report — every actionable line ends with a `→ command` suggestion so you don't have to consult docs to know the next step.
+
+```
+$ maki status
+Gathering catalog status (scanning derived files; may take a moment)...
+MAKI catalog status — /Users/you/.maki
+
+Catalog
+  Schema:   v8 (current)
+  Counts:   12,847 assets · 18,203 variants · 9,614 recipes · 21,118 file locations
+  Storage:  1.8 TB across 3 volume(s) (2 online, 1 offline)
+
+Cleanup
+  ✗ 5 locationless variant(s)                          → maki cleanup --apply
+  ✗ 47 orphaned embedding file(s) on disk              → maki cleanup --apply
+
+Pending work
+  ✗ 28 pending XMP writeback(s) on offline volume(s)   → mount the volumes, then `maki writeback`
+  ✗ 142 asset(s) without an embedding                  → maki embed
+
+Backup coverage
+  ✗ 124 of 12847 asset(s) (1.0%) have fewer than 2 copies → maki backup-status --at-risk
+
+Volumes
+  ● Photos       /Volumes/Photos    10234 asset(s), 1.2 TB [media]
+  ● Backup-A     /Volumes/Backup-A  10234 asset(s), 1.2 TB [backup]
+  ○ Travel-2026  /Volumes/Travel    810 asset(s), 35 GB [working] (offline)
+```
+
+Run it as part of a routine maintenance pass. The orphan-on-disk scan is the slow part (the same pass `maki cleanup --dry-run` runs); on a 12k-asset catalog expect ~30 seconds. The command is informational only — exit code is always 0 even when action items are present.
+
+`--min-copies N` raises the backup-coverage floor; `--json` produces a structured `StatusReport` for scripting.
+
+---
+
 ## Exporting Files
 
 The `maki export` command copies files matching a search query to a target directory — useful for client deliveries, sharing, or copying to external media.
