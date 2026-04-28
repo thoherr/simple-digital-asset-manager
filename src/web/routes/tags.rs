@@ -276,7 +276,57 @@ fn build_tag_tree(flat_tags: &[(String, u64)]) -> Vec<TagTreeEntry> {
         }
     }
 
-    sorted_names
+    // Reorder into tree pre-order so each parent is immediately followed by
+    // its descendants. Plain lexicographic order on full paths breaks this
+    // when a tag has both flat siblings and `|`-children sharing a prefix
+    // (e.g. `Bricking Bavaria` (parent) + `Bricking Bavaria 2012` (flat
+    // sibling) + `Bricking Bavaria|2011` (real child)): `|` (0x7C) sorts
+    // AFTER ` ` (0x20), so the renamed child ends up dangling at the bottom
+    // of the prefix block, visually dissociated from its parent. Pre-order
+    // walk fixes the rendering: parent first, all its descendants
+    // alphabetically, then the next sibling at the same depth.
+    let mut children_of: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut roots: Vec<String> = Vec::new();
+    for name in &sorted_names {
+        if let Some(pipe_pos) = name.rfind('|') {
+            children_of
+                .entry(name[..pipe_pos].to_string())
+                .or_default()
+                .push(name.clone());
+        } else {
+            roots.push(name.clone());
+        }
+    }
+    // Sort each parent's children alphabetically by leaf segment so the
+    // ordering within a level is intuitive (case-insensitive). Roots get the
+    // same treatment.
+    let leaf_key = |s: &str| -> String {
+        s.rsplit('|').next().unwrap_or(s).to_lowercase()
+    };
+    let cmp_by_leaf = |a: &String, b: &String| leaf_key(a).cmp(&leaf_key(b));
+    for v in children_of.values_mut() {
+        v.sort_by(cmp_by_leaf);
+    }
+    roots.sort_by(cmp_by_leaf);
+
+    fn pre_order(
+        name: &str,
+        children_of: &BTreeMap<String, Vec<String>>,
+        out: &mut Vec<String>,
+    ) {
+        out.push(name.to_string());
+        if let Some(children) = children_of.get(name) {
+            for child in children {
+                pre_order(child, children_of, out);
+            }
+        }
+    }
+    let mut ordered: Vec<String> = Vec::with_capacity(sorted_names.len());
+    for r in &roots {
+        pre_order(r, &children_of, &mut ordered);
+    }
+
+    ordered
         .iter()
         .map(|name| {
             let depth = name.matches('|').count() as u32;
@@ -376,5 +426,95 @@ pub async fn batch_tags(
         Ok(Ok(batch)) => Json(batch).into_response(),
         Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Reproduces the visual bug from a real catalog: a tag was renamed from
+    /// `Bricking Bavaria 2011` (flat) to `Bricking Bavaria|2011` (a child of
+    /// the new parent `Bricking Bavaria`), but the original list ordering
+    /// (lexicographic on full path) put the renamed child *after* every
+    /// `Bricking Bavaria 20XX` flat sibling — because `|` (0x7C) sorts
+    /// after ` ` (0x20). Pre-order walk fixes this: the parent node is
+    /// followed immediately by its descendants.
+    #[test]
+    fn pre_order_keeps_pipe_children_under_parent() {
+        let tags: Vec<(String, u64)> = vec![
+            ("Bricking Bavaria".to_string(), 155),
+            ("Bricking Bavaria 2012".to_string(), 166),
+            ("Bricking Bavaria 2015".to_string(), 388),
+            ("Bricking Bavaria|2011".to_string(), 155),
+        ];
+        let tree = build_tag_tree(&tags);
+        let names: Vec<&str> = tree.iter().map(|t| t.name.as_str()).collect();
+        // Parent first, child immediately after, then flat siblings.
+        assert_eq!(
+            names,
+            vec![
+                "Bricking Bavaria",
+                "Bricking Bavaria|2011",
+                "Bricking Bavaria 2012",
+                "Bricking Bavaria 2015",
+            ],
+            "pre-order should put `Bricking Bavaria|2011` directly after its parent, not at the bottom"
+        );
+    }
+
+    /// A tag whose parent is missing from the input list is auto-synthesized
+    /// (intermediate parents get `own_count=0`). Pre-order should still place
+    /// the synthetic parent ahead of its child.
+    #[test]
+    fn synthetic_parent_renders_before_child() {
+        let tags: Vec<(String, u64)> = vec![
+            ("event|festival|Holzkirchner|2024".to_string(), 47),
+        ];
+        let tree = build_tag_tree(&tags);
+        let names: Vec<&str> = tree.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "event",
+                "event|festival",
+                "event|festival|Holzkirchner",
+                "event|festival|Holzkirchner|2024",
+            ]
+        );
+    }
+
+    /// Children sort case-insensitively by leaf segment within a parent.
+    #[test]
+    fn siblings_sort_case_insensitive_by_leaf() {
+        let tags: Vec<(String, u64)> = vec![
+            ("event|festival|alpha".to_string(), 10),
+            ("event|festival|Beta".to_string(), 20),
+            ("event|festival|gamma".to_string(), 30),
+        ];
+        let tree = build_tag_tree(&tags);
+        let leaves: Vec<&str> = tree.iter().map(|t| t.display.as_str()).collect();
+        assert_eq!(leaves, vec!["event", "festival", "alpha", "Beta", "gamma"]);
+    }
+
+    /// Total counts roll up from descendants (already worked, but pin it
+    /// in case the refactor breaks the rollup).
+    #[test]
+    fn total_count_rolls_up_to_parent() {
+        let tags: Vec<(String, u64)> = vec![
+            ("event".to_string(), 0),
+            ("event|festival".to_string(), 5),
+            ("event|festival|Holzkirchner|2024".to_string(), 47),
+            ("event|festival|Holzkirchner|2023".to_string(), 32),
+        ];
+        let tree = build_tag_tree(&tags);
+        let by_name: std::collections::HashMap<&str, &TagTreeEntry> =
+            tree.iter().map(|t| (t.name.as_str(), t)).collect();
+        // Synthetic Holzkirchner = sum of its children = 47 + 32 = 79
+        assert_eq!(by_name["event|festival|Holzkirchner"].total_count, 47 + 32);
+        // event|festival = own 5 + Holzkirchner subtree 79 = 84
+        assert_eq!(by_name["event|festival"].total_count, 5 + 47 + 32);
+        // event = own 0 + festival subtree
+        assert_eq!(by_name["event"].total_count, 5 + 47 + 32);
     }
 }
