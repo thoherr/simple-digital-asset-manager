@@ -167,15 +167,42 @@ Your density preference is saved in the browser and preserved across page reload
 
 ### Faceted sidebar
 
-The faceted sidebar provides a read-only statistical breakdown of your current results by rating, color label, format, volume, tag, year, and geolocation. It helps you understand the distribution of values in your collection at a glance. All filtering is done through the filter bar at the top of the page.
+The faceted sidebar shows what's *in* the current result set — broken down by rating, color label, tag, year, format, volume, and geolocation — and lets you click any row to narrow the result further. It's the primary tool for **tag strolling**: pick a starting facet, see what other tags co-occur with it, click one to drill in, repeat.
 
-**Toggle**: Click the facet icon button in the results bar (next to the stack collapse button) or press `f`. The sidebar appears on the left side of the browse page. Your preference is saved in the browser.
+**Toggle**: click the facet icon in the results bar (next to the stack-collapse button) or press `f`. Your preference is saved per browser. Hidden on viewports narrower than 768 px.
 
-**Facet sections**: Each section is collapsible. Ratings and years include a proportional bar chart. Labels show color dots. Formats, volumes, and tags show counts sorted by frequency. The geotagged facet shows a single count of assets with GPS data. Counts automatically update when the current search filters change.
+**Section order**: Ratings, Labels, Tags, Years, Formats, Volumes, Geotagged. Tags are above formats and volumes because the curated tag taxonomy is most users' main filtering axis; formats and volumes are usually set up once and rarely toggled. Each section is collapsible (open/closed state remembered per browser).
 
-**Collapse state**: Each section remembers its open/closed state in the browser across page loads.
+**Tag hierarchy**: tags render as an indented tree, not a flat list. MAKI auto-expands every hierarchical tag to its ancestor paths on storage, so the panel can reshape that flat data back into the original hierarchy. Counts on parent rows reflect the union of all descendants — `event` showing 2,419 means "any photo with anything under `event`". Clicking a node always applies the **full path**, so picking `2024` under `Holzkirchner Blues- und Jazztage` filters to that specific year of that specific festival, not every photo from 2024 across the catalog.
 
-**Responsive**: The sidebar is hidden on viewports narrower than 768px.
+**Click-to-narrow**: every facet row is clickable, with the action matching the type of facet:
+
+| Facet | Click action |
+|-------|--------------|
+| Tag | Adds the full tag path as a chip on the filter bar. |
+| Rating | Sets the star widget to that exact rating. |
+| Label | Sets the color-dot widget to that label. |
+| Year | Appends `date:YYYY` to the search box. |
+| Format | Toggles the format checkbox (additive — multi-select). |
+| Volume | Sets the volume dropdown to that volume. |
+| Geotagged | Appends `geotagged:1` to the search box. |
+
+Rows are keyboard-accessible: Tab to focus, Enter or Space to activate. Clicking a tag that's already in the active filter is a no-op (de-duplicated). After every click the panel re-fetches against the new filter, so the next layer of facets is computed live.
+
+#### Worked example: exploring a festival
+
+Suppose you want to see what's left under-tagged at the *Holzkirchner Blues- und Jazztage*, a recurring festival you've shot 13 years running.
+
+1. Open the browse page with no filters. The Tags section shows top-level facets: `event`, `person`, `subject`, `location`, etc.
+2. Click `event` → results narrow to all photos tagged as some kind of event. The panel re-fetches; tag tree now shows `event > anniversary`, `event > concert`, `event > festival`, …
+3. Click `event > festival > Holzkirchner Blues- und Jazztage` → narrows to all 13 years. The Tags section now lists `…|2026`, `…|2025`, `…|2024`, … with per-year counts. The Years section also shows the matching calendar years.
+4. Click a Years row, say `2018`. The query box gains `date:2018` — and you discover the asset count there *is greater than* the festival's `…|2018` row count: those extra photos are likely festival photos missing the festival tag. Use the result grid to spot-check and re-tag them.
+
+This is the "what other tags appear in the same result set?" exploration mode — useful for both navigation (find a specific year/band) and audit (find inconsistently tagged photos).
+
+#### Tip: combine with chips
+
+Each click adds a filter; the chips at the top of the filter bar show your current path. Click a chip's `×` to back out one step without rebuilding the query. The browser back button works too — every filter change updates the URL.
 
 ### Sorting
 
