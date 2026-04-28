@@ -50,6 +50,7 @@ pub mod query;
 pub mod saved_search;
 pub mod shell;
 pub mod stack;
+pub mod status;
 pub mod tag_util;
 pub mod vlm;
 pub mod vocabulary;

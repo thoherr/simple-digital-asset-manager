@@ -10,7 +10,8 @@ Commands for finding assets, inspecting details, exporting files, and browsing t
 | [export](#maki-export) | Copy matching files to a directory or ZIP |
 | [contact-sheet](#maki-contact-sheet) | Generate PDF contact sheets |
 | [duplicates](#maki-duplicates) | Find files with multiple locations |
-| [stats](#maki-stats) | Catalog statistics and health overview |
+| [stats](#maki-stats) | Catalog statistics breakdown (types, formats, tags, verification) |
+| [status](#maki-status) | Catalog health overview with actionable next steps |
 | [backup-status](#maki-backup-status) | Check backup coverage and find at-risk assets |
 | [doc](#maki-doc) | Open documentation in the browser |
 | [licenses](#maki-licenses) | Show MAKI license and third-party crate licenses |
@@ -716,6 +717,70 @@ maki stats --verified
 [search](#maki-search) -- find specific assets matching criteria.
 [verify](05-maintain-commands.md#maki-verify) -- run verification checks.
 [volume list](01-setup-commands.md#maki-volume-list) -- list volumes with online/offline status.
+
+---
+
+## maki status
+
+### NAME
+
+maki-status -- catalog health overview with actionable next steps
+
+### SYNOPSIS
+
+```
+maki [GLOBAL FLAGS] status [--min-copies N]
+```
+
+### DESCRIPTION
+
+Read-only survey that aggregates the catalog signals you'd otherwise have to check by running `cleanup --dry-run`, `backup-status`, and `volume list` separately. Designed as a one-shot "what needs attention?" report — every actionable item ends with a `→ command` suggestion so you don't have to consult docs to know the next step.
+
+Sections:
+
+- **Catalog** — schema version (with a migrate hint if stale), asset/variant/recipe/file-location counts, total size, and online/offline volume split.
+- **Cleanup** — locationless variants, orphaned assets, and orphaned derived files on disk (previews, smart previews, embeddings, face crops). Each non-zero count points at `maki cleanup --apply`. If everything's clean, prints `✓ no cleanup needed`.
+- **Pending work** — pending XMP writebacks (split by online/offline target volume; flagged differently when `[writeback] enabled = false`), assets without an embedding (AI builds), assets unscanned for faces (AI builds).
+- **Backup coverage** — how many assets have fewer than `--min-copies` distinct volume copies. Points at `maki backup-status --at-risk` to drill down.
+- **Volumes** — registered volumes sorted online-first with per-volume asset count, size, and purpose tag. `●` = online, `○` = offline.
+
+The orphan-on-disk counts come from the same dry-run scan `maki cleanup` runs without `--apply`; on a large catalog this is the most expensive part of `status` (typically a few seconds for tens of thousands of files). Status is read-only — it never modifies the catalog, sidecars, or filesystem.
+
+### OPTIONS
+
+**\--min-copies N**
+: Minimum distinct volume copies for the **Backup coverage** section to consider an asset adequately backed up. Default `2` (matching `maki backup-status`).
+
+### EXAMPLES
+
+Quick health check:
+
+```bash
+maki status
+```
+
+Treat 3 copies as the floor for backup adequacy:
+
+```bash
+maki status --min-copies 3
+```
+
+Pipe the structured report into a script:
+
+```bash
+maki status --json | jq '.cleanup'
+```
+
+### EXIT STATUS
+
+Always returns 0 on success. The presence of action items (`✗` markers) does not change the exit code — `status` is informational, not a check.
+
+### SEE ALSO
+
+[cleanup](05-maintain-commands.md#maki-cleanup) -- act on the cleanup hints surfaced here.
+[backup-status](#maki-backup-status) -- detailed backup coverage drill-down.
+[stats](#maki-stats) -- in-depth statistical breakdown (asset types, formats, tags, verification).
+[writeback](05-maintain-commands.md#maki-writeback) -- act on pending writeback hints.
 
 ---
 

@@ -688,6 +688,14 @@ enum Commands {
         limit: usize,
     },
 
+    /// Catalog health overview — pending cleanup, work, backup coverage, volumes
+    #[command(display_order = 34)]
+    Status {
+        /// Minimum copies for backup coverage (default: 2)
+        #[arg(long, default_value = "2", display_order = 10)]
+        min_copies: u64,
+    },
+
     /// Check backup coverage and find under-backed-up assets
     #[command(name = "backup-status", display_order = 35)]
     BackupStatus {
@@ -7623,6 +7631,24 @@ faces/\n\
             }
             Ok(())
         }
+        Commands::Status { min_copies } => {
+            let catalog_root = maki::config::find_catalog_root()?;
+            let config = CatalogConfig::load(&catalog_root)?;
+            let ai_enabled = cfg!(feature = "ai");
+            let report = maki::status::gather(
+                &catalog_root,
+                verbosity,
+                &config.preview,
+                min_copies,
+                ai_enabled,
+            )?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                print_status_human(&report);
+            }
+            Ok(())
+        }
         Commands::BackupStatus { query, at_risk, min_copies, volume, format, quiet } => {
             use maki::format::{self, OutputFormat};
 
@@ -8509,6 +8535,160 @@ fn print_stats_human(stats: &maki::catalog::CatalogStats) {
                     pv.label, status, purpose_tag, pv.verified, pv.locations, pv.coverage_pct
                 );
             }
+        }
+    }
+}
+
+/// Render a status report as human-readable text.
+///
+/// Sections roll up from `StatusReport`'s nested structs in this order:
+/// Catalog overview → Cleanup needs → Pending work → Backup coverage →
+/// Volumes. Each item is prefixed `✓` (clean / ok) or `✗` (action item)
+/// with a one-line `→ command` suggestion on every `✗` so the user knows
+/// what to run next without consulting docs.
+fn print_status_human(report: &maki::status::StatusReport) {
+    use maki::cli_output::format_size;
+
+    println!("MAKI catalog status — {}", report.catalog_root);
+
+    // ── Catalog overview ─────────────────────────────────
+    println!("\nCatalog");
+    let schema = if report.catalog.schema_version == report.catalog.schema_current {
+        format!("v{} (current)", report.catalog.schema_version)
+    } else {
+        format!(
+            "v{} (run `maki migrate` — current is v{})",
+            report.catalog.schema_version, report.catalog.schema_current
+        )
+    };
+    println!("  Schema:   {schema}");
+    println!(
+        "  Counts:   {} assets · {} variants · {} recipes · {} file locations",
+        report.catalog.assets,
+        report.catalog.variants,
+        report.catalog.recipes,
+        report.catalog.file_locations,
+    );
+    let online = report.volumes.iter().filter(|v| v.is_online).count();
+    let offline = report.volumes.len() - online;
+    println!(
+        "  Storage:  {} across {} volume(s) ({} online, {} offline)",
+        format_size(report.catalog.total_bytes),
+        report.volumes.len(),
+        online,
+        offline,
+    );
+
+    // ── Cleanup needs ────────────────────────────────────
+    println!("\nCleanup");
+    let c = &report.cleanup;
+    let cleanup_actions = [
+        (c.locationless_variants, "locationless variant(s)"),
+        (c.orphaned_assets, "orphaned asset(s)"),
+        (c.orphaned_previews, "orphaned preview(s) on disk"),
+        (c.orphaned_smart_previews, "orphaned smart preview(s) on disk"),
+        (c.orphaned_embeddings, "orphaned embedding file(s) on disk"),
+        (c.orphaned_face_files, "orphaned face file(s) on disk"),
+    ];
+    let any_cleanup = cleanup_actions.iter().any(|(n, _)| *n > 0);
+    if !any_cleanup {
+        println!("  ✓ no cleanup needed");
+    } else {
+        for (n, label) in &cleanup_actions {
+            if *n > 0 {
+                println!(
+                    "  ✗ {n} {label:<42} → maki cleanup --apply"
+                );
+            }
+        }
+    }
+
+    // ── Pending work ─────────────────────────────────────
+    println!("\nPending work");
+    let p = &report.pending;
+    let mut pending_lines = 0;
+    if p.pending_writebacks_online > 0 {
+        if p.writeback_enabled {
+            println!(
+                "  ✗ {} pending XMP writeback(s) on online volume(s){:<11} → maki writeback",
+                p.pending_writebacks_online, ""
+            );
+        } else {
+            println!(
+                "  ✗ {} pending XMP writeback(s){:<23} → enable [writeback] in maki.toml, then `maki writeback`",
+                p.pending_writebacks_online, ""
+            );
+        }
+        pending_lines += 1;
+    }
+    if p.pending_writebacks_offline > 0 {
+        println!(
+            "  ✗ {} pending XMP writeback(s) on offline volume(s){:<6} → mount the volumes, then `maki writeback`",
+            p.pending_writebacks_offline, ""
+        );
+        pending_lines += 1;
+    }
+    if let Some(n) = p.assets_without_embedding {
+        if n > 0 {
+            println!(
+                "  ✗ {} asset(s) without an embedding{:<23} → maki embed",
+                n, ""
+            );
+            pending_lines += 1;
+        }
+    }
+    if let Some(n) = p.assets_without_face_scan {
+        if n > 0 {
+            println!(
+                "  ✗ {} asset(s) unscanned for faces{:<24} → maki faces detect",
+                n, ""
+            );
+            pending_lines += 1;
+        }
+    }
+    if pending_lines == 0 {
+        println!("  ✓ nothing pending");
+    }
+
+    // ── Backup coverage ──────────────────────────────────
+    println!("\nBackup coverage");
+    let b = &report.backup;
+    if b.total_assets == 0 {
+        println!("  (catalog is empty)");
+    } else if b.at_risk == 0 {
+        println!(
+            "  ✓ all {} asset(s) have ≥{} copies",
+            b.total_assets, b.min_copies
+        );
+    } else {
+        let pct = (b.at_risk as f64 / b.total_assets as f64) * 100.0;
+        println!(
+            "  ✗ {} of {} asset(s) ({:.1}%) have fewer than {} copies → maki backup-status --at-risk",
+            b.at_risk, b.total_assets, pct, b.min_copies
+        );
+    }
+
+    // ── Volumes ──────────────────────────────────────────
+    if !report.volumes.is_empty() {
+        println!("\nVolumes");
+        for v in &report.volumes {
+            let dot = if v.is_online { "●" } else { "○" };
+            let purpose = v
+                .purpose
+                .as_deref()
+                .map(|p| format!(" [{p}]"))
+                .unwrap_or_default();
+            let status = if v.is_online { "" } else { " (offline)" };
+            println!(
+                "  {} {:<18} {:<28} {} asset(s), {}{}{}",
+                dot,
+                v.label,
+                v.mount_point,
+                v.asset_count,
+                format_size(v.size_bytes),
+                purpose,
+                status,
+            );
         }
     }
 }
