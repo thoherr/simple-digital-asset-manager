@@ -2,6 +2,49 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.4.11 (2026-04-28)
+
+The faceted sidebar becomes the navigation surface. Every facet row is now click-to-narrow, tags render hierarchically, and the section order is rebalanced so the curated tag taxonomy sits where most users actually filter.
+
+### Tag strolling
+
+The `/api/facets` endpoint already returned per-tag counts for the current filtered result set, but the sidebar rendered them as static labels. Now every row is clickable, and clicking dispatches to the right filter setter:
+
+| Facet | Click action |
+|-------|--------------|
+| Tag | Adds the **full path** as a chip on the filter bar. Picking `2024` under `Holzkirchner Blues- und Jazztage` adds the disambiguated tag, not the bare leaf. |
+| Rating | Sets the star widget to that exact rating. |
+| Label | Sets the color-dot widget to that label. |
+| Year | Appends `date:YYYY` to the search box. |
+| Format | Toggles the format checkbox (additive multi-select). |
+| Volume | Sets the volume dropdown to that volume. |
+| Geotagged | Appends `geotagged:1` to the search box. |
+
+After every click the panel re-fetches against the new filter, so the next layer of co-occurring facets is computed live. Click-loop a few rows in and you've drilled to a precise subset without ever opening the search syntax docs. Keyboard accessible — Tab to focus, Enter or Space to activate. Three new `window.*` helpers in `filter_bar_js` (`toggleFormatFilter`, `setVolumeFilterById`, `addQueryTerm`) keep the chip/widget logic centralized so the facet dispatcher just delegates.
+
+### Hierarchical tag rendering
+
+MAKI auto-expands every hierarchical tag to its ancestor paths on storage, which means the flat list returned by `/api/facets` already contains every level. Reshape it client-side into a tree and render depth-first with indented rows. CSS does the indentation via a `--depth` variable on each row + `padding-left: calc(0.3rem + var(--depth) * 0.85rem)` — no nested DOM. Counts at each level reflect the union of descendants, which makes parent rows useful filter targets in their own right (`event` showing 2,419 means "any photo with anything under `event`").
+
+### Reordered sections
+
+Old: Ratings → Labels → Formats → Volumes → Tags → Years → Geotagged.
+
+New: Ratings → Labels → **Tags** → Years → Formats → Volumes → Geotagged.
+
+Tags promoted from 5th to 3rd because the curated taxonomy is most users' primary filtering axis; formats and volumes are usually set up once and rarely toggled. New users see Tags expanded by default (the existing default-open behaviour for unsaved sections).
+
+### Worked example, in case the abstract is too abstract
+
+Want to find under-tagged photos at the Holzkirchner Blues- und Jazztage? Open browse, click `event` in the Tags section → filter narrows. Click `festival > Holzkirchner Blues- und Jazztage` → narrows to all 13 years. The Tags section now lists `…|2024 (12)`, `…|2023 (8)`, …; the Years section shows the matching calendar years. Click the Years row for `2018`, and if its asset count is greater than the festival's `…|2018` row count, those extra photos are festival shots missing the festival tag — go fix them.
+
+### Polish
+
+- `window.onFilterChange` exposed alongside `window.triggerSearch` so external panels can request a search refresh after manipulating widgets.
+- User guide chapter 6 (Web UI) "Faceted sidebar" section rewritten — the previous "read-only statistical breakdown" framing is now wrong; replaced with click-action table, hierarchy explanation, and the worked example above.
+
+Tests: 753 unit + 249 CLI integration + 14 doc on standard. No new tests needed — frontend-only behaviour change validated end-to-end against the existing `/api/facets` endpoint.
+
 ## v4.4.10 (2026-04-28)
 
 Headline: a new `maki status` command. Plus smarter status-badge polling on the web UI.
