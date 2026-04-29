@@ -2,6 +2,38 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.4.12 (2026-04-29)
+
+Bug fix: tag-page tree rendering put children of prefix-sharing parents in the wrong place.
+
+### `build_tag_tree` now emits in tree pre-order
+
+The tags page (`/tags`) renders a flat list of `(name, depth)` entries, with CSS handling indentation by depth. The old builder produced entries in **lexicographic full-path order** (BTreeMap iteration). That broke when a tag had both flat siblings and `|`-children sharing a prefix:
+
+```
+Bricking Bavaria       (depth 3, parent)
+Bricking Bavaria 2012  (depth 3, flat sibling — name starts with " 2012")
+Bricking Bavaria 2015  (depth 3, flat sibling)
+…
+Bricking Bavaria 2025  (depth 3, flat sibling)
+Bricking Bavaria|2011  (depth 4, real child of `Bricking Bavaria`)
+```
+
+`|` (0x7C) sorts *after* ` ` (0x20), so the renamed child `…|2011` ended up at the bottom of the prefix block — visually dissociated from its parent and looking like a child of `Bricking Bavaria 2025`'s subtree. The repro from the wild: someone renamed `Bricking Bavaria 2011` → `Bricking Bavaria|2011` to start migrating to a hierarchical structure, and the result rendered confusingly.
+
+Fix: emit in tree pre-order — parent first, then all descendants alphabetically by leaf segment, then the next sibling at the same depth. The browse facet panel's JS tree walker already used this approach correctly; this just brings the server-side builder in line.
+
+After the fix, the same input renders as:
+
+```
+Bricking Bavaria       (depth 3)
+  Bricking Bavaria|2011  (depth 4) ← directly under its parent
+Bricking Bavaria 2012  (depth 3)
+…
+```
+
+Tests: 4 new unit tests in `web::routes::tags` lock in pre-order behavior, synthetic-parent handling, case-insensitive sibling sort, and total-count rollup. Standard build now at 757 lib + 249 CLI + 14 doc tests.
+
 ## v4.4.11 (2026-04-28)
 
 The faceted sidebar becomes the navigation surface. Every facet row is now click-to-narrow, tags render hierarchically, and the section order is rebalanced so the curated tag taxonomy sits where most users actually filter.
