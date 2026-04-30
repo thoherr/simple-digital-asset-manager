@@ -936,6 +936,25 @@ pub struct TagSplitResult {
     pub skipped: usize,
 }
 
+/// Action taken for a single asset during tag delete.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TagDeleteAction {
+    /// Tag (and any cascaded descendants + newly-orphaned ancestors) removed.
+    Removed,
+    /// Asset matched but had no removable tag values (e.g. leaf-only mode and
+    /// the tag had descendants on this asset).
+    Skipped,
+}
+
+/// Result of a `maki tag delete` operation.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct TagDeleteResult {
+    pub dry_run: bool,
+    pub matched: usize,
+    pub removed: usize,
+    pub skipped: usize,
+}
+
 /// Result of a `maki writeback` operation.
 #[derive(Debug, Default, serde::Serialize)]
 pub struct WritebackResult {
@@ -2500,6 +2519,145 @@ impl QueryEngine {
                     );
                 }
             }
+        }
+
+        Ok(result)
+    }
+
+    /// Delete a tag (and, by default, its descendants) from every asset that
+    /// carries it.
+    ///
+    /// Defaults to **cascading**: deleting `subject|nature` removes `subject|
+    /// nature`, `subject|nature|landscape`, etc. from all matching assets.
+    /// Pass the same `=` / `/` markers as the search filter to opt out of the
+    /// cascade — `=subject|nature` removes the exact tag value only, skipping
+    /// assets where it has descendants (matching `tag rename` semantics).
+    /// `^` makes the match case-sensitive.
+    ///
+    /// After removing a tag, any of its ancestor paths that no longer have a
+    /// surviving descendant on the same asset are also cleaned up — same logic
+    /// as `tag --remove`. This keeps deletes coherent with the auto-expanded
+    /// storage model: a leaf removal won't leave an unused branch hanging on
+    /// the asset's tag list.
+    ///
+    /// `apply=false` is dry-run; counts but doesn't modify anything.
+    pub fn tag_delete(
+        &self,
+        tag_input: &str,
+        apply: bool,
+        mut on_asset: impl FnMut(&str, TagDeleteAction),
+    ) -> Result<TagDeleteResult> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let store = MetadataStore::new(&self.catalog_root);
+        let online = Self::load_online_volumes(&self.catalog_root);
+        let content_store = ContentStore::new(&self.catalog_root);
+
+        // Same marker grammar as `tag rename`. `|` (prefix anchor) is rejected
+        // for the same reason — it would expand a deletion across distinct
+        // tags rather than across one branch of the hierarchy. The marker
+        // strip is order-insensitive: =^foo and ^=foo behave the same.
+        let mut rest = tag_input;
+        let mut exact_only = false;
+        let mut case_sensitive = false;
+        loop {
+            if let Some(s) = rest.strip_prefix('=') { exact_only = true; rest = s; }
+            else if let Some(s) = rest.strip_prefix('/') { exact_only = true; rest = s; }
+            else if let Some(s) = rest.strip_prefix('^') { case_sensitive = true; rest = s; }
+            else if rest.starts_with('|') {
+                anyhow::bail!(
+                    "The | prefix-anchor marker is not supported for `tag delete` because it would \
+                     collapse distinct tags into one operation. Use `maki search 'tag:{}' --format ids` \
+                     to find matching tags first, then run a targeted delete for each.",
+                    rest
+                );
+            }
+            else { break; }
+        }
+        let tag = rest;
+        if tag.is_empty() {
+            anyhow::bail!("tag must not be empty");
+        }
+
+        // Use the same matcher as rename: it returns assets that have the
+        // exact tag (when exact_only=true) or any descendant prefix-match
+        // (when exact_only=false).
+        let matches = catalog.assets_with_tag_or_prefix(tag, case_sensitive, exact_only)?;
+        let mut result = TagDeleteResult { dry_run: !apply, matched: matches.len(), ..Default::default() };
+
+        let cmp_eq = |a: &str, b: &str| -> bool {
+            if case_sensitive { a == b } else { a.to_lowercase() == b.to_lowercase() }
+        };
+        let cmp_starts = |a: &str, b: &str| -> bool {
+            if case_sensitive { a.starts_with(b) } else { a.to_lowercase().starts_with(&b.to_lowercase()) }
+        };
+        let prefix = format!("{tag}|");
+
+        for (asset_id, _stack_id) in &matches {
+            let uuid: uuid::Uuid = asset_id.parse()?;
+            let mut asset = store.load(uuid)?;
+
+            // Collect every tag value to drop on this asset. Exact match
+            // always; descendants only when not in leaf-only mode.
+            let mut tags_to_remove: Vec<String> = asset.tags.iter()
+                .filter(|t| {
+                    cmp_eq(t, tag) || (!exact_only && cmp_starts(t, &prefix))
+                })
+                .cloned()
+                .collect();
+
+            // Leaf-only on an asset where the tag has descendants is a skip:
+            // we can't remove the parent without leaving the descendants
+            // dangling (auto-expansion would re-add the parent on next write
+            // anyway), and the caller asked specifically for non-cascade.
+            if exact_only {
+                let has_descendants = asset.tags.iter().any(|t| cmp_starts(t, &prefix));
+                if has_descendants {
+                    result.skipped += 1;
+                    on_asset(&asset_id[..8.min(asset_id.len())], TagDeleteAction::Skipped);
+                    continue;
+                }
+            }
+
+            if tags_to_remove.is_empty() {
+                result.skipped += 1;
+                on_asset(&asset_id[..8.min(asset_id.len())], TagDeleteAction::Skipped);
+                continue;
+            }
+
+            // After dropping the explicit removals, walk the orphan-ancestor
+            // helper to collect ancestor paths that lose their last surviving
+            // descendant — same coherence rule batch-remove uses (see
+            // tag_inner / tag_remove_cleans_orphaned_ancestors).
+            let remaining_after: Vec<String> = asset.tags.iter()
+                .filter(|t| !tags_to_remove.contains(t))
+                .cloned()
+                .collect();
+            for tag_to_remove in tags_to_remove.clone().iter() {
+                for orphan in crate::tag_util::orphaned_ancestors(tag_to_remove, &remaining_after) {
+                    if !tags_to_remove.contains(&orphan) && asset.tags.iter().any(|t| t == &orphan) {
+                        tags_to_remove.push(orphan);
+                    }
+                }
+            }
+
+            let name = asset.name.clone().unwrap_or_else(|| asset_id[..8.min(asset_id.len())].to_string());
+            on_asset(&name, TagDeleteAction::Removed);
+
+            if apply {
+                let remove_set: std::collections::HashSet<&str> =
+                    tags_to_remove.iter().map(|s| s.as_str()).collect();
+                asset.tags.retain(|t| !remove_set.contains(t.as_str()));
+                store.save(&asset)?;
+                catalog.insert_asset(&asset)?;
+
+                if self.is_writeback_enabled() {
+                    self.write_back_tags_to_xmp_inner(
+                        &mut asset, &[], &tags_to_remove,
+                        &catalog, &store, &online, &content_store,
+                    );
+                }
+            }
+            result.removed += 1;
         }
 
         Ok(result)
@@ -6333,5 +6491,124 @@ mod tests {
             find_session_root("Pictures/Masters/2024/2024-10/2024-10-05-jazz-band/Capture", ""),
             "Pictures/Masters/2024/2024-10/2024-10-05-jazz-band"
         );
+    }
+
+    // ── tag delete tests ───────────────────────────────────
+
+    #[test]
+    fn tag_delete_cascades_to_descendants() {
+        let (dir, asset_id) = setup_tag_rename_catalog(&[
+            "location|Germany|Bayern|München",
+            "location|Germany|Bayern|Wolfratshausen",
+            "location|Germany",
+            "sunset",
+        ]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_delete("location", true, |_, _| {}).unwrap();
+        assert_eq!(result.matched, 1);
+        assert_eq!(result.removed, 1);
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        // The whole `location` branch is gone, including the bare `location`
+        // root (orphan-ancestor cleanup) and every descendant. Unrelated tags
+        // stay.
+        assert!(asset.tags.iter().all(|t| !t.starts_with("location")), "tags still present: {:?}", asset.tags);
+        assert!(asset.tags.contains(&"sunset".to_string()));
+    }
+
+    #[test]
+    fn tag_delete_dry_run_does_not_persist() {
+        let (dir, asset_id) = setup_tag_rename_catalog(&[
+            "subject|nature|landscape",
+            "sunset",
+        ]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_delete("subject|nature", false, |_, _| {}).unwrap();
+        assert_eq!(result.matched, 1);
+        assert_eq!(result.removed, 1);
+        assert!(result.dry_run);
+
+        // Sidecar untouched.
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        assert!(asset.tags.contains(&"subject|nature|landscape".to_string()));
+    }
+
+    #[test]
+    fn tag_delete_leaves_unrelated_branches_alone() {
+        // Sibling under same root must survive.
+        let (dir, asset_id) = setup_tag_rename_catalog(&[
+            "subject|nature|landscape",
+            "subject|nature",
+            "subject",
+            "subject|portrait",
+        ]);
+        let engine = QueryEngine::new(dir.path());
+        engine.tag_delete("subject|nature", true, |_, _| {}).unwrap();
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        // `subject|nature` and its descendant gone; `subject` and `subject|portrait` stay.
+        assert!(!asset.tags.iter().any(|t| t.starts_with("subject|nature")));
+        assert!(asset.tags.contains(&"subject".to_string()));
+        assert!(asset.tags.contains(&"subject|portrait".to_string()));
+    }
+
+    #[test]
+    fn tag_delete_leaf_only_skips_when_descendants_present() {
+        // With `=` (or `/`) marker we explicitly opt out of cascade. On an
+        // asset whose tag has live descendants, the only coherent action is
+        // to skip — auto-expansion would re-add the parent on next write
+        // anyway.
+        let (dir, _asset_id) = setup_tag_rename_catalog(&[
+            "subject|nature|landscape",
+            "subject|nature",
+            "subject",
+        ]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_delete("=subject|nature", true, |_, _| {}).unwrap();
+        assert_eq!(result.matched, 1);
+        assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
+    }
+
+    #[test]
+    fn tag_delete_leaf_only_removes_when_no_descendants() {
+        let (dir, asset_id) = setup_tag_rename_catalog(&[
+            "subject|nature",
+            "subject",
+            "sunset",
+        ]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_delete("=subject|nature", true, |_, _| {}).unwrap();
+        assert_eq!(result.removed, 1);
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        // The leaf is gone; the now-orphaned `subject` ancestor is gone too;
+        // `sunset` stays.
+        assert!(!asset.tags.iter().any(|t| t == "subject|nature"));
+        assert!(!asset.tags.iter().any(|t| t == "subject"));
+        assert!(asset.tags.contains(&"sunset".to_string()));
+    }
+
+    #[test]
+    fn tag_delete_rejects_empty_tag() {
+        let (dir, _) = setup_tag_rename_catalog(&["foo"]);
+        let engine = QueryEngine::new(dir.path());
+        assert!(engine.tag_delete("", true, |_, _| {}).is_err());
+        // Markers without a name should also bail.
+        assert!(engine.tag_delete("=", true, |_, _| {}).is_err());
+        assert!(engine.tag_delete("^", true, |_, _| {}).is_err());
+    }
+
+    #[test]
+    fn tag_delete_rejects_pipe_prefix_marker() {
+        let (dir, _) = setup_tag_rename_catalog(&["foo"]);
+        let engine = QueryEngine::new(dir.path());
+        let r = engine.tag_delete("|foo", true, |_, _| {});
+        assert!(r.is_err());
+        assert!(format!("{:#}", r.unwrap_err()).contains("not supported"));
     }
 }

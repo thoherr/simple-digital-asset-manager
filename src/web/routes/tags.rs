@@ -203,6 +203,48 @@ pub async fn split_tag_api(
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct DeleteTagRequest {
+    pub tag: String,
+    #[serde(default)]
+    pub apply: bool,
+}
+
+/// POST /api/tag/delete — delete a tag (and descendants) from every asset.
+pub async fn delete_tag_api(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<DeleteTagRequest>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        // Strip markers (=/^/) before normalising via tag_input_to_storage
+        // so the marker stays attached to the tag string the engine parses.
+        // tag_input_to_storage only swaps `>` → `|`, so markers pass through.
+        let tag_storage = crate::tag_util::tag_input_to_storage(&req.tag);
+        if tag_storage.trim_start_matches(|c: char| c == '=' || c == '/' || c == '^').is_empty() {
+            anyhow::bail!("tag must not be empty");
+        }
+        let engine = state.query_engine();
+        let result = engine.tag_delete(&tag_storage, req.apply, |_, _| {})?;
+        if req.apply {
+            state.dropdown_cache.invalidate_tags();
+        }
+        Ok::<_, anyhow::Error>(serde_json::json!({
+            "matched": result.matched,
+            "removed": result.removed,
+            "skipped": result.skipped,
+            "dry_run": result.dry_run,
+        }))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => Json(json).into_response(),
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
 /// GET /api/tags — all tags as JSON (for autocomplete).
 pub async fn tags_api(State(state): State<Arc<AppState>>) -> Response {
     let state = state.clone();

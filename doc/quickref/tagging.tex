@@ -279,6 +279,7 @@
     \cmd{maki tag \textit{ID} --remove foo}       & Remove tags (orphaned ancestors cleaned). \\
     \cmd{maki tag clear \textit{ID}}              & Remove all tags from an asset. \\
     \cmd{maki tag rename \textit{OLD} \textit{NEW} --apply} & Rename a tag everywhere. Cascades to descendants. \\
+    \cmd{maki tag delete \textit{TAG} --apply}    & Delete a tag (and descendants) from every asset. \\
     \cmd{maki tag split \textit{OLD} \textit{A B...} --apply} & Replace one tag with multiple (variadic). \\
     \cmd{~~...\ --keep}                           & Keep source alongside (additive / copy). \\
     \cmd{maki tag expand-ancestors --apply}       & Backfill ancestor paths on existing tags. \\

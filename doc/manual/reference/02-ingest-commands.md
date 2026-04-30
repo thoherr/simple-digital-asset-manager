@@ -9,6 +9,7 @@ Commands for importing files, applying metadata, and merging asset variants. Imp
 | [tag](#maki-tag) | Add or remove tags |
 | [tag rename](#maki-tag-rename) | Rename a tag across all assets |
 | [tag split](#maki-tag-split) | Split one tag into multiple tags across all assets |
+| [tag delete](#maki-tag-delete) | Delete a tag (and descendants) from every asset that has it |
 | [tag clear](#maki-tag-clear) | Remove all tags from an asset |
 | [tag expand-ancestors](#maki-tag-expand-ancestors) | Expand hierarchical tags to include ancestor paths |
 | [tag export-vocabulary](#maki-tag-export-vocabulary) | Export tag tree as a vocabulary.yaml file |
@@ -547,6 +548,75 @@ maki tag split "A & B" "A" "B"
 [tag](#maki-tag) -- add or remove tags on a single asset.
 [tag rename](#maki-tag-rename) -- rename a single tag (cascades to descendants).
 [tag expand-ancestors](#maki-tag-expand-ancestors) -- add ancestor paths for existing hierarchical tags.
+
+---
+
+## maki tag delete {#maki-tag-delete}
+
+### NAME
+
+maki-tag-delete -- remove a tag (and, by default, its descendants) from every asset that has it
+
+### SYNOPSIS
+
+    maki [GLOBAL FLAGS] tag delete <TAG> [--apply]
+
+### DESCRIPTION
+
+Catalog-wide tag deletion: removes `TAG` from every asset that carries it. Mirrors the safety pattern of [`tag rename`](#maki-tag-rename) and [`tag split`](#maki-tag-split) — runs as a dry-run by default and only modifies the catalog when `--apply` is passed. Same hierarchy semantics as `tag rename`:
+
+- **Default cascade**: `maki tag delete event|wedding-jane-2025` removes `event|wedding-jane-2025` *and* every descendant (e.g. `event|wedding-jane-2025|ceremony`) from every asset that has them. The entire branch goes.
+- **Leaf-only**: prefix the tag with `=` or `/` to opt out of the cascade. `maki tag delete =event|wedding-jane-2025` removes the exact tag value only, *and skips* assets where it has descendants — auto-expansion would re-add the parent on the next write anyway, so removing the parent without descendants would be incoherent.
+- **Case-sensitive**: prefix with `^` for an exact-case match (`maki tag delete ^Landscape` won't touch `landscape` or `LANDSCAPE`).
+
+After deletion, any **ancestor path that loses its last surviving descendant** on an asset is also cleaned up — same coherence rule that `maki tag <ASSET> --remove` uses (and the same `orphaned_ancestors` helper). This keeps the auto-expanded storage model coherent: a leaf delete won't leave an unused branch hanging on the asset's tag list.
+
+The `|`-prefix anchor marker (used in search to mean "any tag whose path component starts with…") is rejected for delete — it would collapse distinct tags into one operation, which is rarely what you want. Use `maki search 'tag:|foo' --format ids` to find matching tags first, then run a targeted delete for each.
+
+### OPTIONS
+
+**\<TAG\>**
+: Tag to delete. Use `>` or `|` as the hierarchy separator (CaptureOne / Lightroom convention). Optional markers: `=` / `/` for leaf-only, `^` for case-sensitive. Markers are order-insensitive (`=^foo` and `^=foo` behave the same).
+
+**--apply**
+: Apply the deletion. Without this flag, the command counts matches and prints the summary without modifying the catalog or any sidecars.
+
+### EXAMPLES
+
+Drop a typo'd tag everywhere:
+
+```bash
+maki tag delete "lansdcape" --apply
+```
+
+Remove an entire event branch (cascade default):
+
+```bash
+maki tag delete "event|wedding-jane-2025" --apply
+```
+
+Remove just the parent node `subject|nature` *only* on assets where it isn't already split into descendants:
+
+```bash
+maki tag delete "=subject|nature" --apply
+```
+
+Preview before committing:
+
+```bash
+maki tag delete "old|legacy|tag"          # dry run, prints count
+maki tag delete "old|legacy|tag" --apply  # actually deletes
+```
+
+### XMP WRITEBACK
+
+When the catalog is configured with `[writeback] enabled = true`, removed tags are written back to each asset's XMP recipe(s) on next online-volume access. Until writeback runs, the catalog and sidecars reflect the deletion immediately but XMP files on disk still carry the old tags. See [maki writeback](05-maintain-commands.md#maki-writeback).
+
+### SEE ALSO
+
+[tag rename](#maki-tag-rename) -- rename instead of delete.
+[tag split](#maki-tag-split) -- replace one tag with multiple alternatives.
+[tag](#maki-tag) -- add or remove tags on a single asset.
 
 ---
 

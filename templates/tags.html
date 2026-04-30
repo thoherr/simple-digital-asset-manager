@@ -50,6 +50,7 @@
         {% else %}
         <span class="tag-split-placeholder"></span>
         {% endif %}
+        <button class="tag-delete-btn" title="Delete tag from all assets (cascades to descendants)" data-tag="{{ t.name }}" data-has-children="{% if t.has_children %}1{% else %}0{% endif %}" aria-label="Delete tag">&times;</button>
     </div>
     {% endfor %}
 </div>
@@ -78,6 +79,27 @@
             <button class="batch-btn" id="split-cancel">Cancel</button>
         </div>
         <div id="split-result" style="margin-top:0.75rem;font-size:0.88rem;color:var(--text-muted);min-height:1.2em;"></div>
+    </div>
+</div>
+
+<!-- Delete tag modal — remove a tag (and by default its descendants) from every asset -->
+<div class="import-overlay" id="delete-overlay" style="display:none">
+    <div class="import-modal" style="max-width:480px;">
+        <h2>Delete Tag</h2>
+        <div style="margin-bottom:0.75rem;">
+            <label style="font-size:0.82rem;color:var(--text-muted);display:block;margin-bottom:0.2rem;">Tag</label>
+            <code id="delete-tag" style="font-size:0.9rem;"></code>
+        </div>
+        <p id="delete-warning" style="margin:0 0 0.75rem 0;font-size:0.85rem;color:var(--text-muted);line-height:1.4;">
+            This removes the tag from <strong>every asset</strong> that has it.
+            <span id="delete-cascade-note" style="display:none">It also cascades to all descendant tags (the entire branch under this node) and cleans up any ancestor that loses its last surviving descendant on an asset.</span>
+        </p>
+        <div style="display:flex;gap:0.5rem;">
+            <button class="batch-btn" id="delete-preview">Preview</button>
+            <button class="batch-btn batch-btn-primary" id="delete-apply" disabled>Delete</button>
+            <button class="batch-btn" id="delete-cancel">Cancel</button>
+        </div>
+        <div id="delete-result" style="margin-top:0.75rem;font-size:0.88rem;color:var(--text-muted);min-height:1.2em;"></div>
     </div>
 </div>
 
@@ -442,6 +464,97 @@
             }
         });
     }
+
+    // ── Tag delete modal ──────────────────────────────────────────
+    // Same Preview/Apply rhythm as rename: first click previews (gives a
+    // count), unlocks the Apply button; second click commits. Backed by the
+    // /api/tag/delete endpoint which cascades to descendants and cleans
+    // newly-orphaned ancestors.
+    var deleteOverlay = document.getElementById('delete-overlay');
+    var deleteTagEl = document.getElementById('delete-tag');
+    var deleteCascadeNoteEl = document.getElementById('delete-cascade-note');
+    var deletePreviewBtn = document.getElementById('delete-preview');
+    var deleteApplyBtn = document.getElementById('delete-apply');
+    var deleteResultEl = document.getElementById('delete-result');
+
+    document.querySelectorAll('.tag-delete-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var tag = this.getAttribute('data-tag');
+            var hasChildren = this.getAttribute('data-has-children') === '1';
+            deleteTagEl.textContent = tag;
+            deleteTagEl.setAttribute('data-tag', tag);
+            deleteCascadeNoteEl.style.display = hasChildren ? '' : 'none';
+            deleteResultEl.textContent = '';
+            deleteApplyBtn.disabled = true;
+            deletePreviewBtn.textContent = 'Preview';
+            deleteApplyBtn.textContent = 'Delete';
+            deleteOverlay.style.display = 'flex';
+            // Focus Preview so Enter advances the workflow (Enter again
+            // commits once Preview unlocks the Apply button). Defocuses the
+            // tag-row trash button so a stray Enter doesn't reopen the modal.
+            deletePreviewBtn.focus();
+        });
+    });
+
+    function closeDeleteModal() {
+        deleteOverlay.style.display = 'none';
+    }
+
+    document.getElementById('delete-cancel').addEventListener('click', closeDeleteModal);
+    deleteOverlay.addEventListener('click', function(e) {
+        if (e.target === deleteOverlay) closeDeleteModal();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && deleteOverlay.style.display !== 'none') closeDeleteModal();
+    });
+
+    function doDelete(apply) {
+        var tag = deleteTagEl.getAttribute('data-tag');
+        if (!tag) { deleteResultEl.textContent = 'No tag selected.'; return; }
+
+        var btn = apply ? deleteApplyBtn : deletePreviewBtn;
+        btn.disabled = true;
+        btn.textContent = apply ? 'Deleting…' : 'Checking…';
+
+        fetch('/api/tag/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ tag: tag, apply: apply })
+        })
+        .then(function(r) {
+            if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+            return r.json();
+        })
+        .then(function(data) {
+            var parts = [];
+            if (data.removed > 0) parts.push(data.removed + (apply ? ' deleted' : ' would delete'));
+            if (data.skipped > 0) parts.push(data.skipped + ' skipped');
+            if (parts.length === 0) parts.push('no matching assets');
+            var prefix = apply ? 'Done: ' : 'Preview: ';
+            deleteResultEl.textContent = prefix + parts.join(', ') + ' (of ' + data.matched + ' matched)';
+            if (!apply && data.removed > 0) {
+                deleteApplyBtn.disabled = false;
+                // Shift focus to Apply so the user's next Enter commits
+                // instead of re-running Preview. Mirrors the keyboard-first
+                // flow of the rename/split modals.
+                deleteApplyBtn.focus();
+            }
+            if (apply) {
+                setTimeout(function() { window.location.reload(); }, 800);
+            }
+        })
+        .catch(function(err) {
+            deleteResultEl.textContent = 'Error: ' + err.message;
+        })
+        .finally(function() {
+            btn.disabled = false;
+            btn.textContent = apply ? 'Delete' : 'Preview';
+        });
+    }
+
+    deletePreviewBtn.addEventListener('click', function() { doDelete(false); });
+    deleteApplyBtn.addEventListener('click', function() { doDelete(true); });
 
     // ── Tag split modal ──────────────────────────────────────────
     var splitOverlay = document.getElementById('split-overlay');

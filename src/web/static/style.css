@@ -1724,7 +1724,8 @@ details[open] summary { margin-bottom: 0.5rem; }
     opacity: 0.7;
 }
 .tag-rename-btn,
-.tag-split-btn {
+.tag-split-btn,
+.tag-delete-btn {
     background: none;
     border: none;
     color: var(--text-muted);
@@ -1743,10 +1744,18 @@ details[open] summary { margin-bottom: 0.5rem; }
     justify-content: center;
     line-height: 1;
 }
+.tag-delete-btn {
+    /* Slightly larger so the × glyph reads at the same weight as the pencil/split. */
+    font-size: 1rem;
+    line-height: 1;
+}
 .tag-entry:hover .tag-rename-btn,
-.tag-entry:hover .tag-split-btn { opacity: 0.6; }
+.tag-entry:hover .tag-split-btn,
+.tag-entry:hover .tag-delete-btn { opacity: 0.6; }
 .tag-rename-btn:hover,
 .tag-split-btn:hover { opacity: 1 !important; color: var(--text); }
+/* Hover tint nudges toward the destructive accent so the action reads "delete". */
+.tag-delete-btn:hover { opacity: 1 !important; color: var(--accent, #d76d4e); }
 
 /* Keep leaf and non-leaf rows aligned when only one has the split button. */
 .tag-split-placeholder {

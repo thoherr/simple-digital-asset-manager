@@ -1195,6 +1195,18 @@ enum TagCommands {
         asset_id: String,
     },
 
+    /// Delete a tag from every asset that has it (cascades to descendants by default)
+    Delete {
+        /// Tag to delete. Use the same markers as `tag rename`:
+        /// `=tag` or `/tag` for leaf-only (skip assets where the tag has descendants),
+        /// `^tag` for case-sensitive match.
+        tag: String,
+
+        /// Apply changes (default: report-only)
+        #[arg(long)]
+        apply: bool,
+    },
+
     /// Expand all hierarchical tags to include ancestor paths
     #[command(name = "expand-ancestors")]
     ExpandAncestors {
@@ -3760,6 +3772,61 @@ faces/\n\
                             );
                             if !apply && result.split > 0 {
                                 println!("  Run with --apply to {} tags.", verb);
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                Some(TagCommands::Delete { tag, apply }) => {
+                    let catalog_root = maki::config::find_catalog_root()?;
+                    let engine = QueryEngine::new(&catalog_root);
+                    let storage_tag = maki::tag_util::tag_input_to_storage(&tag);
+                    let show_log = cli.log;
+
+                    use maki::query::TagDeleteAction;
+                    let result = engine.tag_delete(&storage_tag, apply, |name, action| {
+                        if show_log {
+                            let verb = match (action, apply) {
+                                (TagDeleteAction::Removed, true) => "removed",
+                                (TagDeleteAction::Removed, false) => "would remove",
+                                (TagDeleteAction::Skipped, _) => "skipped",
+                            };
+                            eprintln!("  {} — {}", name, verb);
+                        }
+                    })?;
+
+                    if cli.json {
+                        println!("{}", serde_json::to_string_pretty(&result)?);
+                    } else {
+                        // Strip markers from the display string for the user-facing message.
+                        let display = storage_tag
+                            .trim_start_matches(|c: char| c == '=' || c == '/' || c == '^')
+                            .to_string();
+                        if result.matched == 0 {
+                            println!("No assets found with tag \"{}\".", display);
+                        } else {
+                            if !apply && result.removed > 0 {
+                                eprint!("Dry run — ");
+                            }
+                            let mut parts = Vec::new();
+                            if result.removed > 0 {
+                                parts.push(format!(
+                                    "{} {}",
+                                    result.removed,
+                                    if apply { "removed" } else { "would remove" }
+                                ));
+                            }
+                            if result.skipped > 0 {
+                                parts.push(format!("{} skipped", result.skipped));
+                            }
+                            println!(
+                                "Tag delete \"{}\": {} matched, {}",
+                                display,
+                                result.matched,
+                                parts.join(", "),
+                            );
+                            if !apply && result.removed > 0 {
+                                println!("  Run with --apply to delete the tag.");
                             }
                         }
                     }

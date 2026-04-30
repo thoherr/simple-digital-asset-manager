@@ -438,6 +438,7 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/tags", axum::routing::get(routes::tags_api))
         .route("/api/tag/rename", axum::routing::post(routes::rename_tag_api))
         .route("/api/tag/split", axum::routing::post(routes::split_tag_api))
+        .route("/api/tag/delete", axum::routing::post(routes::delete_tag_api))
         .route("/api/stats", axum::routing::get(routes::stats_api))
         .route(
             "/api/batch/rating",

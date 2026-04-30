@@ -109,6 +109,10 @@ Add or remove tags. \opt{--remove}
 Rename a tag across all assets. \opt{--apply} \\
 OLD accepts \cmd{=} (exact level) and \cmd{\textasciicircum} (case-sensitive) prefixes.
 
+\subsection{maki tag delete \textit{TAG}}
+Delete a tag (cascades to descendants) from every asset. \opt{--apply} \\
+TAG accepts the same \cmd{=} / \cmd{\textasciicircum} markers as \cmd{tag rename}.
+
 \subsection{maki tag clear \textit{ASSET\_ID}}
 Remove all tags from an asset.
 
