@@ -49,7 +49,14 @@
                be visual noise on every parent row. #}
             {{ t.own_count }}
             {% if t.leaf_count > 0 && t.leaf_count != t.own_count %}
-            <span class="tag-total-count" title="{{ t.leaf_count }} asset(s) tagged at this exact level (no deeper child); the headline includes assets where this is auto-expanded from a descendant">({{ t.leaf_count }} as leaf)</span>
+            {# Click the leaf-count to jump to the browse page with the
+               `tag:/foo` (leaf-only) filter applied — i.e. only the
+               assets that are tagged at exactly this level with no
+               deeper child. Useful for finding sloppily-tagged assets
+               that should be specialised. #}
+            <a class="tag-total-count tag-leaf-link"
+               href="/?tag=/{{ t.display_name|urlencode }}"
+               title="Show the {{ t.leaf_count }} asset(s) tagged at this exact level (no deeper child) — usually candidates for finer tagging">({{ t.leaf_count }} as leaf)</a>
             {% endif %}
         </span>
         <button class="tag-rename-btn" title="Rename tag" data-tag="{{ t.name }}">&#9998;</button>
