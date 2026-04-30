@@ -30,63 +30,103 @@ use super::intersect_name_groups;
 #[cfg(feature = "ai")]
 use super::resolve_similar_filter;
 
-/// Compute how many additional matches the configured `[browse] default_filter`
-/// is excluding from the current result set. Returns 0 when the filter isn't
-/// active (or the run isn't worth doing — similarity view, etc.).
+/// Pair of "would-be-larger if we relaxed this constraint" deltas surfaced
+/// next to the result count on the browse page. Each component is the
+/// number of *additional* matches that the corresponding URL flag flip
+/// would expose; both are 0 when the relaxation wouldn't reveal anything.
 ///
-/// Re-runs the same query pipeline with `nodefault=1` forced. Collection,
-/// person, and volume IDs are reused from the live query; typical default
-/// filters don't reference those, and re-deriving them here would duplicate
-/// ~30 LOC for no gain. Counts only — no row fetch.
-#[allow(clippy::too_many_arguments)]
-fn compute_default_filter_delta(
+/// One source of truth for both the field shape (template structs forward
+/// these fields verbatim) and the default values (zero across the board
+/// when no relaxation applies).
+#[derive(Debug, Default, Clone, Copy)]
+pub(super) struct CountDeltas {
+    /// Extra matches if `&stacks=0` were set (currently-collapsed stacks
+    /// would surface their hidden members). 0 when stacks aren't being
+    /// collapsed.
+    pub in_stacks: u64,
+    /// Extra matches if `&nodefault=1` were set (the configured `[browse]
+    /// default_filter` is excluding these). 0 when no default filter is
+    /// active.
+    pub filtered_by_default: u64,
+}
+
+/// Inputs the count-delta helper needs that aren't already on `opts`.
+/// Bundled into a struct purely to keep the signature legible.
+pub(super) struct DeltaContext<'a> {
+    pub state: &'a AppState,
+    pub params: &'a SearchParams,
+    pub collection_ids: &'a [String],
+    pub collection_exclude_ids: &'a [String],
+    pub person_ids: &'a [String],
+    pub volume: &'a str,
+    pub path_volume_id: Option<&'a str>,
+    pub effective_sort: &'a str,
+    pub page: u32,
+    pub per_page: u32,
+    pub collapse_stacks: bool,
+    pub base_total: u64,
+    pub default_filter_active: bool,
+    pub has_similarity: bool,
+}
+
+/// Compute both deltas in one call. The `in_stacks` portion is a cheap
+/// `opts.collapse_stacks=false` toggle + `search_count`; the
+/// `filtered_by_default` portion re-runs `build_parsed_search` with
+/// `nodefault=1` forced (collection/person/volume IDs reused from the
+/// live query — typical default filters don't reference those, and
+/// re-deriving them here would duplicate ~30 LOC for no gain).
+///
+/// The opts is mutated and restored — caller should treat it as borrowed
+/// across the call but unchanged afterwards.
+pub(super) fn compute_count_deltas(
     catalog: &crate::catalog::Catalog,
-    state: &AppState,
-    params: &SearchParams,
-    collection_ids: &[String],
-    collection_exclude_ids: &[String],
-    person_ids: &[String],
-    volume: &str,
-    path_volume_id: Option<&str>,
-    effective_sort: &str,
-    page: u32,
-    per_page: u32,
-    collapse_stacks: bool,
-    base_total: u64,
-    active: bool,
-    has_similarity: bool,
-) -> u64 {
-    if !active || has_similarity {
-        return 0;
+    opts: &mut crate::catalog::SearchOptions<'_>,
+    ctx: &DeltaContext<'_>,
+) -> CountDeltas {
+    if ctx.has_similarity {
+        return CountDeltas::default();
     }
-    let mut params_nd = params.clone();
-    params_nd.nodefault = Some("1".to_string());
-    let bf_nd = build_parsed_search(&params_nd, state);
-    let parsed_nd = bf_nd.parsed;
-    let mut opts_nd = parsed_nd.to_search_options();
-    if !parsed_nd.collections.is_empty() {
-        opts_nd.collection_asset_ids = Some(collection_ids);
-    }
-    if !parsed_nd.collections_exclude.is_empty() {
-        opts_nd.collection_exclude_ids = Some(collection_exclude_ids);
-    }
-    if !parsed_nd.persons.is_empty() {
-        opts_nd.person_asset_ids = Some(person_ids);
-    }
-    if !volume.is_empty() {
-        opts_nd.volume = Some(volume);
-    }
-    if let Some(vid) = path_volume_id {
-        if opts_nd.volume.is_none() {
-            opts_nd.volume = Some(vid);
+    let in_stacks: u64 = if ctx.collapse_stacks {
+        opts.collapse_stacks = false;
+        let n = catalog.search_count(opts).unwrap_or(ctx.base_total);
+        opts.collapse_stacks = true;
+        n.saturating_sub(ctx.base_total)
+    } else {
+        0
+    };
+    let filtered_by_default: u64 = if ctx.default_filter_active {
+        let mut params_nd = ctx.params.clone();
+        params_nd.nodefault = Some("1".to_string());
+        let bf_nd = build_parsed_search(&params_nd, ctx.state);
+        let parsed_nd = bf_nd.parsed;
+        let mut opts_nd = parsed_nd.to_search_options();
+        if !parsed_nd.collections.is_empty() {
+            opts_nd.collection_asset_ids = Some(ctx.collection_ids);
         }
-    }
-    opts_nd.sort = SearchSort::from_str(effective_sort);
-    opts_nd.page = page;
-    opts_nd.per_page = per_page;
-    opts_nd.collapse_stacks = collapse_stacks;
-    let n = catalog.search_count(&opts_nd).unwrap_or(base_total);
-    n.saturating_sub(base_total)
+        if !parsed_nd.collections_exclude.is_empty() {
+            opts_nd.collection_exclude_ids = Some(ctx.collection_exclude_ids);
+        }
+        if !parsed_nd.persons.is_empty() {
+            opts_nd.person_asset_ids = Some(ctx.person_ids);
+        }
+        if !ctx.volume.is_empty() {
+            opts_nd.volume = Some(ctx.volume);
+        }
+        if let Some(vid) = ctx.path_volume_id {
+            if opts_nd.volume.is_none() {
+                opts_nd.volume = Some(vid);
+            }
+        }
+        opts_nd.sort = SearchSort::from_str(ctx.effective_sort);
+        opts_nd.page = ctx.page;
+        opts_nd.per_page = ctx.per_page;
+        opts_nd.collapse_stacks = ctx.collapse_stacks;
+        let n = catalog.search_count(&opts_nd).unwrap_or(ctx.base_total);
+        n.saturating_sub(ctx.base_total)
+    } else {
+        0
+    };
+    CountDeltas { in_stacks, filtered_by_default }
 }
 
 /// GET / — browse page with initial results (full page for browser, partial for htmx).
@@ -232,31 +272,26 @@ pub async fn browse_page(
         let display_per_page = state.per_page;
         let total_pages = if has_similarity { 1 } else { ((total as f64) / display_per_page as f64).ceil() as u32 };
 
-        // ── Count-delta hints ─────────────────────────────────────
-        // Surface "more matches exist behind this view" so users aren't
-        // surprised that the on-disk asset count differs from the rendered
-        // count. Two deltas:
-        //   - count_in_stacks: extra matches when stacks are collapsed
-        //     (the same query with `&stacks=0` would return more rows).
-        //   - count_filtered_by_default: extra matches that the configured
-        //     [browse] default_filter is excluding (toggle off via
-        //     `&nodefault=1`).
-        // Skipped under similarity view (single-page output, no real
-        // pagination concept).
-        let count_in_stacks: u64 = if collapse_stacks && !has_similarity {
-            opts.collapse_stacks = false;
-            let n = catalog.search_count(&opts).unwrap_or(total);
-            opts.collapse_stacks = true;
-            n.saturating_sub(total)
-        } else {
-            0
-        };
-        let count_filtered_by_default: u64 = compute_default_filter_delta(
-            &catalog, &state, &params, &collection_ids, &collection_exclude_ids,
-            &person_ids, &volume, path_volume_id.as_deref(),
-            effective_sort, page, per_page, collapse_stacks,
-            total, !nodefault && state.default_filter.is_some(), has_similarity,
-        );
+        // Count-delta hints: surface "more matches exist behind this view"
+        // so the rendered count isn't silently smaller than what the tags
+        // page would suggest. See `compute_count_deltas` for what each
+        // delta means.
+        let deltas = compute_count_deltas(&catalog, &mut opts, &DeltaContext {
+            state: &state,
+            params: &params,
+            collection_ids: &collection_ids,
+            collection_exclude_ids: &collection_exclude_ids,
+            person_ids: &person_ids,
+            volume: &volume,
+            path_volume_id: path_volume_id.as_deref(),
+            effective_sort,
+            page,
+            per_page,
+            collapse_stacks,
+            base_total: total,
+            default_filter_active: !nodefault && state.default_filter.is_some(),
+            has_similarity,
+        });
 
         let mut cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
 
@@ -295,8 +330,8 @@ pub async fn browse_page(
                 sort: effective_sort.to_string(),
                 cards,
                 total,
-                count_in_stacks,
-                count_filtered_by_default,
+                count_in_stacks: deltas.in_stacks,
+                count_filtered_by_default: deltas.filtered_by_default,
                 page,
                 per_page,
                 total_pages,
@@ -353,8 +388,8 @@ pub async fn browse_page(
             sort: effective_sort.to_string(),
             cards,
             total,
-            count_in_stacks,
-            count_filtered_by_default,
+            count_in_stacks: deltas.in_stacks,
+            count_filtered_by_default: deltas.filtered_by_default,
             page,
             per_page,
             total_pages,
@@ -546,21 +581,22 @@ pub async fn search_api(
         let display_per_page = state.per_page;
         let total_pages = if has_similarity { 1 } else { ((total as f64) / display_per_page as f64).ceil() as u32 };
 
-        // Same delta hints as `browse_page` — see that handler for rationale.
-        let count_in_stacks: u64 = if collapse_stacks && !has_similarity {
-            opts.collapse_stacks = false;
-            let n = catalog.search_count(&opts).unwrap_or(total);
-            opts.collapse_stacks = true;
-            n.saturating_sub(total)
-        } else {
-            0
-        };
-        let count_filtered_by_default: u64 = compute_default_filter_delta(
-            &catalog, &state, &params, &collection_ids, &collection_exclude_ids,
-            &person_ids, &volume, path_volume_id.as_deref(),
-            effective_sort, page, per_page, collapse_stacks,
-            total, !nodefault && state.default_filter.is_some(), has_similarity,
-        );
+        let deltas = compute_count_deltas(&catalog, &mut opts, &DeltaContext {
+            state: &state,
+            params: &params,
+            collection_ids: &collection_ids,
+            collection_exclude_ids: &collection_exclude_ids,
+            person_ids: &person_ids,
+            volume: &volume,
+            path_volume_id: path_volume_id.as_deref(),
+            effective_sort,
+            page,
+            per_page,
+            collapse_stacks,
+            base_total: total,
+            default_filter_active: !nodefault && state.default_filter.is_some(),
+            has_similarity,
+        });
 
         let mut cards: Vec<AssetCard> = rows.iter().map(|r| AssetCard::from_row(r, &preview_ext)).collect();
 
@@ -598,8 +634,8 @@ pub async fn search_api(
             sort: effective_sort.to_string(),
             cards,
             total,
-            count_in_stacks,
-            count_filtered_by_default,
+            count_in_stacks: deltas.in_stacks,
+            count_filtered_by_default: deltas.filtered_by_default,
             page,
             per_page,
             total_pages,
