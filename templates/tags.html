@@ -252,61 +252,31 @@
     var renameApplyBtn = document.getElementById('rename-apply');
     var renameResultEl = document.getElementById('rename-result');
     var renameAc = document.getElementById('rename-autocomplete');
-    var renameAcIndex = -1;
 
-    // Autocomplete for the "To" field — reuses /api/tags
-    // /api/tags returns [[name, count], ...] tuples
+    // Tag list for autocomplete (fetched once, used by the rename modal's
+    // "To" field and by every split-modal target row via attachTagAutocomplete).
+    // /api/tags returns [[name, count], ...] tuples.
     var allTagNames = [];
     fetch('/api/tags').then(function(r) { return r.json(); }).then(function(data) {
         allTagNames = data.map(function(t) { return Array.isArray(t) ? t[0] : (t.name || t); });
     });
 
-    function showRenameAc(query) {
-        if (!query || query.length < 2) { renameAc.style.display = 'none'; renameAcIndex = -1; return; }
-        var q = query.toLowerCase();
-        var matches = allTagNames.filter(function(t) {
-            return t.toLowerCase().indexOf(q) !== -1 && t !== query;
-        }).slice(0, 30);
-        if (matches.length === 0) { renameAc.style.display = 'none'; renameAcIndex = -1; return; }
-        renameAc.innerHTML = '';
-        renameAcIndex = -1;
-        matches.forEach(function(t) {
-            var div = document.createElement('div');
-            div.className = 'tag-suggestion';
-            var parts = t.split('|');
-            if (parts.length > 1) {
-                div.innerHTML = '<span class="tag-path-prefix">' +
-                    parts.slice(0, -1).join('|').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '|</span>' +
-                    parts[parts.length - 1].replace(/&/g,'&amp;').replace(/</g,'&lt;');
-            } else {
-                div.textContent = t;
-            }
-            div.onmousedown = function(e) {
-                e.preventDefault();
-                renameNewEl.value = t;
-                renameAc.style.display = 'none';
-                renameApplyBtn.disabled = true;
-                renameResultEl.textContent = '';
-            };
-            renameAc.appendChild(div);
-        });
-        renameAc.style.display = 'block';
-    }
-
-    function highlightRenameAc(idx) {
-        var items = renameAc.querySelectorAll('.tag-suggestion');
-        items.forEach(function(el, i) { el.classList.toggle('active', i === idx); });
-        if (idx >= 0 && items[idx]) items[idx].scrollIntoView({block: 'nearest'});
-    }
-
+    // Wire the "To" field with the same helper the split modal uses. Clearing
+    // the apply state on input is handled here too (rename used to do that
+    // separately; folded into onAccept + a small `input` listener below).
     renameNewEl.addEventListener('input', function() {
-        showRenameAc(this.value.trim());
         renameApplyBtn.disabled = true;
         renameResultEl.textContent = '';
     });
-    renameNewEl.addEventListener('blur', function() {
-        setTimeout(function() { renameAc.style.display = 'none'; renameAcIndex = -1; }, 150);
-    });
+    attachTagAutocomplete(
+        renameNewEl,
+        renameAc,
+        function() { renameApplyBtn.disabled = true; renameResultEl.textContent = ''; },
+        // Enter when the autocomplete is closed → submit (preview if Apply is
+        // disabled, apply otherwise). Preserves the keyboard-driven flow:
+        // type, Enter → preview, Enter again → apply.
+        function() { doRename(!renameApplyBtn.disabled); }
+    );
 
     document.querySelectorAll('.tag-rename-btn').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
@@ -381,51 +351,97 @@
 
     renamePreviewBtn.addEventListener('click', function() { doRename(false); });
     renameApplyBtn.addEventListener('click', function() { doRename(true); });
-    renameNewEl.addEventListener('keydown', function(e) {
-        var acOpen = renameAc.style.display !== 'none';
-        var items = acOpen ? renameAc.querySelectorAll('.tag-suggestion') : [];
-        if (acOpen && items.length > 0) {
-            if (e.key === 'ArrowDown') {
+    // Keyboard handling (↑/↓/Enter/Tab/Escape on the "To" input) is
+    // owned by attachTagAutocomplete — onSubmit triggers the preview/apply
+    // when Enter is pressed with the dropdown closed.
+
+    // Reusable tag-name autocomplete attachable to any text input. Used by
+    // the rename modal's "To" field and by each row of the split modal
+    // (where rows are created dynamically). Sources candidates from
+    // `allTagNames` (loaded once at the top of this script).
+    //
+    // Options:
+    //   - onAccept(tag): fired after a suggestion is committed (mouse,
+    //     Enter on a highlighted item, or Tab). Hosts use this to clear
+    //     any stale "Apply" / result state.
+    //   - onSubmit(): fired when Enter is pressed while the autocomplete
+    //     dropdown is closed (or open with no highlighted item — in which
+    //     case the dropdown is closed first, requiring a second Enter to
+    //     submit). Hosts use this to trigger Preview/Apply directly.
+    function attachTagAutocomplete(input, ac, onAccept, onSubmit) {
+        var idx = -1;
+        function show(query) {
+            if (!query || query.length < 2) { ac.style.display = 'none'; idx = -1; return; }
+            var q = query.toLowerCase();
+            var matches = allTagNames.filter(function(t) {
+                return t.toLowerCase().indexOf(q) !== -1 && t !== query;
+            }).slice(0, 30);
+            if (matches.length === 0) { ac.style.display = 'none'; idx = -1; return; }
+            ac.innerHTML = '';
+            idx = -1;
+            matches.forEach(function(t) {
+                var div = document.createElement('div');
+                div.className = 'tag-suggestion';
+                div.setAttribute('data-tag', t);
+                var parts = t.split('|');
+                if (parts.length > 1) {
+                    div.innerHTML = '<span class="tag-path-prefix">' +
+                        parts.slice(0, -1).join('|').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '|</span>' +
+                        parts[parts.length - 1].replace(/&/g,'&amp;').replace(/</g,'&lt;');
+                } else {
+                    div.textContent = t;
+                }
+                div.onmousedown = function(e) { e.preventDefault(); accept(t); };
+                ac.appendChild(div);
+            });
+            ac.style.display = 'block';
+        }
+        function highlight(i) {
+            var items = ac.querySelectorAll('.tag-suggestion');
+            items.forEach(function(el, j) { el.classList.toggle('active', j === i); });
+            if (i >= 0 && items[i]) items[i].scrollIntoView({block: 'nearest'});
+        }
+        function accept(t) {
+            input.value = t;
+            ac.style.display = 'none';
+            idx = -1;
+            if (onAccept) onAccept(t);
+        }
+        input.addEventListener('input', function() { show(this.value.trim()); });
+        input.addEventListener('blur', function() {
+            setTimeout(function() { ac.style.display = 'none'; idx = -1; }, 150);
+        });
+        input.addEventListener('keydown', function(e) {
+            var items = ac.querySelectorAll('.tag-suggestion');
+            var visible = ac.style.display !== 'none' && items.length > 0;
+            if (e.key === 'ArrowDown' && visible) {
                 e.preventDefault();
-                renameAcIndex = Math.min(renameAcIndex + 1, items.length - 1);
-                highlightRenameAc(renameAcIndex);
-                return;
-            }
-            if (e.key === 'ArrowUp') {
+                idx = Math.min(idx + 1, items.length - 1);
+                highlight(idx);
+            } else if (e.key === 'ArrowUp' && visible) {
                 e.preventDefault();
-                renameAcIndex = Math.max(renameAcIndex - 1, -1);
-                highlightRenameAc(renameAcIndex);
-                return;
-            }
-            if ((e.key === 'Enter' || e.key === 'Tab') && renameAcIndex >= 0) {
+                idx = Math.max(idx - 1, 0);
+                highlight(idx);
+            } else if ((e.key === 'Enter' || e.key === 'Tab') && visible && idx >= 0) {
+                // Commit the highlighted suggestion.
                 e.preventDefault();
-                renameNewEl.value = items[renameAcIndex].textContent;
-                renameAc.style.display = 'none';
-                renameAcIndex = -1;
-                renameApplyBtn.disabled = true;
-                renameResultEl.textContent = '';
-                return;
+                accept(items[idx].getAttribute('data-tag'));
+            } else if (e.key === 'Enter' && visible && idx < 0) {
+                // Dropdown is open but no item selected — close it. The user
+                // can press Enter again to submit (rename-modal behaviour).
+                e.preventDefault();
+                ac.style.display = 'none';
+                idx = -1;
+            } else if (e.key === 'Enter' && !visible && onSubmit) {
+                e.preventDefault();
+                onSubmit();
+            } else if (e.key === 'Escape' && visible) {
+                e.preventDefault();
+                ac.style.display = 'none';
+                idx = -1;
             }
-        }
-        // Escape always closes the autocomplete (even with no selection)
-        if (e.key === 'Escape' && acOpen) {
-            renameAc.style.display = 'none';
-            renameAcIndex = -1;
-            return;
-        }
-        // Enter: if autocomplete is open, just close it (next Enter will preview/apply)
-        if (e.key === 'Enter' && acOpen) {
-            e.preventDefault();
-            renameAc.style.display = 'none';
-            renameAcIndex = -1;
-            return;
-        }
-        // Enter with autocomplete closed: preview/apply
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            doRename(!renameApplyBtn.disabled);
-        }
-    });
+        });
+    }
 
     // ── Tag split modal ──────────────────────────────────────────
     var splitOverlay = document.getElementById('split-overlay');
@@ -442,11 +458,19 @@
     function splitTargetRow(value) {
         var row = document.createElement('div');
         row.className = 'split-target-row';
-        row.style.cssText = 'display:flex;gap:0.3rem;align-items:center;margin-bottom:0.3rem;';
+        row.style.cssText = 'display:flex;gap:0.3rem;align-items:flex-start;margin-bottom:0.3rem;';
+
+        // Each target gets its own input+autocomplete wrapper so the dropdown
+        // can position itself under the right input even when several rows
+        // are visible at once. The wrapper takes the flex space; the inner
+        // input fills the wrapper width.
+        var inputWrap = document.createElement('div');
+        inputWrap.style.cssText = 'flex:1;position:relative;';
+
         var input = document.createElement('input');
         input.type = 'text';
         input.className = 'form-input split-target-input';
-        input.style.cssText = 'flex:1;box-sizing:border-box;';
+        input.style.cssText = 'width:100%;box-sizing:border-box;';
         input.placeholder = 'target|tag|name';
         input.autocomplete = 'off';
         if (value) input.value = value;
@@ -454,6 +478,18 @@
             splitApplyBtn.disabled = true;
             splitResultEl.textContent = '';
         });
+
+        var ac = document.createElement('div');
+        ac.className = 'tag-autocomplete';
+        ac.style.display = 'none';
+        attachTagAutocomplete(input, ac, function() {
+            splitApplyBtn.disabled = true;
+            splitResultEl.textContent = '';
+        });
+
+        inputWrap.appendChild(input);
+        inputWrap.appendChild(ac);
+
         var remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'batch-btn';
@@ -471,7 +507,7 @@
                 input.focus();
             }
         });
-        row.appendChild(input);
+        row.appendChild(inputWrap);
         row.appendChild(remove);
         return row;
     }
