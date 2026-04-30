@@ -24,7 +24,7 @@
 
 <div id="tag-list" class="tag-list-tree">
     {% for t in tags %}
-    <div class="tag-entry{% if t.has_children %} tag-parent{% endif %}" data-name="{{ t.name }}" data-count="{{ t.total_count }}" data-own-count="{{ t.own_count }}" data-depth="{{ t.depth }}">
+    <div class="tag-entry{% if t.has_children %} tag-parent{% endif %}" data-name="{{ t.name }}" data-count="{{ t.own_count }}" data-leaf-count="{{ t.leaf_count }}" data-depth="{{ t.depth }}">
         <div class="tag-name-col" style="padding-left: {{ t.depth * 20 }}px;">
             {% if t.has_children %}
             <span class="tag-toggle" onclick="toggleTagChildren(this)" data-name="{{ t.name }}">▾</span>
@@ -34,10 +34,18 @@
             <a href="/?tag={{ t.display_name|urlencode }}">{{ t.display }}</a>
         </div>
         <span class="tag-count">
-            {% if t.own_count != t.total_count %}
-            {{ t.own_count }} <span class="tag-total-count">({{ t.total_count }})</span>
-            {% else %}
+            {# Headline = own_count: assets carrying this tag in any form
+               (the tag literally, or — via auto-expansion — through any
+               descendant). Matches `tag:foo` (default ▼) browse semantic.
+               Subtle parenthesised number = leaf_count: assets where the
+               tag sits at the leaf on that asset (no descendant on the
+               same asset). Matches `tag:/foo` browse semantic. We only
+               render the second number when it differs from the first —
+               for true leaf tags (no children anywhere) the two are equal
+               and one number suffices. #}
             {{ t.own_count }}
+            {% if t.leaf_count != t.own_count %}
+            <span class="tag-total-count" title="{{ t.leaf_count }} asset(s) tagged at this exact level (no deeper child); the headline includes assets where this is auto-expanded from a descendant">({{ t.leaf_count }} as leaf)</span>
             {% endif %}
         </span>
         <button class="tag-rename-btn" title="Rename tag" data-tag="{{ t.name }}">&#9998;</button>

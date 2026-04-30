@@ -591,8 +591,15 @@ pub struct TagTreeEntry {
     pub display_name: String, // User-facing form with `/` for hierarchy (used in URLs/links)
     pub display: String,      // Leaf segment only
     pub depth: u32,
+    /// Assets that carry this tag in any form (the tag literally, or — via
+    /// auto-expansion — through any descendant). Matches the default
+    /// `tag:foo` browse semantic. The headline number on the tag row.
     pub own_count: u64,
-    pub total_count: u64,
+    /// Assets that carry this tag as a *leaf* — the tag is present without
+    /// any descendant on the same asset. Matches `tag:/foo` (leaf-only)
+    /// browse semantic. For a parent tag this is "assets tagged at exactly
+    /// this level"; for a true leaf tag it equals own_count.
+    pub leaf_count: u64,
     pub has_children: bool,
 }
 

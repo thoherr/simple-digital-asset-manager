@@ -4328,6 +4328,42 @@ impl Catalog {
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    /// For each tag value present in the catalogue, count assets where that
+    /// tag is a *leaf* — i.e. the asset has the tag but no other tag of the
+    /// form `<tag>|...` on the same asset.
+    ///
+    /// This is the count that matches the browse chip's `/tag` (leaf-only)
+    /// search semantic, and is meaningful in isolation from the
+    /// auto-expanded `own_count` returned by `list_all_tags`. For a parent
+    /// node like `location`, leaf-count equals "assets tagged at exactly
+    /// that level" — typically a small number that surfaces lazily-tagged
+    /// assets (parent-tagged but not specialised into a child).
+    ///
+    /// Pure SQL via the same `json_each` engine `list_all_tags` uses,
+    /// with a NOT EXISTS subquery checking for any descendant on the same
+    /// asset's tag list.
+    pub fn list_leaf_tag_counts(&self) -> Result<std::collections::HashMap<String, u64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT je.value, COUNT(*) as cnt \
+             FROM assets a, json_each(a.tags) AS je \
+             WHERE a.tags != '[]' \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM json_each(a.tags) AS je2 \
+                   WHERE je2.value LIKE je.value || '|%' \
+               ) \
+             GROUP BY je.value",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?))
+        })?;
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let (k, v) = row?;
+            map.insert(k, v);
+        }
+        Ok(map)
+    }
+
     /// Find assets with a specific exact tag, returning (asset_id, stack_id) pairs.
     /// Ordered by created_at ASC so the oldest asset comes first.
     pub fn assets_with_exact_tag(&self, tag: &str) -> Result<Vec<(String, Option<String>)>> {

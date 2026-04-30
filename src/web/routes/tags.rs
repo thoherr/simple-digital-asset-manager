@@ -270,8 +270,22 @@ pub async fn tags_api(State(state): State<Arc<AppState>>) -> Response {
     }
 }
 
-/// Build a tree of tag entries from a flat list of (name, count) pairs.
-fn build_tag_tree(flat_tags: &[(String, u64)]) -> Vec<TagTreeEntry> {
+/// Build a tree of tag entries.
+///
+/// Inputs:
+///   - `flat_tags`: `(name, own_count)` pairs from `list_all_tags`. Because of
+///     auto-expansion on storage, `own_count` for a parent already covers
+///     every asset that has any descendant — it is the "with descendants"
+///     count and matches `tag:foo` (default) browse semantic.
+///   - `leaf_counts`: `name → leaf_count` map from `list_leaf_tag_counts`.
+///     Counts assets where the tag is present *without* any descendant on
+///     the same asset, matching `tag:/foo` (leaf-only) browse semantic. For
+///     a row whose tag has no descendants, `leaf_count == own_count` and the
+///     UI renders only the headline number.
+fn build_tag_tree(
+    flat_tags: &[(String, u64)],
+    leaf_counts: &std::collections::HashMap<String, u64>,
+) -> Vec<TagTreeEntry> {
     use std::collections::BTreeMap;
 
     let mut own_counts: BTreeMap<String, u64> = BTreeMap::new();
@@ -296,20 +310,6 @@ fn build_tag_tree(flat_tags: &[(String, u64)]) -> Vec<TagTreeEntry> {
     }
 
     let sorted_names: Vec<String> = own_counts.keys().cloned().collect();
-    let mut total_counts: BTreeMap<String, u64> = BTreeMap::new();
-    for name in &sorted_names {
-        let own = own_counts[name];
-        total_counts.insert(name.clone(), own);
-    }
-    for name in sorted_names.iter().rev() {
-        let total = total_counts[name];
-        if let Some(pipe_pos) = name.rfind('|') {
-            let parent = &name[..pipe_pos];
-            if let Some(parent_total) = total_counts.get_mut(parent) {
-                *parent_total += total;
-            }
-        }
-    }
 
     let mut has_children_set: std::collections::HashSet<String> = std::collections::HashSet::new();
     for name in &sorted_names {
@@ -378,13 +378,19 @@ fn build_tag_tree(flat_tags: &[(String, u64)]) -> Vec<TagTreeEntry> {
                 .unwrap_or(name)
                 .to_string();
             let display_name = name.clone();
+            let own = own_counts[name];
+            // Tags that aren't direct leaves of any asset (synthetic
+            // intermediate nodes injected by the prefix-walk above) won't
+            // appear in `leaf_counts`. Default to 0 — they're not a leaf
+            // *anywhere* by definition.
+            let leaf = *leaf_counts.get(name).unwrap_or(&0);
             TagTreeEntry {
                 name: name.clone(),
                 display_name,
                 display,
                 depth,
-                own_count: own_counts[name],
-                total_count: total_counts[name],
+                own_count: own,
+                leaf_count: leaf,
                 has_children: has_children_set.contains(name.as_str()),
             }
         })
@@ -397,8 +403,9 @@ pub async fn tags_page(State(state): State<Arc<AppState>>) -> Response {
     let result = tokio::task::spawn_blocking(move || {
         let catalog = state.catalog()?;
         let tags = catalog.list_all_tags()?;
+        let leaf_counts = catalog.list_leaf_tag_counts().unwrap_or_default();
         let total_tags = tags.len() as u64;
-        let tree = build_tag_tree(&tags);
+        let tree = build_tag_tree(&tags, &leaf_counts);
         let tmpl = TagsPage {
             tags: tree,
             total_tags,
@@ -490,7 +497,7 @@ mod tests {
             ("Bricking Bavaria 2015".to_string(), 388),
             ("Bricking Bavaria|2011".to_string(), 155),
         ];
-        let tree = build_tag_tree(&tags);
+        let tree = build_tag_tree(&tags, &Default::default());
         let names: Vec<&str> = tree.iter().map(|t| t.name.as_str()).collect();
         // Parent first, child immediately after, then flat siblings.
         assert_eq!(
@@ -513,7 +520,7 @@ mod tests {
         let tags: Vec<(String, u64)> = vec![
             ("event|festival|Holzkirchner|2024".to_string(), 47),
         ];
-        let tree = build_tag_tree(&tags);
+        let tree = build_tag_tree(&tags, &Default::default());
         let names: Vec<&str> = tree.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(
             names,
@@ -534,29 +541,54 @@ mod tests {
             ("event|festival|Beta".to_string(), 20),
             ("event|festival|gamma".to_string(), 30),
         ];
-        let tree = build_tag_tree(&tags);
+        let tree = build_tag_tree(&tags, &Default::default());
         let leaves: Vec<&str> = tree.iter().map(|t| t.display.as_str()).collect();
         assert_eq!(leaves, vec!["event", "festival", "alpha", "Beta", "gamma"]);
     }
 
-    /// Total counts roll up from descendants (already worked, but pin it
-    /// in case the refactor breaks the rollup).
+    /// `leaf_count` comes from the catalogue-side `list_leaf_tag_counts`
+    /// query, *not* from rolling up children — there's no roll-up to do
+    /// because auto-expansion already counts a parent for every asset
+    /// that has a descendant. The page-builder simply forwards each tag's
+    /// leaf-count (or 0 if the tag is a synthetic intermediate not present
+    /// on any asset's leaf set).
     #[test]
-    fn total_count_rolls_up_to_parent() {
+    fn leaf_count_forwarded_from_input() {
+        use std::collections::HashMap;
         let tags: Vec<(String, u64)> = vec![
-            ("event".to_string(), 0),
-            ("event|festival".to_string(), 5),
+            // own_counts as auto-expansion would produce them — every
+            // asset with `event|festival|Holzkirchner|2024` also carries
+            // `event`, `event|festival`, `event|festival|Holzkirchner`.
+            ("event".to_string(), 79),
+            ("event|festival".to_string(), 79),
+            ("event|festival|Holzkirchner".to_string(), 79),
             ("event|festival|Holzkirchner|2024".to_string(), 47),
             ("event|festival|Holzkirchner|2023".to_string(), 32),
         ];
-        let tree = build_tag_tree(&tags);
+        let mut leaf_counts = HashMap::new();
+        // Only the leaves of each asset's tag chain are real leaves.
+        leaf_counts.insert("event|festival|Holzkirchner|2024".to_string(), 47);
+        leaf_counts.insert("event|festival|Holzkirchner|2023".to_string(), 32);
+        let tree = build_tag_tree(&tags, &leaf_counts);
         let by_name: std::collections::HashMap<&str, &TagTreeEntry> =
             tree.iter().map(|t| (t.name.as_str(), t)).collect();
-        // Synthetic Holzkirchner = sum of its children = 47 + 32 = 79
-        assert_eq!(by_name["event|festival|Holzkirchner"].total_count, 47 + 32);
-        // event|festival = own 5 + Holzkirchner subtree 79 = 84
-        assert_eq!(by_name["event|festival"].total_count, 5 + 47 + 32);
-        // event = own 0 + festival subtree
-        assert_eq!(by_name["event"].total_count, 5 + 47 + 32);
+
+        // Headline (own_count) is what the storage holds — auto-expansion
+        // means parents and children share the same set on these assets.
+        assert_eq!(by_name["event"].own_count, 79);
+        assert_eq!(by_name["event|festival|Holzkirchner"].own_count, 79);
+        assert_eq!(by_name["event|festival|Holzkirchner|2024"].own_count, 47);
+
+        // Parent rows: leaf_count = 0 because no asset has them as a leaf
+        // here. (If some assets were tagged at exactly that level without
+        // a deeper child, leaf_count would be > 0 — that's the case the
+        // UI surfaces.)
+        assert_eq!(by_name["event"].leaf_count, 0);
+        assert_eq!(by_name["event|festival|Holzkirchner"].leaf_count, 0);
+
+        // True-leaf rows: leaf_count == own_count (UI omits the
+        // parenthesised number on those, since both numbers are equal).
+        assert_eq!(by_name["event|festival|Holzkirchner|2024"].leaf_count, 47);
+        assert_eq!(by_name["event|festival|Holzkirchner|2023"].leaf_count, 32);
     }
 }
