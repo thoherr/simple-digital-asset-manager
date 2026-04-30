@@ -86,17 +86,40 @@ Matching is case-insensitive: `maki tag rename "Concert" "concert"` finds "Conce
 
 When renaming to a hierarchical tag, all ancestor paths are automatically added. For example, renaming "Munich" to "location|Germany|Bavaria|Munich" also adds `location`, `location|Germany`, and `location|Germany|Bavaria`. Removing a hierarchical tag also cleans up orphaned ancestor tags (ancestors no longer needed by any other descendant).
 
+### Splitting tags
+
+Replace one tag with two or more across the whole catalog. Useful when a single tag was carrying two orthogonal meanings — e.g. the legacy `subject|event|wedding-jane-2025` actually meant both "wedding scene" and "Jane's 2025 wedding occasion":
+
+```bash
+# Replace the legacy tag with two facet-aligned ones
+maki tag split "subject|event|wedding-jane-2025" \
+    "subject|event|wedding" \
+    "event|wedding-jane-2025" \
+    --apply
+```
+
+Splits act on **leaf occurrences only**. Pass `--keep` to add the new tags alongside the old (additive copy) instead of replacing.
+
+### Deleting tags
+
+Remove a tag — and, by default, its entire descendant branch — from every asset that has it:
+
+```bash
+# Drop a typo'd tag everywhere
+maki tag delete "lansdcape" --apply
+
+# Remove an entire event branch
+maki tag delete "event|wedding-jane-2025" --apply
+
+# Leaf-only: delete just the parent value where it's not specialised
+maki tag delete "=subject|nature" --apply
+```
+
+Same `=` (leaf-only), `^` (case-sensitive) markers as `tag rename`. Newly-orphaned ancestors on each asset are cleaned up automatically. The web UI's tags page has an equivalent trash button on every row with a Preview/Apply confirmation modal.
+
 ### Browsing tags in the web UI
 
-The web UI provides a dedicated tags page at `/tags` with:
-
-- **Sortable columns** -- click the Name or Count header to sort ascending or
-  descending.
-- **Live text filter** -- type 2 or more characters to filter the tag list
-  in real time.
-- **Multi-column layout** -- adapts to the viewport width using CSS columns.
-
-Clicking a tag name navigates to the browse page filtered to that tag.
+The web UI provides a dedicated tags page at `/tags` with sortable columns, live text filter, and a hierarchical tree view. Each tag row carries inline Rename / Split / Delete buttons (Preview→Apply, Enter-twice to commit). The headline count is "assets carrying this tag in any form" (matches `tag:foo`); a parenthesised "(N as leaf)" hint surfaces parent rows with sloppily-tagged assets — it's clickable and lands on the browse page filtered to exactly those candidates for finer tagging. See [Web UI → Tags Page](06-web-ui.md#tags-page) for the full tour.
 
 ---
 

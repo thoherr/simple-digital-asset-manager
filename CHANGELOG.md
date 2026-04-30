@@ -2,6 +2,64 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.4.13 (2026-04-30)
+
+A tag-management feature pack: a new `tag delete` command and matching web UI, the tags-page count semantics rewritten so the numbers actually mean something, and a handful of UX fixes around tag editing.
+
+### `maki tag delete` — the missing primitive
+
+Completes the `rename` / `split` / `delete` family. Same dry-run-by-default safety pattern, same marker grammar (`=tag` / `/tag` for leaf-only, `^tag` for case-sensitive), cascades to descendants by default. Newly-orphaned ancestors on each asset are cleaned up automatically.
+
+```bash
+maki tag delete "lansdcape" --apply                # typo fix, drops everywhere
+maki tag delete "event|wedding-jane-2025" --apply  # remove a whole branch
+maki tag delete "=subject|nature" --apply          # leaf-only: skip assets that have a deeper child
+```
+
+The web UI's tags page gains a **trash button (×)** on every row, hover-tinted to the destructive accent, opening a Preview→Apply confirmation modal — same Enter-twice rhythm as the rename and split modals. Backend: `POST /api/tag/delete`. CLI: 7 unit tests covering cascade, dry-run, sibling preservation, leaf-only with/without descendants, empty-tag rejection.
+
+### Tags-page counts: own vs leaf
+
+The previous parenthesised number on each tag row was defined as `own_count + sum of descendants' own_counts`, which is mathematically nonsense given MAKI's auto-expansion storage model: a parent's `own_count` already covers every asset that has any descendant, so summing the descendants again double-counts. Asset A tagged `location|Germany|Bayern|München` plus asset B tagged `location|Berlin` rendered `location` as `2 (6)` — the 6 was just rolled-up tag-string occurrences across the chain, not a meaningful asset count.
+
+Replaced with `(N as leaf)` — assets where this tag is the *deepest* level on that asset (no descendant of it is also present). Matches `tag:/foo` (leaf-only chip mode):
+
+- For a parent tag, surfaces "assets sloppily tagged at exactly this level when they could be more specific" — actionable signal.
+- For a true leaf, equals own_count and the UI omits the parens.
+- For a properly-tagged parent (every photo specialised down to a deeper child), leaf-count is 0 — also omitted, so cleanly-tagged hierarchies show a single number.
+
+The `(N as leaf)` text is **clickable** — links to `/?tag=/<name>` (browse with leaf-only filter), so users can act on the candidate-for-finer-tagging set in one click.
+
+Computed via a new `Catalog::list_leaf_tag_counts()` using the same `json_each` SQL engine `list_all_tags` uses, with a `NOT EXISTS (descendant on same asset)` subquery. Pure SQL, no per-asset Rust iteration.
+
+### Browse: result-count delta hints
+
+Next to the result count on the browse page, show inline hints when more matches exist behind a UI flag:
+
+```
+152 assets matching "tag:Bayerischer Wald" · 73 more in stacks · 12 more without default filter
+                                              ^^^^^^^^^^^^^^^^^   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                              click → ?stacks=0   click → ?nodefault=1
+```
+
+Each segment shows only when its delta is non-zero, so the count line stays clean when nothing's hidden. Implementation: a `compute_count_deltas` helper mutating `opts` for the cheap stacks delta and re-running `build_parsed_search` with `nodefault=1` forced for the default-filter delta. `htmx:afterSwap` now syncs the stack-toggle state from the URL after every swap so links that flip `&stacks=` leave the toggle button in the correct state instead of requiring a second click.
+
+The same hint pattern fixed the user's specific confusion: tags page showed `Bayerischer Wald` with 225 assets but browse only listed 152 — the 73 hidden behind stack collapse are now visible as a clickable delta.
+
+### Facet sidebar: tag list cap raised from 30 to 5000
+
+The tags section of the facet sidebar was capped at 30 rows ordered by count desc — for any non-trivial filter, lower-frequency co-occurring tags silently disappeared (the report: `GPK Los Angeles Workshop` not appearing under `tag:=abandoned`). Worse, surviving descendants whose parent got truncated rendered with synthetic count-0 parents in the JS tree-build. Bump to 5000; real catalogues even mid-restructure are around 4500 *total* tags catalogue-wide, far below the cap.
+
+### Tag-modal autocomplete consistency
+
+The split modal's target inputs had no autocomplete. Extracted the rename modal's autocomplete logic into a shared `attachTagAutocomplete(input, ac, onAccept, onSubmit)` helper (~70 LOC) and wired both modals through it. Net ~50 LOC removed even after adding the helper. **Split-modal keyboard flow** now matches rename: Enter on a non-last target advances to the next row, Enter on the last row submits (preview if Apply is disabled, apply otherwise) — same Enter-twice rhythm.
+
+### Tags-page tree pre-order (carryover polish)
+
+The pre-order tree fix shipped in v4.4.12 had one outstanding case: parent rows accumulated `(0 as leaf)` clutter even when the subtree was perfectly clean. The leaf-count semantics in this release fix that — only show the parenthesised number when it's actionable.
+
+Tests: 764 unit + 249 CLI integration + 14 doc on standard build (was 753 + 249 + 14 in v4.4.12).
+
 ## v4.4.12 (2026-04-29)
 
 Bug fix: tag-page tree rendering put children of prefix-sharing parents in the wrong place.

@@ -111,6 +111,8 @@ Cards that belong to a stack have a colored left border for quick visual identif
 
 **Stack collapsing**: By default, stacks are collapsed -- only the pick image (position 0) is shown in the grid, with a stack count badge indicating how many assets are hidden. A collapse toggle in the results bar lets you expand all stacks so every member is visible. When expanded, all stack members appear in position order with the colored border indicating membership.
 
+**Result-count hints**: when stacks are collapsed (or a `[browse] default_filter` is active), the count line surfaces *additional matches that exist but aren't currently rendered*. For example, `152 assets … · 73 more in stacks · 12 more without default filter`. Each `more …` segment is a clickable link that re-runs the search with the corresponding flag flipped (`&stacks=0` or `&nodefault=1`) and updates the URL so the back button works. Each segment is shown only when it'd actually surface more results, so the count line stays clean when there's nothing hidden behind a flag.
+
 **Per-stack expand/collapse**: Click the stack badge (⊞ N) on any browse card to expand or collapse just that individual stack, regardless of the global collapse setting. When stacks are globally collapsed, clicking a badge fetches and displays that stack's members inline. When stacks are globally expanded, clicking a badge collapses only that stack while others remain expanded. Re-clicking restores the previous state.
 
 Click a card to open the [asset detail page](#asset-detail-page).
@@ -648,26 +650,38 @@ The focused column has a blue border. Rating and label changes are saved immedia
 
 ## Tags Page
 
-The tags page shows all tags in your catalog with their usage counts.
+The tags page shows every tag in your catalog with usage counts and inline edit actions.
 
 ![Tags page with sortable columns and text filter](../screenshots/tags-page.png)
 
 Navigate to `/tags` or click "Tags" in the navigation bar.
 
-### Features
+### Hierarchical tree
 
-- **Sortable columns**: click the "Tag" header to sort alphabetically, or the "Assets" header to sort by usage count. Click again to reverse direction. The active sort shows a direction arrow.
-- **Live text filter**: type in the filter input to narrow the tag list. Filtering begins at 2 characters. The count display updates to show "X of Y" tags.
+Tags containing `|` separators render as a collapsible tree. The tree is built in **pre-order**: a parent tag is always immediately followed by its descendants, so structurally-related rows stay grouped — even when a renamed pipe-child shares a prefix with flat siblings (e.g. `Bricking Bavaria` and `Bricking Bavaria 2012`). Click the disclosure triangle to expand or collapse a branch. Click any tag name to jump to the browse page filtered by that tag.
+
+### Counts: own vs leaf
+
+Each tag row shows one or two numbers:
+
+- **Headline (bold)** = assets that carry this tag in any form. Because MAKI auto-expands every hierarchical tag to its ancestor paths on storage, this includes assets that have any descendant on the same chain. Matches the default `tag:foo` browse semantic — same number you'd see in the result count after clicking the tag.
+- **`(N as leaf)`** = assets where this tag is the *deepest* level on the asset (no descendant of it is also present). Matches `tag:/foo` (the leaf-only chip mode). Only shown when it's between 0 and the headline count exclusive — i.e. when some assets are tagged at exactly this level when they could plausibly be more specific. Properly-tagged parents (every photo specialised down to a deeper child) show no parens; true leaves (no children anywhere) show a single number.
+
+The `(N as leaf)` text is **clickable** — it lands on the browse page with `tag:/<name>` applied, showing exactly those N candidate-for-finer-tagging assets. Useful for cleaning up legacy data: a `subject (3 as leaf)` row tells you three photos are tagged just `subject` with no specialisation; click to find and re-tag them.
+
+### Sort, filter, layout
+
+- **Sortable columns**: click the *Tag* header to sort alphabetically, or the *Assets* header to sort by the headline count. Click again to reverse direction. The active sort shows a direction arrow.
+- **Live text filter**: type in the filter input to narrow the tag list. Filtering begins at 2 characters. The count display updates to show "X of Y" tags. A leading `|` anchors to a hierarchy component start (e.g. `|wed` matches `wedding` and `events|wedding` but not `midweek`).
 - **Multi-column layout**: tags flow into multiple columns automatically, adapting to the viewport width.
-- **Clickable tags**: click any tag name to jump to the browse page filtered by that tag.
-- **Hierarchical tree view**: tags containing `|` separators are displayed as a collapsible tree. Each node shows its own count (assets tagged with that exact tag) and a total count (including all descendants). Click the disclosure triangle to expand or collapse a branch. Clicking a parent tag searches for all descendants.
-- **Prefix-anchored filter**: type a leading `|` in the filter input to match only tags that *start* with the query at a hierarchy boundary (e.g., `|wed` matches `wedding` and `events|wedding` but not `midweek`).
-- **Rename tags**: hover over any tag row to reveal a pencil icon. Click it to open a rename dialog with:
-  - **From** (read-only, pre-filled with the clicked tag)
-  - **To** (editable input with tag autocomplete from your existing vocabulary)
-  - **Preview** button (dry run — shows how many assets would be affected)
-  - **Apply** button (enabled after preview confirms changes)
-  - Press **Enter** once to preview, **Enter** again to apply — two keystrokes to rename. The page reloads automatically after a successful rename. This is the web equivalent of `maki tag rename`.
+
+### Inline edit actions
+
+Hover over any tag row to reveal three icons that open Preview/Apply modals — same dry-run-by-default safety pattern across all three. Each modal supports the **Enter twice** rhythm: first Enter previews (gives a count), unlocks Apply; second Enter commits.
+
+- **Rename (pencil icon)**: opens a Rename dialog with the tag pre-filled in *From* and an editable *To* input that has tag autocomplete from your existing vocabulary. Web equivalent of `maki tag rename`. The autocomplete and submit-on-Enter wiring is shared with the split modal via a single helper.
+- **Split (branching arrow)**: shown only on leaf tags. Replaces the tag with two or more new tags across all matching assets, optionally keeping the source alongside (`Keep source` checkbox). Each target row has its own autocomplete-enabled input; Enter on a non-last row advances to the next, Enter on the last row submits. Web equivalent of `maki tag split`.
+- **Delete (×)**: removes the tag — and, by default, the entire branch under it — from every asset that has it. Hover tint shifts to the destructive accent so the action reads clearly. The modal cascades by default (warns when the tag has children); clicking Preview shows how many assets would be affected, and a second click commits. Newly-orphaned ancestors on each asset are cleaned up automatically. Web equivalent of `maki tag delete`.
 
 
 ## Collections Page

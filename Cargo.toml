@@ -1,6 +1,6 @@
 [package]
 name = "maki"
-version = "4.4.12"
+version = "4.4.13"
 edition = "2021"
 description = "A digital asset manager for large collections of images and videos"
 license = "Apache-2.0"
