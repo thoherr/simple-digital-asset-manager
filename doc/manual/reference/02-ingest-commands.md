@@ -714,6 +714,12 @@ maki tag fix-unicode --apply --log
 
 When `[writeback] enabled = true`, removed encoding-variants are written back to each asset's XMP recipe(s) as tag deletions. The kept (NFC) form is identical to what was already there modulo encoding, so XMP semantics are unchanged for those values. Until writeback runs, sidecars and SQLite reflect the normalisation immediately but XMP files on disk still carry the old encodings. See [maki writeback](05-maintain-commands.md#maki-writeback).
 
+### NOTES ON SORT ORDER
+
+After NFC normalisation, accented characters such as `Ö` are stored as a single precomposed code point (U+00D6). Under SQLite's default byte-comparison sort, that code point is greater than `Z`, so umlauted tags appear at the **end** of the alphabetical tag list rather than next to their base letter. The decomposed (NFD) form happens to land near the base letter under the same collation, but only as an accident of byte ordering — Swedish/Finnish dictionaries place `Ö` after `Z` deliberately, German DIN 5007-1 places it next to `O`, and there is no single correct answer at the byte level.
+
+NFC is still the right storage form: it matches the W3C/IETF recommendation, modern filesystems, XMP, and every external keyword tool MAKI rounds-trips through (Lightroom, Capture One, etc.). Locale-aware ordering on the tags page is a separate, presentation-layer concern and is not currently applied.
+
 ### SEE ALSO
 
 [tag expand-ancestors](#maki-tag-expand-ancestors) -- the other tag-data-cleanup migration; both are typically run once after major imports from external tools.
