@@ -3,17 +3,36 @@
 /// Internal storage convention:
 /// - `|` is the hierarchy separator: `animals|birds|eagles`
 /// - `/` is a literal character: `AF Nikkor 85mm f/1.4`
+/// - String content is **NFC-normalised** Unicode. This matters for tags
+///   that carry non-ASCII characters (e.g. `Ö-HA`, `München`): some tools
+///   write NFD (decomposed: `O` + combining diaeresis), others NFC
+///   (precomposed: single `Ö` code point). The two render identically but
+///   compare as different strings — without normalisation a single tag
+///   ends up as two distinct catalog entries that sort to different
+///   places.
 ///
 /// User-facing input convention (aligned with Lightroom/CaptureOne):
 /// - `|` means hierarchy: `animals|birds|eagles`
 /// - `>` also means hierarchy: `animals>birds>eagles`
 /// - `/` is a literal character (no escaping needed)
 
+/// Normalise a string to Unicode NFC (canonical composition). Cheap
+/// no-op for pure ASCII input; precomposes decomposed combining marks
+/// for accented characters. Used at every tag-write boundary so the
+/// catalog only ever stores one form per visually-identical tag.
+pub fn nfc(s: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    s.nfc().collect()
+}
+
 /// Convert user-facing tag input to internal storage form.
 ///
 /// - `>` becomes `|` (hierarchy separator, CaptureOne/Lightroom convention)
 /// - `|` stays as `|` (already the internal separator)
 /// - `/` stays as `/` (literal character)
+/// - Result is NFC-normalised so visually-identical tags from different
+///   tools (NFC vs NFD encoding of the same accented characters) collapse
+///   to a single canonical form.
 ///
 /// # Examples
 ///
@@ -26,7 +45,7 @@
 /// assert_eq!(tag_input_to_storage("plain tag"), "plain tag");
 /// ```
 pub fn tag_input_to_storage(input: &str) -> String {
-    input.replace('>', "|")
+    nfc(&input.replace('>', "|"))
 }
 
 /// Result of normalizing a single tag input for storage.
@@ -309,6 +328,46 @@ mod tests {
     #[test]
     fn input_to_storage_no_special() {
         assert_eq!(tag_input_to_storage("landscape"), "landscape");
+    }
+
+    #[test]
+    fn input_to_storage_nfc_normalises_decomposed() {
+        // NFD decomposed: capital O (U+004F) + combining diaeresis (U+0308),
+        // length 3 bytes (1 + 2). Should be precomposed to NFC: a single
+        // Ö (U+00D6), length 2 bytes.
+        let nfd = "\u{004F}\u{0308}-HA";       // O + combining ¨
+        let nfc_expected = "\u{00D6}-HA";       // Ö
+        let stored = tag_input_to_storage(nfd);
+        assert_eq!(stored, nfc_expected);
+        assert_eq!(stored.as_bytes(), nfc_expected.as_bytes());
+    }
+
+    #[test]
+    fn input_to_storage_nfc_idempotent_on_precomposed() {
+        // Already NFC — passes through unchanged byte-for-byte.
+        let nfc_input = "\u{00D6}-HA";
+        assert_eq!(tag_input_to_storage(nfc_input), nfc_input);
+    }
+
+    #[test]
+    fn input_to_storage_nfc_handles_multiple_diacritics() {
+        // Several common European tags that catch-out NFD-vs-NFC.
+        let pairs: &[(&str, &str)] = &[
+            ("Mu\u{0308}nchen", "M\u{00FC}nchen"),
+            ("cafe\u{0301}",   "caf\u{00E9}"),
+            ("nai\u{0308}ve",  "na\u{00EF}ve"),
+        ];
+        for (decomposed, expected) in pairs {
+            assert_eq!(tag_input_to_storage(decomposed), *expected);
+        }
+    }
+
+    #[test]
+    fn input_to_storage_ascii_unchanged() {
+        // Pure-ASCII strings are pass-through (NFC is a no-op).
+        for s in &["landscape", "subject|nature", "AF Nikkor 85mm f/1.4"] {
+            assert_eq!(tag_input_to_storage(s), *s);
+        }
     }
 
     #[test]

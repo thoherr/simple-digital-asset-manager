@@ -11,6 +11,7 @@ Commands for importing files, applying metadata, and merging asset variants. Imp
 | [tag split](#maki-tag-split) | Split one tag into multiple tags across all assets |
 | [tag delete](#maki-tag-delete) | Delete a tag (and descendants) from every asset that has it |
 | [tag clear](#maki-tag-clear) | Remove all tags from an asset |
+| [tag fix-unicode](#maki-tag-fix-unicode) | Normalise tag values to Unicode NFC catalog-wide |
 | [tag expand-ancestors](#maki-tag-expand-ancestors) | Expand hierarchical tags to include ancestor paths |
 | [tag export-vocabulary](#maki-tag-export-vocabulary) | Export tag tree as a vocabulary.yaml file |
 | [edit](#maki-edit) | Edit metadata (name, rating, label, description, date) |
@@ -651,6 +652,72 @@ maki tag clear a1b2c3d4
 
 [tag](#maki-tag) -- add or remove individual tags.
 [tag rename](#maki-tag-rename) -- rename a tag across all assets.
+
+---
+
+## maki tag fix-unicode {#maki-tag-fix-unicode}
+
+### NAME
+
+maki-tag-fix-unicode -- normalise tag values to Unicode NFC across the catalog
+
+### SYNOPSIS
+
+    maki [GLOBAL FLAGS] tag fix-unicode [--apply]
+
+### DESCRIPTION
+
+One-shot migration that walks every asset in the catalog and rewrites its tag values to Unicode NFC (canonical composition). Background: external tools roundtrip through different normalisation forms — macOS path APIs lean **NFD** (decomposed: `O` + combining diaeresis), most XMP writers produce **NFC** (precomposed: single `Ö` code point). The two encodings render identically but are different byte strings, which means a single logical tag like `Ö-HA` can end up as two distinct catalog entries that sort to different positions on the tags page and don't collapse on the facet sidebar.
+
+After this command runs:
+
+- All tag values are NFC-normalised on disk (sidecar YAML and SQLite).
+- Per-asset duplicates (where the same tag was present in both encodings) are collapsed to one.
+- The tags page shows one row per logical tag instead of two.
+- New tags going through MAKI's input pipeline are NFC-normalised at the chokepoint, so the catalog stays canonical without further intervention.
+
+The command is idempotent — running it again on a normalised catalog reports `0 fixed`.
+
+### OPTIONS
+
+**\--apply**
+: Apply the normalisation. Without this flag, the command counts what would change without modifying the catalog or any sidecars.
+
+### EXAMPLES
+
+Preview impact:
+
+```bash
+maki tag fix-unicode
+```
+
+Sample output:
+
+```
+Tag fix-unicode: 12847 scanned, 23 would be fixed, 47 tag value(s) normalised, 8 with merged duplicates
+  Run with --apply to normalise tags.
+```
+
+Apply:
+
+```bash
+maki tag fix-unicode --apply
+```
+
+Per-asset progress:
+
+```bash
+maki tag fix-unicode --apply --log
+```
+
+### XMP WRITEBACK
+
+When `[writeback] enabled = true`, removed encoding-variants are written back to each asset's XMP recipe(s) as tag deletions. The kept (NFC) form is identical to what was already there modulo encoding, so XMP semantics are unchanged for those values. Until writeback runs, sidecars and SQLite reflect the normalisation immediately but XMP files on disk still carry the old encodings. See [maki writeback](05-maintain-commands.md#maki-writeback).
+
+### SEE ALSO
+
+[tag expand-ancestors](#maki-tag-expand-ancestors) -- the other tag-data-cleanup migration; both are typically run once after major imports from external tools.
+[tag rename](#maki-tag-rename), [tag delete](#maki-tag-delete) -- targeted edits.
 
 ---
 

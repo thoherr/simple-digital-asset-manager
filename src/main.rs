@@ -1207,6 +1207,14 @@ enum TagCommands {
         apply: bool,
     },
 
+    /// Normalise tag values to Unicode NFC across the catalog (collapse NFC/NFD duplicates)
+    #[command(name = "fix-unicode")]
+    FixUnicode {
+        /// Apply changes (default: report-only)
+        #[arg(long)]
+        apply: bool,
+    },
+
     /// Expand all hierarchical tags to include ancestor paths
     #[command(name = "expand-ancestors")]
     ExpandAncestors {
@@ -3827,6 +3835,49 @@ faces/\n\
                             );
                             if !apply && result.removed > 0 {
                                 println!("  Run with --apply to delete the tag.");
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                Some(TagCommands::FixUnicode { apply }) => {
+                    let catalog_root = maki::config::find_catalog_root()?;
+                    let engine = QueryEngine::new(&catalog_root);
+                    let show_log = cli.log;
+
+                    let result = engine.tag_fix_unicode(apply, |name, _changed| {
+                        if show_log {
+                            eprintln!("  {} — {}", name, if apply { "fixed" } else { "would fix" });
+                        }
+                    })?;
+
+                    if cli.json {
+                        println!("{}", serde_json::to_string_pretty(&result)?);
+                    } else {
+                        if !apply && result.fixed > 0 {
+                            eprint!("Dry run — ");
+                        }
+                        if result.fixed == 0 {
+                            println!(
+                                "Tag fix-unicode: {} asset(s) scanned, all already NFC.",
+                                result.scanned
+                            );
+                        } else {
+                            let merge_msg = if result.merged > 0 {
+                                format!(", {} with merged duplicates", result.merged)
+                            } else {
+                                String::new()
+                            };
+                            println!(
+                                "Tag fix-unicode: {} scanned, {} {}, {} tag value(s) normalised{}",
+                                result.scanned,
+                                result.fixed,
+                                if apply { "fixed" } else { "would be fixed" },
+                                result.tags_normalized,
+                                merge_msg,
+                            );
+                            if !apply && result.fixed > 0 {
+                                println!("  Run with --apply to normalise tags.");
                             }
                         }
                     }

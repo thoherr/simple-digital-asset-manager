@@ -116,6 +116,9 @@ TAG accepts the same \cmd{=} / \cmd{\textasciicircum} markers as \cmd{tag rename
 \subsection{maki tag clear \textit{ASSET\_ID}}
 Remove all tags from an asset.
 
+\subsection{maki tag fix-unicode}
+NFC-normalise every tag value catalog-wide; merges NFC/NFD duplicates per asset. \opt{--apply}
+
 \subsection{maki tag export-vocabulary}
 Export tag tree as vocabulary.yaml. \\
 \opt{--prune} \opt{--default} \opt{--output FILE} \\

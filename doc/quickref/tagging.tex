@@ -283,6 +283,7 @@
     \cmd{maki tag split \textit{OLD} \textit{A B...} --apply} & Replace one tag with multiple (variadic). \\
     \cmd{~~...\ --keep}                           & Keep source alongside (additive / copy). \\
     \cmd{maki tag expand-ancestors --apply}       & Backfill ancestor paths on existing tags. \\
+    \cmd{maki tag fix-unicode --apply}            & NFC-normalise tag values; merges NFC/NFD duplicates. \\
     \cmd{maki tag export-vocabulary}              & Export the tag tree as \cmd{vocabulary.yaml}. \\
     \cmd{~~...\ --default}                        & Export the built-in starter vocabulary (ignores catalogue). \\
     \cmd{~~...\ --format text}                    & Tab-indented file for Lightroom / Capture One keyword import. \\

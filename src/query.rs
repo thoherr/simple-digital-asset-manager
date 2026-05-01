@@ -955,6 +955,23 @@ pub struct TagDeleteResult {
     pub skipped: usize,
 }
 
+/// Result of a `maki tag fix-unicode` operation.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct TagFixUnicodeResult {
+    pub dry_run: bool,
+    /// Total assets visited.
+    pub scanned: usize,
+    /// Assets where at least one tag value was rewritten to NFC, or where
+    /// dedup collapsed two encoding-variants of the same tag into one.
+    pub fixed: usize,
+    /// Total tag values that changed form (NFC-normalised). Useful as a
+    /// scale signal — a single asset can contribute many.
+    pub tags_normalized: usize,
+    /// Assets that had two encoding-variants of the same logical tag and
+    /// where one of them was dropped during dedup.
+    pub merged: usize,
+}
+
 /// Result of a `maki writeback` operation.
 #[derive(Debug, Default, serde::Serialize)]
 pub struct WritebackResult {
@@ -2658,6 +2675,119 @@ impl QueryEngine {
                 }
             }
             result.removed += 1;
+        }
+
+        Ok(result)
+    }
+
+    /// Walk the whole catalogue and rewrite every tag value to Unicode NFC,
+    /// deduplicating per-asset where two encoding-variants of the same tag
+    /// (NFC vs NFD — visually identical, byte-wise different) collide.
+    ///
+    /// Background: external tools roundtrip through different Unicode
+    /// normalisation forms (macOS path APIs lean NFD; many XMP writers
+    /// produce NFC). Without normalisation `Ö-HA` ends up as two distinct
+    /// tag values that sort to different positions on the tags page and
+    /// don't collapse on the facet sidebar. This is a one-shot migration;
+    /// the input chokepoint (`tag_input_to_storage`) was simultaneously
+    /// updated to NFC-normalise every new tag, so once this runs the
+    /// catalogue stays canonical.
+    ///
+    /// Apply gates the writes — without `--apply` the engine reports what
+    /// would change without touching sidecars or the catalog. Saves to
+    /// the metadata store and re-inserts the asset (denormalised columns
+    /// stay in sync). XMP writeback fires when enabled, mirroring how
+    /// `tag` and `tag rename` already write back.
+    pub fn tag_fix_unicode(
+        &self,
+        apply: bool,
+        mut on_asset: impl FnMut(&str, bool),
+    ) -> Result<TagFixUnicodeResult> {
+        let catalog = Catalog::open(&self.catalog_root)?;
+        let store = MetadataStore::new(&self.catalog_root);
+        let online = Self::load_online_volumes(&self.catalog_root);
+        let content_store = ContentStore::new(&self.catalog_root);
+
+        let mut result = TagFixUnicodeResult { dry_run: !apply, ..Default::default() };
+
+        // Iterate every asset via the metadata store so we capture sidecar
+        // values exactly as written. The catalog `assets.tags` JSON column
+        // is rebuilt from the same source on `insert_asset`, so syncing
+        // both sides is a single save+insert.
+        let summaries = store.list()?;
+        for s in &summaries {
+            result.scanned += 1;
+            let mut asset = match store.load(s.id) {
+                Ok(a) => a,
+                Err(_) => continue,
+            };
+
+            // Build the post-normalisation tag list, tracking what changed.
+            let mut nfc_tags: Vec<String> = Vec::with_capacity(asset.tags.len());
+            let mut tag_changed_count = 0usize;
+            let mut had_dup = false;
+            for t in &asset.tags {
+                let normalised = crate::tag_util::nfc(t);
+                if normalised.as_bytes() != t.as_bytes() {
+                    tag_changed_count += 1;
+                }
+                // Per-asset dedup. Two distinct byte sequences (NFC and NFD
+                // forms of the same string) end up as one entry here.
+                if nfc_tags.iter().any(|existing| existing == &normalised) {
+                    had_dup = true;
+                } else {
+                    nfc_tags.push(normalised);
+                }
+            }
+
+            // Skip if nothing actually changed.
+            if tag_changed_count == 0 && !had_dup {
+                continue;
+            }
+
+            // Determine which tags were removed (for XMP writeback): tags
+            // present in the original list (after NFC, to compare like-for-
+            // like) but absent from the deduped result.
+            let tags_removed: Vec<String> = if apply && self.is_writeback_enabled() {
+                let mut original_normalised: Vec<String> = asset.tags.iter()
+                    .map(|t| crate::tag_util::nfc(t))
+                    .collect();
+                // Drop one occurrence per kept tag from the multiset.
+                for kept in &nfc_tags {
+                    if let Some(pos) = original_normalised.iter().position(|t| t == kept) {
+                        original_normalised.remove(pos);
+                    }
+                }
+                original_normalised
+            } else {
+                Vec::new()
+            };
+
+            result.fixed += 1;
+            result.tags_normalized += tag_changed_count;
+            if had_dup {
+                result.merged += 1;
+            }
+            let display = asset.name.clone()
+                .unwrap_or_else(|| s.id.to_string()[..8.min(s.id.to_string().len())].to_string());
+            on_asset(&display, true);
+
+            if apply {
+                asset.tags = nfc_tags.clone();
+                store.save(&asset)?;
+                catalog.insert_asset(&asset)?;
+
+                if self.is_writeback_enabled() && !tags_removed.is_empty() {
+                    // Only the removed half of the dedup is communicated as a
+                    // delete; the kept half is identical to what was already
+                    // there modulo NFC, so XMP semantics are unchanged for
+                    // those values. The inner writeback handles its own gating.
+                    self.write_back_tags_to_xmp_inner(
+                        &mut asset, &[], &tags_removed,
+                        &catalog, &store, &online, &content_store,
+                    );
+                }
+            }
         }
 
         Ok(result)
@@ -6610,5 +6740,81 @@ mod tests {
         let r = engine.tag_delete("|foo", true, |_, _| {});
         assert!(r.is_err());
         assert!(format!("{:#}", r.unwrap_err()).contains("not supported"));
+    }
+
+    // ── tag fix-unicode tests ───────────────────────────────
+
+    /// The original repro: a tag stored as NFD ("O" + combining diaeresis)
+    /// looks identical to NFC ("Ö") but is a different string. After
+    /// fix-unicode, the asset's tag list is byte-equal to NFC.
+    #[test]
+    fn tag_fix_unicode_normalises_nfd_to_nfc() {
+        let nfd = "\u{004F}\u{0308}-HA";
+        let nfc = "\u{00D6}-HA";
+        let (dir, asset_id) = setup_tag_rename_catalog(&[nfd]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_fix_unicode(true, |_, _| {}).unwrap();
+        assert_eq!(result.fixed, 1);
+        assert_eq!(result.tags_normalized, 1);
+        assert_eq!(result.merged, 0);
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        assert_eq!(asset.tags, vec![nfc.to_string()]);
+    }
+
+    /// Asset has both NFC and NFD forms of the same logical tag — dedup
+    /// collapses to one. `merged` counter tracks this for reporting.
+    #[test]
+    fn tag_fix_unicode_dedups_mixed_encoding() {
+        let nfd = "\u{004F}\u{0308}-HA";
+        let nfc = "\u{00D6}-HA";
+        let (dir, asset_id) = setup_tag_rename_catalog(&[nfd, nfc, "sunset"]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_fix_unicode(true, |_, _| {}).unwrap();
+        assert_eq!(result.fixed, 1);
+        assert_eq!(result.merged, 1);
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        // NFD entry rewrites to NFC, then dedup against the existing NFC
+        // entry collapses to one. `sunset` is unaffected.
+        assert_eq!(asset.tags.len(), 2);
+        assert!(asset.tags.contains(&nfc.to_string()));
+        assert!(asset.tags.contains(&"sunset".to_string()));
+    }
+
+    /// Pure-ASCII catalog: nothing changes, no writes happen.
+    #[test]
+    fn tag_fix_unicode_skips_already_canonical() {
+        let (dir, asset_id) = setup_tag_rename_catalog(&[
+            "subject|nature|landscape",
+            "sunset",
+        ]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_fix_unicode(true, |_, _| {}).unwrap();
+        assert_eq!(result.scanned, 1);
+        assert_eq!(result.fixed, 0);
+        assert_eq!(result.tags_normalized, 0);
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        assert_eq!(asset.tags.len(), 2);
+    }
+
+    /// Dry-run reports counts but doesn't persist.
+    #[test]
+    fn tag_fix_unicode_dry_run_does_not_persist() {
+        let nfd = "\u{004F}\u{0308}-HA";
+        let (dir, asset_id) = setup_tag_rename_catalog(&[nfd]);
+        let engine = QueryEngine::new(dir.path());
+        let result = engine.tag_fix_unicode(false, |_, _| {}).unwrap();
+        assert_eq!(result.fixed, 1);
+        assert!(result.dry_run);
+
+        let store = crate::metadata_store::MetadataStore::new(dir.path());
+        let asset: crate::models::Asset = store.load(asset_id.parse().unwrap()).unwrap();
+        // NFD is still on disk — dry run was a no-op for storage.
+        assert_eq!(asset.tags, vec![nfd.to_string()]);
     }
 }
