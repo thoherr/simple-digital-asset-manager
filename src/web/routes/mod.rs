@@ -25,6 +25,8 @@ mod duplicates;
 pub use duplicates::*;
 mod import;
 pub use import::*;
+mod jobs;
+pub use jobs::*;
 mod media;
 pub use media::*;
 mod saved_search;

@@ -1,6 +1,12 @@
-//! Import job routes (start, SSE progress, status).
+//! Import job routes (start, dry-run, profiles, build-info).
+//!
+//! Live progress, status, and SSE re-attach are served by the generic
+//! job-registry endpoints in `routes::jobs` (`GET /api/jobs`, `GET /api/jobs/{id}/progress`).
+//! The import dialog and nav badge use those directly; this module only
+//! handles the import-specific control surfaces.
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering::Relaxed;
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -8,6 +14,8 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 
 use super::super::AppState;
+use crate::web::jobs::{Job, JobKind};
+use crate::web::ImportJobSummary;
 
 #[derive(Debug, serde::Deserialize)]
 pub struct StartImportRequest {
@@ -39,7 +47,7 @@ pub async fn start_import_api(
     if dry_run {
         let state = state.clone();
         let result = tokio::task::spawn_blocking(move || {
-            run_import(&state, &req)
+            run_import_dry(&state, &req)
         })
         .await;
 
@@ -50,57 +58,41 @@ pub async fn start_import_api(
         };
     }
 
-    {
-        let lock = state.import_job.lock().unwrap();
-        if lock.is_some() {
+    // At-most-one running import. Still allowed to start once the most recent
+    // one has finished — the registry keeps completed jobs around for re-attach.
+    if let Some(latest) = state.jobs.latest(JobKind::Import) {
+        if !latest.is_completed() {
             return (StatusCode::CONFLICT, "An import is already running").into_response();
         }
     }
 
-    let (tx, _rx) = tokio::sync::broadcast::channel::<String>(512);
-    let job_id = uuid::Uuid::new_v4().to_string();
-
-    {
-        let mut lock = state.import_job.lock().unwrap();
-        *lock = Some(crate::web::ImportJob {
-            job_id: job_id.clone(),
-            sender: tx.clone(),
-            started_at: chrono::Utc::now(),
-            recent_events: std::sync::Mutex::new(std::collections::VecDeque::with_capacity(
-                crate::web::IMPORT_RECENT_EVENTS_CAP,
-            )),
-            summary: crate::web::ImportJobSummary::default(),
-        });
-    }
+    let job = state.jobs.start(JobKind::Import);
+    let job_id = job.id.clone();
 
     let state2 = state.clone();
+    let job_for_task = job.clone();
     tokio::spawn(async move {
-        let tx2 = tx.clone();
         let state3 = state2.clone();
+        let job_inner = job_for_task.clone();
         let result = tokio::task::spawn_blocking(move || {
-            run_import_with_progress(&state3, &req, &tx2)
+            run_import_with_progress(&state3, &req, &job_inner)
         })
         .await;
 
-        let done_event = match &result {
-            Ok(Ok(json)) => {
-                let mut obj = json.clone();
-                obj.as_object_mut().unwrap().insert("done".to_string(), serde_json::json!(true));
-                serde_json::to_string(&obj).unwrap_or_default()
-            }
-            Ok(Err(e)) => serde_json::json!({"done": true, "error": format!("{e:#}")}).to_string(),
-            Err(e) => serde_json::json!({"done": true, "error": format!("{e}")}).to_string(),
+        let terminal = match result {
+            Ok(Ok(json)) => json,
+            Ok(Err(e)) => serde_json::json!({"error": format!("{e:#}")}),
+            Err(e) => serde_json::json!({"error": format!("{e}")}),
         };
-        let _ = tx.send(done_event);
-
-        let mut lock = state2.import_job.lock().unwrap();
-        *lock = None;
+        job_for_task.finish(terminal);
+        state2.jobs.mark_done(&job_for_task.id);
     });
 
     Json(serde_json::json!({"job_id": job_id, "status": "started"})).into_response()
 }
 
-fn run_import(
+/// Synchronous dry-run path. Reports counts without emitting progress.
+fn run_import_dry(
     state: &AppState,
     req: &StartImportRequest,
 ) -> anyhow::Result<serde_json::Value> {
@@ -123,7 +115,6 @@ fn run_import(
     tags.sort();
     tags.dedup();
 
-    let dry_run = req.dry_run.unwrap_or(false);
     let smart = req.smart.unwrap_or(import_config.smart_previews);
 
     let mut import_path = volume.mount_point.clone();
@@ -143,13 +134,13 @@ fn run_import(
         &filter,
         &import_config.exclude,
         &tags,
-        dry_run,
+        true, // dry_run
         smart,
         |_, _, _| {},
     )?;
 
     Ok(serde_json::json!({
-        "dry_run": dry_run,
+        "dry_run": true,
         "imported": result.imported,
         "locations_added": result.locations_added,
         "skipped": result.skipped,
@@ -163,7 +154,7 @@ fn run_import(
 fn run_import_with_progress(
     state: &AppState,
     req: &StartImportRequest,
-    tx: &tokio::sync::broadcast::Sender<String>,
+    job: &Arc<Job>,
 ) -> anyhow::Result<serde_json::Value> {
     let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
     let volume = registry.resolve_volume(&req.volume_id)?;
@@ -198,6 +189,13 @@ fn run_import_with_progress(
 
     let service = state.asset_service();
 
+    // Per-import counters owned by this task. The job registry's progress
+    // snapshot is updated from here on every event, so SSE clients and the
+    // status endpoint see the same totals.
+    let summary = Arc::new(ImportJobSummary::default());
+
+    let summary_for_cb = summary.clone();
+    let job_for_cb = job.clone();
     let result = service.import_with_callback(
         &[import_path],
         &volume,
@@ -206,64 +204,42 @@ fn run_import_with_progress(
         &tags,
         false,
         smart,
-        |path, status, _elapsed| {
-            // Update the shared summary + ring buffer under a brief lock so
-            // the status endpoint and re-attaching SSE clients see consistent
-            // counts. Lock is dropped before broadcast.send to avoid blocking
-            // subscribers on producer work.
-            use std::sync::atomic::Ordering::Relaxed;
-            let label;
-            let evt_json: String = {
-                let lock = state.import_job.lock().unwrap();
-                let job = match lock.as_ref() {
-                    Some(j) => j,
-                    None => return, // job was cleared somehow; skip event
-                };
-                label = match status {
-                    crate::asset_service::FileStatus::Imported => {
-                        job.summary.imported.fetch_add(1, Relaxed);
-                        "imported"
-                    }
-                    crate::asset_service::FileStatus::LocationAdded => {
-                        job.summary.locations_added.fetch_add(1, Relaxed);
-                        "location"
-                    }
-                    crate::asset_service::FileStatus::Skipped => {
-                        job.summary.skipped.fetch_add(1, Relaxed);
-                        "skipped"
-                    }
-                    crate::asset_service::FileStatus::RecipeAttached |
-                    crate::asset_service::FileStatus::RecipeLocationAdded |
-                    crate::asset_service::FileStatus::RecipeUpdated => {
-                        job.summary.recipes.fetch_add(1, Relaxed);
-                        "recipe"
-                    }
-                };
-                let file = path
-                    .file_name()
-                    .map(|f| f.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                let evt = serde_json::json!({
-                    "done": false,
-                    "file": file,
-                    "status": label,
-                    "imported": job.summary.imported.load(Relaxed),
-                    "skipped": job.summary.skipped.load(Relaxed),
-                    "locations_added": job.summary.locations_added.load(Relaxed),
-                    "recipes": job.summary.recipes.load(Relaxed),
-                });
-                let evt_str = evt.to_string();
-
-                // Push to ring buffer, evict oldest if at capacity.
-                if let Ok(mut buf) = job.recent_events.lock() {
-                    if buf.len() >= crate::web::IMPORT_RECENT_EVENTS_CAP {
-                        buf.pop_front();
-                    }
-                    buf.push_back(evt_str.clone());
+        move |path, status, _elapsed| {
+            let label = match status {
+                crate::asset_service::FileStatus::Imported => {
+                    summary_for_cb.imported.fetch_add(1, Relaxed);
+                    "imported"
                 }
-                evt_str
+                crate::asset_service::FileStatus::LocationAdded => {
+                    summary_for_cb.locations_added.fetch_add(1, Relaxed);
+                    "location"
+                }
+                crate::asset_service::FileStatus::Skipped => {
+                    summary_for_cb.skipped.fetch_add(1, Relaxed);
+                    "skipped"
+                }
+                crate::asset_service::FileStatus::RecipeAttached
+                | crate::asset_service::FileStatus::RecipeLocationAdded
+                | crate::asset_service::FileStatus::RecipeUpdated => {
+                    summary_for_cb.recipes.fetch_add(1, Relaxed);
+                    "recipe"
+                }
             };
-            let _ = tx.send(evt_json);
+            let file = path
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let evt = serde_json::json!({
+                "phase": "import",
+                "done": false,
+                "file": file,
+                "status": label,
+                "imported": summary_for_cb.imported.load(Relaxed),
+                "skipped": summary_for_cb.skipped.load(Relaxed),
+                "locations_added": summary_for_cb.locations_added.load(Relaxed),
+                "recipes": summary_for_cb.recipes.load(Relaxed),
+            });
+            job_for_cb.emit(&evt);
         },
     )?;
 
@@ -272,14 +248,13 @@ fn run_import_with_progress(
         let _ = engine.auto_group(&result.new_asset_ids, false);
     }
 
-    // Post-import embed phase (AI feature). Same trigger semantics as the CLI:
-    // explicit `req.embed = true` OR config default `[import] embeddings = true`.
+    // Post-import embed phase (AI feature).
     #[cfg(feature = "ai")]
-    let embed_summary = run_post_import_embed(state, &config, req, &result.new_asset_ids, tx);
+    let embed_summary = run_post_import_embed(state, &config, req, &result.new_asset_ids, job, &summary);
 
     // Post-import describe phase (Pro feature).
     #[cfg(feature = "pro")]
-    let describe_summary = run_post_import_describe(state, &config, req, &result.new_asset_ids, tx);
+    let describe_summary = run_post_import_describe(state, &config, req, &result.new_asset_ids, job, &summary);
 
     #[allow(unused_mut)]
     let mut out = serde_json::json!({
@@ -312,9 +287,9 @@ fn run_post_import_embed(
     config: &crate::config::CatalogConfig,
     req: &StartImportRequest,
     new_asset_ids: &[String],
-    tx: &tokio::sync::broadcast::Sender<String>,
+    job: &Arc<Job>,
+    summary: &Arc<ImportJobSummary>,
 ) -> Option<(u32, u32)> {
-    use std::sync::atomic::Ordering::Relaxed;
     let opted_in = req.embed.unwrap_or(config.import.embeddings);
     if !opted_in || new_asset_ids.is_empty() {
         return None;
@@ -334,29 +309,28 @@ fn run_post_import_embed(
         Err(_) => return None,
     };
     if !mgr.model_exists() {
-        let evt = serde_json::json!({
-            "done": false,
+        job.emit(&serde_json::json!({
             "phase": "embed",
+            "done": false,
             "status": "skipped",
             "message": "model not downloaded",
-        });
-        let _ = tx.send(evt.to_string());
+        }));
         return None;
     }
 
     let service = crate::asset_service::AssetService::new(&state.catalog_root, state.verbosity, &config.preview);
+    let summary_for_cb = summary.clone();
+    let job_for_cb = job.clone();
     let r = service.embed_assets(
         new_asset_ids,
         &model_dir,
         model_id,
         &config.ai.execution_provider,
         false,
-        |aid, status, _elapsed| {
-            let lock = state.import_job.lock().unwrap();
-            let job = match lock.as_ref() { Some(j) => j, None => return };
+        move |aid, status, _elapsed| {
             let label = match status {
                 crate::asset_service::EmbedStatus::Embedded => {
-                    job.summary.embedded.fetch_add(1, Relaxed);
+                    summary_for_cb.embedded.fetch_add(1, Relaxed);
                     "embedded"
                 }
                 crate::asset_service::EmbedStatus::Skipped(_) => "skipped",
@@ -364,21 +338,13 @@ fn run_post_import_embed(
             };
             let short = &aid[..8.min(aid.len())];
             let evt = serde_json::json!({
-                "done": false,
                 "phase": "embed",
+                "done": false,
                 "status": label,
                 "asset": short,
-                "embedded": job.summary.embedded.load(Relaxed),
+                "embedded": summary_for_cb.embedded.load(Relaxed),
             });
-            let evt_str = evt.to_string();
-            if let Ok(mut buf) = job.recent_events.lock() {
-                if buf.len() >= crate::web::IMPORT_RECENT_EVENTS_CAP {
-                    buf.pop_front();
-                }
-                buf.push_back(evt_str.clone());
-            }
-            drop(lock);
-            let _ = tx.send(evt_str);
+            job_for_cb.emit(&evt);
         },
     ).ok()?;
     Some((r.embedded, r.skipped))
@@ -392,9 +358,9 @@ fn run_post_import_describe(
     config: &crate::config::CatalogConfig,
     req: &StartImportRequest,
     new_asset_ids: &[String],
-    tx: &tokio::sync::broadcast::Sender<String>,
+    job: &Arc<Job>,
+    summary: &Arc<ImportJobSummary>,
 ) -> Option<(u32, u32)> {
-    use std::sync::atomic::Ordering::Relaxed;
     let opted_in = req.describe.unwrap_or(config.import.descriptions);
     if !opted_in || new_asset_ids.is_empty() {
         return None;
@@ -403,13 +369,12 @@ fn run_post_import_describe(
     let endpoint = &config.vlm.endpoint;
     let vlm_model = &config.vlm.model;
     if crate::vlm::check_endpoint(endpoint, 5, state.verbosity).is_err() {
-        let evt = serde_json::json!({
-            "done": false,
+        job.emit(&serde_json::json!({
             "phase": "describe",
+            "done": false,
             "status": "skipped",
             "message": format!("VLM endpoint unavailable at {endpoint}"),
-        });
-        let _ = tx.send(evt.to_string());
+        }));
         return None;
     }
 
@@ -417,6 +382,8 @@ fn run_post_import_describe(
         .unwrap_or(crate::vlm::DescribeMode::Describe);
     let params = config.vlm.params_for_model(vlm_model);
     let service = crate::asset_service::AssetService::new(&state.catalog_root, state.verbosity, &config.preview);
+    let summary_for_cb = summary.clone();
+    let job_for_cb = job.clone();
     let r = service.describe_assets(
         new_asset_ids,
         endpoint,
@@ -426,12 +393,10 @@ fn run_post_import_describe(
         false, // force
         false, // dry_run
         config.vlm.concurrency,
-        |aid, status, _elapsed| {
-            let lock = state.import_job.lock().unwrap();
-            let job = match lock.as_ref() { Some(j) => j, None => return };
+        move |aid, status, _elapsed| {
             let label = match status {
                 crate::vlm::DescribeStatus::Described => {
-                    job.summary.described.fetch_add(1, Relaxed);
+                    summary_for_cb.described.fetch_add(1, Relaxed);
                     "described"
                 }
                 crate::vlm::DescribeStatus::Skipped(_) => "skipped",
@@ -439,95 +404,16 @@ fn run_post_import_describe(
             };
             let short = &aid[..8.min(aid.len())];
             let evt = serde_json::json!({
-                "done": false,
                 "phase": "describe",
+                "done": false,
                 "status": label,
                 "asset": short,
-                "described": job.summary.described.load(Relaxed),
+                "described": summary_for_cb.described.load(Relaxed),
             });
-            let evt_str = evt.to_string();
-            if let Ok(mut buf) = job.recent_events.lock() {
-                if buf.len() >= crate::web::IMPORT_RECENT_EVENTS_CAP {
-                    buf.pop_front();
-                }
-                buf.push_back(evt_str.clone());
-            }
-            drop(lock);
-            let _ = tx.send(evt_str);
+            job_for_cb.emit(&evt);
         },
     ).ok()?;
     Some((r.described as u32, r.skipped as u32))
-}
-
-/// GET /api/import/progress — SSE stream of import progress events.
-///
-/// On connect: replays the ring buffer (up to IMPORT_RECENT_EVENTS_CAP recent
-/// events) so a re-attaching client sees what it missed, then continues with
-/// the live broadcast. Subscribe-before-snapshot ordering means a producer
-/// event landing in that window arrives via broadcast (the small chance of a
-/// duplicate is preferable to a missed event for the user).
-pub async fn import_progress_sse(
-    State(state): State<Arc<AppState>>,
-) -> Response {
-    use axum::response::sse::{Event, KeepAlive, Sse};
-    use tokio_stream::StreamExt;
-
-    let (rx, replay) = {
-        let lock = state.import_job.lock().unwrap();
-        match lock.as_ref() {
-            Some(job) => {
-                // Subscribe first so any event emitted during snapshotting
-                // still reaches us via broadcast.
-                let rx = job.sender.subscribe();
-                let snapshot: Vec<String> = job
-                    .recent_events
-                    .lock()
-                    .map(|buf| buf.iter().cloned().collect())
-                    .unwrap_or_default();
-                (rx, snapshot)
-            }
-            None => {
-                return (StatusCode::NOT_FOUND, "No import running").into_response();
-            }
-        }
-    };
-
-    let replay_stream = tokio_stream::iter(replay.into_iter().map(|d| Event::default().data(d)));
-    let live_stream = tokio_stream::wrappers::BroadcastStream::new(rx)
-        .filter_map(|msg| match msg {
-            Ok(data) => Some(Event::default().data(data)),
-            Err(_) => None,
-        });
-    let stream = replay_stream.chain(live_stream).map(Ok::<_, std::convert::Infallible>);
-
-    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
-}
-
-/// GET /api/import/status — check if an import is running and report progress.
-///
-/// Returns `{running, job_id, started_at, imported, skipped, locations_added,
-/// recipes}`. The nav badge polls this and re-attaching UI uses the counters
-/// to seed initial state before the SSE stream arrives.
-pub async fn import_status_api(
-    State(state): State<Arc<AppState>>,
-) -> Response {
-    use std::sync::atomic::Ordering::Relaxed;
-    let lock = state.import_job.lock().unwrap();
-    match lock.as_ref() {
-        Some(job) => Json(serde_json::json!({
-            "running": true,
-            "job_id": job.job_id,
-            "started_at": job.started_at.to_rfc3339(),
-            "imported": job.summary.imported.load(Relaxed),
-            "skipped": job.summary.skipped.load(Relaxed),
-            "locations_added": job.summary.locations_added.load(Relaxed),
-            "recipes": job.summary.recipes.load(Relaxed),
-            "embedded": job.summary.embedded.load(Relaxed),
-            "described": job.summary.described.load(Relaxed),
-        }))
-        .into_response(),
-        None => Json(serde_json::json!({"running": false})).into_response(),
-    }
 }
 
 /// GET /api/build-info — report which optional features were compiled in.
@@ -541,10 +427,6 @@ pub async fn build_info_api() -> Response {
 }
 
 /// GET /api/import/profiles — list named import profiles from `[import.profiles.*]`.
-///
-/// Returns `{"profiles": [...]}`. The global import dialog (mounted in base.html
-/// and reachable from every page) populates its profile dropdown from this rather
-/// than from a template variable, so no per-page wiring is needed.
 pub async fn import_profiles_api(
     State(state): State<Arc<AppState>>,
 ) -> Response {

@@ -136,9 +136,10 @@
 {% include "import_dialog_js.html" %}
 <script>
 // ── Nav: Import link + running-job status badge ──────────────────────────
-// The badge polls /api/import/status. While a job is running it pulses and the
-// link's click handler re-attaches to the live SSE feed instead of opening the
-// volume picker — so a page reload during a long import doesn't lose the feed.
+// The badge polls /api/jobs (the generic registry endpoint). While any job
+// is running it pulses; the link's click handler re-attaches to a running
+// import's SSE feed instead of opening the volume picker — so a page reload
+// during a long import doesn't lose the feed.
 (function() {
     var link = document.getElementById('nav-import-link');
     var badge = document.getElementById('nav-import-badge');
@@ -157,14 +158,11 @@
     var currentMs = 0;
 
     function refresh() {
-        return fetch('/api/import/status')
-            .then(function(r) { return r.ok ? r.json() : { running: false }; })
+        return fetch('/api/jobs')
+            .then(function(r) { return r.ok ? r.json() : { running: 0, jobs: [] }; })
             .then(function(s) {
-                var nowRunning = !!s.running;
+                var nowRunning = (s.running || 0) > 0;
                 badge.style.display = nowRunning ? 'inline-block' : 'none';
-                // If the cadence implied by the new state differs, swap timers
-                // so we tighten up the moment a job starts and back off the
-                // moment it ends — without waiting for the next tick.
                 if (nowRunning !== running) {
                     running = nowRunning;
                     schedule();

@@ -15,6 +15,10 @@
     var progressPhase = document.getElementById('import-progress-phase');
     var resultPhase = document.getElementById('import-result-phase');
     var eventSource = null;
+    // ID of the import job we're currently watching; set when POST /api/import
+    // returns and cleared when the dialog closes. Used for the per-job SSE
+    // endpoint /api/jobs/{id}/progress.
+    var activeJobId = null;
     var profilesLoaded = false;
     var buildInfoLoaded = false;
     // Whether the running binary supports the optional post-import phases.
@@ -132,6 +136,7 @@
     function closeDialog() {
         overlay.style.display = 'none';
         if (eventSource) { eventSource.close(); eventSource = null; }
+        activeJobId = null;
     }
 
     function getImportParams(dryRun) {
@@ -558,6 +563,7 @@
         })
         .then(function(data) {
             if (data.dry_run) { showResult(data); return; }
+            activeJobId = data.job_id;
             showPhase('progress');
             document.getElementById('import-log').innerHTML = '';
             document.getElementById('import-fill').style.width = '0%';
@@ -575,7 +581,8 @@
     });
 
     function attachProgressStream() {
-        eventSource = new EventSource('/api/import/progress');
+        if (!activeJobId) return;
+        eventSource = new EventSource('/api/jobs/' + encodeURIComponent(activeJobId) + '/progress');
         eventSource.onmessage = function(e) {
             var evt;
             try { evt = JSON.parse(e.data); } catch (_) { return; }
@@ -624,12 +631,18 @@
         if (e.key === 'Escape' && overlay.style.display !== 'none') closeDialog();
     });
 
-    // Re-attach to a running job when reopening the dialog.
+    // Re-attach to a running job when reopening the dialog. Polls /api/jobs
+    // for the most recent still-running import; if found, sets activeJobId
+    // and subscribes to its SSE progress stream.
     function reattachIfRunning() {
-        return fetch('/api/import/status')
-            .then(function(r) { return r.ok ? r.json() : { running: false }; })
+        return fetch('/api/jobs')
+            .then(function(r) { return r.ok ? r.json() : { jobs: [] }; })
             .then(function(s) {
-                if (s.running) {
+                var imp = (s.jobs || []).find(function(j) {
+                    return j.kind === 'import' && !j.completed;
+                });
+                if (imp) {
+                    activeJobId = imp.id;
                     showPhase('progress');
                     overlay.style.display = 'flex';
                     document.getElementById('import-status-text').textContent =

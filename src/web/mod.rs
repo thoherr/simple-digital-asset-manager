@@ -1,3 +1,4 @@
+pub mod jobs;
 mod routes;
 mod static_assets;
 pub mod templates;
@@ -246,30 +247,15 @@ pub struct AppState {
     pub ai_embedding_index: std::sync::RwLock<Option<crate::embedding_store::EmbeddingIndex>>,
     #[cfg(feature = "ai")]
     pub face_detector: tokio::sync::Mutex<Option<crate::face::FaceDetector>>,
-    /// Currently running import job (at most one at a time).
-    pub import_job: std::sync::Mutex<Option<ImportJob>>,
+    /// Registry of running and recently-completed background jobs (import,
+    /// embed, auto-tag, …). Replaces the per-job-type `import_job` slot that
+    /// used to live here.
+    pub jobs: Arc<jobs::JobRegistry>,
 }
 
-/// Tracks a running import job for SSE progress.
-///
-/// Allows clients to **re-attach** to an in-flight import after a page reload:
-/// the SSE handler replays `recent_events` (last ~100 emitted events) before
-/// switching to the live broadcast, and `/api/import/status` reports the
-/// running totals so the nav badge can show progress.
-pub struct ImportJob {
-    pub job_id: String,
-    pub sender: tokio::sync::broadcast::Sender<String>,
-    /// UTC timestamp when the job started — included in `/api/import/status`.
-    pub started_at: chrono::DateTime<chrono::Utc>,
-    /// Ring buffer of the last ~100 emitted events. Replayed on SSE re-connect.
-    pub recent_events: std::sync::Mutex<std::collections::VecDeque<String>>,
-    /// Running totals updated by the import callback. Reported via
-    /// `/api/import/status` so badge / re-attached UI shows current progress
-    /// without waiting for the next event tick.
-    pub summary: ImportJobSummary,
-}
-
-/// Atomic counters tracking a running import's progress.
+/// Per-import counter set used by the import route. Lives outside `Job`
+/// because it's import-specific; the running task owns one and writes JSON
+/// snapshots into the generic `Job::progress` field on each tick.
 #[derive(Default)]
 pub struct ImportJobSummary {
     pub imported: std::sync::atomic::AtomicUsize,
@@ -279,11 +265,6 @@ pub struct ImportJobSummary {
     pub embedded: std::sync::atomic::AtomicUsize,
     pub described: std::sync::atomic::AtomicUsize,
 }
-
-/// Maximum number of recent events kept in the ring buffer for re-attachment.
-/// Sized so a UI re-connecting mid-import sees the last few seconds of activity
-/// (typical import emits ~10-100 events/sec depending on hardware and file size).
-pub const IMPORT_RECENT_EVENTS_CAP: usize = 100;
 
 impl AppState {
     #[cfg(feature = "ai")]
@@ -317,7 +298,7 @@ impl AppState {
             ai_config,
             ai_embedding_index: std::sync::RwLock::new(None),
             face_detector: tokio::sync::Mutex::new(None),
-            import_job: std::sync::Mutex::new(None),
+            jobs: Arc::new(jobs::JobRegistry::new()),
         }
     }
 
@@ -347,7 +328,7 @@ impl AppState {
             verbosity,
             vlm_enabled,
             vlm_config,
-            import_job: std::sync::Mutex::new(None),
+            jobs: Arc::new(jobs::JobRegistry::new()),
         }
     }
 
@@ -533,10 +514,11 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/volumes/{id}/browse", axum::routing::get(routes::browse_volume_api))
         .route("/api/volumes/{id}", axum::routing::delete(routes::remove_volume_api))
         .route("/api/import", axum::routing::post(routes::start_import_api))
-        .route("/api/import/progress", axum::routing::get(routes::import_progress_sse))
-        .route("/api/import/status", axum::routing::get(routes::import_status_api))
         .route("/api/import/profiles", axum::routing::get(routes::import_profiles_api))
         .route("/api/build-info", axum::routing::get(routes::build_info_api))
+        .route("/api/jobs", axum::routing::get(routes::jobs_list_api))
+        .route("/api/jobs/{id}", axum::routing::get(routes::job_status_api))
+        .route("/api/jobs/{id}/progress", axum::routing::get(routes::job_progress_sse))
         .route("/api/calendar", axum::routing::get(routes::calendar_api))
         .route("/api/map", axum::routing::get(routes::map_api))
         .route("/api/facets", axum::routing::get(routes::facets_api))
