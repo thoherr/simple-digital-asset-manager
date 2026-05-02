@@ -46,16 +46,25 @@
     function summaryLine(evt) {
         if (evt.error) return 'Failed: ' + evt.error;
         var parts = [];
-        if (typeof evt.embedded === 'number')        parts.push(evt.embedded + ' embedded');
-        if (typeof evt.succeeded === 'number')       parts.push(evt.succeeded + ' processed');
+        if (typeof evt.embedded === 'number')           parts.push(evt.embedded + ' embedded');
+        if (typeof evt.descriptions_set === 'number' && evt.descriptions_set > 0)
+                                                        parts.push(evt.descriptions_set + ' described');
+        if (typeof evt.imported === 'number')           parts.push(evt.imported + ' imported');
+        if (typeof evt.locations_added === 'number' && evt.locations_added > 0)
+                                                        parts.push(evt.locations_added + ' locations');
+        if (typeof evt.recipes_attached === 'number' && evt.recipes_attached > 0)
+                                                        parts.push(evt.recipes_attached + ' recipes');
+        if (typeof evt.described === 'number' && evt.described > 0 && typeof evt.descriptions_set !== 'number')
+                                                        parts.push(evt.described + ' described');
+        if (typeof evt.succeeded === 'number')          parts.push(evt.succeeded + ' processed');
         if (typeof evt.tags_applied === 'number' && evt.tags_applied > 0)
-                                                     parts.push(evt.tags_applied + ' tags applied');
-        if (typeof evt.faces_detected === 'number')  parts.push(evt.faces_detected + ' faces');
+                                                        parts.push(evt.tags_applied + ' tags applied');
+        if (typeof evt.faces_detected === 'number')     parts.push(evt.faces_detected + ' faces');
         if (typeof evt.skipped === 'number' && evt.skipped > 0)
-                                                     parts.push(evt.skipped + ' skipped');
+                                                        parts.push(evt.skipped + ' skipped');
         if (typeof evt.failed === 'number' && evt.failed > 0)
-                                                     parts.push(evt.failed + ' failed');
-        if (evt.errors && evt.errors.length > 0)     parts.push(evt.errors.length + ' error(s)');
+                                                        parts.push(evt.failed + ' failed');
+        if (evt.errors && evt.errors.length > 0)        parts.push(evt.errors.length + ' error(s)');
         return parts.length > 0 ? parts.join(', ') : 'Done';
     }
 

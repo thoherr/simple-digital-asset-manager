@@ -1096,8 +1096,8 @@ window.onFilterChange = onFilterChange;
         describeBtn.addEventListener('click', function() {
             if (selected.size === 0 || batchBusy) return;
             if (!confirm('Describe ' + selected.size + ' selected asset(s) using VLM? This may take a few seconds per asset.')) return;
-            setButtonsBusy(true);
-            var batchPayload = {asset_ids: Array.from(selected)};
+            var ids = Array.from(selected);
+            var batchPayload = {asset_ids: ids};
             var batchModelSelect = document.getElementById('batch-vlm-model-select');
             if (batchModelSelect) batchPayload.model = batchModelSelect.value;
             fetch('/api/batch/describe', {
@@ -1105,19 +1105,19 @@ window.onFilterChange = onFilterChange;
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(batchPayload)
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
+                return r.json();
+            })
             .then(function(data) {
-                setButtonsBusy(false);
-                var parts = [];
-                if (data.descriptions_set > 0) parts.push(data.descriptions_set + ' described');
-                if (data.tags_applied > 0) parts.push(data.tags_applied + ' tag(s) applied');
-                if (data.failed > 0) parts.push(data.failed + ' failed');
-                alert(parts.join(', ') + ' (' + data.succeeded + ' processed).');
                 clearSelection();
-                htmx.ajax('GET', window.location.href, {target: '#results', swap: 'innerHTML'});
+                window.makiJob.watch(data.job_id, 'Describe (' + ids.length + ')', {
+                    onDone: function() {
+                        htmx.ajax('GET', window.location.href, {target: '#results', swap: 'innerHTML'});
+                    }
+                });
             })
             .catch(function(err) {
-                setButtonsBusy(false);
                 alert('VLM describe failed: ' + err.message);
             });
         });

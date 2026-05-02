@@ -623,29 +623,68 @@ pub struct BatchVlmDescribeResponse {
     pub errors: Vec<String>,
 }
 
-/// POST /api/batch/describe — batch describe assets via VLM.
+/// POST /api/batch/describe — start a VLM describe job for selected assets.
+///
+/// Returns `{job_id}` immediately. Progress flows through `/api/jobs/{id}/progress`;
+/// the terminal event carries `{succeeded, failed, descriptions_set, tags_applied,
+/// errors, done: true}`.
 pub async fn batch_vlm_describe(
     State(state): State<Arc<AppState>>,
     Json(body): Json<BatchVlmDescribeRequest>,
 ) -> Response {
+    use crate::web::jobs::JobKind;
+
+    let job = state.jobs.start(JobKind::Describe);
+    let job_id = job.id.clone();
+    let total = body.asset_ids.len();
+    job.emit(&serde_json::json!({
+        "phase": "describe",
+        "done": false,
+        "processed": 0,
+        "total": total,
+        "status": "starting",
+    }));
+
     let state2 = state.clone();
-    let result: Result<Result<BatchVlmDescribeResponse, String>, _> =
-        tokio::task::spawn_blocking(move || {
-            batch_vlm_describe_inner(&state2, &body.asset_ids, body.mode.as_deref(), body.model.as_deref())
-        })
-        .await;
+    let job_for_task = job.clone();
+    tokio::spawn(async move {
+        let job_inner = job_for_task.clone();
+        let state_for_blocking = state2.clone();
+        let result: Result<Result<BatchVlmDescribeResponse, String>, _> =
+            tokio::task::spawn_blocking(move || {
+                batch_vlm_describe_inner(
+                    &state_for_blocking,
+                    &body.asset_ids,
+                    body.mode.as_deref(),
+                    body.model.as_deref(),
+                    &job_inner,
+                    total,
+                )
+            })
+            .await;
 
-    if let Ok(Ok(ref resp)) = result {
-        if resp.tags_applied > 0 {
-            state.dropdown_cache.invalidate_tags();
-        }
-    }
+        let terminal = match result {
+            Ok(Ok(resp)) => {
+                if resp.tags_applied > 0 {
+                    state2.dropdown_cache.invalidate_tags();
+                }
+                serde_json::json!({
+                    "phase": "describe",
+                    "succeeded": resp.succeeded,
+                    "failed": resp.failed,
+                    "descriptions_set": resp.descriptions_set,
+                    "tags_applied": resp.tags_applied,
+                    "errors": resp.errors,
+                })
+            }
+            Ok(Err(msg)) => serde_json::json!({"phase": "describe", "error": msg}),
+            Err(e) => serde_json::json!({"phase": "describe", "error": format!("{e}")}),
+        };
+        job_for_task.finish(terminal);
+        state2.jobs.mark_done(&job_for_task.id);
+    });
 
-    match result {
-        Ok(Ok(resp)) => Json(resp).into_response(),
-        Ok(Err(msg)) => (StatusCode::INTERNAL_SERVER_ERROR, msg).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
-    }
+    Json(serde_json::json!({"job_id": job_id, "status": "started"})).into_response()
 }
 
 fn batch_vlm_describe_inner(
@@ -653,6 +692,8 @@ fn batch_vlm_describe_inner(
     asset_ids: &[String],
     mode_str: Option<&str>,
     model_override: Option<&str>,
+    job: &std::sync::Arc<crate::web::jobs::Job>,
+    total: usize,
 ) -> Result<BatchVlmDescribeResponse, String> {
     use crate::vlm::{self, DescribeMode};
 
@@ -695,13 +736,36 @@ fn batch_vlm_describe_inner(
         existing_tags: std::collections::HashSet<String>,
     }
     let mut work_items: Vec<WebWorkItem> = Vec::new();
+    let mut processed: usize = 0;
+    // Helper to emit per-asset progress with the current cumulative counters.
+    // Defined once here so the prep loop and the chunk-result loop emit a
+    // consistent shape.
+    let emit_progress = |processed: usize, aid: &str, status: &str, descriptions_set: u32, tags_applied: u32| {
+        let short = &aid[..8.min(aid.len())];
+        job.emit(&serde_json::json!({
+            "phase": "describe",
+            "done": false,
+            "processed": processed,
+            "total": total,
+            "asset": short,
+            "status": status,
+            "descriptions_set": descriptions_set,
+            "tags_applied": tags_applied,
+        }));
+    };
 
     for aid in asset_ids {
+        // Pre-flight outcomes (catalog error, not found, already described,
+        // no preview) finalise this asset before VLM is invoked. Counted
+        // toward `processed` so the toast progresses smoothly even for
+        // already-described batches.
         let catalog = match state.catalog() {
             Ok(c) => c,
             Err(e) => {
                 result.errors.push(format!("Catalog error: {e}"));
                 result.failed += 1;
+                processed += 1;
+                emit_progress(processed, aid, "error", result.descriptions_set, result.tags_applied);
                 continue;
             }
         };
@@ -710,6 +774,8 @@ fn batch_vlm_describe_inner(
             _ => {
                 result.errors.push(format!("Asset not found: {aid}"));
                 result.failed += 1;
+                processed += 1;
+                emit_progress(processed, aid, "not-found", result.descriptions_set, result.tags_applied);
                 continue;
             }
         };
@@ -719,6 +785,8 @@ fn batch_vlm_describe_inner(
             Err(e) => {
                 result.errors.push(format!("{aid}: {e}"));
                 result.failed += 1;
+                processed += 1;
+                emit_progress(processed, aid, "error", result.descriptions_set, result.tags_applied);
                 continue;
             }
         };
@@ -727,6 +795,8 @@ fn batch_vlm_describe_inner(
             if let Some(ref desc) = details.description {
                 if !desc.is_empty() {
                     result.succeeded += 1;
+                    processed += 1;
+                    emit_progress(processed, aid, "skipped", result.descriptions_set, result.tags_applied);
                     continue;
                 }
             }
@@ -736,6 +806,8 @@ fn batch_vlm_describe_inner(
             Some(p) => p,
             None => {
                 result.succeeded += 1;
+                processed += 1;
+                emit_progress(processed, aid, "no-image", result.descriptions_set, result.tags_applied);
                 continue;
             }
         };
@@ -796,10 +868,12 @@ fn batch_vlm_describe_inner(
             });
 
         for (full_id, original_id, existing_tags, vlm_result) in vlm_results {
+            processed += 1;
             match vlm_result {
                 Err(msg) => {
                     result.errors.push(msg);
                     result.failed += 1;
+                    emit_progress(processed, &original_id, "error", result.descriptions_set, result.tags_applied);
                 }
                 Ok(output) => {
                     if let Some(ref desc) = output.description {
@@ -814,6 +888,7 @@ fn batch_vlm_describe_inner(
                             if let Err(e) = engine.edit(&full_id, edit_fields) {
                                 result.errors.push(format!("{original_id}: {e}"));
                                 result.failed += 1;
+                                emit_progress(processed, &original_id, "error", result.descriptions_set, result.tags_applied);
                                 continue;
                             }
                             result.descriptions_set += 1;
@@ -832,6 +907,7 @@ fn batch_vlm_describe_inner(
                             if let Err(e) = engine.tag(&full_id, &new_tags, false) {
                                 result.errors.push(format!("{original_id}: {e}"));
                                 result.failed += 1;
+                                emit_progress(processed, &original_id, "error", result.descriptions_set, result.tags_applied);
                                 continue;
                             }
                             result.tags_applied += count as u32;
@@ -839,6 +915,7 @@ fn batch_vlm_describe_inner(
                     }
 
                     result.succeeded += 1;
+                    emit_progress(processed, &original_id, "described", result.descriptions_set, result.tags_applied);
                 }
             }
         }
