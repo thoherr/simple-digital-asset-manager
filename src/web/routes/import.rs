@@ -17,6 +17,15 @@ pub struct StartImportRequest {
     pub tags: Option<Vec<String>>,
     pub auto_group: Option<bool>,
     pub smart: Option<bool>,
+    /// Generate embeddings after import. Only honored on `ai` builds; silently
+    /// ignored otherwise so the JSON shape stays the same across feature sets.
+    /// `None` falls back to `[import] embeddings` from config.
+    #[allow(dead_code)]
+    pub embed: Option<bool>,
+    /// Generate VLM descriptions after import. Only honored on `pro` builds;
+    /// silently ignored otherwise. `None` falls back to `[import] descriptions`.
+    #[allow(dead_code)]
+    pub describe: Option<bool>,
     pub dry_run: Option<bool>,
 }
 
@@ -263,7 +272,17 @@ fn run_import_with_progress(
         let _ = engine.auto_group(&result.new_asset_ids, false);
     }
 
-    Ok(serde_json::json!({
+    // Post-import embed phase (AI feature). Same trigger semantics as the CLI:
+    // explicit `req.embed = true` OR config default `[import] embeddings = true`.
+    #[cfg(feature = "ai")]
+    let embed_summary = run_post_import_embed(state, &config, req, &result.new_asset_ids, tx);
+
+    // Post-import describe phase (Pro feature).
+    #[cfg(feature = "pro")]
+    let describe_summary = run_post_import_describe(state, &config, req, &result.new_asset_ids, tx);
+
+    #[allow(unused_mut)]
+    let mut out = serde_json::json!({
         "imported": result.imported,
         "locations_added": result.locations_added,
         "skipped": result.skipped,
@@ -271,7 +290,173 @@ fn run_import_with_progress(
         "recipes_updated": result.recipes_updated,
         "previews_generated": result.previews_generated,
         "new_asset_ids": result.new_asset_ids,
-    }))
+    });
+    #[cfg(feature = "ai")]
+    if let Some((embedded, embed_skipped)) = embed_summary {
+        out["embedded"] = serde_json::json!(embedded);
+        out["embeddings_skipped"] = serde_json::json!(embed_skipped);
+    }
+    #[cfg(feature = "pro")]
+    if let Some((described, describe_skipped)) = describe_summary {
+        out["described"] = serde_json::json!(described);
+        out["descriptions_skipped"] = serde_json::json!(describe_skipped);
+    }
+    Ok(out)
+}
+
+/// Run the post-import embedding phase. Returns `Some((embedded, skipped))` when
+/// the phase ran (model present, opted in), or `None` when skipped.
+#[cfg(feature = "ai")]
+fn run_post_import_embed(
+    state: &AppState,
+    config: &crate::config::CatalogConfig,
+    req: &StartImportRequest,
+    new_asset_ids: &[String],
+    tx: &tokio::sync::broadcast::Sender<String>,
+) -> Option<(u32, u32)> {
+    use std::sync::atomic::Ordering::Relaxed;
+    let opted_in = req.embed.unwrap_or(config.import.embeddings);
+    if !opted_in || new_asset_ids.is_empty() {
+        return None;
+    }
+
+    let model_id = &config.ai.model;
+    let model_dir_str = &config.ai.model_dir;
+    let model_base = if model_dir_str.starts_with("~/") {
+        let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).ok()?;
+        std::path::PathBuf::from(home).join(&model_dir_str[2..])
+    } else {
+        std::path::PathBuf::from(model_dir_str)
+    };
+    let model_dir = model_base.join(model_id);
+    let mgr = match crate::model_manager::ModelManager::new(&model_dir, model_id) {
+        Ok(m) => m,
+        Err(_) => return None,
+    };
+    if !mgr.model_exists() {
+        let evt = serde_json::json!({
+            "done": false,
+            "phase": "embed",
+            "status": "skipped",
+            "message": "model not downloaded",
+        });
+        let _ = tx.send(evt.to_string());
+        return None;
+    }
+
+    let service = crate::asset_service::AssetService::new(&state.catalog_root, state.verbosity, &config.preview);
+    let r = service.embed_assets(
+        new_asset_ids,
+        &model_dir,
+        model_id,
+        &config.ai.execution_provider,
+        false,
+        |aid, status, _elapsed| {
+            let lock = state.import_job.lock().unwrap();
+            let job = match lock.as_ref() { Some(j) => j, None => return };
+            let label = match status {
+                crate::asset_service::EmbedStatus::Embedded => {
+                    job.summary.embedded.fetch_add(1, Relaxed);
+                    "embedded"
+                }
+                crate::asset_service::EmbedStatus::Skipped(_) => "skipped",
+                crate::asset_service::EmbedStatus::Error(_) => "error",
+            };
+            let short = &aid[..8.min(aid.len())];
+            let evt = serde_json::json!({
+                "done": false,
+                "phase": "embed",
+                "status": label,
+                "asset": short,
+                "embedded": job.summary.embedded.load(Relaxed),
+            });
+            let evt_str = evt.to_string();
+            if let Ok(mut buf) = job.recent_events.lock() {
+                if buf.len() >= crate::web::IMPORT_RECENT_EVENTS_CAP {
+                    buf.pop_front();
+                }
+                buf.push_back(evt_str.clone());
+            }
+            drop(lock);
+            let _ = tx.send(evt_str);
+        },
+    ).ok()?;
+    Some((r.embedded, r.skipped))
+}
+
+/// Run the post-import VLM describe phase. Returns `Some((described, skipped))`
+/// when the phase ran (endpoint reachable, opted in), or `None` when skipped.
+#[cfg(feature = "pro")]
+fn run_post_import_describe(
+    state: &AppState,
+    config: &crate::config::CatalogConfig,
+    req: &StartImportRequest,
+    new_asset_ids: &[String],
+    tx: &tokio::sync::broadcast::Sender<String>,
+) -> Option<(u32, u32)> {
+    use std::sync::atomic::Ordering::Relaxed;
+    let opted_in = req.describe.unwrap_or(config.import.descriptions);
+    if !opted_in || new_asset_ids.is_empty() {
+        return None;
+    }
+
+    let endpoint = &config.vlm.endpoint;
+    let vlm_model = &config.vlm.model;
+    if crate::vlm::check_endpoint(endpoint, 5, state.verbosity).is_err() {
+        let evt = serde_json::json!({
+            "done": false,
+            "phase": "describe",
+            "status": "skipped",
+            "message": format!("VLM endpoint unavailable at {endpoint}"),
+        });
+        let _ = tx.send(evt.to_string());
+        return None;
+    }
+
+    let mode = crate::vlm::DescribeMode::from_str(&config.vlm.mode)
+        .unwrap_or(crate::vlm::DescribeMode::Describe);
+    let params = config.vlm.params_for_model(vlm_model);
+    let service = crate::asset_service::AssetService::new(&state.catalog_root, state.verbosity, &config.preview);
+    let r = service.describe_assets(
+        new_asset_ids,
+        endpoint,
+        vlm_model,
+        &params,
+        mode,
+        false, // force
+        false, // dry_run
+        config.vlm.concurrency,
+        |aid, status, _elapsed| {
+            let lock = state.import_job.lock().unwrap();
+            let job = match lock.as_ref() { Some(j) => j, None => return };
+            let label = match status {
+                crate::vlm::DescribeStatus::Described => {
+                    job.summary.described.fetch_add(1, Relaxed);
+                    "described"
+                }
+                crate::vlm::DescribeStatus::Skipped(_) => "skipped",
+                crate::vlm::DescribeStatus::Error(_) => "error",
+            };
+            let short = &aid[..8.min(aid.len())];
+            let evt = serde_json::json!({
+                "done": false,
+                "phase": "describe",
+                "status": label,
+                "asset": short,
+                "described": job.summary.described.load(Relaxed),
+            });
+            let evt_str = evt.to_string();
+            if let Ok(mut buf) = job.recent_events.lock() {
+                if buf.len() >= crate::web::IMPORT_RECENT_EVENTS_CAP {
+                    buf.pop_front();
+                }
+                buf.push_back(evt_str.clone());
+            }
+            drop(lock);
+            let _ = tx.send(evt_str);
+        },
+    ).ok()?;
+    Some((r.described as u32, r.skipped as u32))
 }
 
 /// GET /api/import/progress — SSE stream of import progress events.
@@ -337,10 +522,22 @@ pub async fn import_status_api(
             "skipped": job.summary.skipped.load(Relaxed),
             "locations_added": job.summary.locations_added.load(Relaxed),
             "recipes": job.summary.recipes.load(Relaxed),
+            "embedded": job.summary.embedded.load(Relaxed),
+            "described": job.summary.described.load(Relaxed),
         }))
         .into_response(),
         None => Json(serde_json::json!({"running": false})).into_response(),
     }
+}
+
+/// GET /api/build-info — report which optional features were compiled in.
+///
+/// Used by the import dialog to hide the Embeddings (ai) and Descriptions
+/// (pro) checkboxes when the running binary doesn't support those phases.
+pub async fn build_info_api() -> Response {
+    let ai = cfg!(feature = "ai");
+    let pro = cfg!(feature = "pro");
+    Json(serde_json::json!({"ai": ai, "pro": pro})).into_response()
 }
 
 /// GET /api/import/profiles — list named import profiles from `[import.profiles.*]`.

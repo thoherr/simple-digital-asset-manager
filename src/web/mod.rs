@@ -276,6 +276,8 @@ pub struct ImportJobSummary {
     pub skipped: std::sync::atomic::AtomicUsize,
     pub locations_added: std::sync::atomic::AtomicUsize,
     pub recipes: std::sync::atomic::AtomicUsize,
+    pub embedded: std::sync::atomic::AtomicUsize,
+    pub described: std::sync::atomic::AtomicUsize,
 }
 
 /// Maximum number of recent events kept in the ring buffer for re-attachment.
@@ -534,6 +536,7 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/import/progress", axum::routing::get(routes::import_progress_sse))
         .route("/api/import/status", axum::routing::get(routes::import_status_api))
         .route("/api/import/profiles", axum::routing::get(routes::import_profiles_api))
+        .route("/api/build-info", axum::routing::get(routes::build_info_api))
         .route("/api/calendar", axum::routing::get(routes::calendar_api))
         .route("/api/map", axum::routing::get(routes::map_api))
         .route("/api/facets", axum::routing::get(routes::facets_api))

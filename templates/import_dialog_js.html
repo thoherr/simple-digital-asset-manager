@@ -16,6 +16,28 @@
     var resultPhase = document.getElementById('import-result-phase');
     var eventSource = null;
     var profilesLoaded = false;
+    var buildInfoLoaded = false;
+    // Whether the running binary supports the optional post-import phases.
+    // Both default false until /api/build-info reports otherwise — that way
+    // the checkboxes stay hidden on standard builds.
+    var buildInfo = { ai: false, pro: false };
+
+    function loadBuildInfo() {
+        if (buildInfoLoaded) return Promise.resolve();
+        return fetch('/api/build-info')
+            .then(function(r) { return r.ok ? r.json() : { ai: false, pro: false }; })
+            .then(function(data) {
+                buildInfo = data || { ai: false, pro: false };
+                if (buildInfo.ai) {
+                    document.getElementById('import-embed-label').style.display = '';
+                }
+                if (buildInfo.pro) {
+                    document.getElementById('import-describe-label').style.display = '';
+                }
+                buildInfoLoaded = true;
+            })
+            .catch(function() { buildInfoLoaded = true; });
+    }
 
     function showPhase(which) {
         pickPhase.style.display = which === 'pick' ? 'block' : 'none';
@@ -82,8 +104,14 @@
         document.getElementById('import-subfolder').value = '';
         importTagChips.clear();
         document.getElementById('import-dry-result').style.display = 'none';
+        // Reset post-import opt-in checkboxes; user re-checks each open.
+        var embedEl = document.getElementById('import-embed');
+        if (embedEl) embedEl.checked = false;
+        var descEl = document.getElementById('import-describe');
+        if (descEl) descEl.checked = false;
 
         loadProfiles();
+        loadBuildInfo();
 
         if (volId && volLabel) {
             showFormPhase(volId, volLabel);
@@ -112,6 +140,8 @@
         importTagChips.commitPending();
         var tagList = importTagChips.getTags();
         var profileEl = document.getElementById('import-profile');
+        var embedEl = document.getElementById('import-embed');
+        var descEl = document.getElementById('import-describe');
         return {
             volume_id: document.getElementById('import-vol-id').value,
             subfolder: document.getElementById('import-subfolder').value.trim() || null,
@@ -119,6 +149,11 @@
             tags: tagList.length > 0 ? tagList : null,
             auto_group: document.getElementById('import-auto-group').checked,
             smart: document.getElementById('import-smart').checked,
+            // Only send when the feature is compiled in AND the box is checked,
+            // so the field stays absent on standard builds (server ignores it
+            // either way, but this keeps the request payload tidy).
+            embed: buildInfo.ai && embedEl && embedEl.checked ? true : null,
+            describe: buildInfo.pro && descEl && descEl.checked ? true : null,
             dry_run: dryRun
         };
     }
@@ -131,6 +166,8 @@
         if (data.skipped) parts.push(data.skipped + ' skipped');
         if (data.recipes_attached) parts.push(data.recipes_attached + ' recipes');
         if (data.previews_generated) parts.push(data.previews_generated + ' previews');
+        if (data.embedded) parts.push(data.embedded + ' embedded');
+        if (data.described) parts.push(data.described + ' described');
         document.getElementById('import-result-text').textContent =
             parts.join(', ') || 'Nothing to import.';
         // Build a "Browse imported" link that actually scopes the result to
@@ -552,11 +589,22 @@
                 }
                 return;
             }
-            document.getElementById('import-status-text').textContent =
-                evt.imported + ' imported, ' + evt.skipped + ' skipped';
+            // Phase-aware status line. The import phase emits events without a
+            // `phase` field (legacy shape); embed/describe events carry their
+            // own phase tag and per-phase counters.
+            var statusEl = document.getElementById('import-status-text');
             var log = document.getElementById('import-log');
             var line = document.createElement('div');
-            line.textContent = evt.status + ' ' + evt.file;
+            if (evt.phase === 'embed') {
+                statusEl.textContent = 'Embedding… ' + (evt.embedded || 0) + ' done';
+                line.textContent = 'embed ' + evt.status + ' ' + (evt.asset || '');
+            } else if (evt.phase === 'describe') {
+                statusEl.textContent = 'Describing… ' + (evt.described || 0) + ' done';
+                line.textContent = 'describe ' + evt.status + ' ' + (evt.asset || '');
+            } else {
+                statusEl.textContent = evt.imported + ' imported, ' + evt.skipped + ' skipped';
+                line.textContent = evt.status + ' ' + evt.file;
+            }
             log.appendChild(line);
             if (log.children.length > 50) log.removeChild(log.firstChild);
             log.scrollTop = log.scrollHeight;
