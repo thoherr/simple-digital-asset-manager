@@ -2531,343 +2531,7 @@ faces/\n\
             }
             Ok(())
         }
-        Commands::Volume(cmd) => match cmd {
-            VolumeCommands::Add { args, purpose } => {
-                // Two positional args: LABEL PATH. One arg: PATH (label derived).
-                let (label, path) = if args.len() == 2 {
-                    (args[0].clone(), args[1].clone())
-                } else {
-                    let path = &args[0];
-                    let label = std::path::Path::new(path)
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("Volume")
-                        .to_string();
-                    (label, path.clone())
-                };
-
-                let catalog_root = maki::config::find_catalog_root()?;
-                let registry = DeviceRegistry::new(&catalog_root);
-                let parsed_purpose = if let Some(ref p) = purpose {
-                    Some(maki::models::VolumePurpose::parse(p).ok_or_else(|| {
-                        anyhow::anyhow!("invalid purpose '{}'. Valid values: media, working, archive, backup, cloud", p)
-                    })?)
-                } else {
-                    None
-                };
-                let volume = registry.register(
-                    &label,
-                    std::path::Path::new(&path),
-                    maki::models::VolumeType::Local,
-                    parsed_purpose,
-                )?;
-                if cli.json {
-                    println!("{}", serde_json::json!({
-                        "id": volume.id.to_string(),
-                        "label": volume.label,
-                        "path": volume.mount_point.display().to_string(),
-                        "purpose": volume.purpose.as_ref().map(|p| p.as_str()),
-                    }));
-                } else {
-                    println!("Registered volume '{}' ({})", volume.label, volume.id);
-                    println!("  Path: {}", volume.mount_point.display());
-                    if let Some(ref p) = volume.purpose {
-                        println!("  Purpose: {}", p);
-                    } else {
-                        eprintln!("  Hint: use --purpose <media|working|archive|backup|cloud> to set the volume's role");
-                    }
-                }
-                Ok(())
-            }
-            VolumeCommands::List { purpose, offline, online } => {
-                if offline && online {
-                    anyhow::bail!("--offline and --online are mutually exclusive");
-                }
-                let purpose_filter = if let Some(ref p) = purpose {
-                    Some(maki::models::VolumePurpose::parse(p).ok_or_else(|| {
-                        anyhow::anyhow!("invalid purpose '{}'. Valid values: media, working, archive, backup, cloud", p)
-                    })?)
-                } else {
-                    None
-                };
-
-                let catalog_root = maki::config::find_catalog_root()?;
-                let registry = DeviceRegistry::new(&catalog_root);
-                let volumes: Vec<_> = registry.list()?.into_iter().filter(|v| {
-                    if let Some(ref pf) = purpose_filter {
-                        if v.purpose.as_ref() != Some(pf) {
-                            return false;
-                        }
-                    }
-                    if offline && v.is_online { return false; }
-                    if online && !v.is_online { return false; }
-                    true
-                }).collect();
-
-                if cli.json {
-                    let json_volumes: Vec<serde_json::Value> = volumes.iter().map(|v| {
-                        serde_json::json!({
-                            "id": v.id.to_string(),
-                            "label": v.label,
-                            "path": v.mount_point.display().to_string(),
-                            "volume_type": format!("{:?}", v.volume_type).to_lowercase(),
-                            "purpose": v.purpose.as_ref().map(|p| p.as_str()),
-                            "is_online": v.is_online,
-                        })
-                    }).collect();
-                    println!("{}", serde_json::to_string_pretty(&json_volumes)?);
-                } else if volumes.is_empty() {
-                    if purpose.is_some() || offline || online {
-                        println!("No matching volumes.");
-                    } else {
-                        println!("No volumes registered.");
-                    }
-                } else {
-                    for v in &volumes {
-                        let status = if v.is_online { "online" } else { "offline" };
-                        let purpose_tag = v.purpose.as_ref()
-                            .map(|p| format!(" [{}]", p))
-                            .unwrap_or_default();
-                        println!("{} ({}) [{}]{}", v.label, v.id, status, purpose_tag);
-                        println!("  Path: {}", v.mount_point.display());
-                    }
-                }
-                Ok(())
-            }
-            VolumeCommands::SetPurpose { volume, purpose } => {
-                let catalog_root = maki::config::find_catalog_root()?;
-                let registry = DeviceRegistry::new(&catalog_root);
-                let parsed_purpose = if purpose == "none" || purpose == "clear" {
-                    None
-                } else {
-                    Some(maki::models::VolumePurpose::parse(&purpose).ok_or_else(|| {
-                        anyhow::anyhow!("invalid purpose '{}'. Valid values: media, working, archive, backup, cloud, none", purpose)
-                    })?)
-                };
-                let vol = registry.set_purpose(&volume, parsed_purpose)?;
-                // Update the SQLite cache too
-                let catalog = maki::catalog::Catalog::open(&catalog_root)?;
-                catalog.ensure_volume(&vol)?;
-                if cli.json {
-                    println!("{}", serde_json::json!({
-                        "id": vol.id.to_string(),
-                        "label": vol.label,
-                        "purpose": vol.purpose.as_ref().map(|p| p.as_str()),
-                    }));
-                } else if let Some(ref p) = vol.purpose {
-                    println!("Volume '{}' purpose set to: {}", vol.label, p);
-                } else {
-                    println!("Volume '{}' purpose cleared.", vol.label);
-                }
-                Ok(())
-            }
-            VolumeCommands::Remove { volume, apply } => {
-                let (catalog_root, config) = maki::config::load_config()?;
-                let service = AssetService::new(&catalog_root, verbosity, &config.preview);
-
-                let show_log = cli.log;
-                let result = if show_log {
-                    use maki::asset_service::CleanupStatus;
-                    service.remove_volume(
-                        &volume,
-                        apply,
-                        |path, status, elapsed| {
-                            match status {
-                                CleanupStatus::Stale => {
-                                    let name = path.file_name()
-                                        .and_then(|n| n.to_str())
-                                        .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                                    item_status(name, "removed", Some(elapsed));
-                                }
-                                CleanupStatus::LocationlessVariant => {
-                                    let name = path.to_str().unwrap_or("?");
-                                    item_status(name, "locationless variant removed", Some(elapsed));
-                                }
-                                CleanupStatus::OrphanedAsset => {
-                                    let name = path.to_str().unwrap_or("?");
-                                    item_status(name, "orphaned asset removed", Some(elapsed));
-                                }
-                                CleanupStatus::OrphanedFile => {
-                                    let name = path.file_name()
-                                        .and_then(|n| n.to_str())
-                                        .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                                    item_status(name, "orphaned file removed", Some(elapsed));
-                                }
-                                _ => {}
-                            }
-                        },
-                    )?
-                } else {
-                    service.remove_volume(
-                        &volume,
-                        apply,
-                        |_, _, _| {},
-                    )?
-                };
-
-                if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&result)?);
-                } else {
-                    for err in &result.errors {
-                        eprintln!("  {err}");
-                    }
-
-                    if apply {
-                        let mut parts = vec![
-                            format!("{} locations removed", result.locations_removed),
-                            format!("{} recipes removed", result.recipes_removed),
-                        ];
-                        if result.removed_assets > 0 {
-                            parts.push(format!("{} orphaned assets removed", result.removed_assets));
-                        }
-                        if result.removed_previews > 0 {
-                            parts.push(format!("{} orphaned previews removed", result.removed_previews));
-                        }
-                        println!("Volume '{}' removed: {}", result.volume_label, parts.join(", "));
-                    } else {
-                        let mut parts = vec![
-                            format!("{} locations", result.locations),
-                            format!("{} recipes", result.recipes),
-                        ];
-                        if result.orphaned_assets > 0 {
-                            parts.push(format!("{} orphaned assets", result.orphaned_assets));
-                        }
-                        if result.orphaned_previews > 0 {
-                            parts.push(format!("{} orphaned previews", result.orphaned_previews));
-                        }
-                        println!("Volume '{}' would remove: {}", result.volume_label, parts.join(", "));
-                        if result.locations > 0 || result.recipes > 0 {
-                            println!("  Run with --apply to remove.");
-                        }
-                    }
-                }
-                Ok(())
-            }
-            VolumeCommands::Combine { source, target, apply } => {
-                let (catalog_root, config) = maki::config::load_config()?;
-                let service = AssetService::new(&catalog_root, verbosity, &config.preview);
-
-                let show_log = cli.log;
-                let result = service.combine_volume(
-                    &source,
-                    &target,
-                    apply,
-                    |asset_id, elapsed| {
-                        if show_log {
-                            item_status(asset_id, "updated", Some(elapsed));
-                        }
-                    },
-                )?;
-
-                if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&result)?);
-                } else {
-                    for err in &result.errors {
-                        eprintln!("  {err}");
-                    }
-
-                    if apply {
-                        println!(
-                            "Volume '{}' combined into '{}': {} locations moved, {} recipes moved ({} assets, prefix '{}')",
-                            result.source_label,
-                            result.target_label,
-                            result.locations_moved,
-                            result.recipes_moved,
-                            result.assets_affected,
-                            result.path_prefix,
-                        );
-                    } else {
-                        println!(
-                            "Would combine '{}' into '{}': {} locations, {} recipes ({} assets, prefix '{}')",
-                            result.source_label,
-                            result.target_label,
-                            result.locations,
-                            result.recipes,
-                            result.assets_affected,
-                            result.path_prefix,
-                        );
-                        if result.locations > 0 || result.recipes > 0 {
-                            println!("  Run with --apply to combine.");
-                        }
-                    }
-                }
-                Ok(())
-            }
-            VolumeCommands::Split { source, new_label, path, purpose, apply } => {
-                let (catalog_root, config) = maki::config::load_config()?;
-                let service = AssetService::new(&catalog_root, verbosity, &config.preview);
-
-                let show_log = cli.log;
-                let result = service.split_volume(
-                    &source,
-                    &new_label,
-                    &path,
-                    purpose.as_deref(),
-                    apply,
-                    |asset_id, elapsed| {
-                        if show_log {
-                            item_status(asset_id, "updated", Some(elapsed));
-                        }
-                    },
-                )?;
-
-                if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&result)?);
-                } else {
-                    for err in &result.errors {
-                        eprintln!("  {err}");
-                    }
-
-                    if apply {
-                        println!(
-                            "Volume '{}' split: new volume '{}' created with {} locations, {} recipes ({} assets, prefix '{}')",
-                            result.source_label,
-                            result.new_label,
-                            result.locations_moved,
-                            result.recipes_moved,
-                            result.assets_affected,
-                            result.path_prefix,
-                        );
-                    } else {
-                        println!(
-                            "Would split '{}': new volume '{}' with {} locations, {} recipes ({} assets, prefix '{}')",
-                            result.source_label,
-                            result.new_label,
-                            result.locations,
-                            result.recipes,
-                            result.assets_affected,
-                            result.path_prefix,
-                        );
-                        if result.locations > 0 || result.recipes > 0 {
-                            println!("  Run with --apply to split.");
-                        }
-                    }
-                }
-                Ok(())
-            }
-            VolumeCommands::Rename { volume, new_label } => {
-                let catalog_root = maki::config::find_catalog_root()?;
-                let registry = DeviceRegistry::new(&catalog_root);
-                let vol = registry.resolve_volume(&volume)?;
-                let old_label = vol.label.clone();
-
-                registry.rename(&volume, &new_label)?;
-
-                let catalog = maki::catalog::Catalog::open(&catalog_root)?;
-                catalog.rename_volume(&vol.id.to_string(), &new_label)?;
-
-                if cli.json {
-                    println!("{}", serde_json::json!({
-                        "old_label": old_label,
-                        "new_label": new_label,
-                        "volume_id": vol.id.to_string(),
-                    }));
-                } else {
-                    println!("Volume '{}' renamed to '{}'", old_label, new_label);
-                }
-                Ok(())
-            }
-        },
+        Commands::Volume(cmd) => run_volume_command(cmd, cli.json, cli.log, verbosity),
         Commands::Import {
             paths,
             volume,
@@ -2882,441 +2546,24 @@ faces/\n\
             embed,
             #[cfg(feature = "pro")]
             describe,
-        } => {
-            use maki::asset_service::FileTypeFilter;
-
-            let (catalog_root, config) = maki::config::load_config()?;
-
-            // Resolve import profile: profile overrides base [import], CLI flags override both
-            let import_config = if let Some(ref profile_name) = profile {
-                config.import.resolve_profile(profile_name)
-                    .ok_or_else(|| anyhow::anyhow!(
-                        "Unknown import profile '{}'. Available profiles: {}",
-                        profile_name,
-                        if config.import.profiles.is_empty() {
-                            "(none configured)".to_string()
-                        } else {
-                            config.import.profiles.keys().cloned().collect::<Vec<_>>().join(", ")
-                        }
-                    ))?
-            } else {
-                config.import.clone()
-            };
-
-            let smart = smart || import_config.smart_previews;
-            let registry = DeviceRegistry::new(&catalog_root);
-
-            // Build file type filter: merge profile include/skip with CLI flags
-            let mut filter = FileTypeFilter::default();
-
-            // Profile include/skip first (if a profile was selected)
-            let profile_ref = profile.as_deref().and_then(|name| config.import.profiles.get(name));
-            if let Some(p) = profile_ref {
-                for group in &p.include {
-                    filter.include(group)?;
-                }
-                for group in &p.skip {
-                    filter.skip(group)?;
-                }
-            }
-
-            // CLI flags override (check for conflicts)
-            for group in &include {
-                if skip.contains(group) {
-                    anyhow::bail!(
-                        "Group '{}' cannot be both included and skipped.",
-                        group
-                    );
-                }
-            }
-
-            for group in &include {
-                filter.include(group)?;
-            }
-            for group in &skip {
-                filter.skip(group)?;
-            }
-
-            // Canonicalize input paths
-            let canonical_paths: Vec<PathBuf> = paths
-                .iter()
-                .map(|p| {
-                    std::fs::canonicalize(p)
-                        .unwrap_or_else(|_| PathBuf::from(p))
-                })
-                .collect();
-
-            if canonical_paths.is_empty() {
-                anyhow::bail!("no paths specified for import.");
-            }
-
-            // Resolve volume: explicit --volume flag, or auto-detect from path
-            let volume = if let Some(label) = &volume {
-                registry.resolve_volume(label)?
-            } else {
-                registry.find_volume_for_path(&canonical_paths[0])?
-            };
-
-            // Merge config auto_tags with CLI --add-tag values
-            let mut all_tags = import_config.auto_tags.clone();
-            for tag in &add_tags {
-                if !all_tags.contains(tag) {
-                    all_tags.push(tag.clone());
-                }
-            }
-
-            if verbosity.verbose {
-                eprintln!("  Import: {} file(s) on volume \"{}\"", canonical_paths.len(), volume.label);
-                if let Some(ref p) = profile {
-                    eprintln!("  Import: using profile \"{}\"", p);
-                }
-                if !import_config.exclude.is_empty() {
-                    eprintln!("  Import: exclude patterns: {:?}", import_config.exclude);
-                }
-                if !all_tags.is_empty() {
-                    eprintln!("  Import: auto-tags: {}", all_tags.join(", "));
-                }
-                if smart {
-                    eprintln!("  Import: smart previews enabled");
-                }
-            }
-
-            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
-            let result = if cli.log {
-                use maki::asset_service::FileStatus;
-                service.import_with_callback(&canonical_paths, &volume, &filter, &import_config.exclude, &all_tags, dry_run, smart, |path, status, elapsed| {
-                    let label = match status {
-                        FileStatus::Imported => "imported",
-                        FileStatus::LocationAdded => "location added",
-                        FileStatus::Skipped => "skipped",
-                        FileStatus::RecipeAttached => "recipe",
-                        FileStatus::RecipeLocationAdded => "recipe location added",
-                        FileStatus::RecipeUpdated => "recipe updated",
-                    };
-                    let name = path.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or_else(|| path.to_str().unwrap_or("?"));
-                    item_status(name, label, Some(elapsed));
-                })?
-            } else {
-                service.import_with_callback(&canonical_paths, &volume, &filter, &import_config.exclude, &all_tags, dry_run, smart, |_, _, _| {})?
-            };
-
-            // Post-import auto-group phase
-            let auto_group_result = if auto_group
-                && (result.imported > 0 || result.locations_added > 0)
-            {
-                use maki::catalog::Catalog;
-                use std::path::Path;
-
-                let catalog = Catalog::open(&catalog_root)?;
-                let volume_id = volume.id.to_string();
-
-                // Compute neighborhood prefixes: go up one level from each
-                // imported directory to get the "session root"
-                let session_roots: std::collections::HashSet<String> = result
-                    .imported_directories
-                    .iter()
-                    .map(|dir| {
-                        Path::new(dir)
-                            .parent()
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or_default()
-                    })
-                    .collect();
-                let prefixes: Vec<String> = session_roots.into_iter().collect();
-
-                // Find all existing catalog assets in the neighborhood
-                let neighbor_ids = catalog
-                    .find_asset_ids_by_volume_and_path_prefixes(&volume_id, &prefixes)?;
-
-                // Merge with newly imported asset IDs and deduplicate
-                let mut all_ids: Vec<String> = result.new_asset_ids.clone();
-                let existing: std::collections::HashSet<String> =
-                    all_ids.iter().cloned().collect();
-                for id in neighbor_ids {
-                    if !existing.contains(&id) {
-                        all_ids.push(id);
-                    }
-                }
-
-                if all_ids.len() > 1 {
-                    let engine = QueryEngine::new(&catalog_root);
-                    let ag_result = engine.auto_group(&all_ids, dry_run)?;
-                    if !ag_result.groups.is_empty() {
-                        // Upgrade previews for grouped assets (use Export/Processed variant)
-                        if !dry_run {
-                            let grouped_ids: Vec<String> = ag_result.groups.iter()
-                                .map(|g| g.target_id.clone())
-                                .collect();
-                            let metadata_store = MetadataStore::new(&catalog_root);
-                            let preview_gen = maki::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
-                            let volumes = registry.list()?;
-                            let mut upgraded = 0usize;
-                            for gid in &grouped_ids {
-                                if let Ok(uuid) = gid.parse::<uuid::Uuid>() {
-                                    if let Ok(asset) = metadata_store.load(uuid) {
-                                        if let Some(idx) = maki::models::variant::best_preview_index(&asset.variants) {
-                                            if idx > 0 {
-                                                // A better variant exists — upgrade the preview
-                                                let v = &asset.variants[idx];
-                                                if let Some(loc) = v.locations.first() {
-                                                    if let Some(vol) = volumes.iter().find(|vl| vl.id == loc.volume_id && vl.is_online) {
-                                                        let file_path = vol.mount_point.join(&loc.relative_path);
-                                                        if file_path.exists() {
-                                                            let _ = preview_gen.generate(&v.content_hash, &file_path, &v.format);
-                                                            if smart {
-                                                                let _ = preview_gen.generate_smart(&v.content_hash, &file_path, &v.format);
-                                                            }
-                                                            upgraded += 1;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        // Update denormalized best_variant_hash
-                                        if let Ok(cat) = Catalog::open(&catalog_root) {
-                                            let _ = cat.update_denormalized_variant_columns(&asset);
-                                        }
-                                    }
-                                }
-                            }
-                            if upgraded > 0 && verbosity.verbose {
-                                eprintln!("  Auto-group: upgraded {} preview(s) from export variants", upgraded);
-                            }
-                        }
-                        Some(ag_result)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            // Post-import embedding phase (AI feature)
+        } => run_import_command(
+            paths,
+            volume,
+            profile,
+            include,
+            skip,
+            add_tags,
+            dry_run,
+            auto_group,
+            smart,
             #[cfg(feature = "ai")]
-            let embed_result = if !dry_run
-                && (embed || import_config.embeddings)
-                && !result.new_asset_ids.is_empty()
-            {
-                use maki::model_manager::ModelManager;
-
-                let model_id = &config.ai.model;
-                let model_dir = maki::config::resolve_model_dir(&config.ai.model_dir, model_id);
-                let mgr = ModelManager::new(&model_dir, model_id)?;
-
-                if mgr.model_exists() {
-                    let service = AssetService::new(&catalog_root, verbosity, &config.preview);
-                    let log = cli.log;
-                    let r = service.embed_assets(
-                        &result.new_asset_ids,
-                        &model_dir,
-                        model_id,
-                        &config.ai.execution_provider,
-                        false,
-                        |aid, status, _elapsed| {
-                            if !log { return; }
-                            let short = &aid[..8.min(aid.len())];
-                            match status {
-                                maki::asset_service::EmbedStatus::Embedded => {
-                                    eprintln!("  {short} — embedded");
-                                }
-                                maki::asset_service::EmbedStatus::Error(msg) => {
-                                    eprintln!("  {short} — embed error: {msg}");
-                                }
-                                maki::asset_service::EmbedStatus::Skipped(_) => {}
-                            }
-                        },
-                    )?;
-                    Some((r.embedded, r.skipped))
-                } else {
-                    if cli.log {
-                        eprintln!("  Skipping embeddings: model not downloaded. Run 'maki auto-tag --download' first.");
-                    }
-                    None
-                }
-            } else {
-                None
-            };
-
-            // Post-import VLM describe phase
+            embed,
             #[cfg(feature = "pro")]
-            let describe_result = if !dry_run
-                && (describe || import_config.descriptions)
-                && !result.new_asset_ids.is_empty()
-            {
-                // Check VLM endpoint availability first
-                let endpoint = &config.vlm.endpoint;
-                let vlm_model = &config.vlm.model;
-                let vlm_available = maki::vlm::check_endpoint(endpoint, 5, verbosity).is_ok();
-
-                if vlm_available {
-                    let mode = maki::vlm::DescribeMode::from_str(&config.vlm.mode)
-                        .unwrap_or(maki::vlm::DescribeMode::Describe);
-                    let import_params = config.vlm.params_for_model(vlm_model);
-                    let service = AssetService::new(&catalog_root, verbosity, &config.preview);
-                    let log = cli.log;
-                    match service.describe_assets(
-                        &result.new_asset_ids,
-                        endpoint,
-                        vlm_model,
-                        &import_params,
-                        mode,
-                        false, // force: don't overwrite existing descriptions
-                        false, // dry_run
-                        config.vlm.concurrency,
-                        |aid, status, elapsed| {
-                            if log {
-                                let short = &aid[..8.min(aid.len())];
-                                match status {
-                                    maki::vlm::DescribeStatus::Described => {
-                                        item_status(short, "described", Some(elapsed));
-                                    }
-                                    maki::vlm::DescribeStatus::Skipped(msg) => {
-                                        eprintln!("  {short} — skipped: {msg}");
-                                    }
-                                    maki::vlm::DescribeStatus::Error(msg) => {
-                                        eprintln!("  {short} — error: {msg}");
-                                    }
-                                }
-                            }
-                        },
-                    ) {
-                        Ok(dr) => Some(dr),
-                        Err(e) => {
-                            if cli.log {
-                                eprintln!("  Describe phase failed: {e:#}");
-                            }
-                            None
-                        }
-                    }
-                } else {
-                    if cli.log {
-                        eprintln!("  Skipping descriptions: VLM endpoint not available at {endpoint}");
-                    }
-                    None
-                }
-            } else {
-                None
-            };
-
-            if cli.json {
-                #[allow(unused_mut)]
-                let mut json_val = serde_json::to_value(&result)?;
-                if let Some(ref ag) = auto_group_result {
-                    json_val["auto_group"] = serde_json::to_value(ag)?;
-                }
-                #[cfg(feature = "ai")]
-                if let Some((embedded, skipped_embed)) = embed_result {
-                    json_val["embeddings_generated"] = serde_json::json!(embedded);
-                    json_val["embeddings_skipped"] = serde_json::json!(skipped_embed);
-                }
-                #[cfg(feature = "pro")]
-                if let Some(ref dr) = describe_result {
-                    json_val["descriptions_generated"] = serde_json::json!(dr.described);
-                    json_val["descriptions_skipped"] = serde_json::json!(dr.skipped);
-                    if dr.tags_applied > 0 {
-                        json_val["describe_tags_applied"] = serde_json::json!(dr.tags_applied);
-                    }
-                }
-                println!("{}", serde_json::to_string_pretty(&json_val)?);
-            } else {
-                let mut parts: Vec<String> = Vec::new();
-                if result.imported > 0 {
-                    parts.push(format!("{} imported", result.imported));
-                }
-                if result.skipped > 0 {
-                    parts.push(format!("{} skipped", result.skipped));
-                }
-                if result.locations_added > 0 {
-                    parts.push(format!("{} location(s) added", result.locations_added));
-                }
-                if result.recipes_attached > 0 {
-                    parts.push(format!("{} recipe(s) attached", result.recipes_attached));
-                }
-                if result.recipes_location_added > 0 {
-                    parts.push(format!("{} recipe location(s) added", result.recipes_location_added));
-                }
-                if result.recipes_updated > 0 {
-                    parts.push(format!("{} recipe(s) updated", result.recipes_updated));
-                }
-                if result.previews_generated > 0 {
-                    parts.push(format!("{} preview(s) generated", result.previews_generated));
-                }
-                if result.smart_previews_generated > 0 {
-                    parts.push(format!("{} smart preview(s) generated", result.smart_previews_generated));
-                }
-                #[cfg(feature = "ai")]
-                if let Some((embedded, _)) = embed_result {
-                    if embedded > 0 {
-                        parts.push(format!("{} embedding(s) generated", embedded));
-                    }
-                }
-                #[cfg(feature = "pro")]
-                if let Some(ref dr) = describe_result {
-                    if dr.described > 0 {
-                        parts.push(format!("{} described", dr.described));
-                    }
-                }
-                if parts.is_empty() {
-                    println!("Import: nothing to import");
-                } else if dry_run {
-                    println!("Dry run — would import: {}", parts.join(", "));
-                } else {
-                    println!("Import complete: {}", parts.join(", "));
-                }
-
-                if let Some(ref ag) = auto_group_result {
-                    if cli.log {
-                        for group in &ag.groups {
-                            let short_id = &group.target_id[..8.min(group.target_id.len())];
-                            eprintln!(
-                                "  {} — {} asset(s) → target {short_id}",
-                                group.stem,
-                                group.asset_ids.len(),
-                            );
-                        }
-                    }
-                    println!(
-                        "Auto-group: {} stem group(s), {} donor(s) {}, {} variant(s) moved",
-                        ag.groups.len(),
-                        ag.total_donors_merged,
-                        if dry_run { "would merge" } else { "merged" },
-                        ag.total_variants_moved,
-                    );
-                }
-
-                // Tier-A hints: if the user imported assets without engaging
-                // the AI/Pro post-import phases (and neither was opted into
-                // via [import] config), tell them what's available.
-                if !dry_run && result.imported > 0 {
-                    #[cfg(feature = "ai")]
-                    {
-                        if !embed && !import_config.embeddings {
-                            println!(
-                                "  Tip: run 'maki embed' to generate visual-similarity \
-                                 embeddings (or pass --embed on import / set \
-                                 [import] embeddings = true in maki.toml)."
-                            );
-                        }
-                    }
-                    #[cfg(feature = "pro")]
-                    {
-                        if !describe && !import_config.descriptions {
-                            println!(
-                                "  Tip: run 'maki describe' to generate VLM \
-                                 descriptions (or pass --describe on import / set \
-                                 [import] descriptions = true in maki.toml)."
-                            );
-                        }
-                    }
-                }
-            }
-            Ok(())
-        }
+            describe,
+            cli.json,
+            cli.log,
+            verbosity,
+        ),
         Commands::Search { query, format, quiet } => {
             use maki::format::{self, OutputFormat};
 
@@ -3618,437 +2865,9 @@ faces/\n\
 
             Ok(())
         }
-        Commands::Tag { asset_id, remove, tags, subcmd } => {
-            match subcmd {
-                Some(TagCommands::Rename { old_tag, new_tag, apply }) => {
-                    let catalog_root = maki::config::find_catalog_root()?;
-                    let engine = QueryEngine::new(&catalog_root);
-                    let old_storage = maki::tag_util::tag_input_to_storage(&old_tag);
-                    let new_storage = maki::tag_util::tag_input_to_storage(&new_tag);
-                    let show_log = cli.log;
-
-                    use maki::query::TagRenameAction;
-                    let result = engine.tag_rename(&old_storage, &new_storage, apply, |name, action| {
-                        if show_log {
-                            let verb = match (action, apply) {
-                                (TagRenameAction::Renamed, true) => "renamed",
-                                (TagRenameAction::Renamed, false) => "would rename",
-                                (TagRenameAction::Removed, true) => "removed (already had target)",
-                                (TagRenameAction::Removed, false) => "would remove (already has target)",
-                                (TagRenameAction::Skipped, _) => "skipped (already correct)",
-                            };
-                            eprintln!("  {} — {}", name, verb);
-                        }
-                    })?;
-
-                    if cli.json {
-                        println!("{}", serde_json::to_string_pretty(&result)?);
-                    } else {
-                        let old_display = maki::tag_util::tag_storage_to_display(&old_storage);
-                        let new_display = maki::tag_util::tag_storage_to_display(&new_storage);
-                        if result.matched == 0 {
-                            println!("No assets found with tag \"{}\".", old_display);
-                        } else {
-                            if !apply && (result.renamed > 0 || result.removed > 0) {
-                                eprint!("Dry run — ");
-                            }
-                            let mut parts = Vec::new();
-                            if result.renamed > 0 {
-                                parts.push(format!("{} renamed", result.renamed));
-                            }
-                            if result.removed > 0 {
-                                parts.push(format!("{} removed (merged)", result.removed));
-                            }
-                            if result.skipped > 0 {
-                                parts.push(format!("{} skipped", result.skipped));
-                            }
-                            println!(
-                                "Tag rename: \"{}\" → \"{}\": {}",
-                                old_display, new_display, parts.join(", "),
-                            );
-                            if !apply && (result.renamed > 0 || result.removed > 0) {
-                                println!("  Run with --apply to rename tags.");
-                            }
-                        }
-                    }
-                    Ok(())
-                }
-                Some(TagCommands::Split { old_tag, new_tags, keep, apply }) => {
-                    let catalog_root = maki::config::find_catalog_root()?;
-                    let engine = QueryEngine::new(&catalog_root);
-                    let old_storage = maki::tag_util::tag_input_to_storage(&old_tag);
-                    let new_storage: Vec<String> = new_tags.iter()
-                        .map(|t| maki::tag_util::tag_input_to_storage(t))
-                        .collect();
-                    let show_log = cli.log;
-
-                    use maki::query::TagSplitAction;
-                    let result = engine.tag_split(&old_storage, &new_storage, keep, apply, |name, action| {
-                        if show_log {
-                            let verb = match (action, apply, keep) {
-                                (TagSplitAction::Split, true, false) => "split",
-                                (TagSplitAction::Split, false, false) => "would split",
-                                (TagSplitAction::Split, true, true) => "added targets",
-                                (TagSplitAction::Split, false, true) => "would add targets",
-                                (TagSplitAction::Skipped, _, _) => "skipped (no change needed)",
-                            };
-                            eprintln!("  {} — {}", name, verb);
-                        }
-                    })?;
-
-                    if cli.json {
-                        println!("{}", serde_json::to_string_pretty(&result)?);
-                    } else {
-                        let old_display = maki::tag_util::tag_storage_to_display(&old_storage);
-                        let targets_display = new_storage.iter()
-                            .map(|t| format!("\"{}\"", maki::tag_util::tag_storage_to_display(t)))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        if result.matched == 0 {
-                            println!("No assets found with tag \"{}\".", old_display);
-                        } else {
-                            if !apply && result.split > 0 {
-                                eprint!("Dry run — ");
-                            }
-                            let verb = if keep { "add" } else { "split" };
-                            let mut parts = Vec::new();
-                            if result.split > 0 {
-                                parts.push(format!("{} {}", result.split, if keep { "augmented" } else { "split" }));
-                            }
-                            if result.skipped > 0 {
-                                parts.push(format!("{} skipped", result.skipped));
-                            }
-                            println!(
-                                "Tag {}: \"{}\" → [{}]: {}",
-                                verb, old_display, targets_display, parts.join(", "),
-                            );
-                            if !apply && result.split > 0 {
-                                println!("  Run with --apply to {} tags.", verb);
-                            }
-                        }
-                    }
-                    Ok(())
-                }
-                Some(TagCommands::Delete { tag, apply }) => {
-                    let catalog_root = maki::config::find_catalog_root()?;
-                    let engine = QueryEngine::new(&catalog_root);
-                    let storage_tag = maki::tag_util::tag_input_to_storage(&tag);
-                    let show_log = cli.log;
-
-                    use maki::query::TagDeleteAction;
-                    let result = engine.tag_delete(&storage_tag, apply, |name, action| {
-                        if show_log {
-                            let verb = match (action, apply) {
-                                (TagDeleteAction::Removed, true) => "removed",
-                                (TagDeleteAction::Removed, false) => "would remove",
-                                (TagDeleteAction::Skipped, _) => "skipped",
-                            };
-                            eprintln!("  {} — {}", name, verb);
-                        }
-                    })?;
-
-                    if cli.json {
-                        println!("{}", serde_json::to_string_pretty(&result)?);
-                    } else {
-                        // Strip markers from the display string for the user-facing message.
-                        let display = storage_tag
-                            .trim_start_matches(|c: char| c == '=' || c == '/' || c == '^')
-                            .to_string();
-                        if result.matched == 0 {
-                            println!("No assets found with tag \"{}\".", display);
-                        } else {
-                            if !apply && result.removed > 0 {
-                                eprint!("Dry run — ");
-                            }
-                            let mut parts = Vec::new();
-                            if result.removed > 0 {
-                                parts.push(format!(
-                                    "{} {}",
-                                    result.removed,
-                                    if apply { "removed" } else { "would remove" }
-                                ));
-                            }
-                            if result.skipped > 0 {
-                                parts.push(format!("{} skipped", result.skipped));
-                            }
-                            println!(
-                                "Tag delete \"{}\": {} matched, {}",
-                                display,
-                                result.matched,
-                                parts.join(", "),
-                            );
-                            if !apply && result.removed > 0 {
-                                println!("  Run with --apply to delete the tag.");
-                            }
-                        }
-                    }
-                    Ok(())
-                }
-                Some(TagCommands::FixUnicode { apply }) => {
-                    let catalog_root = maki::config::find_catalog_root()?;
-                    let engine = QueryEngine::new(&catalog_root);
-                    let show_log = cli.log;
-
-                    let result = engine.tag_fix_unicode(apply, |name, _changed| {
-                        if show_log {
-                            eprintln!("  {} — {}", name, if apply { "fixed" } else { "would fix" });
-                        }
-                    })?;
-
-                    if cli.json {
-                        println!("{}", serde_json::to_string_pretty(&result)?);
-                    } else {
-                        if !apply && result.fixed > 0 {
-                            eprint!("Dry run — ");
-                        }
-                        if result.fixed == 0 {
-                            println!(
-                                "Tag fix-unicode: {} asset(s) scanned, all already NFC.",
-                                result.scanned
-                            );
-                        } else {
-                            let merge_msg = if result.merged > 0 {
-                                format!(", {} with merged duplicates", result.merged)
-                            } else {
-                                String::new()
-                            };
-                            println!(
-                                "Tag fix-unicode: {} scanned, {} {}, {} tag value(s) normalised{}",
-                                result.scanned,
-                                result.fixed,
-                                if apply { "fixed" } else { "would be fixed" },
-                                result.tags_normalized,
-                                merge_msg,
-                            );
-                            if !apply && result.fixed > 0 {
-                                println!("  Run with --apply to normalise tags.");
-                            }
-                        }
-                    }
-                    Ok(())
-                }
-                Some(TagCommands::Clear { asset_id }) => {
-                    let catalog_root = maki::config::find_catalog_root()?;
-                    let engine = QueryEngine::new(&catalog_root);
-
-                    // Load asset to get current tags, then remove all
-                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
-                    let full_id = catalog.resolve_asset_id(&asset_id)?
-                        .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
-                    let uuid: uuid::Uuid = full_id.parse()?;
-                    let metadata_store = maki::metadata_store::MetadataStore::new(&catalog_root);
-                    let asset = metadata_store.load(uuid)?;
-
-                    if asset.tags.is_empty() {
-                        if cli.json {
-                            println!("{}", serde_json::json!({ "changed": [], "tags": [] }));
-                        } else {
-                            println!("Tags: (none)");
-                        }
-                        return Ok(());
-                    }
-
-                    let tags_to_remove = asset.tags.clone();
-                    let result = engine.tag(&asset_id, &tags_to_remove, true)?;
-
-                    if cli.json {
-                        println!("{}", serde_json::json!({
-                            "changed": result.changed,
-                            "tags": result.current_tags,
-                        }));
-                    } else {
-                        let display_removed: Vec<String> = result.changed.iter()
-                            .map(|t| maki::tag_util::tag_storage_to_display(t))
-                            .collect();
-                        println!("Cleared {} tag(s): {}", display_removed.len(), display_removed.join(", "));
-                    }
-                    Ok(())
-                }
-                Some(TagCommands::ExpandAncestors { query, asset, apply, asset_ids }) => {
-                    let catalog_root = maki::config::find_catalog_root()?;
-                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
-                    let metadata_store = maki::metadata_store::MetadataStore::new(&catalog_root);
-                    let engine = maki::query::QueryEngine::new(&catalog_root);
-
-                    let scope = engine.resolve_scope(query.as_deref(), asset.as_deref(), &asset_ids)?;
-                    let summaries = metadata_store.list()?;
-                    let ids: Vec<uuid::Uuid> = match scope {
-                        Some(set) => set.iter().filter_map(|id| id.parse().ok()).collect(),
-                        None => summaries.iter().map(|s| s.id).collect(),
-                    };
-
-                    let mut checked = 0usize;
-                    let mut expanded = 0usize;
-                    let mut tags_added = 0usize;
-
-                    for asset_id in &ids {
-                        let mut asset_obj = match metadata_store.load(*asset_id) {
-                            Ok(a) => a,
-                            Err(_) => continue,
-                        };
-                        checked += 1;
-
-                        let full = maki::tag_util::expand_all_ancestors(&asset_obj.tags);
-                        let existing: std::collections::HashSet<&str> = asset_obj.tags.iter().map(|s| s.as_str()).collect();
-                        let missing: Vec<String> = full.iter()
-                            .filter(|t| !existing.contains(t.as_str()))
-                            .cloned()
-                            .collect();
-
-                        if missing.is_empty() {
-                            continue;
-                        }
-
-                        if cli.log {
-                            let id_str = asset_id.to_string();
-                            let name = asset_obj.name.as_deref().unwrap_or(&id_str[..8]);
-                            if apply {
-                                eprintln!("  {} — {} ancestor(s) added", name, missing.len());
-                            } else {
-                                eprintln!("  {} — {} ancestor(s) would add", name, missing.len());
-                            }
-                        }
-
-                        if apply {
-                            for tag in &missing {
-                                asset_obj.tags.push(tag.clone());
-                            }
-                            metadata_store.save(&asset_obj)?;
-                            catalog.insert_asset(&asset_obj)?;
-                        }
-
-                        expanded += 1;
-                        tags_added += missing.len();
-                    }
-
-                    if cli.json {
-                        println!("{}", serde_json::json!({
-                            "dry_run": !apply,
-                            "checked": checked,
-                            "expanded": expanded,
-                            "tags_added": tags_added,
-                        }));
-                    } else {
-                        if !apply && expanded > 0 {
-                            eprint!("Dry run — ");
-                        }
-                        println!("Expand ancestors: {} checked, {} assets with missing ancestors, {} tags {}",
-                            checked, expanded, tags_added,
-                            if apply { "added" } else { "would add" },
-                        );
-                        if !apply && expanded > 0 {
-                            println!("  Run with --apply to expand ancestor tags.");
-                        }
-                    }
-                    Ok(())
-                }
-                Some(TagCommands::ExportVocabulary { output, format, prune, default }) => {
-                    let catalog_root = maki::config::find_catalog_root()?;
-
-                    let format = format.to_lowercase();
-                    let (default_filename, is_text) = match format.as_str() {
-                        "yaml" | "yml" => ("vocabulary.yaml", false),
-                        "text" | "txt" => ("vocabulary.txt", true),
-                        other => anyhow::bail!("unknown --format '{}': expected 'yaml' or 'text'", other),
-                    };
-
-                    if default {
-                        // Export only the built-in default vocabulary
-                        let (content, sanitized) = if is_text {
-                            // Convert the built-in YAML vocabulary to tab-indented text
-                            let flat = maki::vocabulary::parse_vocabulary(maki::vocabulary::default_vocabulary());
-                            let pairs: Vec<(String, u64)> = flat.into_iter().map(|t| (t, 0)).collect();
-                            maki::vocabulary::tags_to_keyword_text(&pairs)
-                        } else {
-                            (maki::vocabulary::default_vocabulary().to_string(), Vec::new())
-                        };
-                        let out_path = output.map(std::path::PathBuf::from)
-                            .unwrap_or_else(|| catalog_root.join(default_filename));
-                        std::fs::write(&out_path, content)?;
-                        report_sanitized_tags(&sanitized);
-                        println!("Exported default vocabulary to {}", out_path.display());
-                        return Ok(());
-                    }
-
-                    let catalog = maki::catalog::Catalog::open(&catalog_root)?;
-                    let catalog_tags = catalog.list_all_tags()?;
-
-                    // Merge with existing vocabulary (preserve planned-but-unused entries)
-                    let mut all_tags = catalog_tags;
-                    if !prune {
-                        let vocab = maki::vocabulary::load_vocabulary(&catalog_root);
-                        let existing: std::collections::HashSet<String> = all_tags.iter().map(|(name, _)| name.clone()).collect();
-                        for vt in vocab {
-                            if !existing.contains(&vt) {
-                                all_tags.push((vt, 0));
-                            }
-                        }
-                    }
-                    all_tags.sort_by(|a, b| a.0.cmp(&b.0));
-
-                    let (content, sanitized) = if is_text {
-                        maki::vocabulary::tags_to_keyword_text(&all_tags)
-                    } else {
-                        (maki::vocabulary::tags_to_vocabulary_yaml(&all_tags), Vec::new())
-                    };
-                    let out_path = output.map(std::path::PathBuf::from)
-                        .unwrap_or_else(|| catalog_root.join(default_filename));
-                    std::fs::write(&out_path, &content)?;
-
-                    report_sanitized_tags(&sanitized);
-
-                    let used = all_tags.iter().filter(|(_, c)| *c > 0).count();
-                    let planned = all_tags.len() - used;
-                    if prune {
-                        println!("Exported {} tags to {} (pruned, unused entries removed)", used, out_path.display());
-                    } else {
-                        println!("Exported {} tags to {} ({} used, {} planned)", all_tags.len(), out_path.display(), used, planned);
-                    }
-                    Ok(())
-                }
-                None => {
-                    // Direct tag add/remove: maki tag <asset> <tags> [--remove]
-                    let asset_id = asset_id.map(|s| s.trim().to_string())
-                        .ok_or_else(|| anyhow::anyhow!("asset ID is required for tag add/remove"))?;
-                    if tags.is_empty() {
-                        anyhow::bail!("no tags specified.");
-                    }
-                    let catalog_root = maki::config::find_catalog_root()?;
-                    let engine = QueryEngine::new(&catalog_root);
-                    let storage_tags: Vec<String> = tags.iter()
-                        .map(|t| maki::tag_util::tag_input_to_storage(t))
-                        .collect();
-                    let result = engine.tag(&asset_id, &storage_tags, remove)?;
-
-                    if cli.json {
-                        println!("{}", serde_json::json!({
-                            "changed": result.changed,
-                            "tags": result.current_tags,
-                        }));
-                    } else {
-                        let display_changed: Vec<String> = result.changed.iter()
-                            .map(|t| maki::tag_util::tag_storage_to_display(t))
-                            .collect();
-                        let display_tags: Vec<String> = result.current_tags.iter()
-                            .map(|t| maki::tag_util::tag_storage_to_display(t))
-                            .collect();
-                        if !display_changed.is_empty() {
-                            if remove {
-                                println!("Removed tags: {}", display_changed.join(", "));
-                            } else {
-                                println!("Added tags: {}", display_changed.join(", "));
-                            }
-                        }
-                        if display_tags.is_empty() {
-                            println!("Tags: (none)");
-                        } else {
-                            println!("Tags: {}", display_tags.join(", "));
-                        }
-                    }
-                    Ok(())
-                }
-            }
-        }
+        Commands::Tag { asset_id, remove, tags, subcmd } => run_tag_command(
+            asset_id, remove, tags, subcmd, cli.json, cli.log,
+        ),
         Commands::Edit { asset_id, name, clear_name, description, clear_description, rating, clear_rating, label, clear_label, clear_tags, date, clear_date, role, variant } => {
             use maki::query::{EditFields, parse_date_input};
 
@@ -4552,324 +3371,24 @@ faces/\n\
             list_labels,
             similar,
             asset_ids,
-        } => {
-            let (query, asset) = merge_trailing_ids(query, asset, &asset_ids);
-            use maki::model_manager::ModelManager;
-
-            // List labels can work without a catalog (uses defaults)
-            if list_labels {
-                use maki::ai::{DEFAULT_LABELS, load_labels_from_file};
-
-                let label_list: Vec<String> = if let Some(ref path) = labels {
-                    load_labels_from_file(std::path::Path::new(path))?
-                } else {
-                    // Try config if catalog exists, fall back to defaults
-                    let config_labels = maki::config::find_catalog_root()
-                        .ok()
-                        .and_then(|root| CatalogConfig::load(&root).ok())
-                        .and_then(|c| c.ai.labels.clone());
-                    if let Some(ref path) = config_labels {
-                        load_labels_from_file(std::path::Path::new(path))?
-                    } else {
-                        DEFAULT_LABELS.iter().map(|s| s.to_string()).collect()
-                    }
-                };
-
-                if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&label_list)?);
-                } else {
-                    for label in &label_list {
-                        println!("{label}");
-                    }
-                    eprintln!("\n{} labels", label_list.len());
-                }
-                return Ok(());
-            }
-
-            let (catalog_root, config) = maki::config::load_config()?;
-
-            // Resolve model ID: CLI --model > config ai.model > default.
-            // For --download/--remove-model, also accept the positional `query`
-            // as a model id when --model isn't given and the positional looks
-            // like a known model (this is what users naturally type).
-            let model_id_owned: Option<String> = if (download || remove_model) && model.is_none() {
-                query
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty() && maki::ai::get_model_spec(s).is_some())
-                    .map(|s| s.to_string())
-            } else {
-                None
-            };
-            let model_id = model_id_owned
-                .as_deref()
-                .or(model.as_deref())
-                .unwrap_or(&config.ai.model);
-            let _spec = maki::ai::get_model_spec(model_id)
-                .ok_or_else(|| anyhow::anyhow!(
-                    "Unknown model: {model_id}. Run 'maki auto-tag --list-models' to see available models."
-                ))?;
-
-            let model_dir = maki::config::resolve_model_dir(&config.ai.model_dir, model_id);
-            let mgr = ModelManager::new(&model_dir, model_id)?;
-
-            // Model management commands
-            if download {
-                eprintln!("Downloading {} ...", mgr.spec().display_name);
-                mgr.ensure_model(|file, current, total| {
-                    eprintln!("  [{current}/{total}] {file}");
-                })?;
-                let total = mgr.total_size();
-                if cli.json {
-                    println!("{}", serde_json::json!({
-                        "status": "downloaded",
-                        "model": model_id,
-                        "model_dir": model_dir.display().to_string(),
-                        "total_size": total,
-                    }));
-                } else {
-                    println!("Model downloaded to {}", model_dir.display());
-                    println!("  Total size: {}", format_size(total));
-                }
-                return Ok(());
-            }
-
-            if remove_model {
-                mgr.remove_model()?;
-                if cli.json {
-                    println!("{}", serde_json::json!({
-                        "status": "removed",
-                        "model": model_id,
-                        "model_dir": model_dir.display().to_string(),
-                    }));
-                } else {
-                    println!("Model removed from {}", model_dir.display());
-                }
-                return Ok(());
-            }
-
-            if list_models {
-                // model_dir is `<model_base>/<model_id>`; recover model_base for
-                // listing siblings. Defaults to `.` if for some reason the path
-                // has no parent (shouldn't happen for normal config).
-                let model_base = model_dir.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
-                let models = ModelManager::list_available_models(&model_base);
-                if cli.json {
-                    let json_models: Vec<serde_json::Value> = models
-                        .iter()
-                        .map(|(spec, exists, size)| {
-                            serde_json::json!({
-                                "id": spec.id,
-                                "name": spec.display_name,
-                                "downloaded": exists,
-                                "size": size,
-                                "active": spec.id == model_id,
-                                "embedding_dim": spec.embedding_dim,
-                            })
-                        })
-                        .collect();
-                    println!("{}", serde_json::json!({
-                        "model_dir": model_base.display().to_string(),
-                        "active_model": model_id,
-                        "models": json_models,
-                    }));
-                } else {
-                    println!("Available models (directory: {}):", model_base.display());
-                    for (spec, exists, size) in &models {
-                        let status = if *exists {
-                            format!("downloaded ({})", format_size(*size))
-                        } else {
-                            "not downloaded".to_string()
-                        };
-                        let active = if spec.id == model_id { " [active]" } else { "" };
-                        println!("  {} — {}{active}", spec.display_name, status);
-                        println!("    ID: {}  Embedding dim: {}  Image size: {}px", spec.id, spec.embedding_dim, spec.image_size);
-                    }
-                }
-                return Ok(());
-            }
-
-            // Similar search mode
-            if let Some(ref similar_id) = similar {
-                if !mgr.model_exists() {
-                    anyhow::bail!(
-                        "Model not downloaded. Run 'maki auto-tag --download --model {model_id}' first."
-                    );
-                }
-
-                let catalog = maki::catalog::Catalog::open(&catalog_root)?;
-                let _ = maki::embedding_store::EmbeddingStore::initialize(catalog.conn());
-                let emb_store = maki::embedding_store::EmbeddingStore::new(catalog.conn());
-
-                let full_id = catalog
-                    .resolve_asset_id(similar_id)?
-                    .ok_or_else(|| anyhow::anyhow!("no asset found matching '{similar_id}'"))?;
-
-                let query_emb = match emb_store.get(&full_id, model_id)? {
-                    Some(emb) => emb,
-                    None => {
-                        // No stored embedding — encode it now
-                        let config_preview = &config.preview;
-                        let service = AssetService::new(&catalog_root, verbosity, config_preview);
-                        let mut ai_model = maki::ai::SigLipModel::load_with_provider(&model_dir, model_id, verbosity, &config.ai.execution_provider)?;
-                        let registry = DeviceRegistry::new(&catalog_root);
-                        let volumes = registry.list()?;
-                        let online_volumes = maki::models::Volume::online_map(&volumes);
-                        let preview_gen = maki::preview::PreviewGenerator::new(
-                            &catalog_root,
-                            verbosity,
-                            config_preview,
-                        );
-                        let details = catalog
-                            .load_asset_details(&full_id)?
-                            .ok_or_else(|| anyhow::anyhow!("asset not found"))?;
-                        let image_path = service
-                            .find_image_for_ai(&details, &preview_gen, &online_volumes)
-                            .ok_or_else(|| {
-                                anyhow::anyhow!("no processable image for asset {}", &full_id[..8])
-                            })?;
-                        let emb = ai_model.encode_image(&image_path)?;
-                        emb_store.store(&full_id, &emb, model_id)?;
-                        emb
-                    }
-                };
-
-                let results = emb_store.find_similar(&query_emb, 20, Some(&full_id), model_id)?;
-
-                if cli.json {
-                    let json_results: Vec<serde_json::Value> = results
-                        .iter()
-                        .map(|(id, sim)| {
-                            serde_json::json!({
-                                "asset_id": id,
-                                "similarity": sim,
-                            })
-                        })
-                        .collect();
-                    println!("{}", serde_json::to_string_pretty(&json_results)?);
-                } else if results.is_empty() {
-                    println!("No similar assets found. Run 'maki auto-tag' on more assets to build embeddings.");
-                } else {
-                    println!(
-                        "Assets similar to {} ({} results):",
-                        &full_id[..8],
-                        results.len()
-                    );
-                    for (id, sim) in &results {
-                        let short_id = &id[..8.min(id.len())];
-                        println!("  {short_id}  similarity: {sim:.3}");
-                    }
-                }
-                return Ok(());
-            }
-
-            // Main auto-tag flow — require at least one scope filter
-            if query.is_none() && asset.is_none() && volume.is_none() && similar.is_none() {
-                anyhow::bail!(
-                    "No scope specified. Provide a query, --asset, or --volume to select assets.\n  \
-                     Examples:\n    \
-                     maki auto-tag ''                    # all assets\n    \
-                     maki auto-tag --asset <id>          # single asset\n    \
-                     maki auto-tag --volume <label>      # one volume\n    \
-                     maki auto-tag 'tag:landscape' --apply"
-                );
-            }
-
-            if !mgr.model_exists() {
-                anyhow::bail!(
-                    "Model not downloaded. Run 'maki auto-tag --download --model {model_id}' first."
-                );
-            }
-
-            let threshold = threshold.unwrap_or(config.ai.threshold);
-
-            // Resolve labels
-            let label_list: Vec<String> = if let Some(ref labels_path) = labels {
-                maki::ai::load_labels_from_file(std::path::Path::new(labels_path))?
-            } else if let Some(ref config_labels) = config.ai.labels {
-                maki::ai::load_labels_from_file(std::path::Path::new(config_labels))?
-            } else {
-                maki::ai::DEFAULT_LABELS.iter().map(|s| s.to_string()).collect()
-            };
-
-            let prompt = &config.ai.prompt;
-            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
-
-            let show_log = cli.log;
-            let result = service.auto_tag(
-                query.as_deref(),
-                asset.as_deref(),
-                volume.as_deref(),
-                threshold,
-                &label_list,
-                prompt,
-                apply,
-                &model_dir,
-                model_id,
-                &config.ai.execution_provider,
-                |id, status, elapsed| {
-                    if show_log {
-                        let short_id = &id[..8.min(id.len())];
-                        match status {
-                            maki::ai::AutoTagStatus::Suggested(tags) => {
-                                let tag_names: Vec<&str> =
-                                    tags.iter().map(|t| t.tag.as_str()).collect();
-                                eprintln!(
-                                    "  {short_id} — {} tags suggested: {} ({})",
-                                    tags.len(),
-                                    tag_names.join(", "),
-                                    format_duration(elapsed)
-                                );
-                            }
-                            maki::ai::AutoTagStatus::Applied(tags) => {
-                                let tag_names: Vec<&str> =
-                                    tags.iter().map(|t| t.tag.as_str()).collect();
-                                eprintln!(
-                                    "  {short_id} — {} tags applied: {} ({})",
-                                    tags.len(),
-                                    tag_names.join(", "),
-                                    format_duration(elapsed)
-                                );
-                            }
-                            maki::ai::AutoTagStatus::Skipped(msg) => {
-                                eprintln!("  {short_id} — skipped: {msg}");
-                            }
-                            maki::ai::AutoTagStatus::Error(msg) => {
-                                eprintln!("  {short_id} — error: {msg}");
-                            }
-                        }
-                    }
-                },
-            )?;
-
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&result)?);
-            } else {
-                for err in &result.errors {
-                    eprintln!("  {err}");
-                }
-
-                let mode = if apply { "Auto-tag" } else { "Auto-tag (dry run)" };
-                let mut parts = vec![
-                    format!("{} processed", result.assets_processed),
-                ];
-                if result.assets_skipped > 0 {
-                    parts.push(format!("{} skipped", result.assets_skipped));
-                }
-                parts.push(format!("{} tags suggested", result.tags_suggested));
-                if apply {
-                    parts.push(format!("{} tags applied", result.tags_applied));
-                }
-                if !result.errors.is_empty() {
-                    parts.push(format!("{} errors", result.errors.len()));
-                }
-                println!("{mode}: {}", parts.join(", "));
-                if !apply && result.tags_suggested > 0 {
-                    println!("  Run with --apply to apply suggested tags.");
-                }
-            }
-            Ok(())
-        }
+        } => run_auto_tag_command(
+            query,
+            asset,
+            volume,
+            model,
+            threshold,
+            labels,
+            apply,
+            download,
+            remove_model,
+            list_models,
+            list_labels,
+            similar,
+            asset_ids,
+            cli.json,
+            cli.log,
+            verbosity,
+        ),
         #[cfg(feature = "ai")]
         Commands::Embed {
             query,
@@ -6899,340 +5418,7 @@ faces/\n\
 
             Ok(())
         }
-        Commands::RebuildCatalog { asset } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-
-            if let Some(ref asset_id) = asset {
-                // Per-asset rebuild: delete and re-insert a single asset from its sidecar
-                let catalog = Catalog::open(&catalog_root)?;
-                let store = MetadataStore::new(&catalog_root);
-
-                // Resolve asset ID (try as UUID first, then prefix match in catalog)
-                let uuid: uuid::Uuid = if let Ok(u) = asset_id.parse() {
-                    u
-                } else if let Some(full) = catalog.resolve_asset_id(asset_id)? {
-                    full.parse()?
-                } else {
-                    // Not in SQLite — try loading sidecar directly
-                    anyhow::bail!("asset '{}' not found in catalog. For new assets, use 'maki refresh --reimport --asset {}'", asset_id, asset_id);
-                };
-
-                let asset_obj = store.load(uuid)?;
-                let id_str = uuid.to_string();
-
-                // Delete all existing rows for this asset (FK checks off for safety)
-                let _ = catalog.conn().execute_batch("PRAGMA foreign_keys = OFF");
-
-                // Get all variant hashes (from SQLite, may differ from sidecar)
-                let sqlite_hashes: Vec<String> = catalog.conn()
-                    .prepare("SELECT content_hash FROM variants WHERE asset_id = ?1")?
-                    .query_map(rusqlite::params![&id_str], |r| r.get(0))?
-                    .filter_map(|r| r.ok())
-                    .collect();
-
-                for hash in &sqlite_hashes {
-                    let _ = catalog.conn().execute("DELETE FROM recipes WHERE variant_hash = ?1", rusqlite::params![hash]);
-                    let _ = catalog.conn().execute("DELETE FROM file_locations WHERE content_hash = ?1", rusqlite::params![hash]);
-                }
-                let _ = catalog.conn().execute("DELETE FROM variants WHERE asset_id = ?1", rusqlite::params![&id_str]);
-                let _ = catalog.conn().execute("DELETE FROM faces WHERE asset_id = ?1", rusqlite::params![&id_str]);
-                let _ = catalog.conn().execute("DELETE FROM embeddings WHERE asset_id = ?1", rusqlite::params![&id_str]);
-                let _ = catalog.conn().execute("DELETE FROM collection_assets WHERE asset_id = ?1", rusqlite::params![&id_str]);
-                let _ = catalog.conn().execute("DELETE FROM assets WHERE id = ?1", rusqlite::params![&id_str]);
-
-                let _ = catalog.conn().execute_batch("PRAGMA foreign_keys = ON");
-
-                // Re-insert from sidecar
-                let registry = DeviceRegistry::new(&catalog_root);
-                for volume in registry.list()? {
-                    catalog.ensure_volume(&volume)?;
-                }
-
-                catalog.insert_asset(&asset_obj)?;
-                for variant in &asset_obj.variants {
-                    catalog.insert_variant(variant)?;
-                    for loc in &variant.locations {
-                        catalog.insert_file_location(&variant.content_hash, loc)?;
-                    }
-                }
-                for recipe in &asset_obj.recipes {
-                    catalog.insert_recipe(recipe)?;
-                }
-                catalog.update_denormalized_variant_columns(&asset_obj)?;
-
-                // Restore embedding from binary file if it exists
-                #[cfg(feature = "ai")]
-                {
-                    let emb_store = maki::embedding_store::EmbeddingStore::new(catalog.conn());
-                    let emb_base = catalog_root.join("embeddings");
-                    if emb_base.exists() {
-                        if let Ok(entries) = std::fs::read_dir(&emb_base) {
-                            for entry in entries.flatten() {
-                                let name = entry.file_name().to_string_lossy().to_string();
-                                if name == "arcface" || !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                                    continue;
-                                }
-                                let prefix = &id_str[..2];
-                                let bin_path = emb_base.join(&name).join(prefix).join(format!("{id_str}.bin"));
-                                if bin_path.exists() {
-                                    if let Ok(data) = std::fs::read(&bin_path) {
-                                        let embedding: Vec<f32> = data.chunks_exact(4)
-                                            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                                            .collect();
-                                        let _ = emb_store.store(&id_str, &embedding, &name);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Restore faces for this asset
-                    let face_store = maki::face_store::FaceStore::new(catalog.conn());
-                    let faces_file = maki::face_store::load_faces_yaml(&catalog_root).unwrap_or_default();
-                    let asset_face_ids: Vec<String> = faces_file.faces.iter()
-                        .filter(|f| f.asset_id == id_str)
-                        .map(|f| f.id.clone())
-                        .collect();
-                    if !asset_face_ids.is_empty() {
-                        let filtered = maki::face_store::FacesFile {
-                            faces: faces_file.faces.into_iter().filter(|f| f.asset_id == id_str).collect(),
-                        };
-                        let _ = face_store.import_faces_from_yaml(&filtered);
-                    }
-                    // Restore ArcFace embeddings for this asset's faces
-                    let asset_faces = face_store.faces_for_asset(&id_str).unwrap_or_default();
-                    for face in &asset_faces {
-                        let prefix = &face.id[..2.min(face.id.len())];
-                        let bin_path = emb_base.join("arcface").join(prefix).join(format!("{}.bin", face.id));
-                        if bin_path.exists() {
-                            if let Ok(data) = std::fs::read(&bin_path) {
-                                let embedding: Vec<f32> = data.chunks_exact(4)
-                                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                                    .collect();
-                                let _ = face_store.import_face_embedding(&face.id, &embedding);
-                            }
-                        }
-                    }
-
-                    // Update face_count
-                    let _ = catalog.conn().execute(
-                        "UPDATE assets SET face_count = (SELECT COUNT(*) FROM faces WHERE faces.asset_id = ?1) WHERE id = ?1",
-                        rusqlite::params![&id_str],
-                    );
-                    // Legacy upgrade fallback: see the full-catalog rebuild for context.
-                    let _ = catalog.conn().execute(
-                        "UPDATE assets SET face_scan_status = 'done' \
-                         WHERE id = ?1 AND face_scan_status IS NULL AND face_count > 0",
-                        rusqlite::params![&id_str],
-                    );
-                }
-
-                if cli.json {
-                    println!("{}", serde_json::json!({
-                        "asset_id": id_str,
-                        "variants": asset_obj.variants.len(),
-                        "recipes": asset_obj.recipes.len(),
-                    }));
-                } else {
-                    println!("Rebuilt asset {}: {} variant(s), {} recipe(s)",
-                        &id_str[..8], asset_obj.variants.len(), asset_obj.recipes.len());
-                }
-                return Ok(());
-            }
-
-            let catalog = Catalog::open(&catalog_root)?;
-            catalog.initialize()?;
-
-            // Ensure volume rows exist so FK references work
-            let registry = DeviceRegistry::new(&catalog_root);
-            for volume in registry.list()? {
-                catalog.ensure_volume(&volume)?;
-            }
-
-            // Clear existing data rows
-            catalog.rebuild()?;
-
-            // Sync sidecar files into catalog
-            let store = MetadataStore::new(&catalog_root);
-            let result = store.sync_to_catalog(&catalog)?;
-
-            // Restore collections from YAML
-            let collections_restored = {
-                let col_file = maki::collection::load_yaml(&catalog_root).unwrap_or_default();
-                if !col_file.collections.is_empty() {
-                    let col_store = maki::collection::CollectionStore::new(catalog.conn());
-                    col_store.import_from_yaml(&col_file).unwrap_or(0)
-                } else {
-                    0
-                }
-            };
-
-            // Restore stacks from YAML
-            let stacks_restored = {
-                let stacks_file = maki::stack::load_yaml(&catalog_root).unwrap_or_default();
-                if !stacks_file.stacks.is_empty() {
-                    let stack_store = maki::stack::StackStore::new(catalog.conn());
-                    stack_store.import_from_yaml(&stacks_file).unwrap_or(0)
-                } else {
-                    0
-                }
-            };
-
-            // Restore faces, people, and embeddings from files
-            #[cfg(feature = "ai")]
-            let (people_restored, faces_restored, face_embeddings_restored, embeddings_restored) = {
-                let _ = maki::face_store::FaceStore::initialize(catalog.conn());
-                let _ = maki::embedding_store::EmbeddingStore::initialize(catalog.conn());
-                let face_store = maki::face_store::FaceStore::new(catalog.conn());
-
-                // Import people first (faces reference people via FK)
-                let people_file = maki::face_store::load_people_yaml(&catalog_root).unwrap_or_default();
-                let people_restored = if !people_file.people.is_empty() {
-                    face_store.import_people_from_yaml(&people_file).unwrap_or(0)
-                } else {
-                    0
-                };
-
-                // Import faces (with empty embedding placeholder)
-                let faces_file = maki::face_store::load_faces_yaml(&catalog_root).unwrap_or_default();
-                let faces_restored = if !faces_file.faces.is_empty() {
-                    face_store.import_faces_from_yaml(&faces_file).unwrap_or(0)
-                } else {
-                    0
-                };
-
-                // Restore ArcFace embeddings from binary files
-                let mut face_embeddings_restored = 0u32;
-                if let Ok(arcface_entries) = maki::face_store::scan_arcface_binaries(&catalog_root) {
-                    for (face_id, embedding) in &arcface_entries {
-                        if face_store.import_face_embedding(face_id, embedding).is_ok() {
-                            face_embeddings_restored += 1;
-                        }
-                    }
-                }
-
-                // Restore SigLIP embeddings from binary files
-                let mut embeddings_restored = 0u32;
-                let emb_store = maki::embedding_store::EmbeddingStore::new(catalog.conn());
-                // Scan all model directories under embeddings/ (skip "arcface")
-                let emb_base = catalog_root.join("embeddings");
-                if emb_base.exists() {
-                    if let Ok(entries) = std::fs::read_dir(&emb_base) {
-                        for entry in entries.flatten() {
-                            let name = entry.file_name().to_string_lossy().to_string();
-                            if name == "arcface" || !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                                continue;
-                            }
-                            if let Ok(model_entries) = maki::embedding_store::scan_embedding_binaries(&catalog_root, &name) {
-                                for (asset_id, embedding) in &model_entries {
-                                    if emb_store.store(asset_id, embedding, &name).is_ok() {
-                                        embeddings_restored += 1;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Backfill face_count denormalized column
-                if faces_restored > 0 {
-                    let _ = catalog.conn().execute_batch(
-                        "UPDATE assets SET face_count = (
-                            SELECT COUNT(*) FROM faces WHERE faces.asset_id = assets.id
-                        ) WHERE id IN (SELECT DISTINCT asset_id FROM faces)"
-                    );
-                    // Legacy upgrade fallback: if an asset has face records but its
-                    // YAML sidecar predates the face_scan_status field, mark it as
-                    // scanned. This matters only for users upgrading from v4.4.2 or
-                    // earlier — newer writes always put face_scan_status in the
-                    // sidecar, so this branch is a no-op for fresh catalogs.
-                    let _ = catalog.conn().execute_batch(
-                        "UPDATE assets SET face_scan_status = 'done' \
-                         WHERE face_scan_status IS NULL AND face_count > 0"
-                    );
-                }
-
-                (people_restored, faces_restored, face_embeddings_restored, embeddings_restored)
-            };
-
-            if cli.json {
-                #[allow(unused_mut)]
-                let mut json = serde_json::json!({
-                    "synced": result.synced,
-                    "errors": result.errors,
-                    "collections_restored": collections_restored,
-                    "stacks_restored": stacks_restored,
-                });
-                #[cfg(feature = "ai")]
-                {
-                    json["people_restored"] = serde_json::json!(people_restored);
-                    json["faces_restored"] = serde_json::json!(faces_restored);
-                    json["face_embeddings_restored"] = serde_json::json!(face_embeddings_restored);
-                    json["embeddings_restored"] = serde_json::json!(embeddings_restored);
-                }
-                println!("{}", json);
-            } else {
-                println!("Rebuild complete: {} asset(s) synced", result.synced);
-                if collections_restored > 0 {
-                    println!("  {} collection(s) restored", collections_restored);
-                }
-                if stacks_restored > 0 {
-                    println!("  {} stack(s) restored", stacks_restored);
-                }
-                #[cfg(feature = "ai")]
-                {
-                    if people_restored > 0 {
-                        println!("  {} people restored", people_restored);
-                    }
-                    if faces_restored > 0 {
-                        println!("  {} face(s) restored ({} embeddings)", faces_restored, face_embeddings_restored);
-                    }
-                    if embeddings_restored > 0 {
-                        println!("  {} embedding(s) restored", embeddings_restored);
-                    }
-                }
-                if result.errors > 0 {
-                    println!("  {} error(s) encountered", result.errors);
-                }
-
-                // After rebuild, count assets that ended up without AI-derived
-                // data — those whose embedding binaries weren't on disk, or
-                // that were imported on a build without the AI feature. The
-                // user often forgets to re-run `embed` / `faces detect` after
-                // a rebuild and only notices much later when similarity search
-                // returns empty / face cluster is missing recent assets.
-                #[cfg(feature = "ai")]
-                {
-                    let total_assets = catalog.conn().query_row(
-                        "SELECT COUNT(*) FROM assets", [], |r| r.get::<_, i64>(0)
-                    ).unwrap_or(0);
-                    let with_embeddings = catalog.conn().query_row(
-                        "SELECT COUNT(DISTINCT asset_id) FROM embeddings", [], |r| r.get::<_, i64>(0)
-                    ).unwrap_or(0);
-                    let missing_embeddings = (total_assets - with_embeddings).max(0);
-                    if missing_embeddings > 0 {
-                        println!(
-                            "  Tip: {} asset(s) have no embedding. Run 'maki embed' \
-                             for visual similarity / text search.",
-                            missing_embeddings
-                        );
-                    }
-                    let unscanned_for_faces = catalog.conn().query_row(
-                        "SELECT COUNT(*) FROM assets \
-                         WHERE (face_scan_status IS NULL OR face_scan_status = 'pending')",
-                        [], |r| r.get::<_, i64>(0)
-                    ).unwrap_or(0);
-                    if unscanned_for_faces > 0 {
-                        println!(
-                            "  Tip: {} asset(s) haven't been scanned for faces. \
-                             Run 'maki faces detect' to populate.",
-                            unscanned_for_faces
-                        );
-                    }
-                }
-            }
-            Ok(())
-        }
+        Commands::RebuildCatalog { asset } => run_rebuild_catalog_command(asset, cli.json),
         Commands::Licenses { summary } => {
             let third_party_url = "https://github.com/thoherr/maki/releases/latest/download/THIRD_PARTY_LICENSES.md";
 
@@ -8755,5 +6941,1944 @@ fn print_backup_status_human(result: &maki::catalog::BackupStatusResult) {
             let purpose_tag = gap.purpose.as_ref().map(|p| format!(" [{}]", p)).unwrap_or_default();
             println!("  {}{}:  missing {} assets", gap.volume_label, purpose_tag, gap.missing_count);
         }
+    }
+}
+
+
+/// Extracted body of `Commands::Import`. Kept as a free function so the
+/// `run_command` match arm stays readable — the body is identical to the
+/// inline version it replaced.
+fn run_import_command(
+    paths: Vec<String>,
+    volume: Option<String>,
+    profile: Option<String>,
+    include: Vec<String>,
+    skip: Vec<String>,
+    add_tags: Vec<String>,
+    dry_run: bool,
+    auto_group: bool,
+    smart: bool,
+    #[cfg(feature = "ai")] embed: bool,
+    #[cfg(feature = "pro")] describe: bool,
+    json: bool,
+    log: bool,
+    verbosity: maki::Verbosity,
+) -> anyhow::Result<()> {
+    // Shadow `cli` with a lightweight struct so the extracted body keeps
+    // referencing `cli.json` / `cli.log` unchanged. Same trick as
+    // `run_faces_command`.
+    struct Ctx { json: bool, log: bool }
+    let cli = Ctx { json, log };
+    use maki::asset_service::FileTypeFilter;
+
+    let (catalog_root, config) = maki::config::load_config()?;
+
+    // Resolve import profile: profile overrides base [import], CLI flags override both
+    let import_config = if let Some(ref profile_name) = profile {
+        config.import.resolve_profile(profile_name)
+            .ok_or_else(|| anyhow::anyhow!(
+                "Unknown import profile '{}'. Available profiles: {}",
+                profile_name,
+                if config.import.profiles.is_empty() {
+                    "(none configured)".to_string()
+                } else {
+                    config.import.profiles.keys().cloned().collect::<Vec<_>>().join(", ")
+                }
+            ))?
+    } else {
+        config.import.clone()
+    };
+
+    let smart = smart || import_config.smart_previews;
+    let registry = DeviceRegistry::new(&catalog_root);
+
+    // Build file type filter: merge profile include/skip with CLI flags
+    let mut filter = FileTypeFilter::default();
+
+    // Profile include/skip first (if a profile was selected)
+    let profile_ref = profile.as_deref().and_then(|name| config.import.profiles.get(name));
+    if let Some(p) = profile_ref {
+        for group in &p.include {
+            filter.include(group)?;
+        }
+        for group in &p.skip {
+            filter.skip(group)?;
+        }
+    }
+
+    // CLI flags override (check for conflicts)
+    for group in &include {
+        if skip.contains(group) {
+            anyhow::bail!(
+                "Group '{}' cannot be both included and skipped.",
+                group
+            );
+        }
+    }
+
+    for group in &include {
+        filter.include(group)?;
+    }
+    for group in &skip {
+        filter.skip(group)?;
+    }
+
+    // Canonicalize input paths
+    let canonical_paths: Vec<PathBuf> = paths
+        .iter()
+        .map(|p| {
+            std::fs::canonicalize(p)
+                .unwrap_or_else(|_| PathBuf::from(p))
+        })
+        .collect();
+
+    if canonical_paths.is_empty() {
+        anyhow::bail!("no paths specified for import.");
+    }
+
+    // Resolve volume: explicit --volume flag, or auto-detect from path
+    let volume = if let Some(label) = &volume {
+        registry.resolve_volume(label)?
+    } else {
+        registry.find_volume_for_path(&canonical_paths[0])?
+    };
+
+    // Merge config auto_tags with CLI --add-tag values
+    let mut all_tags = import_config.auto_tags.clone();
+    for tag in &add_tags {
+        if !all_tags.contains(tag) {
+            all_tags.push(tag.clone());
+        }
+    }
+
+    if verbosity.verbose {
+        eprintln!("  Import: {} file(s) on volume \"{}\"", canonical_paths.len(), volume.label);
+        if let Some(ref p) = profile {
+            eprintln!("  Import: using profile \"{}\"", p);
+        }
+        if !import_config.exclude.is_empty() {
+            eprintln!("  Import: exclude patterns: {:?}", import_config.exclude);
+        }
+        if !all_tags.is_empty() {
+            eprintln!("  Import: auto-tags: {}", all_tags.join(", "));
+        }
+        if smart {
+            eprintln!("  Import: smart previews enabled");
+        }
+    }
+
+    let service = AssetService::new(&catalog_root, verbosity, &config.preview);
+    let result = if cli.log {
+        use maki::asset_service::FileStatus;
+        service.import_with_callback(&canonical_paths, &volume, &filter, &import_config.exclude, &all_tags, dry_run, smart, |path, status, elapsed| {
+            let label = match status {
+                FileStatus::Imported => "imported",
+                FileStatus::LocationAdded => "location added",
+                FileStatus::Skipped => "skipped",
+                FileStatus::RecipeAttached => "recipe",
+                FileStatus::RecipeLocationAdded => "recipe location added",
+                FileStatus::RecipeUpdated => "recipe updated",
+            };
+            let name = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_else(|| path.to_str().unwrap_or("?"));
+            item_status(name, label, Some(elapsed));
+        })?
+    } else {
+        service.import_with_callback(&canonical_paths, &volume, &filter, &import_config.exclude, &all_tags, dry_run, smart, |_, _, _| {})?
+    };
+
+    // Post-import auto-group phase
+    let auto_group_result = if auto_group
+        && (result.imported > 0 || result.locations_added > 0)
+    {
+        use maki::catalog::Catalog;
+        use std::path::Path;
+
+        let catalog = Catalog::open(&catalog_root)?;
+        let volume_id = volume.id.to_string();
+
+        // Compute neighborhood prefixes: go up one level from each
+        // imported directory to get the "session root"
+        let session_roots: std::collections::HashSet<String> = result
+            .imported_directories
+            .iter()
+            .map(|dir| {
+                Path::new(dir)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default()
+            })
+            .collect();
+        let prefixes: Vec<String> = session_roots.into_iter().collect();
+
+        // Find all existing catalog assets in the neighborhood
+        let neighbor_ids = catalog
+            .find_asset_ids_by_volume_and_path_prefixes(&volume_id, &prefixes)?;
+
+        // Merge with newly imported asset IDs and deduplicate
+        let mut all_ids: Vec<String> = result.new_asset_ids.clone();
+        let existing: std::collections::HashSet<String> =
+            all_ids.iter().cloned().collect();
+        for id in neighbor_ids {
+            if !existing.contains(&id) {
+                all_ids.push(id);
+            }
+        }
+
+        if all_ids.len() > 1 {
+            let engine = QueryEngine::new(&catalog_root);
+            let ag_result = engine.auto_group(&all_ids, dry_run)?;
+            if !ag_result.groups.is_empty() {
+                // Upgrade previews for grouped assets (use Export/Processed variant)
+                if !dry_run {
+                    let grouped_ids: Vec<String> = ag_result.groups.iter()
+                        .map(|g| g.target_id.clone())
+                        .collect();
+                    let metadata_store = MetadataStore::new(&catalog_root);
+                    let preview_gen = maki::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
+                    let volumes = registry.list()?;
+                    let mut upgraded = 0usize;
+                    for gid in &grouped_ids {
+                        if let Ok(uuid) = gid.parse::<uuid::Uuid>() {
+                            if let Ok(asset) = metadata_store.load(uuid) {
+                                if let Some(idx) = maki::models::variant::best_preview_index(&asset.variants) {
+                                    if idx > 0 {
+                                        // A better variant exists — upgrade the preview
+                                        let v = &asset.variants[idx];
+                                        if let Some(loc) = v.locations.first() {
+                                            if let Some(vol) = volumes.iter().find(|vl| vl.id == loc.volume_id && vl.is_online) {
+                                                let file_path = vol.mount_point.join(&loc.relative_path);
+                                                if file_path.exists() {
+                                                    let _ = preview_gen.generate(&v.content_hash, &file_path, &v.format);
+                                                    if smart {
+                                                        let _ = preview_gen.generate_smart(&v.content_hash, &file_path, &v.format);
+                                                    }
+                                                    upgraded += 1;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                // Update denormalized best_variant_hash
+                                if let Ok(cat) = Catalog::open(&catalog_root) {
+                                    let _ = cat.update_denormalized_variant_columns(&asset);
+                                }
+                            }
+                        }
+                    }
+                    if upgraded > 0 && verbosity.verbose {
+                        eprintln!("  Auto-group: upgraded {} preview(s) from export variants", upgraded);
+                    }
+                }
+                Some(ag_result)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Post-import embedding phase (AI feature)
+    #[cfg(feature = "ai")]
+    let embed_result = if !dry_run
+        && (embed || import_config.embeddings)
+        && !result.new_asset_ids.is_empty()
+    {
+        use maki::model_manager::ModelManager;
+
+        let model_id = &config.ai.model;
+        let model_dir = maki::config::resolve_model_dir(&config.ai.model_dir, model_id);
+        let mgr = ModelManager::new(&model_dir, model_id)?;
+
+        if mgr.model_exists() {
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
+            let log = cli.log;
+            let r = service.embed_assets(
+                &result.new_asset_ids,
+                &model_dir,
+                model_id,
+                &config.ai.execution_provider,
+                false,
+                |aid, status, _elapsed| {
+                    if !log { return; }
+                    let short = &aid[..8.min(aid.len())];
+                    match status {
+                        maki::asset_service::EmbedStatus::Embedded => {
+                            eprintln!("  {short} — embedded");
+                        }
+                        maki::asset_service::EmbedStatus::Error(msg) => {
+                            eprintln!("  {short} — embed error: {msg}");
+                        }
+                        maki::asset_service::EmbedStatus::Skipped(_) => {}
+                    }
+                },
+            )?;
+            Some((r.embedded, r.skipped))
+        } else {
+            if cli.log {
+                eprintln!("  Skipping embeddings: model not downloaded. Run 'maki auto-tag --download' first.");
+            }
+            None
+        }
+    } else {
+        None
+    };
+
+    // Post-import VLM describe phase
+    #[cfg(feature = "pro")]
+    let describe_result = if !dry_run
+        && (describe || import_config.descriptions)
+        && !result.new_asset_ids.is_empty()
+    {
+        // Check VLM endpoint availability first
+        let endpoint = &config.vlm.endpoint;
+        let vlm_model = &config.vlm.model;
+        let vlm_available = maki::vlm::check_endpoint(endpoint, 5, verbosity).is_ok();
+
+        if vlm_available {
+            let mode = maki::vlm::DescribeMode::from_str(&config.vlm.mode)
+                .unwrap_or(maki::vlm::DescribeMode::Describe);
+            let import_params = config.vlm.params_for_model(vlm_model);
+            let service = AssetService::new(&catalog_root, verbosity, &config.preview);
+            let log = cli.log;
+            match service.describe_assets(
+                &result.new_asset_ids,
+                endpoint,
+                vlm_model,
+                &import_params,
+                mode,
+                false, // force: don't overwrite existing descriptions
+                false, // dry_run
+                config.vlm.concurrency,
+                |aid, status, elapsed| {
+                    if log {
+                        let short = &aid[..8.min(aid.len())];
+                        match status {
+                            maki::vlm::DescribeStatus::Described => {
+                                item_status(short, "described", Some(elapsed));
+                            }
+                            maki::vlm::DescribeStatus::Skipped(msg) => {
+                                eprintln!("  {short} — skipped: {msg}");
+                            }
+                            maki::vlm::DescribeStatus::Error(msg) => {
+                                eprintln!("  {short} — error: {msg}");
+                            }
+                        }
+                    }
+                },
+            ) {
+                Ok(dr) => Some(dr),
+                Err(e) => {
+                    if cli.log {
+                        eprintln!("  Describe phase failed: {e:#}");
+                    }
+                    None
+                }
+            }
+        } else {
+            if cli.log {
+                eprintln!("  Skipping descriptions: VLM endpoint not available at {endpoint}");
+            }
+            None
+        }
+    } else {
+        None
+    };
+
+    if cli.json {
+        #[allow(unused_mut)]
+        let mut json_val = serde_json::to_value(&result)?;
+        if let Some(ref ag) = auto_group_result {
+            json_val["auto_group"] = serde_json::to_value(ag)?;
+        }
+        #[cfg(feature = "ai")]
+        if let Some((embedded, skipped_embed)) = embed_result {
+            json_val["embeddings_generated"] = serde_json::json!(embedded);
+            json_val["embeddings_skipped"] = serde_json::json!(skipped_embed);
+        }
+        #[cfg(feature = "pro")]
+        if let Some(ref dr) = describe_result {
+            json_val["descriptions_generated"] = serde_json::json!(dr.described);
+            json_val["descriptions_skipped"] = serde_json::json!(dr.skipped);
+            if dr.tags_applied > 0 {
+                json_val["describe_tags_applied"] = serde_json::json!(dr.tags_applied);
+            }
+        }
+        println!("{}", serde_json::to_string_pretty(&json_val)?);
+    } else {
+        let mut parts: Vec<String> = Vec::new();
+        if result.imported > 0 {
+            parts.push(format!("{} imported", result.imported));
+        }
+        if result.skipped > 0 {
+            parts.push(format!("{} skipped", result.skipped));
+        }
+        if result.locations_added > 0 {
+            parts.push(format!("{} location(s) added", result.locations_added));
+        }
+        if result.recipes_attached > 0 {
+            parts.push(format!("{} recipe(s) attached", result.recipes_attached));
+        }
+        if result.recipes_location_added > 0 {
+            parts.push(format!("{} recipe location(s) added", result.recipes_location_added));
+        }
+        if result.recipes_updated > 0 {
+            parts.push(format!("{} recipe(s) updated", result.recipes_updated));
+        }
+        if result.previews_generated > 0 {
+            parts.push(format!("{} preview(s) generated", result.previews_generated));
+        }
+        if result.smart_previews_generated > 0 {
+            parts.push(format!("{} smart preview(s) generated", result.smart_previews_generated));
+        }
+        #[cfg(feature = "ai")]
+        if let Some((embedded, _)) = embed_result {
+            if embedded > 0 {
+                parts.push(format!("{} embedding(s) generated", embedded));
+            }
+        }
+        #[cfg(feature = "pro")]
+        if let Some(ref dr) = describe_result {
+            if dr.described > 0 {
+                parts.push(format!("{} described", dr.described));
+            }
+        }
+        if parts.is_empty() {
+            println!("Import: nothing to import");
+        } else if dry_run {
+            println!("Dry run — would import: {}", parts.join(", "));
+        } else {
+            println!("Import complete: {}", parts.join(", "));
+        }
+
+        if let Some(ref ag) = auto_group_result {
+            if cli.log {
+                for group in &ag.groups {
+                    let short_id = &group.target_id[..8.min(group.target_id.len())];
+                    eprintln!(
+                        "  {} — {} asset(s) → target {short_id}",
+                        group.stem,
+                        group.asset_ids.len(),
+                    );
+                }
+            }
+            println!(
+                "Auto-group: {} stem group(s), {} donor(s) {}, {} variant(s) moved",
+                ag.groups.len(),
+                ag.total_donors_merged,
+                if dry_run { "would merge" } else { "merged" },
+                ag.total_variants_moved,
+            );
+        }
+
+        // Tier-A hints: if the user imported assets without engaging
+        // the AI/Pro post-import phases (and neither was opted into
+        // via [import] config), tell them what's available.
+        if !dry_run && result.imported > 0 {
+            #[cfg(feature = "ai")]
+            {
+                if !embed && !import_config.embeddings {
+                    println!(
+                        "  Tip: run 'maki embed' to generate visual-similarity \
+                         embeddings (or pass --embed on import / set \
+                         [import] embeddings = true in maki.toml)."
+                    );
+                }
+            }
+            #[cfg(feature = "pro")]
+            {
+                if !describe && !import_config.descriptions {
+                    println!(
+                        "  Tip: run 'maki describe' to generate VLM \
+                         descriptions (or pass --describe on import / set \
+                         [import] descriptions = true in maki.toml)."
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+
+/// Extracted body of `Commands::AutoTag`. See `run_import_command` for the
+/// extraction pattern (Ctx-shadow trick + body kept verbatim).
+#[cfg(feature = "ai")]
+fn run_auto_tag_command(
+    query: Option<String>,
+    asset: Option<String>,
+    volume: Option<String>,
+    model: Option<String>,
+    threshold: Option<f32>,
+    labels: Option<String>,
+    apply: bool,
+    download: bool,
+    remove_model: bool,
+    list_models: bool,
+    list_labels: bool,
+    similar: Option<String>,
+    asset_ids: Vec<String>,
+    json: bool,
+    log: bool,
+    verbosity: maki::Verbosity,
+) -> anyhow::Result<()> {
+    struct Ctx { json: bool, log: bool }
+    let cli = Ctx { json, log };
+    let (query, asset) = merge_trailing_ids(query, asset, &asset_ids);
+    use maki::model_manager::ModelManager;
+
+    // List labels can work without a catalog (uses defaults)
+    if list_labels {
+        use maki::ai::{DEFAULT_LABELS, load_labels_from_file};
+
+        let label_list: Vec<String> = if let Some(ref path) = labels {
+            load_labels_from_file(std::path::Path::new(path))?
+        } else {
+            // Try config if catalog exists, fall back to defaults
+            let config_labels = maki::config::find_catalog_root()
+                .ok()
+                .and_then(|root| CatalogConfig::load(&root).ok())
+                .and_then(|c| c.ai.labels.clone());
+            if let Some(ref path) = config_labels {
+                load_labels_from_file(std::path::Path::new(path))?
+            } else {
+                DEFAULT_LABELS.iter().map(|s| s.to_string()).collect()
+            }
+        };
+
+        if cli.json {
+            println!("{}", serde_json::to_string_pretty(&label_list)?);
+        } else {
+            for label in &label_list {
+                println!("{label}");
+            }
+            eprintln!("\n{} labels", label_list.len());
+        }
+        return Ok(());
+    }
+
+    let (catalog_root, config) = maki::config::load_config()?;
+
+    // Resolve model ID: CLI --model > config ai.model > default.
+    // For --download/--remove-model, also accept the positional `query`
+    // as a model id when --model isn't given and the positional looks
+    // like a known model (this is what users naturally type).
+    let model_id_owned: Option<String> = if (download || remove_model) && model.is_none() {
+        query
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && maki::ai::get_model_spec(s).is_some())
+            .map(|s| s.to_string())
+    } else {
+        None
+    };
+    let model_id = model_id_owned
+        .as_deref()
+        .or(model.as_deref())
+        .unwrap_or(&config.ai.model);
+    let _spec = maki::ai::get_model_spec(model_id)
+        .ok_or_else(|| anyhow::anyhow!(
+            "Unknown model: {model_id}. Run 'maki auto-tag --list-models' to see available models."
+        ))?;
+
+    let model_dir = maki::config::resolve_model_dir(&config.ai.model_dir, model_id);
+    let mgr = ModelManager::new(&model_dir, model_id)?;
+
+    // Model management commands
+    if download {
+        eprintln!("Downloading {} ...", mgr.spec().display_name);
+        mgr.ensure_model(|file, current, total| {
+            eprintln!("  [{current}/{total}] {file}");
+        })?;
+        let total = mgr.total_size();
+        if cli.json {
+            println!("{}", serde_json::json!({
+                "status": "downloaded",
+                "model": model_id,
+                "model_dir": model_dir.display().to_string(),
+                "total_size": total,
+            }));
+        } else {
+            println!("Model downloaded to {}", model_dir.display());
+            println!("  Total size: {}", format_size(total));
+        }
+        return Ok(());
+    }
+
+    if remove_model {
+        mgr.remove_model()?;
+        if cli.json {
+            println!("{}", serde_json::json!({
+                "status": "removed",
+                "model": model_id,
+                "model_dir": model_dir.display().to_string(),
+            }));
+        } else {
+            println!("Model removed from {}", model_dir.display());
+        }
+        return Ok(());
+    }
+
+    if list_models {
+        // model_dir is `<model_base>/<model_id>`; recover model_base for
+        // listing siblings. Defaults to `.` if for some reason the path
+        // has no parent (shouldn't happen for normal config).
+        let model_base = model_dir.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
+        let models = ModelManager::list_available_models(&model_base);
+        if cli.json {
+            let json_models: Vec<serde_json::Value> = models
+                .iter()
+                .map(|(spec, exists, size)| {
+                    serde_json::json!({
+                        "id": spec.id,
+                        "name": spec.display_name,
+                        "downloaded": exists,
+                        "size": size,
+                        "active": spec.id == model_id,
+                        "embedding_dim": spec.embedding_dim,
+                    })
+                })
+                .collect();
+            println!("{}", serde_json::json!({
+                "model_dir": model_base.display().to_string(),
+                "active_model": model_id,
+                "models": json_models,
+            }));
+        } else {
+            println!("Available models (directory: {}):", model_base.display());
+            for (spec, exists, size) in &models {
+                let status = if *exists {
+                    format!("downloaded ({})", format_size(*size))
+                } else {
+                    "not downloaded".to_string()
+                };
+                let active = if spec.id == model_id { " [active]" } else { "" };
+                println!("  {} — {}{active}", spec.display_name, status);
+                println!("    ID: {}  Embedding dim: {}  Image size: {}px", spec.id, spec.embedding_dim, spec.image_size);
+            }
+        }
+        return Ok(());
+    }
+
+    // Similar search mode
+    if let Some(ref similar_id) = similar {
+        if !mgr.model_exists() {
+            anyhow::bail!(
+                "Model not downloaded. Run 'maki auto-tag --download --model {model_id}' first."
+            );
+        }
+
+        let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+        let _ = maki::embedding_store::EmbeddingStore::initialize(catalog.conn());
+        let emb_store = maki::embedding_store::EmbeddingStore::new(catalog.conn());
+
+        let full_id = catalog
+            .resolve_asset_id(similar_id)?
+            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{similar_id}'"))?;
+
+        let query_emb = match emb_store.get(&full_id, model_id)? {
+            Some(emb) => emb,
+            None => {
+                // No stored embedding — encode it now
+                let config_preview = &config.preview;
+                let service = AssetService::new(&catalog_root, verbosity, config_preview);
+                let mut ai_model = maki::ai::SigLipModel::load_with_provider(&model_dir, model_id, verbosity, &config.ai.execution_provider)?;
+                let registry = DeviceRegistry::new(&catalog_root);
+                let volumes = registry.list()?;
+                let online_volumes = maki::models::Volume::online_map(&volumes);
+                let preview_gen = maki::preview::PreviewGenerator::new(
+                    &catalog_root,
+                    verbosity,
+                    config_preview,
+                );
+                let details = catalog
+                    .load_asset_details(&full_id)?
+                    .ok_or_else(|| anyhow::anyhow!("asset not found"))?;
+                let image_path = service
+                    .find_image_for_ai(&details, &preview_gen, &online_volumes)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("no processable image for asset {}", &full_id[..8])
+                    })?;
+                let emb = ai_model.encode_image(&image_path)?;
+                emb_store.store(&full_id, &emb, model_id)?;
+                emb
+            }
+        };
+
+        let results = emb_store.find_similar(&query_emb, 20, Some(&full_id), model_id)?;
+
+        if cli.json {
+            let json_results: Vec<serde_json::Value> = results
+                .iter()
+                .map(|(id, sim)| {
+                    serde_json::json!({
+                        "asset_id": id,
+                        "similarity": sim,
+                    })
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&json_results)?);
+        } else if results.is_empty() {
+            println!("No similar assets found. Run 'maki auto-tag' on more assets to build embeddings.");
+        } else {
+            println!(
+                "Assets similar to {} ({} results):",
+                &full_id[..8],
+                results.len()
+            );
+            for (id, sim) in &results {
+                let short_id = &id[..8.min(id.len())];
+                println!("  {short_id}  similarity: {sim:.3}");
+            }
+        }
+        return Ok(());
+    }
+
+    // Main auto-tag flow — require at least one scope filter
+    if query.is_none() && asset.is_none() && volume.is_none() && similar.is_none() {
+        anyhow::bail!(
+            "No scope specified. Provide a query, --asset, or --volume to select assets.\n  \
+             Examples:\n    \
+             maki auto-tag ''                    # all assets\n    \
+             maki auto-tag --asset <id>          # single asset\n    \
+             maki auto-tag --volume <label>      # one volume\n    \
+             maki auto-tag 'tag:landscape' --apply"
+        );
+    }
+
+    if !mgr.model_exists() {
+        anyhow::bail!(
+            "Model not downloaded. Run 'maki auto-tag --download --model {model_id}' first."
+        );
+    }
+
+    let threshold = threshold.unwrap_or(config.ai.threshold);
+
+    // Resolve labels
+    let label_list: Vec<String> = if let Some(ref labels_path) = labels {
+        maki::ai::load_labels_from_file(std::path::Path::new(labels_path))?
+    } else if let Some(ref config_labels) = config.ai.labels {
+        maki::ai::load_labels_from_file(std::path::Path::new(config_labels))?
+    } else {
+        maki::ai::DEFAULT_LABELS.iter().map(|s| s.to_string()).collect()
+    };
+
+    let prompt = &config.ai.prompt;
+    let service = AssetService::new(&catalog_root, verbosity, &config.preview);
+
+    let show_log = cli.log;
+    let result = service.auto_tag(
+        query.as_deref(),
+        asset.as_deref(),
+        volume.as_deref(),
+        threshold,
+        &label_list,
+        prompt,
+        apply,
+        &model_dir,
+        model_id,
+        &config.ai.execution_provider,
+        |id, status, elapsed| {
+            if show_log {
+                let short_id = &id[..8.min(id.len())];
+                match status {
+                    maki::ai::AutoTagStatus::Suggested(tags) => {
+                        let tag_names: Vec<&str> =
+                            tags.iter().map(|t| t.tag.as_str()).collect();
+                        eprintln!(
+                            "  {short_id} — {} tags suggested: {} ({})",
+                            tags.len(),
+                            tag_names.join(", "),
+                            format_duration(elapsed)
+                        );
+                    }
+                    maki::ai::AutoTagStatus::Applied(tags) => {
+                        let tag_names: Vec<&str> =
+                            tags.iter().map(|t| t.tag.as_str()).collect();
+                        eprintln!(
+                            "  {short_id} — {} tags applied: {} ({})",
+                            tags.len(),
+                            tag_names.join(", "),
+                            format_duration(elapsed)
+                        );
+                    }
+                    maki::ai::AutoTagStatus::Skipped(msg) => {
+                        eprintln!("  {short_id} — skipped: {msg}");
+                    }
+                    maki::ai::AutoTagStatus::Error(msg) => {
+                        eprintln!("  {short_id} — error: {msg}");
+                    }
+                }
+            }
+        },
+    )?;
+
+    if cli.json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        for err in &result.errors {
+            eprintln!("  {err}");
+        }
+
+        let mode = if apply { "Auto-tag" } else { "Auto-tag (dry run)" };
+        let mut parts = vec![
+            format!("{} processed", result.assets_processed),
+        ];
+        if result.assets_skipped > 0 {
+            parts.push(format!("{} skipped", result.assets_skipped));
+        }
+        parts.push(format!("{} tags suggested", result.tags_suggested));
+        if apply {
+            parts.push(format!("{} tags applied", result.tags_applied));
+        }
+        if !result.errors.is_empty() {
+            parts.push(format!("{} errors", result.errors.len()));
+        }
+        println!("{mode}: {}", parts.join(", "));
+        if !apply && result.tags_suggested > 0 {
+            println!("  Run with --apply to apply suggested tags.");
+        }
+    }
+    Ok(())
+}
+
+
+/// Extracted body of `Commands::Tag`. See `run_import_command` for the
+/// extraction pattern.
+fn run_tag_command(
+    asset_id: Option<String>,
+    remove: bool,
+    tags: Vec<String>,
+    subcmd: Option<TagCommands>,
+    json: bool,
+    log: bool,
+) -> anyhow::Result<()> {
+    struct Ctx { json: bool, log: bool }
+    let cli = Ctx { json, log };
+    match subcmd {
+        Some(TagCommands::Rename { old_tag, new_tag, apply }) => {
+            let catalog_root = maki::config::find_catalog_root()?;
+            let engine = QueryEngine::new(&catalog_root);
+            let old_storage = maki::tag_util::tag_input_to_storage(&old_tag);
+            let new_storage = maki::tag_util::tag_input_to_storage(&new_tag);
+            let show_log = cli.log;
+
+            use maki::query::TagRenameAction;
+            let result = engine.tag_rename(&old_storage, &new_storage, apply, |name, action| {
+                if show_log {
+                    let verb = match (action, apply) {
+                        (TagRenameAction::Renamed, true) => "renamed",
+                        (TagRenameAction::Renamed, false) => "would rename",
+                        (TagRenameAction::Removed, true) => "removed (already had target)",
+                        (TagRenameAction::Removed, false) => "would remove (already has target)",
+                        (TagRenameAction::Skipped, _) => "skipped (already correct)",
+                    };
+                    eprintln!("  {} — {}", name, verb);
+                }
+            })?;
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                let old_display = maki::tag_util::tag_storage_to_display(&old_storage);
+                let new_display = maki::tag_util::tag_storage_to_display(&new_storage);
+                if result.matched == 0 {
+                    println!("No assets found with tag \"{}\".", old_display);
+                } else {
+                    if !apply && (result.renamed > 0 || result.removed > 0) {
+                        eprint!("Dry run — ");
+                    }
+                    let mut parts = Vec::new();
+                    if result.renamed > 0 {
+                        parts.push(format!("{} renamed", result.renamed));
+                    }
+                    if result.removed > 0 {
+                        parts.push(format!("{} removed (merged)", result.removed));
+                    }
+                    if result.skipped > 0 {
+                        parts.push(format!("{} skipped", result.skipped));
+                    }
+                    println!(
+                        "Tag rename: \"{}\" → \"{}\": {}",
+                        old_display, new_display, parts.join(", "),
+                    );
+                    if !apply && (result.renamed > 0 || result.removed > 0) {
+                        println!("  Run with --apply to rename tags.");
+                    }
+                }
+            }
+            Ok(())
+        }
+        Some(TagCommands::Split { old_tag, new_tags, keep, apply }) => {
+            let catalog_root = maki::config::find_catalog_root()?;
+            let engine = QueryEngine::new(&catalog_root);
+            let old_storage = maki::tag_util::tag_input_to_storage(&old_tag);
+            let new_storage: Vec<String> = new_tags.iter()
+                .map(|t| maki::tag_util::tag_input_to_storage(t))
+                .collect();
+            let show_log = cli.log;
+
+            use maki::query::TagSplitAction;
+            let result = engine.tag_split(&old_storage, &new_storage, keep, apply, |name, action| {
+                if show_log {
+                    let verb = match (action, apply, keep) {
+                        (TagSplitAction::Split, true, false) => "split",
+                        (TagSplitAction::Split, false, false) => "would split",
+                        (TagSplitAction::Split, true, true) => "added targets",
+                        (TagSplitAction::Split, false, true) => "would add targets",
+                        (TagSplitAction::Skipped, _, _) => "skipped (no change needed)",
+                    };
+                    eprintln!("  {} — {}", name, verb);
+                }
+            })?;
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                let old_display = maki::tag_util::tag_storage_to_display(&old_storage);
+                let targets_display = new_storage.iter()
+                    .map(|t| format!("\"{}\"", maki::tag_util::tag_storage_to_display(t)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if result.matched == 0 {
+                    println!("No assets found with tag \"{}\".", old_display);
+                } else {
+                    if !apply && result.split > 0 {
+                        eprint!("Dry run — ");
+                    }
+                    let verb = if keep { "add" } else { "split" };
+                    let mut parts = Vec::new();
+                    if result.split > 0 {
+                        parts.push(format!("{} {}", result.split, if keep { "augmented" } else { "split" }));
+                    }
+                    if result.skipped > 0 {
+                        parts.push(format!("{} skipped", result.skipped));
+                    }
+                    println!(
+                        "Tag {}: \"{}\" → [{}]: {}",
+                        verb, old_display, targets_display, parts.join(", "),
+                    );
+                    if !apply && result.split > 0 {
+                        println!("  Run with --apply to {} tags.", verb);
+                    }
+                }
+            }
+            Ok(())
+        }
+        Some(TagCommands::Delete { tag, apply }) => {
+            let catalog_root = maki::config::find_catalog_root()?;
+            let engine = QueryEngine::new(&catalog_root);
+            let storage_tag = maki::tag_util::tag_input_to_storage(&tag);
+            let show_log = cli.log;
+
+            use maki::query::TagDeleteAction;
+            let result = engine.tag_delete(&storage_tag, apply, |name, action| {
+                if show_log {
+                    let verb = match (action, apply) {
+                        (TagDeleteAction::Removed, true) => "removed",
+                        (TagDeleteAction::Removed, false) => "would remove",
+                        (TagDeleteAction::Skipped, _) => "skipped",
+                    };
+                    eprintln!("  {} — {}", name, verb);
+                }
+            })?;
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                // Strip markers from the display string for the user-facing message.
+                let display = storage_tag
+                    .trim_start_matches(|c: char| c == '=' || c == '/' || c == '^')
+                    .to_string();
+                if result.matched == 0 {
+                    println!("No assets found with tag \"{}\".", display);
+                } else {
+                    if !apply && result.removed > 0 {
+                        eprint!("Dry run — ");
+                    }
+                    let mut parts = Vec::new();
+                    if result.removed > 0 {
+                        parts.push(format!(
+                            "{} {}",
+                            result.removed,
+                            if apply { "removed" } else { "would remove" }
+                        ));
+                    }
+                    if result.skipped > 0 {
+                        parts.push(format!("{} skipped", result.skipped));
+                    }
+                    println!(
+                        "Tag delete \"{}\": {} matched, {}",
+                        display,
+                        result.matched,
+                        parts.join(", "),
+                    );
+                    if !apply && result.removed > 0 {
+                        println!("  Run with --apply to delete the tag.");
+                    }
+                }
+            }
+            Ok(())
+        }
+        Some(TagCommands::FixUnicode { apply }) => {
+            let catalog_root = maki::config::find_catalog_root()?;
+            let engine = QueryEngine::new(&catalog_root);
+            let show_log = cli.log;
+
+            let result = engine.tag_fix_unicode(apply, |name, _changed| {
+                if show_log {
+                    eprintln!("  {} — {}", name, if apply { "fixed" } else { "would fix" });
+                }
+            })?;
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                if !apply && result.fixed > 0 {
+                    eprint!("Dry run — ");
+                }
+                if result.fixed == 0 {
+                    println!(
+                        "Tag fix-unicode: {} asset(s) scanned, all already NFC.",
+                        result.scanned
+                    );
+                } else {
+                    let merge_msg = if result.merged > 0 {
+                        format!(", {} with merged duplicates", result.merged)
+                    } else {
+                        String::new()
+                    };
+                    println!(
+                        "Tag fix-unicode: {} scanned, {} {}, {} tag value(s) normalised{}",
+                        result.scanned,
+                        result.fixed,
+                        if apply { "fixed" } else { "would be fixed" },
+                        result.tags_normalized,
+                        merge_msg,
+                    );
+                    if !apply && result.fixed > 0 {
+                        println!("  Run with --apply to normalise tags.");
+                    }
+                }
+            }
+            Ok(())
+        }
+        Some(TagCommands::Clear { asset_id }) => {
+            let catalog_root = maki::config::find_catalog_root()?;
+            let engine = QueryEngine::new(&catalog_root);
+
+            // Load asset to get current tags, then remove all
+            let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+            let full_id = catalog.resolve_asset_id(&asset_id)?
+                .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
+            let uuid: uuid::Uuid = full_id.parse()?;
+            let metadata_store = maki::metadata_store::MetadataStore::new(&catalog_root);
+            let asset = metadata_store.load(uuid)?;
+
+            if asset.tags.is_empty() {
+                if cli.json {
+                    println!("{}", serde_json::json!({ "changed": [], "tags": [] }));
+                } else {
+                    println!("Tags: (none)");
+                }
+                return Ok(());
+            }
+
+            let tags_to_remove = asset.tags.clone();
+            let result = engine.tag(&asset_id, &tags_to_remove, true)?;
+
+            if cli.json {
+                println!("{}", serde_json::json!({
+                    "changed": result.changed,
+                    "tags": result.current_tags,
+                }));
+            } else {
+                let display_removed: Vec<String> = result.changed.iter()
+                    .map(|t| maki::tag_util::tag_storage_to_display(t))
+                    .collect();
+                println!("Cleared {} tag(s): {}", display_removed.len(), display_removed.join(", "));
+            }
+            Ok(())
+        }
+        Some(TagCommands::ExpandAncestors { query, asset, apply, asset_ids }) => {
+            let catalog_root = maki::config::find_catalog_root()?;
+            let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+            let metadata_store = maki::metadata_store::MetadataStore::new(&catalog_root);
+            let engine = maki::query::QueryEngine::new(&catalog_root);
+
+            let scope = engine.resolve_scope(query.as_deref(), asset.as_deref(), &asset_ids)?;
+            let summaries = metadata_store.list()?;
+            let ids: Vec<uuid::Uuid> = match scope {
+                Some(set) => set.iter().filter_map(|id| id.parse().ok()).collect(),
+                None => summaries.iter().map(|s| s.id).collect(),
+            };
+
+            let mut checked = 0usize;
+            let mut expanded = 0usize;
+            let mut tags_added = 0usize;
+
+            for asset_id in &ids {
+                let mut asset_obj = match metadata_store.load(*asset_id) {
+                    Ok(a) => a,
+                    Err(_) => continue,
+                };
+                checked += 1;
+
+                let full = maki::tag_util::expand_all_ancestors(&asset_obj.tags);
+                let existing: std::collections::HashSet<&str> = asset_obj.tags.iter().map(|s| s.as_str()).collect();
+                let missing: Vec<String> = full.iter()
+                    .filter(|t| !existing.contains(t.as_str()))
+                    .cloned()
+                    .collect();
+
+                if missing.is_empty() {
+                    continue;
+                }
+
+                if cli.log {
+                    let id_str = asset_id.to_string();
+                    let name = asset_obj.name.as_deref().unwrap_or(&id_str[..8]);
+                    if apply {
+                        eprintln!("  {} — {} ancestor(s) added", name, missing.len());
+                    } else {
+                        eprintln!("  {} — {} ancestor(s) would add", name, missing.len());
+                    }
+                }
+
+                if apply {
+                    for tag in &missing {
+                        asset_obj.tags.push(tag.clone());
+                    }
+                    metadata_store.save(&asset_obj)?;
+                    catalog.insert_asset(&asset_obj)?;
+                }
+
+                expanded += 1;
+                tags_added += missing.len();
+            }
+
+            if cli.json {
+                println!("{}", serde_json::json!({
+                    "dry_run": !apply,
+                    "checked": checked,
+                    "expanded": expanded,
+                    "tags_added": tags_added,
+                }));
+            } else {
+                if !apply && expanded > 0 {
+                    eprint!("Dry run — ");
+                }
+                println!("Expand ancestors: {} checked, {} assets with missing ancestors, {} tags {}",
+                    checked, expanded, tags_added,
+                    if apply { "added" } else { "would add" },
+                );
+                if !apply && expanded > 0 {
+                    println!("  Run with --apply to expand ancestor tags.");
+                }
+            }
+            Ok(())
+        }
+        Some(TagCommands::ExportVocabulary { output, format, prune, default }) => {
+            let catalog_root = maki::config::find_catalog_root()?;
+
+            let format = format.to_lowercase();
+            let (default_filename, is_text) = match format.as_str() {
+                "yaml" | "yml" => ("vocabulary.yaml", false),
+                "text" | "txt" => ("vocabulary.txt", true),
+                other => anyhow::bail!("unknown --format '{}': expected 'yaml' or 'text'", other),
+            };
+
+            if default {
+                // Export only the built-in default vocabulary
+                let (content, sanitized) = if is_text {
+                    // Convert the built-in YAML vocabulary to tab-indented text
+                    let flat = maki::vocabulary::parse_vocabulary(maki::vocabulary::default_vocabulary());
+                    let pairs: Vec<(String, u64)> = flat.into_iter().map(|t| (t, 0)).collect();
+                    maki::vocabulary::tags_to_keyword_text(&pairs)
+                } else {
+                    (maki::vocabulary::default_vocabulary().to_string(), Vec::new())
+                };
+                let out_path = output.map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| catalog_root.join(default_filename));
+                std::fs::write(&out_path, content)?;
+                report_sanitized_tags(&sanitized);
+                println!("Exported default vocabulary to {}", out_path.display());
+                return Ok(());
+            }
+
+            let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+            let catalog_tags = catalog.list_all_tags()?;
+
+            // Merge with existing vocabulary (preserve planned-but-unused entries)
+            let mut all_tags = catalog_tags;
+            if !prune {
+                let vocab = maki::vocabulary::load_vocabulary(&catalog_root);
+                let existing: std::collections::HashSet<String> = all_tags.iter().map(|(name, _)| name.clone()).collect();
+                for vt in vocab {
+                    if !existing.contains(&vt) {
+                        all_tags.push((vt, 0));
+                    }
+                }
+            }
+            all_tags.sort_by(|a, b| a.0.cmp(&b.0));
+
+            let (content, sanitized) = if is_text {
+                maki::vocabulary::tags_to_keyword_text(&all_tags)
+            } else {
+                (maki::vocabulary::tags_to_vocabulary_yaml(&all_tags), Vec::new())
+            };
+            let out_path = output.map(std::path::PathBuf::from)
+                .unwrap_or_else(|| catalog_root.join(default_filename));
+            std::fs::write(&out_path, &content)?;
+
+            report_sanitized_tags(&sanitized);
+
+            let used = all_tags.iter().filter(|(_, c)| *c > 0).count();
+            let planned = all_tags.len() - used;
+            if prune {
+                println!("Exported {} tags to {} (pruned, unused entries removed)", used, out_path.display());
+            } else {
+                println!("Exported {} tags to {} ({} used, {} planned)", all_tags.len(), out_path.display(), used, planned);
+            }
+            Ok(())
+        }
+        None => {
+            // Direct tag add/remove: maki tag <asset> <tags> [--remove]
+            let asset_id = asset_id.map(|s| s.trim().to_string())
+                .ok_or_else(|| anyhow::anyhow!("asset ID is required for tag add/remove"))?;
+            if tags.is_empty() {
+                anyhow::bail!("no tags specified.");
+            }
+            let catalog_root = maki::config::find_catalog_root()?;
+            let engine = QueryEngine::new(&catalog_root);
+            let storage_tags: Vec<String> = tags.iter()
+                .map(|t| maki::tag_util::tag_input_to_storage(t))
+                .collect();
+            let result = engine.tag(&asset_id, &storage_tags, remove)?;
+
+            if cli.json {
+                println!("{}", serde_json::json!({
+                    "changed": result.changed,
+                    "tags": result.current_tags,
+                }));
+            } else {
+                let display_changed: Vec<String> = result.changed.iter()
+                    .map(|t| maki::tag_util::tag_storage_to_display(t))
+                    .collect();
+                let display_tags: Vec<String> = result.current_tags.iter()
+                    .map(|t| maki::tag_util::tag_storage_to_display(t))
+                    .collect();
+                if !display_changed.is_empty() {
+                    if remove {
+                        println!("Removed tags: {}", display_changed.join(", "));
+                    } else {
+                        println!("Added tags: {}", display_changed.join(", "));
+                    }
+                }
+                if display_tags.is_empty() {
+                    println!("Tags: (none)");
+                } else {
+                    println!("Tags: {}", display_tags.join(", "));
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+
+/// Extracted body of `Commands::RebuildCatalog`.
+fn run_rebuild_catalog_command(
+    asset: Option<String>,
+    json: bool,
+) -> anyhow::Result<()> {
+    struct Ctx { json: bool }
+    let cli = Ctx { json };
+    let catalog_root = maki::config::find_catalog_root()?;
+
+    if let Some(ref asset_id) = asset {
+        // Per-asset rebuild: delete and re-insert a single asset from its sidecar
+        let catalog = Catalog::open(&catalog_root)?;
+        let store = MetadataStore::new(&catalog_root);
+
+        // Resolve asset ID (try as UUID first, then prefix match in catalog)
+        let uuid: uuid::Uuid = if let Ok(u) = asset_id.parse() {
+            u
+        } else if let Some(full) = catalog.resolve_asset_id(asset_id)? {
+            full.parse()?
+        } else {
+            // Not in SQLite — try loading sidecar directly
+            anyhow::bail!("asset '{}' not found in catalog. For new assets, use 'maki refresh --reimport --asset {}'", asset_id, asset_id);
+        };
+
+        let asset_obj = store.load(uuid)?;
+        let id_str = uuid.to_string();
+
+        // Delete all existing rows for this asset (FK checks off for safety)
+        let _ = catalog.conn().execute_batch("PRAGMA foreign_keys = OFF");
+
+        // Get all variant hashes (from SQLite, may differ from sidecar)
+        let sqlite_hashes: Vec<String> = catalog.conn()
+            .prepare("SELECT content_hash FROM variants WHERE asset_id = ?1")?
+            .query_map(rusqlite::params![&id_str], |r| r.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for hash in &sqlite_hashes {
+            let _ = catalog.conn().execute("DELETE FROM recipes WHERE variant_hash = ?1", rusqlite::params![hash]);
+            let _ = catalog.conn().execute("DELETE FROM file_locations WHERE content_hash = ?1", rusqlite::params![hash]);
+        }
+        let _ = catalog.conn().execute("DELETE FROM variants WHERE asset_id = ?1", rusqlite::params![&id_str]);
+        let _ = catalog.conn().execute("DELETE FROM faces WHERE asset_id = ?1", rusqlite::params![&id_str]);
+        let _ = catalog.conn().execute("DELETE FROM embeddings WHERE asset_id = ?1", rusqlite::params![&id_str]);
+        let _ = catalog.conn().execute("DELETE FROM collection_assets WHERE asset_id = ?1", rusqlite::params![&id_str]);
+        let _ = catalog.conn().execute("DELETE FROM assets WHERE id = ?1", rusqlite::params![&id_str]);
+
+        let _ = catalog.conn().execute_batch("PRAGMA foreign_keys = ON");
+
+        // Re-insert from sidecar
+        let registry = DeviceRegistry::new(&catalog_root);
+        for volume in registry.list()? {
+            catalog.ensure_volume(&volume)?;
+        }
+
+        catalog.insert_asset(&asset_obj)?;
+        for variant in &asset_obj.variants {
+            catalog.insert_variant(variant)?;
+            for loc in &variant.locations {
+                catalog.insert_file_location(&variant.content_hash, loc)?;
+            }
+        }
+        for recipe in &asset_obj.recipes {
+            catalog.insert_recipe(recipe)?;
+        }
+        catalog.update_denormalized_variant_columns(&asset_obj)?;
+
+        // Restore embedding from binary file if it exists
+        #[cfg(feature = "ai")]
+        {
+            let emb_store = maki::embedding_store::EmbeddingStore::new(catalog.conn());
+            let emb_base = catalog_root.join("embeddings");
+            if emb_base.exists() {
+                if let Ok(entries) = std::fs::read_dir(&emb_base) {
+                    for entry in entries.flatten() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if name == "arcface" || !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                            continue;
+                        }
+                        let prefix = &id_str[..2];
+                        let bin_path = emb_base.join(&name).join(prefix).join(format!("{id_str}.bin"));
+                        if bin_path.exists() {
+                            if let Ok(data) = std::fs::read(&bin_path) {
+                                let embedding: Vec<f32> = data.chunks_exact(4)
+                                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                                    .collect();
+                                let _ = emb_store.store(&id_str, &embedding, &name);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Restore faces for this asset
+            let face_store = maki::face_store::FaceStore::new(catalog.conn());
+            let faces_file = maki::face_store::load_faces_yaml(&catalog_root).unwrap_or_default();
+            let asset_face_ids: Vec<String> = faces_file.faces.iter()
+                .filter(|f| f.asset_id == id_str)
+                .map(|f| f.id.clone())
+                .collect();
+            if !asset_face_ids.is_empty() {
+                let filtered = maki::face_store::FacesFile {
+                    faces: faces_file.faces.into_iter().filter(|f| f.asset_id == id_str).collect(),
+                };
+                let _ = face_store.import_faces_from_yaml(&filtered);
+            }
+            // Restore ArcFace embeddings for this asset's faces
+            let asset_faces = face_store.faces_for_asset(&id_str).unwrap_or_default();
+            for face in &asset_faces {
+                let prefix = &face.id[..2.min(face.id.len())];
+                let bin_path = emb_base.join("arcface").join(prefix).join(format!("{}.bin", face.id));
+                if bin_path.exists() {
+                    if let Ok(data) = std::fs::read(&bin_path) {
+                        let embedding: Vec<f32> = data.chunks_exact(4)
+                            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                            .collect();
+                        let _ = face_store.import_face_embedding(&face.id, &embedding);
+                    }
+                }
+            }
+
+            // Update face_count
+            let _ = catalog.conn().execute(
+                "UPDATE assets SET face_count = (SELECT COUNT(*) FROM faces WHERE faces.asset_id = ?1) WHERE id = ?1",
+                rusqlite::params![&id_str],
+            );
+            // Legacy upgrade fallback: see the full-catalog rebuild for context.
+            let _ = catalog.conn().execute(
+                "UPDATE assets SET face_scan_status = 'done' \
+                 WHERE id = ?1 AND face_scan_status IS NULL AND face_count > 0",
+                rusqlite::params![&id_str],
+            );
+        }
+
+        if cli.json {
+            println!("{}", serde_json::json!({
+                "asset_id": id_str,
+                "variants": asset_obj.variants.len(),
+                "recipes": asset_obj.recipes.len(),
+            }));
+        } else {
+            println!("Rebuilt asset {}: {} variant(s), {} recipe(s)",
+                &id_str[..8], asset_obj.variants.len(), asset_obj.recipes.len());
+        }
+        return Ok(());
+    }
+
+    let catalog = Catalog::open(&catalog_root)?;
+    catalog.initialize()?;
+
+    // Ensure volume rows exist so FK references work
+    let registry = DeviceRegistry::new(&catalog_root);
+    for volume in registry.list()? {
+        catalog.ensure_volume(&volume)?;
+    }
+
+    // Clear existing data rows
+    catalog.rebuild()?;
+
+    // Sync sidecar files into catalog
+    let store = MetadataStore::new(&catalog_root);
+    let result = store.sync_to_catalog(&catalog)?;
+
+    // Restore collections from YAML
+    let collections_restored = {
+        let col_file = maki::collection::load_yaml(&catalog_root).unwrap_or_default();
+        if !col_file.collections.is_empty() {
+            let col_store = maki::collection::CollectionStore::new(catalog.conn());
+            col_store.import_from_yaml(&col_file).unwrap_or(0)
+        } else {
+            0
+        }
+    };
+
+    // Restore stacks from YAML
+    let stacks_restored = {
+        let stacks_file = maki::stack::load_yaml(&catalog_root).unwrap_or_default();
+        if !stacks_file.stacks.is_empty() {
+            let stack_store = maki::stack::StackStore::new(catalog.conn());
+            stack_store.import_from_yaml(&stacks_file).unwrap_or(0)
+        } else {
+            0
+        }
+    };
+
+    // Restore faces, people, and embeddings from files
+    #[cfg(feature = "ai")]
+    let (people_restored, faces_restored, face_embeddings_restored, embeddings_restored) = {
+        let _ = maki::face_store::FaceStore::initialize(catalog.conn());
+        let _ = maki::embedding_store::EmbeddingStore::initialize(catalog.conn());
+        let face_store = maki::face_store::FaceStore::new(catalog.conn());
+
+        // Import people first (faces reference people via FK)
+        let people_file = maki::face_store::load_people_yaml(&catalog_root).unwrap_or_default();
+        let people_restored = if !people_file.people.is_empty() {
+            face_store.import_people_from_yaml(&people_file).unwrap_or(0)
+        } else {
+            0
+        };
+
+        // Import faces (with empty embedding placeholder)
+        let faces_file = maki::face_store::load_faces_yaml(&catalog_root).unwrap_or_default();
+        let faces_restored = if !faces_file.faces.is_empty() {
+            face_store.import_faces_from_yaml(&faces_file).unwrap_or(0)
+        } else {
+            0
+        };
+
+        // Restore ArcFace embeddings from binary files
+        let mut face_embeddings_restored = 0u32;
+        if let Ok(arcface_entries) = maki::face_store::scan_arcface_binaries(&catalog_root) {
+            for (face_id, embedding) in &arcface_entries {
+                if face_store.import_face_embedding(face_id, embedding).is_ok() {
+                    face_embeddings_restored += 1;
+                }
+            }
+        }
+
+        // Restore SigLIP embeddings from binary files
+        let mut embeddings_restored = 0u32;
+        let emb_store = maki::embedding_store::EmbeddingStore::new(catalog.conn());
+        // Scan all model directories under embeddings/ (skip "arcface")
+        let emb_base = catalog_root.join("embeddings");
+        if emb_base.exists() {
+            if let Ok(entries) = std::fs::read_dir(&emb_base) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name == "arcface" || !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                        continue;
+                    }
+                    if let Ok(model_entries) = maki::embedding_store::scan_embedding_binaries(&catalog_root, &name) {
+                        for (asset_id, embedding) in &model_entries {
+                            if emb_store.store(asset_id, embedding, &name).is_ok() {
+                                embeddings_restored += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Backfill face_count denormalized column
+        if faces_restored > 0 {
+            let _ = catalog.conn().execute_batch(
+                "UPDATE assets SET face_count = (
+                    SELECT COUNT(*) FROM faces WHERE faces.asset_id = assets.id
+                ) WHERE id IN (SELECT DISTINCT asset_id FROM faces)"
+            );
+            // Legacy upgrade fallback: if an asset has face records but its
+            // YAML sidecar predates the face_scan_status field, mark it as
+            // scanned. This matters only for users upgrading from v4.4.2 or
+            // earlier — newer writes always put face_scan_status in the
+            // sidecar, so this branch is a no-op for fresh catalogs.
+            let _ = catalog.conn().execute_batch(
+                "UPDATE assets SET face_scan_status = 'done' \
+                 WHERE face_scan_status IS NULL AND face_count > 0"
+            );
+        }
+
+        (people_restored, faces_restored, face_embeddings_restored, embeddings_restored)
+    };
+
+    if cli.json {
+        #[allow(unused_mut)]
+        let mut json = serde_json::json!({
+            "synced": result.synced,
+            "errors": result.errors,
+            "collections_restored": collections_restored,
+            "stacks_restored": stacks_restored,
+        });
+        #[cfg(feature = "ai")]
+        {
+            json["people_restored"] = serde_json::json!(people_restored);
+            json["faces_restored"] = serde_json::json!(faces_restored);
+            json["face_embeddings_restored"] = serde_json::json!(face_embeddings_restored);
+            json["embeddings_restored"] = serde_json::json!(embeddings_restored);
+        }
+        println!("{}", json);
+    } else {
+        println!("Rebuild complete: {} asset(s) synced", result.synced);
+        if collections_restored > 0 {
+            println!("  {} collection(s) restored", collections_restored);
+        }
+        if stacks_restored > 0 {
+            println!("  {} stack(s) restored", stacks_restored);
+        }
+        #[cfg(feature = "ai")]
+        {
+            if people_restored > 0 {
+                println!("  {} people restored", people_restored);
+            }
+            if faces_restored > 0 {
+                println!("  {} face(s) restored ({} embeddings)", faces_restored, face_embeddings_restored);
+            }
+            if embeddings_restored > 0 {
+                println!("  {} embedding(s) restored", embeddings_restored);
+            }
+        }
+        if result.errors > 0 {
+            println!("  {} error(s) encountered", result.errors);
+        }
+
+        // After rebuild, count assets that ended up without AI-derived
+        // data — those whose embedding binaries weren't on disk, or
+        // that were imported on a build without the AI feature. The
+        // user often forgets to re-run `embed` / `faces detect` after
+        // a rebuild and only notices much later when similarity search
+        // returns empty / face cluster is missing recent assets.
+        #[cfg(feature = "ai")]
+        {
+            let total_assets = catalog.conn().query_row(
+                "SELECT COUNT(*) FROM assets", [], |r| r.get::<_, i64>(0)
+            ).unwrap_or(0);
+            let with_embeddings = catalog.conn().query_row(
+                "SELECT COUNT(DISTINCT asset_id) FROM embeddings", [], |r| r.get::<_, i64>(0)
+            ).unwrap_or(0);
+            let missing_embeddings = (total_assets - with_embeddings).max(0);
+            if missing_embeddings > 0 {
+                println!(
+                    "  Tip: {} asset(s) have no embedding. Run 'maki embed' \
+                     for visual similarity / text search.",
+                    missing_embeddings
+                );
+            }
+            let unscanned_for_faces = catalog.conn().query_row(
+                "SELECT COUNT(*) FROM assets \
+                 WHERE (face_scan_status IS NULL OR face_scan_status = 'pending')",
+                [], |r| r.get::<_, i64>(0)
+            ).unwrap_or(0);
+            if unscanned_for_faces > 0 {
+                println!(
+                    "  Tip: {} asset(s) haven't been scanned for faces. \
+                     Run 'maki faces detect' to populate.",
+                    unscanned_for_faces
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+
+/// Extracted body of `Commands::Volume`. Inner match dispatches to the
+/// `VolumeCommands` subcommand variants.
+fn run_volume_command(
+    cmd: VolumeCommands,
+    json: bool,
+    log: bool,
+    verbosity: maki::Verbosity,
+) -> anyhow::Result<()> {
+    struct Ctx { json: bool, log: bool }
+    let cli = Ctx { json, log };
+    let _ = verbosity;
+    match cmd {
+    VolumeCommands::Add { args, purpose } => {
+        // Two positional args: LABEL PATH. One arg: PATH (label derived).
+        let (label, path) = if args.len() == 2 {
+            (args[0].clone(), args[1].clone())
+        } else {
+            let path = &args[0];
+            let label = std::path::Path::new(path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Volume")
+                .to_string();
+            (label, path.clone())
+        };
+
+        let catalog_root = maki::config::find_catalog_root()?;
+        let registry = DeviceRegistry::new(&catalog_root);
+        let parsed_purpose = if let Some(ref p) = purpose {
+            Some(maki::models::VolumePurpose::parse(p).ok_or_else(|| {
+                anyhow::anyhow!("invalid purpose '{}'. Valid values: media, working, archive, backup, cloud", p)
+            })?)
+        } else {
+            None
+        };
+        let volume = registry.register(
+            &label,
+            std::path::Path::new(&path),
+            maki::models::VolumeType::Local,
+            parsed_purpose,
+        )?;
+        if cli.json {
+            println!("{}", serde_json::json!({
+                "id": volume.id.to_string(),
+                "label": volume.label,
+                "path": volume.mount_point.display().to_string(),
+                "purpose": volume.purpose.as_ref().map(|p| p.as_str()),
+            }));
+        } else {
+            println!("Registered volume '{}' ({})", volume.label, volume.id);
+            println!("  Path: {}", volume.mount_point.display());
+            if let Some(ref p) = volume.purpose {
+                println!("  Purpose: {}", p);
+            } else {
+                eprintln!("  Hint: use --purpose <media|working|archive|backup|cloud> to set the volume's role");
+            }
+        }
+        Ok(())
+    }
+    VolumeCommands::List { purpose, offline, online } => {
+        if offline && online {
+            anyhow::bail!("--offline and --online are mutually exclusive");
+        }
+        let purpose_filter = if let Some(ref p) = purpose {
+            Some(maki::models::VolumePurpose::parse(p).ok_or_else(|| {
+                anyhow::anyhow!("invalid purpose '{}'. Valid values: media, working, archive, backup, cloud", p)
+            })?)
+        } else {
+            None
+        };
+
+        let catalog_root = maki::config::find_catalog_root()?;
+        let registry = DeviceRegistry::new(&catalog_root);
+        let volumes: Vec<_> = registry.list()?.into_iter().filter(|v| {
+            if let Some(ref pf) = purpose_filter {
+                if v.purpose.as_ref() != Some(pf) {
+                    return false;
+                }
+            }
+            if offline && v.is_online { return false; }
+            if online && !v.is_online { return false; }
+            true
+        }).collect();
+
+        if cli.json {
+            let json_volumes: Vec<serde_json::Value> = volumes.iter().map(|v| {
+                serde_json::json!({
+                    "id": v.id.to_string(),
+                    "label": v.label,
+                    "path": v.mount_point.display().to_string(),
+                    "volume_type": format!("{:?}", v.volume_type).to_lowercase(),
+                    "purpose": v.purpose.as_ref().map(|p| p.as_str()),
+                    "is_online": v.is_online,
+                })
+            }).collect();
+            println!("{}", serde_json::to_string_pretty(&json_volumes)?);
+        } else if volumes.is_empty() {
+            if purpose.is_some() || offline || online {
+                println!("No matching volumes.");
+            } else {
+                println!("No volumes registered.");
+            }
+        } else {
+            for v in &volumes {
+                let status = if v.is_online { "online" } else { "offline" };
+                let purpose_tag = v.purpose.as_ref()
+                    .map(|p| format!(" [{}]", p))
+                    .unwrap_or_default();
+                println!("{} ({}) [{}]{}", v.label, v.id, status, purpose_tag);
+                println!("  Path: {}", v.mount_point.display());
+            }
+        }
+        Ok(())
+    }
+    VolumeCommands::SetPurpose { volume, purpose } => {
+        let catalog_root = maki::config::find_catalog_root()?;
+        let registry = DeviceRegistry::new(&catalog_root);
+        let parsed_purpose = if purpose == "none" || purpose == "clear" {
+            None
+        } else {
+            Some(maki::models::VolumePurpose::parse(&purpose).ok_or_else(|| {
+                anyhow::anyhow!("invalid purpose '{}'. Valid values: media, working, archive, backup, cloud, none", purpose)
+            })?)
+        };
+        let vol = registry.set_purpose(&volume, parsed_purpose)?;
+        // Update the SQLite cache too
+        let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+        catalog.ensure_volume(&vol)?;
+        if cli.json {
+            println!("{}", serde_json::json!({
+                "id": vol.id.to_string(),
+                "label": vol.label,
+                "purpose": vol.purpose.as_ref().map(|p| p.as_str()),
+            }));
+        } else if let Some(ref p) = vol.purpose {
+            println!("Volume '{}' purpose set to: {}", vol.label, p);
+        } else {
+            println!("Volume '{}' purpose cleared.", vol.label);
+        }
+        Ok(())
+    }
+    VolumeCommands::Remove { volume, apply } => {
+        let (catalog_root, config) = maki::config::load_config()?;
+        let service = AssetService::new(&catalog_root, verbosity, &config.preview);
+
+        let show_log = cli.log;
+        let result = if show_log {
+            use maki::asset_service::CleanupStatus;
+            service.remove_volume(
+                &volume,
+                apply,
+                |path, status, elapsed| {
+                    match status {
+                        CleanupStatus::Stale => {
+                            let name = path.file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or_else(|| path.to_str().unwrap_or("?"));
+                            item_status(name, "removed", Some(elapsed));
+                        }
+                        CleanupStatus::LocationlessVariant => {
+                            let name = path.to_str().unwrap_or("?");
+                            item_status(name, "locationless variant removed", Some(elapsed));
+                        }
+                        CleanupStatus::OrphanedAsset => {
+                            let name = path.to_str().unwrap_or("?");
+                            item_status(name, "orphaned asset removed", Some(elapsed));
+                        }
+                        CleanupStatus::OrphanedFile => {
+                            let name = path.file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or_else(|| path.to_str().unwrap_or("?"));
+                            item_status(name, "orphaned file removed", Some(elapsed));
+                        }
+                        _ => {}
+                    }
+                },
+            )?
+        } else {
+            service.remove_volume(
+                &volume,
+                apply,
+                |_, _, _| {},
+            )?
+        };
+
+        if cli.json {
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        } else {
+            for err in &result.errors {
+                eprintln!("  {err}");
+            }
+
+            if apply {
+                let mut parts = vec![
+                    format!("{} locations removed", result.locations_removed),
+                    format!("{} recipes removed", result.recipes_removed),
+                ];
+                if result.removed_assets > 0 {
+                    parts.push(format!("{} orphaned assets removed", result.removed_assets));
+                }
+                if result.removed_previews > 0 {
+                    parts.push(format!("{} orphaned previews removed", result.removed_previews));
+                }
+                println!("Volume '{}' removed: {}", result.volume_label, parts.join(", "));
+            } else {
+                let mut parts = vec![
+                    format!("{} locations", result.locations),
+                    format!("{} recipes", result.recipes),
+                ];
+                if result.orphaned_assets > 0 {
+                    parts.push(format!("{} orphaned assets", result.orphaned_assets));
+                }
+                if result.orphaned_previews > 0 {
+                    parts.push(format!("{} orphaned previews", result.orphaned_previews));
+                }
+                println!("Volume '{}' would remove: {}", result.volume_label, parts.join(", "));
+                if result.locations > 0 || result.recipes > 0 {
+                    println!("  Run with --apply to remove.");
+                }
+            }
+        }
+        Ok(())
+    }
+    VolumeCommands::Combine { source, target, apply } => {
+        let (catalog_root, config) = maki::config::load_config()?;
+        let service = AssetService::new(&catalog_root, verbosity, &config.preview);
+
+        let show_log = cli.log;
+        let result = service.combine_volume(
+            &source,
+            &target,
+            apply,
+            |asset_id, elapsed| {
+                if show_log {
+                    item_status(asset_id, "updated", Some(elapsed));
+                }
+            },
+        )?;
+
+        if cli.json {
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        } else {
+            for err in &result.errors {
+                eprintln!("  {err}");
+            }
+
+            if apply {
+                println!(
+                    "Volume '{}' combined into '{}': {} locations moved, {} recipes moved ({} assets, prefix '{}')",
+                    result.source_label,
+                    result.target_label,
+                    result.locations_moved,
+                    result.recipes_moved,
+                    result.assets_affected,
+                    result.path_prefix,
+                );
+            } else {
+                println!(
+                    "Would combine '{}' into '{}': {} locations, {} recipes ({} assets, prefix '{}')",
+                    result.source_label,
+                    result.target_label,
+                    result.locations,
+                    result.recipes,
+                    result.assets_affected,
+                    result.path_prefix,
+                );
+                if result.locations > 0 || result.recipes > 0 {
+                    println!("  Run with --apply to combine.");
+                }
+            }
+        }
+        Ok(())
+    }
+    VolumeCommands::Split { source, new_label, path, purpose, apply } => {
+        let (catalog_root, config) = maki::config::load_config()?;
+        let service = AssetService::new(&catalog_root, verbosity, &config.preview);
+
+        let show_log = cli.log;
+        let result = service.split_volume(
+            &source,
+            &new_label,
+            &path,
+            purpose.as_deref(),
+            apply,
+            |asset_id, elapsed| {
+                if show_log {
+                    item_status(asset_id, "updated", Some(elapsed));
+                }
+            },
+        )?;
+
+        if cli.json {
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        } else {
+            for err in &result.errors {
+                eprintln!("  {err}");
+            }
+
+            if apply {
+                println!(
+                    "Volume '{}' split: new volume '{}' created with {} locations, {} recipes ({} assets, prefix '{}')",
+                    result.source_label,
+                    result.new_label,
+                    result.locations_moved,
+                    result.recipes_moved,
+                    result.assets_affected,
+                    result.path_prefix,
+                );
+            } else {
+                println!(
+                    "Would split '{}': new volume '{}' with {} locations, {} recipes ({} assets, prefix '{}')",
+                    result.source_label,
+                    result.new_label,
+                    result.locations,
+                    result.recipes,
+                    result.assets_affected,
+                    result.path_prefix,
+                );
+                if result.locations > 0 || result.recipes > 0 {
+                    println!("  Run with --apply to split.");
+                }
+            }
+        }
+        Ok(())
+    }
+    VolumeCommands::Rename { volume, new_label } => {
+        let catalog_root = maki::config::find_catalog_root()?;
+        let registry = DeviceRegistry::new(&catalog_root);
+        let vol = registry.resolve_volume(&volume)?;
+        let old_label = vol.label.clone();
+
+        registry.rename(&volume, &new_label)?;
+
+        let catalog = maki::catalog::Catalog::open(&catalog_root)?;
+        catalog.rename_volume(&vol.id.to_string(), &new_label)?;
+
+        if cli.json {
+            println!("{}", serde_json::json!({
+                "old_label": old_label,
+                "new_label": new_label,
+                "volume_id": vol.id.to_string(),
+            }));
+        } else {
+            println!("Volume '{}' renamed to '{}'", old_label, new_label);
+        }
+        Ok(())
+    }
     }
 }
