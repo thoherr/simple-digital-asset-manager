@@ -371,7 +371,7 @@ impl SigLipModel {
         label_embs: &[Vec<f32>],
         threshold: f32,
     ) -> Vec<AutoTagSuggestion> {
-        self.classify_impl(image_emb, labels, label_embs, threshold, false)
+        self.classify_inner(image_emb, labels, label_embs, threshold, false)
     }
 
     /// Classify with optional debug output showing per-label scoring details.
@@ -382,10 +382,10 @@ impl SigLipModel {
         label_embs: &[Vec<f32>],
         threshold: f32,
     ) -> Vec<AutoTagSuggestion> {
-        self.classify_impl(image_emb, labels, label_embs, threshold, true)
+        self.classify_inner(image_emb, labels, label_embs, threshold, true)
     }
 
-    fn classify_impl(
+    fn classify_inner(
         &self,
         image_emb: &[f32],
         labels: &[String],
@@ -907,7 +907,7 @@ mod tests {
         assert_eq!(l16.embedding_dim, 1024);
     }
 
-    /// Standalone scoring function for testing (mirrors SigLipModel::classify_impl logic).
+    /// Standalone scoring function for testing (mirrors SigLipModel::classify_inner logic).
     fn score_and_filter(
         spec: &ModelSpec,
         image_emb: &[f32],

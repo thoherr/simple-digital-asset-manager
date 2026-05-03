@@ -730,6 +730,39 @@ pub fn find_catalog_root() -> Result<PathBuf> {
     }
 }
 
+/// Locate the catalog root and load its `maki.toml`.
+///
+/// Convenience helper for command handlers that need both the path and the
+/// parsed config — almost every long-running command does. Returns
+/// `(catalog_root, config)`.
+pub fn load_config() -> Result<(PathBuf, CatalogConfig)> {
+    let root = find_catalog_root()?;
+    let config = CatalogConfig::load(&root)?;
+    Ok((root, config))
+}
+
+/// Resolve a model directory by expanding a `~/`-prefixed path and joining
+/// the model id. Used by both the CLI and the web AI routes.
+///
+/// `model_dir_root` is `[ai] model_dir` from `maki.toml` — typically
+/// `~/.maki/models`. `model_id` is the SigLIP model name (e.g. `siglip2-large-patch16-512`).
+/// Returns `model_dir_root/<model_id>` with `~/` expanded against `$HOME`
+/// (or `%USERPROFILE%` on Windows). Falls back to `.` if neither is set;
+/// this is rare enough on real systems that bubbling the error would just
+/// add noise.
+#[cfg(feature = "ai")]
+pub fn resolve_model_dir(model_dir_root: &str, model_id: &str) -> PathBuf {
+    let base = if let Some(rest) = model_dir_root.strip_prefix("~/") {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(home).join(rest)
+    } else {
+        PathBuf::from(model_dir_root)
+    };
+    base.join(model_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

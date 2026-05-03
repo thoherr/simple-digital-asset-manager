@@ -13,7 +13,7 @@ use super::super::AppState;
 /// GET /volumes — render volumes page.
 pub async fn volumes_page(State(state): State<Arc<AppState>>) -> Response {
     let state = state.clone();
-    let result = tokio::task::spawn_blocking(move || {
+    let html = match super::spawn_catalog_blocking(move || {
         let registry = crate::device_registry::DeviceRegistry::new(&state.catalog_root);
         let volumes = registry.list()?;
         let rows: Vec<crate::web::templates::VolumeRow> = volumes
@@ -32,15 +32,14 @@ pub async fn volumes_page(State(state): State<Arc<AppState>>) -> Response {
             ai_enabled: state.ai_enabled,
             vlm_enabled: state.vlm_enabled,
         };
-        Ok::<_, anyhow::Error>(tmpl.render()?)
+        Ok(tmpl.render()?)
     })
-    .await;
-
-    match result {
-        Ok(Ok(html)) => Html(html).into_response(),
-        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
-    }
+    .await
+    {
+        Ok(html) => html,
+        Err(resp) => return resp,
+    };
+    Html(html).into_response()
 }
 
 /// GET /api/volumes — list volumes as JSON.

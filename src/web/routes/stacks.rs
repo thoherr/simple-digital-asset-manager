@@ -82,9 +82,7 @@ pub async fn add_to_stack(
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
         let catalog = state.catalog()?;
-        let ref_full = catalog
-            .resolve_asset_id(&reference_id)?
-            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{reference_id}'"))?;
+        let ref_full = super::resolve_asset_id_or_err(&catalog, &reference_id)?;
         let store = crate::stack::StackStore::new(catalog.conn());
         let added = store.add(&ref_full, &req.asset_ids)?;
         let yaml = store.export_all()?;
@@ -217,9 +215,7 @@ pub async fn stack_by_similarity(
     let state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
         let catalog = state.catalog()?;
-        let full_id = catalog
-            .resolve_asset_id(&asset_id)?
-            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
+        let full_id = super::resolve_asset_id_or_err(&catalog, &asset_id)?;
 
         let store = crate::stack::StackStore::new(catalog.conn());
         if store.stack_for_asset(&full_id)?.is_some() {

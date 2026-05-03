@@ -49,16 +49,7 @@ pub async fn suggest_tags(
 }
 
 pub(super) fn resolve_model_dir(config: &crate::config::AiConfig) -> std::path::PathBuf {
-    let model_dir_str = &config.model_dir;
-    let model_base = if model_dir_str.starts_with("~/") {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap_or_else(|_| ".".to_string());
-        std::path::PathBuf::from(home).join(&model_dir_str[2..])
-    } else {
-        std::path::PathBuf::from(model_dir_str)
-    };
-    model_base.join(&config.model)
+    crate::config::resolve_model_dir(&config.model_dir, &config.model)
 }
 
 fn resolve_labels(config: &crate::config::AiConfig) -> Result<Vec<String>, String> {
@@ -952,19 +943,16 @@ pub async fn assign_face(
         None => return (StatusCode::BAD_REQUEST, "Missing person_id").into_response(),
     };
 
-    let result = tokio::task::spawn_blocking(move || {
+    match super::spawn_catalog_blocking(move || {
         let catalog = state.catalog()?;
         let face_store = crate::face_store::FaceStore::new(catalog.conn());
         face_store.assign_face_to_person(&face_id, &person_id)?;
         let _ = face_store.save_all_yaml(&state.catalog_root);
         state.dropdown_cache.invalidate_people();
-        Ok::<_, anyhow::Error>(())
-    }).await;
-
-    match result {
-        Ok(Ok(())) => Json(serde_json::json!({"ok": true})).into_response(),
-        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+        Ok(())
+    }).await {
+        Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
+        Err(resp) => resp,
     }
 }
 
@@ -973,19 +961,16 @@ pub async fn unassign_face_api(
     State(state): State<Arc<AppState>>,
     Path(face_id): Path<String>,
 ) -> Response {
-    let result = tokio::task::spawn_blocking(move || {
+    match super::spawn_catalog_blocking(move || {
         let catalog = state.catalog()?;
         let face_store = crate::face_store::FaceStore::new(catalog.conn());
         face_store.unassign_face(&face_id)?;
         let _ = face_store.save_all_yaml(&state.catalog_root);
         state.dropdown_cache.invalidate_people();
-        Ok::<_, anyhow::Error>(())
-    }).await;
-
-    match result {
-        Ok(Ok(())) => Json(serde_json::json!({"ok": true})).into_response(),
-        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into_response(),
+        Ok(())
+    }).await {
+        Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
+        Err(resp) => resp,
     }
 }
 
@@ -1324,10 +1309,7 @@ fn stroll_page_inner(
     let emb_store = crate::embedding_store::EmbeddingStore::new(catalog.conn());
 
     let center_id = if let Some(id_prefix) = asset_id {
-        catalog
-            .resolve_asset_id(id_prefix)
-            .map_err(|e| format!("{e:#}"))?
-            .ok_or_else(|| format!("no asset found matching '{id_prefix}'"))?
+        super::resolve_asset_id_or_err(&catalog, id_prefix).map_err(|e| format!("{e:#}"))?
     } else {
         let all = emb_store.all_embeddings_for_model(model_id).map_err(|e| format!("{e:#}"))?;
         if all.is_empty() {

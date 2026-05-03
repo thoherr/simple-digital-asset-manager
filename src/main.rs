@@ -2662,8 +2662,7 @@ faces/\n\
                 Ok(())
             }
             VolumeCommands::Remove { volume, apply } => {
-                let catalog_root = maki::config::find_catalog_root()?;
-                let config = CatalogConfig::load(&catalog_root)?;
+                let (catalog_root, config) = maki::config::load_config()?;
                 let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
                 let show_log = cli.log;
@@ -2745,8 +2744,7 @@ faces/\n\
                 Ok(())
             }
             VolumeCommands::Combine { source, target, apply } => {
-                let catalog_root = maki::config::find_catalog_root()?;
-                let config = CatalogConfig::load(&catalog_root)?;
+                let (catalog_root, config) = maki::config::load_config()?;
                 let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
                 let show_log = cli.log;
@@ -2796,8 +2794,7 @@ faces/\n\
                 Ok(())
             }
             VolumeCommands::Split { source, new_label, path, purpose, apply } => {
-                let catalog_root = maki::config::find_catalog_root()?;
-                let config = CatalogConfig::load(&catalog_root)?;
+                let (catalog_root, config) = maki::config::load_config()?;
                 let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
                 let show_log = cli.log;
@@ -2888,8 +2885,7 @@ faces/\n\
         } => {
             use maki::asset_service::FileTypeFilter;
 
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
 
             // Resolve import profile: profile overrides base [import], CLI flags override both
             let import_config = if let Some(ref profile_name) = profile {
@@ -3109,14 +3105,7 @@ faces/\n\
                 use maki::model_manager::ModelManager;
 
                 let model_id = &config.ai.model;
-                let model_dir_str = &config.ai.model_dir;
-                let model_base = if model_dir_str.starts_with("~/") {
-                    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))?;
-                    PathBuf::from(home).join(&model_dir_str[2..])
-                } else {
-                    PathBuf::from(model_dir_str)
-                };
-                let model_dir = model_base.join(model_id);
+                let model_dir = maki::config::resolve_model_dir(&config.ai.model_dir, model_id);
                 let mgr = ModelManager::new(&model_dir, model_id)?;
 
                 if mgr.model_exists() {
@@ -3331,8 +3320,7 @@ faces/\n\
         Commands::Search { query, format, quiet } => {
             use maki::format::{self, OutputFormat};
 
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let engine = QueryEngine::with_default_filter(&catalog_root, config.browse.default_filter);
             let results = engine.search(&query)?;
 
@@ -3449,8 +3437,7 @@ faces/\n\
             Ok(())
         }
         Commands::Show { asset_id, locations } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let engine = QueryEngine::new(&catalog_root);
             let details = engine.show(&asset_id)?;
 
@@ -3579,8 +3566,7 @@ faces/\n\
             Ok(())
         }
         Commands::Preview { asset_id } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let catalog = maki::catalog::Catalog::open(&catalog_root)?;
             let engine = QueryEngine::new(&catalog_root);
             let details = engine.show(&asset_id)?;
@@ -4256,8 +4242,7 @@ faces/\n\
                 anyhow::bail!("no asset IDs specified.");
             }
 
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             // Collect face IDs for deleted assets before deletion (for AI cleanup)
@@ -4376,8 +4361,7 @@ faces/\n\
             check,
             asset_ids,
         } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
 
             let endpoint = endpoint.as_deref().unwrap_or(&config.vlm.endpoint);
             let model = model.as_deref().unwrap_or(&config.vlm.model);
@@ -4602,8 +4586,7 @@ faces/\n\
                 return Ok(());
             }
 
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
 
             // Resolve model ID: CLI --model > config ai.model > default.
             // For --download/--remove-model, also accept the positional `query`
@@ -4627,15 +4610,7 @@ faces/\n\
                     "Unknown model: {model_id}. Run 'maki auto-tag --list-models' to see available models."
                 ))?;
 
-            // Resolve model base directory
-            let model_dir_str = &config.ai.model_dir;
-            let model_base = if model_dir_str.starts_with("~/") {
-                let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))?;
-                PathBuf::from(home).join(&model_dir_str[2..])
-            } else {
-                PathBuf::from(model_dir_str)
-            };
-            let model_dir = model_base.join(model_id);
+            let model_dir = maki::config::resolve_model_dir(&config.ai.model_dir, model_id);
             let mgr = ModelManager::new(&model_dir, model_id)?;
 
             // Model management commands
@@ -4674,6 +4649,10 @@ faces/\n\
             }
 
             if list_models {
+                // model_dir is `<model_base>/<model_id>`; recover model_base for
+                // listing siblings. Defaults to `.` if for some reason the path
+                // has no parent (shouldn't happen for normal config).
+                let model_base = model_dir.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
                 let models = ModelManager::list_available_models(&model_base);
                 if cli.json {
                     let json_models: Vec<serde_json::Value> = models
@@ -4943,8 +4922,7 @@ faces/\n\
                 );
             }
 
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
 
             let model_id = model.as_deref().unwrap_or(&config.ai.model);
             let _spec = maki::ai::get_model_spec(model_id)
@@ -4952,14 +4930,7 @@ faces/\n\
                     "Unknown model: {model_id}. Run 'maki auto-tag --list-models' to see available models."
                 ))?;
 
-            let model_dir_str = &config.ai.model_dir;
-            let model_base = if model_dir_str.starts_with("~/") {
-                let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))?;
-                PathBuf::from(home).join(&model_dir_str[2..])
-            } else {
-                PathBuf::from(model_dir_str)
-            };
-            let model_dir = model_base.join(model_id);
+            let model_dir = maki::config::resolve_model_dir(&config.ai.model_dir, model_id);
             let mgr = ModelManager::new(&model_dir, model_id)?;
 
             if !mgr.model_exists() {
@@ -5110,8 +5081,7 @@ faces/\n\
             create_sidecars,
             dry_run,
         } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             // Resolve asset IDs: --query, positional args, or stdin
@@ -5245,8 +5215,7 @@ faces/\n\
         Commands::Verify { paths, volume, asset, include, skip, max_age, force } => {
             use maki::asset_service::FileTypeFilter;
 
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             let max_age_days: Option<u64> = if force {
@@ -5367,8 +5336,7 @@ faces/\n\
                 anyhow::bail!("--remove-stale requires --apply.");
             }
 
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let registry = DeviceRegistry::new(&catalog_root);
 
             let canonical_paths: Vec<PathBuf> = paths
@@ -5485,8 +5453,7 @@ faces/\n\
         #[cfg(feature = "pro")]
         Commands::SyncMetadata { query, volume, asset, dry_run, media, asset_ids } => {
             let start = std::time::Instant::now();
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let registry = DeviceRegistry::new(&catalog_root);
             let engine = maki::query::QueryEngine::new(&catalog_root);
 
@@ -5643,8 +5610,7 @@ faces/\n\
                 return Ok(());
             }
 
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let registry = DeviceRegistry::new(&catalog_root);
 
             let canonical_paths: Vec<PathBuf> = paths
@@ -5788,8 +5754,7 @@ faces/\n\
             Ok(())
         }
         Commands::Cleanup { volume, path, list, apply } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             // If --path is given without --volume, try to auto-detect the volume
@@ -5982,8 +5947,7 @@ faces/\n\
             Ok(())
         }
         Commands::Dedup { volume, prefer, filter_format, path, min_copies, apply } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             // CLI --prefer overrides config [dedup] prefer
@@ -6086,8 +6050,7 @@ faces/\n\
             Ok(())
         }
         Commands::UpdateLocation { asset_id, from, to, volume } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             let to_path = std::fs::canonicalize(&to)
@@ -6279,8 +6242,7 @@ faces/\n\
         Commands::GeneratePreviews { paths, asset, volume, include, skip, force, upgrade, smart } => {
             use maki::asset_service::FileTypeFilter;
 
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let preview_gen = maki::preview::PreviewGenerator::new(&catalog_root, verbosity, &config.preview);
             let metadata_store = MetadataStore::new(&catalog_root);
             let registry = maki::device_registry::DeviceRegistry::new(&catalog_root);
@@ -6559,8 +6521,7 @@ faces/\n\
             Ok(())
         }
         Commands::FixRoles { paths, volume, asset, apply } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             let canonical_paths: Vec<PathBuf> = paths
@@ -6625,8 +6586,7 @@ faces/\n\
             Ok(())
         }
         Commands::FixDates { query, volume, asset, apply, asset_ids } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let engine = maki::query::QueryEngine::new(&catalog_root);
 
@@ -6719,8 +6679,7 @@ faces/\n\
             Ok(())
         }
         Commands::FixRecipes { query, volume, asset, apply, asset_ids } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
             let engine = maki::query::QueryEngine::new(&catalog_root);
 
@@ -7353,8 +7312,7 @@ faces/\n\
             Ok(())
         }
         Commands::Serve { port, bind } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let port = port.unwrap_or(config.serve.port);
             let bind = bind.unwrap_or_else(|| config.serve.bind.clone());
             let rt = tokio::runtime::Runtime::new()?;
@@ -7388,8 +7346,7 @@ faces/\n\
                 ContactSheetStatus, GroupByField, LabelStyle, MetadataField, PaperSize,
             };
 
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let cs_defaults = &config.contact_sheet;
 
             let cs_layout: ContactSheetLayout = layout.parse()?;
@@ -7498,8 +7455,7 @@ faces/\n\
                 _ => anyhow::bail!("unknown layout '{}'. Valid layouts: flat, mirror", layout),
             };
 
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let service = AssetService::new(&catalog_root, verbosity, &config.preview);
 
             let show_log = cli.log;
@@ -7646,8 +7602,7 @@ faces/\n\
             Ok(())
         }
         Commands::Status { min_copies } => {
-            let catalog_root = maki::config::find_catalog_root()?;
-            let config = CatalogConfig::load(&catalog_root)?;
+            let (catalog_root, config) = maki::config::load_config()?;
             let ai_enabled = cfg!(feature = "ai");
             // The orphan-on-disk scan (cleanup passes 4-7) dominates runtime
             // on real catalogs — easily 30s+ on tens of thousands of files.

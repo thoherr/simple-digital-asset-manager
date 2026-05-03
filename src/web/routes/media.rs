@@ -455,10 +455,8 @@ pub async fn writeback_asset(
     let result = tokio::task::spawn_blocking(move || {
         let engine = state.query_engine();
         let catalog = state.catalog().map_err(|e| e.to_string())?;
-        let full_id = catalog
-            .resolve_asset_id(&asset_id)
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| format!("Asset not found: {asset_id}"))?;
+        let full_id = super::resolve_asset_id_or_err(&catalog, &asset_id)
+            .map_err(|e| format!("{e:#}"))?;
 
         let wb_result = engine
             .writeback(None, Some(&full_id), None, false, false, false, None)
@@ -538,10 +536,8 @@ fn vlm_describe_asset_inner(
     let preview_gen = state.preview_generator();
 
     let catalog = state.catalog().map_err(|e| e.to_string())?;
-    let full_id = catalog
-        .resolve_asset_id(asset_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Asset not found: {asset_id}"))?;
+    let full_id = super::resolve_asset_id_or_err(&catalog, asset_id)
+        .map_err(|e| format!("{e:#}"))?;
 
     let details = engine.show(&full_id).map_err(|e| e.to_string())?;
 

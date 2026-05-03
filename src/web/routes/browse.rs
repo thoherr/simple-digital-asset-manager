@@ -753,9 +753,7 @@ pub async fn asset_page(
     let result = tokio::task::spawn_blocking(move || {
         let catalog = state.catalog()?;
 
-        let full_id = catalog
-            .resolve_asset_id(&asset_id)?
-            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{asset_id}'"))?;
+        let full_id = super::resolve_asset_id_or_err(&catalog, &asset_id)?;
         let details = catalog
             .load_asset_details(&full_id)?
             .ok_or_else(|| anyhow::anyhow!("asset '{full_id}' not found in catalog"))?;

@@ -40,6 +40,60 @@ pub use tags::*;
 mod volumes;
 pub use volumes::*;
 
+/// Run a blocking catalog operation on the spawn_blocking pool, mapping
+/// the spawn-join error and the inner anyhow error to a uniform 500
+/// response so handlers can use `?` instead of triple-matching.
+///
+/// Replaces the `tokio::task::spawn_blocking(...).await` + `match
+/// Ok(Ok)/Ok(Err)/Err` chain repeated across every web route. Use as:
+///
+/// ```ignore
+/// pub async fn handler(State(state): State<Arc<AppState>>) -> Result<Response, Response> {
+///     let value = super::spawn_catalog_blocking(move || {
+///         // anyhow::Result<T>
+///         do_work(&state)
+///     })
+///     .await?;
+///     Ok(Json(value).into_response())
+/// }
+/// ```
+///
+/// Returns `Result<T, Response>` so callers can keep choice over the
+/// success-shape (Json/Html/redirect/etc.) while the error path is uniform.
+pub(super) async fn spawn_catalog_blocking<T, F>(f: F) -> Result<T, axum::response::Response>
+where
+    T: Send + 'static,
+    F: FnOnce() -> anyhow::Result<T> + Send + 'static,
+{
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+    match tokio::task::spawn_blocking(f).await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(e)) => Err(
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
+        ),
+        Err(e) => Err(
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+        ),
+    }
+}
+
+/// Resolve an asset ID prefix to its full ID, mapping "not found" to a
+/// uniform error.
+///
+/// Replaces the `catalog.resolve_asset_id(...)?` + `.ok_or_else(...)` boilerplate
+/// repeated across every web route that mutates a single asset. Callers that
+/// need a `String` error (e.g. inner functions returning `Result<_, String>`)
+/// can `.map_err(|e| format!("{e:#}"))` at the call site.
+pub(super) fn resolve_asset_id_or_err(
+    catalog: &crate::catalog::Catalog,
+    prefix: &str,
+) -> anyhow::Result<String> {
+    catalog
+        .resolve_asset_id(prefix)?
+        .ok_or_else(|| anyhow::anyhow!("no asset found matching '{prefix}'"))
+}
+
 /// Resolve the best variant index for an asset, respecting user override.
 /// Looks up the stored best_variant_hash, falls back to algorithmic scoring.
 pub(super) fn resolve_best_variant_idx(
@@ -65,9 +119,7 @@ fn resolve_similar_filter(
 ) -> anyhow::Result<(Vec<String>, std::collections::HashMap<String, f32>)> {
     use std::collections::HashMap;
     if let Some(ref similar_ref) = parsed.similar {
-        let full_id = catalog
-            .resolve_asset_id(similar_ref)?
-            .ok_or_else(|| anyhow::anyhow!("no asset found matching '{similar_ref}'"))?;
+        let full_id = resolve_asset_id_or_err(catalog, similar_ref)?;
         let model_id = &state.ai_config.model;
         let spec = crate::ai::get_model_spec(model_id);
         if let Some(spec) = spec {
