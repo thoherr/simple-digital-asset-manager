@@ -653,6 +653,54 @@ Then import it:
 
 Re-run the export whenever your catalog grows enough new tags to be worth re-syncing. With `--prune`, you only push the subset that's actually in use; drop `--prune` to push the full planned hierarchy.
 
+### Annotating exports with asset counts
+
+Pass `--counts` to attach the per-tag asset count to every entry. In YAML output the count appears as a `# N assets` trailing comment; the file is still valid YAML and MAKI's autocomplete loader ignores comments. Useful for spotting candidates to consolidate or retire:
+
+```bash
+maki tag export-vocabulary --counts
+```
+
+```yaml
+subject:  # 5 assets
+  nature:  # 3 assets
+    - landscape  # 2 assets
+    - bird  # 1 asset
+- legoland  # 1 asset
+```
+
+In **text** format (Lightroom / Capture One) the flag is silently ignored — those tools reject comments. In **json** format every node already has a `count` field; the flag is implied.
+
+### Programmatic export (JSON)
+
+For dashboards, integration scripts, or any tool that finds the keyword-text or YAML formats awkward to walk, export as nested JSON:
+
+```bash
+maki tag export-vocabulary --format json --prune > tags.json
+```
+
+Each node has a `count` field plus an optional `children` map keyed by child segment name. Leaf nodes omit `children`:
+
+```json
+{
+  "subject": {
+    "count": 5,
+    "children": {
+      "nature": {
+        "count": 3,
+        "children": {
+          "landscape": {"count": 2},
+          "bird": {"count": 1}
+        }
+      }
+    }
+  },
+  "legoland": {"count": 1}
+}
+```
+
+The structure mirrors the tag tree exactly — root keys are top-level tags, nested keys are sub-tags, and counts are the per-asset totals from the catalog. Identical to `maki tag export-vocabulary --format yaml --counts` in information content; the JSON shape is just easier to consume from code.
+
 ### Vocabulary vs. auto-tagging labels
 
 The vocabulary file and the auto-tagging label file (`labels` in `[ai]` config) serve different purposes:

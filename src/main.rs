@@ -1247,11 +1247,11 @@ enum TagCommands {
     /// Export current tag tree as a vocabulary file
     #[command(name = "export-vocabulary")]
     ExportVocabulary {
-        /// Output file (default: vocabulary.yaml or vocabulary.txt in catalog root, depending on --format)
+        /// Output file (default: vocabulary.{yaml,txt,json} in catalog root, depending on --format)
         #[arg(long)]
         output: Option<String>,
 
-        /// Output format: yaml (default, MAKI vocabulary file) or text (tab-indented keyword list for Lightroom/Capture One import)
+        /// Output format: yaml (MAKI vocabulary, default), text (tab-indented keyword list for Lightroom/Capture One), or json (nested object with counts, for programmatic use)
         #[arg(long, default_value = "yaml")]
         format: String,
 
@@ -1262,6 +1262,16 @@ enum TagCommands {
         /// Export only the built-in default vocabulary (ignore catalog tags and existing vocabulary.yaml)
         #[arg(long)]
         default: bool,
+
+        /// Annotate each tag with its asset count.
+        ///
+        /// YAML: emitted as a `# N assets` trailing comment (still valid YAML;
+        /// MAKI's autocomplete loader ignores comments). JSON: every node has
+        /// a `count` field already, so the flag is implied. Text format
+        /// (Lightroom / Capture One keyword text) doesn't support comments —
+        /// the flag is silently ignored to keep the file importable.
+        #[arg(long)]
+        counts: bool,
     },
 }
 

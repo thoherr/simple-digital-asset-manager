@@ -121,8 +121,8 @@ NFC-normalise every tag value catalog-wide; merges NFC/NFD duplicates per asset.
 
 \subsection{maki tag export-vocabulary}
 Export tag tree as vocabulary.yaml. \\
-\opt{--prune} \opt{--default} \opt{--output FILE} \\
-\opt{--format yaml|text} (text = tab-indented, for Lightroom / Capture One keyword import)
+\opt{--prune} \opt{--default} \opt{--output FILE} \opt{--counts} \\
+\opt{--format yaml|text|json} (text = tab-indented for Lightroom / Capture One; json = nested objects for scripts; \opt{--counts} adds `\# N assets' trailing YAML comments)
 
 \subsection{maki edit \textit{ASSET\_ID}}
 Edit metadata fields. \\

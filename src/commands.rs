@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use maki::asset_service::AssetService;
 use maki::catalog::Catalog;
 use maki::cli_output::{format_duration, format_size, item_status};
+#[cfg(feature = "ai")]
 use maki::config::CatalogConfig;
 use maki::device_registry::DeviceRegistry;
 use maki::metadata_store::MetadataStore;
@@ -1984,25 +1985,39 @@ pub fn run_tag_command(
             }
             Ok(())
         }
-        Some(TagCommands::ExportVocabulary { output, format, prune, default }) => {
+        Some(TagCommands::ExportVocabulary { output, format, prune, default, counts }) => {
             let catalog_root = maki::config::find_catalog_root()?;
 
             let format = format.to_lowercase();
-            let (default_filename, is_text) = match format.as_str() {
-                "yaml" | "yml" => ("vocabulary.yaml", false),
-                "text" | "txt" => ("vocabulary.txt", true),
-                other => anyhow::bail!("unknown --format '{}': expected 'yaml' or 'text'", other),
+            #[derive(Clone, Copy, PartialEq)]
+            enum Fmt { Yaml, Text, Json }
+            let (fmt, default_filename) = match format.as_str() {
+                "yaml" | "yml" => (Fmt::Yaml, "vocabulary.yaml"),
+                "text" | "txt" => (Fmt::Text, "vocabulary.txt"),
+                "json"         => (Fmt::Json, "vocabulary.json"),
+                other => anyhow::bail!("unknown --format '{}': expected 'yaml', 'text', or 'json'", other),
             };
 
             if default {
-                // Export only the built-in default vocabulary
-                let (content, sanitized) = if is_text {
-                    // Convert the built-in YAML vocabulary to tab-indented text
-                    let flat = maki::vocabulary::parse_vocabulary(maki::vocabulary::default_vocabulary());
-                    let pairs: Vec<(String, u64)> = flat.into_iter().map(|t| (t, 0)).collect();
-                    maki::vocabulary::tags_to_keyword_text(&pairs)
-                } else {
-                    (maki::vocabulary::default_vocabulary().to_string(), Vec::new())
+                // Export only the built-in default vocabulary. The default
+                // tree has no asset counts, so --counts has nothing useful
+                // to add (every node would say "0 assets") — silently
+                // ignored regardless of format.
+                let (content, sanitized) = match fmt {
+                    Fmt::Text => {
+                        let flat = maki::vocabulary::parse_vocabulary(maki::vocabulary::default_vocabulary());
+                        let pairs: Vec<(String, u64)> = flat.into_iter().map(|t| (t, 0)).collect();
+                        maki::vocabulary::tags_to_keyword_text(&pairs)
+                    }
+                    Fmt::Json => {
+                        let flat = maki::vocabulary::parse_vocabulary(maki::vocabulary::default_vocabulary());
+                        let pairs: Vec<(String, u64)> = flat.into_iter().map(|t| (t, 0)).collect();
+                        (maki::vocabulary::tags_to_vocabulary_json(&pairs), Vec::new())
+                    }
+                    Fmt::Yaml => {
+                        // The built-in vocab is itself YAML; emit verbatim.
+                        (maki::vocabulary::default_vocabulary().to_string(), Vec::new())
+                    }
                 };
                 let out_path = output.map(std::path::PathBuf::from)
                     .unwrap_or_else(|| catalog_root.join(default_filename));
@@ -2028,10 +2043,23 @@ pub fn run_tag_command(
             }
             all_tags.sort_by(|a, b| a.0.cmp(&b.0));
 
-            let (content, sanitized) = if is_text {
-                maki::vocabulary::tags_to_keyword_text(&all_tags)
-            } else {
-                (maki::vocabulary::tags_to_vocabulary_yaml(&all_tags), Vec::new())
+            let (content, sanitized) = match fmt {
+                Fmt::Text => {
+                    // Counts can't go in keyword-text (LR/C1 reject comments).
+                    if counts {
+                        eprintln!("  Note: --counts is ignored for text format (Lightroom/Capture One don't accept comments).");
+                    }
+                    maki::vocabulary::tags_to_keyword_text(&all_tags)
+                }
+                Fmt::Yaml => {
+                    let yaml = if counts {
+                        maki::vocabulary::tags_to_vocabulary_yaml_with_counts(&all_tags)
+                    } else {
+                        maki::vocabulary::tags_to_vocabulary_yaml(&all_tags)
+                    };
+                    (yaml, Vec::new())
+                }
+                Fmt::Json => (maki::vocabulary::tags_to_vocabulary_json(&all_tags), Vec::new()),
             };
             let out_path = output.map(std::path::PathBuf::from)
                 .unwrap_or_else(|| catalog_root.join(default_filename));

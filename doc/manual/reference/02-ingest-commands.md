@@ -765,26 +765,27 @@ maki-tag-export-vocabulary -- export the current tag tree as a vocabulary file
 
 ### SYNOPSIS
 
-    maki [GLOBAL FLAGS] tag export-vocabulary [--output <FILE>] [--format yaml|text] [--prune] [--default]
+    maki [GLOBAL FLAGS] tag export-vocabulary [--output <FILE>] [--format yaml|text|json] [--prune] [--default] [--counts]
 
 ### DESCRIPTION
 
 Generates a vocabulary file by merging the current catalog's tags with any existing vocabulary entries. Tags are grouped into a nested hierarchy.
 
-Two output formats are supported:
+Three output formats are supported:
 
 - **yaml** (default): MAKI's native `vocabulary.yaml` — used by the catalog itself for autocomplete of planned tags.
 - **text**: tab-indented keyword list compatible with Adobe Lightroom's *Import Keywords* and Capture One's *Import Keywords* (Keyword Text File). Use this to share your curated tag hierarchy with other tools so new ingest sessions there can autocomplete and tag against the same vocabulary.
+- **json**: nested object suitable for programmatic consumption (UIs, dashboards, integration scripts). Every node has a `count` field; non-leaf nodes have a `children` map keyed by child segment name. Asset counts are always included regardless of `--counts`.
 
 By default, planned-but-unused entries from the existing `vocabulary.yaml` are preserved in the export — the command adds new tags from usage without destroying your planned structure. Use `--prune` to remove unused entries and keep only tags that exist on at least one asset. Use `--default` to export only the built-in default vocabulary, ignoring both catalog tags and the existing vocabulary file.
 
 ### OPTIONS
 
 **--output \<FILE\>**
-: Output file path. Defaults to `vocabulary.yaml` (or `vocabulary.txt` with `--format text`) in the catalog root.
+: Output file path. Defaults to `vocabulary.yaml`, `vocabulary.txt`, or `vocabulary.json` in the catalog root, depending on `--format`.
 
 **--format \<FORMAT\>**
-: Output format: `yaml` (default) or `text`. The text format is tab-indented, one keyword per line, with hierarchy depth expressed by the number of leading tabs — the format accepted by Lightroom and Capture One for keyword import.
+: Output format: `yaml` (default), `text`, or `json`. See *DESCRIPTION* for what each format is suited to.
 
 **--prune**
 : Remove vocabulary entries that have no assets. Only keep tags from actual usage.
@@ -792,12 +793,16 @@ By default, planned-but-unused entries from the existing `vocabulary.yaml` are p
 **--default**
 : Export only the built-in default vocabulary. Ignores catalog tags and existing `vocabulary.yaml`. Useful when the default vocabulary is updated (e.g. after a MAKI upgrade adds new categories) and you want to inspect or merge the changes without overwriting your curated file.
 
+**--counts**
+: Annotate each tag with its asset count. In **yaml**, counts appear as a trailing `# N assets` comment on every entry — still valid YAML; MAKI's autocomplete loader ignores comments. In **json**, every node has a `count` field already, so the flag is implied. In **text** (Lightroom / Capture One), comments aren't supported; the flag is silently ignored to keep the file importable.
+
 ### EXAMPLES
 
 ```bash
 maki tag export-vocabulary                                  # merge: keep planned + add used
 maki tag export-vocabulary --prune                          # only used tags
 maki tag export-vocabulary --output ~/my-vocab.yaml         # custom path
+maki tag export-vocabulary --counts                         # YAML with `# N assets` trailing comments
 maki tag export-vocabulary --default                        # built-in defaults only
 maki tag export-vocabulary --default --output defaults.yaml # compare with your vocabulary
 
@@ -806,8 +811,41 @@ maki tag export-vocabulary --format text                    # vocabulary.txt in 
 maki tag export-vocabulary --format text --prune \
     --output ~/Desktop/maki-keywords.txt                    # used tags only, for import
 
+# JSON for scripts / dashboards (always carries asset counts):
+maki tag export-vocabulary --format json --prune > tags.json
+
 # Lightroom:     Metadata → Import Keywords… → select maki-keywords.txt
 # Capture One:   Image → Keywords → Import Keywords → Keyword Text File
+```
+
+#### YAML output with `--counts`
+
+```yaml
+subject:  # 5 assets
+  nature:  # 3 assets
+    - landscape  # 2 assets
+    - bird  # 1 asset
+- legoland  # 1 asset
+```
+
+#### JSON output
+
+```json
+{
+  "subject": {
+    "count": 5,
+    "children": {
+      "nature": {
+        "count": 3,
+        "children": {
+          "landscape": {"count": 2},
+          "bird": {"count": 1}
+        }
+      }
+    }
+  },
+  "legoland": {"count": 1}
+}
 ```
 
 ### SEE ALSO

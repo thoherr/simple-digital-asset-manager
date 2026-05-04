@@ -258,53 +258,147 @@ color:
 /// Build a vocabulary YAML string from a flat list of pipe-separated tags.
 /// Groups tags into a nested tree structure.
 pub fn tags_to_vocabulary_yaml(tags: &[(String, u64)]) -> String {
+    tags_to_vocabulary_yaml_inner(tags, false)
+}
+
+/// Like [`tags_to_vocabulary_yaml`] but emits a trailing `# N asset(s)` comment
+/// on every line. YAML treats `# …` after a value as a comment, so the output
+/// is still a valid vocabulary file — autocomplete loaders ignore the
+/// counts. The comment appears on both branch keys (`subject:  # 5 assets`)
+/// and leaf list items (`- landscape  # 2 assets`).
+pub fn tags_to_vocabulary_yaml_with_counts(tags: &[(String, u64)]) -> String {
+    tags_to_vocabulary_yaml_inner(tags, true)
+}
+
+fn tags_to_vocabulary_yaml_inner(tags: &[(String, u64)], with_counts: bool) -> String {
     use std::collections::BTreeMap;
 
-    // Build a tree structure
+    // Build a tree structure. Each node tracks its own asset count (when the
+    // exact path appears in `tags`). Synthesized parent nodes that aren't in
+    // the input get count 0 — but with the catalog's auto-expansion, every
+    // ancestor has its own row so this rarely happens.
     #[derive(Default)]
     struct Node {
+        count: u64,
         children: BTreeMap<String, Node>,
     }
 
     let mut root = Node::default();
-    for (tag, _count) in tags {
+    for (tag, count) in tags {
         let parts: Vec<&str> = tag.split('|').collect();
         let mut current = &mut root;
-        for part in parts {
+        for part in &parts {
             current = current.children.entry(part.to_string()).or_default();
+        }
+        current.count = *count;
+    }
+
+    fn count_comment(count: u64) -> String {
+        if count == 1 {
+            "  # 1 asset".to_string()
+        } else {
+            format!("  # {count} assets")
         }
     }
 
-    fn write_node(node: &Node, indent: usize, output: &mut String) {
+    fn write_node(node: &Node, indent: usize, with_counts: bool, output: &mut String) {
         let prefix = "  ".repeat(indent);
         // Separate leaf children (no sub-children) from branch children
         let mut leaves = Vec::new();
         let mut branches = Vec::new();
         for (name, child) in &node.children {
             if child.children.is_empty() {
-                leaves.push(name.as_str());
+                leaves.push((name.as_str(), child));
             } else {
                 branches.push((name.as_str(), child));
             }
         }
 
-        // Write branches first (as nested maps)
+        // Branches first (as nested maps).
         for (name, child) in &branches {
-            output.push_str(&format!("{}{}:\n", prefix, name));
-            write_node(child, indent + 1, output);
+            output.push_str(&format!("{prefix}{name}:"));
+            if with_counts {
+                output.push_str(&count_comment(child.count));
+            }
+            output.push('\n');
+            write_node(child, indent + 1, with_counts, output);
         }
 
-        // Write leaves as a YAML list
-        if !leaves.is_empty() {
-            for leaf in &leaves {
-                output.push_str(&format!("{}- {}\n", prefix, leaf));
+        // Leaves as a YAML list.
+        for (name, child) in &leaves {
+            output.push_str(&format!("{prefix}- {name}"));
+            if with_counts {
+                output.push_str(&count_comment(child.count));
             }
+            output.push('\n');
         }
     }
 
     let mut output = String::from("# Tag vocabulary — exported from catalog\n#\n# Edit this file to plan your tag hierarchy.\n# MAKI uses it for autocomplete suggestions.\n\n");
-    write_node(&root, 0, &mut output);
+    write_node(&root, 0, with_counts, &mut output);
     output
+}
+
+/// Build a nested-JSON vocabulary tree from a flat list of pipe-separated tags.
+///
+/// Each node has a `count` field plus an optional `children` map keyed by
+/// child segment name. Leaf nodes omit `children`. Suitable for programmatic
+/// consumption (UIs, dashboards, integration scripts) where the tab-indented
+/// text or YAML is awkward to walk.
+///
+/// Example:
+/// ```json
+/// {
+///   "subject": {
+///     "count": 5,
+///     "children": {
+///       "nature": {
+///         "count": 3,
+///         "children": {
+///           "landscape": {"count": 2}
+///         }
+///       }
+///     }
+///   }
+/// }
+/// ```
+pub fn tags_to_vocabulary_json(tags: &[(String, u64)]) -> String {
+    use std::collections::BTreeMap;
+
+    #[derive(Default)]
+    struct Node {
+        count: u64,
+        children: BTreeMap<String, Node>,
+    }
+
+    let mut root = Node::default();
+    for (tag, count) in tags {
+        let parts: Vec<&str> = tag.split('|').collect();
+        let mut current = &mut root;
+        for part in &parts {
+            current = current.children.entry(part.to_string()).or_default();
+        }
+        current.count = *count;
+    }
+
+    fn to_json(node: &Node) -> serde_json::Value {
+        let mut obj = serde_json::Map::new();
+        obj.insert("count".to_string(), serde_json::json!(node.count));
+        if !node.children.is_empty() {
+            let mut children = serde_json::Map::new();
+            for (name, child) in &node.children {
+                children.insert(name.clone(), to_json(child));
+            }
+            obj.insert("children".to_string(), serde_json::Value::Object(children));
+        }
+        serde_json::Value::Object(obj)
+    }
+
+    let mut top = serde_json::Map::new();
+    for (name, child) in &root.children {
+        top.insert(name.clone(), to_json(child));
+    }
+    serde_json::to_string_pretty(&serde_json::Value::Object(top)).unwrap_or_default()
 }
 
 /// Build a tab-indented keyword text file from a flat list of pipe-separated tags.
@@ -639,5 +733,69 @@ a_first:
         let mut sorted = tags.clone();
         sorted.sort();
         assert_eq!(tags, sorted, "output should be sorted");
+    }
+
+    // ── --counts trailing comments + JSON nested format ────────────────
+
+    #[test]
+    fn yaml_with_counts_emits_pluralised_trailing_comment() {
+        let tags = vec![
+            ("subject".to_string(), 5),
+            ("subject|nature".to_string(), 3),
+            ("subject|nature|landscape".to_string(), 2),
+            ("legoland".to_string(), 1),
+        ];
+        let yaml = tags_to_vocabulary_yaml_with_counts(&tags);
+        // Branch with multiple assets — pluralised.
+        assert!(yaml.contains("subject:  # 5 assets"), "got:\n{yaml}");
+        // Nested branch keeps its own count.
+        assert!(yaml.contains("nature:  # 3 assets"), "got:\n{yaml}");
+        // Leaf list item.
+        assert!(yaml.contains("- landscape  # 2 assets"), "got:\n{yaml}");
+        // Singular form for count == 1.
+        assert!(yaml.contains("- legoland  # 1 asset"), "got:\n{yaml}");
+        // Without trailing comment marker (sanity: the without-counts variant)
+        let plain = tags_to_vocabulary_yaml(&tags);
+        assert!(!plain.contains("# 5 assets"));
+    }
+
+    #[test]
+    fn json_nested_with_counts() {
+        let tags = vec![
+            ("subject".to_string(), 5),
+            ("subject|nature".to_string(), 3),
+            ("subject|nature|landscape".to_string(), 2),
+            ("legoland".to_string(), 1),
+        ];
+        let json = tags_to_vocabulary_json(&tags);
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        // subject branch with count + children
+        assert_eq!(parsed["subject"]["count"], 5);
+        assert_eq!(parsed["subject"]["children"]["nature"]["count"], 3);
+        assert_eq!(
+            parsed["subject"]["children"]["nature"]["children"]["landscape"]["count"],
+            2
+        );
+        // Leaf node has no children field.
+        assert!(parsed["subject"]["children"]["nature"]["children"]["landscape"]
+            .get("children")
+            .is_none());
+        // Top-level leaf.
+        assert_eq!(parsed["legoland"]["count"], 1);
+        assert!(parsed["legoland"].get("children").is_none());
+    }
+
+    #[test]
+    fn json_synthesised_branch_has_zero_count_when_input_lacks_it() {
+        // Catalog usually has rows for every ancestor (auto-expansion), but
+        // an external vocabulary file may include a branch without listing
+        // the branch itself. The exporter still produces the parent node
+        // with count 0.
+        let tags = vec![("a|b|c".to_string(), 7)];
+        let json = tags_to_vocabulary_json(&tags);
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["a"]["count"], 0);
+        assert_eq!(parsed["a"]["children"]["b"]["count"], 0);
+        assert_eq!(parsed["a"]["children"]["b"]["children"]["c"]["count"], 7);
     }
 }
