@@ -2,6 +2,75 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.4.15 (2026-05-04)
+
+A maintenance release. No new user-facing features — the entire release is internal restructuring driven by a fresh QA report (`doc/qa-report/qa-report.md`, refreshed at v4.4.14). The headline outcome: every large file in the codebase has been split along its natural cleavage planes, the `main.rs` god-module has been collapsed to a 2.8-kLOC dispatcher, and the import command now demonstrates a clean kernel/workflow/handler separation that future commands can follow.
+
+Tests (779 + 249 standard, 886 + 273 pro) are unchanged from v4.4.14 — the refactor is structural and behavior-preserving by design.
+
+### Big files split by section
+
+The QA report identified four 6–9 kLOC god-modules. All four are now directory-modules with multi-file `impl` blocks:
+
+- **`catalog.rs` 9200 → 4524 LOC** (most of the residual is tests). 17 submodules under `src/catalog/`: `schema`, `asset_crud`, `variant_crud`, `recipe_crud`, `volume`, `lookup`, `duplicates`, `recipe_query`, `rebuild`, `stats`, `search_builder`, `search_exec`, `facets`, `tags`, `analytics`, `backup`, `cleanup`. Six cross-section private helpers (`build_search_where`, `load_locations_for_hash`, `compute_duplicate_stats`, `load_duplicate_entries`, `backfill_gps_columns`, `stats_per_volume`) lifted to `pub(super)`.
+- **`asset_service.rs` 8886 → 2759 LOC**. 12 submodules under `src/asset_service/`: `import`, `relocate`, `verify`, `sync`, `cleanup`, `volume`, `dedup`, `refresh`, `fix`, `export`, `ai`, `video`. Three cross-section helpers (`apply_modified_recipe`, `update_sidecar_file_location_path`, `update_sidecar_recipe_path`) lifted to `pub(super)`.
+- **`query.rs` 6820 → 6028 LOC** with the parsing layer (`parse_search_query` + `ParsedSearch` + `NumericFilter` + `tokenize_query` + `normalize_path_for_search` — ~800 LOC) extracted into `query/parse.rs`. Public API unchanged via `pub use parse::*;`.
+- **`web/routes/ai.rs` 1614 → split** into `ai/{tags,embed,similarity,faces,stroll,mod}.rs`. `mod.rs` keeps the shared `resolve_model_dir` and `resolve_labels` helpers.
+
+The pattern in every case: keep struct + ctor + module-level helpers + tests in the original file (now the module root); each `// ═══ X ═══` section becomes a sibling submodule with `impl Catalog { ... }` / `impl AssetService { ... }` blocks. No struct split, no public API change.
+
+### main.rs collapsed to a dispatcher
+
+`main.rs` was 9725 LOC at v4.4.14 — CLI argument parsing, the dispatcher's match, all 40 command handlers, and a handful of helpers. Now:
+
+- **`main.rs` 2797 LOC** — `Cli` derive structs, the `Commands` enum + sub-enums, `main()`, and the dispatcher (`run_command`, 859 LOC of one-liner match arms).
+- **`commands.rs` 7004 LOC** (new) — every `run_X_command` handler plus their private helpers (`merge_trailing_ids`, `resolve_person_id`, `resolve_face_id`, `print_*_human`).
+
+The dispatcher's 859 lines are now a flat list of arms like `Commands::Import { … } => commands::run_import_command(…)`. Each handler is its own self-contained function with `(json, log, verbosity)` plus the destructured fields. A future per-command split of `commands.rs` (one file per command, mirroring the `catalog/` and `asset_service/` patterns) is queued but not done in this release — the file is still a single 7-kLOC unit.
+
+### Import workflow extracted
+
+The architectural counterpart to the structural splits: `AssetService::import_workflow` lifts the orchestration that lives between input parsing and the kernel call. Both the CLI (`run_import_command`) and the web (`web/routes/import.rs`) used to duplicate the entire sandwich — profile resolution, file-type filter assembly, volume resolution, tag merging, the post-import auto-group neighborhood scan with preview upgrade, the post-import embed phase, the post-import describe phase. Reproduced in two places, with subtle drift (the web version skipped the auto-group neighborhood scan and the post-group preview upgrade).
+
+The new `import_workflow` lives in `asset_service/workflow.rs`. Inputs:
+
+```
+ImportRequest        { paths, volume_label, profile, include, skip,
+                       add_tags, dry_run, smart, auto_group, embed,
+                       describe }
+ImportEvent<'a>      { PhaseStarted, PhaseSkipped, File, Embed,
+                       Describe } — frontend-agnostic progress
+ImportWorkflowResult { import, auto_group, embed, describe }
+```
+
+The CLI handler (run_import_command 454 → 234 LOC) and the web handler (run_import_dry + run_import_with_progress + the two helper functions, 446 → 327 LOC) shrink to thin "translate input → ImportRequest → call workflow → translate output" adapters. The web inherits the CLI's auto-group neighborhood scan + post-group preview upgrade for free.
+
+This is a demonstration of the kernel/workflow/handler pattern. The other commands with both CLI and web frontends (embed, describe, auto-tag, detect-faces) have a thinner duplication surface — the kernel methods (`embed_assets`, `describe_assets`, etc.) already are the workflow — so a similar wrapper would be ceremony for little gain. Not extended in this release.
+
+### Documentation polish
+
+- 29 source files gained `//!` module-level docs.
+- 17 large templates gained leading HTML purpose comments (matching the pattern set by `import_dialog.html` and `job_toast.html` in v4.4.14).
+- The few remaining undocumented `pub` items in the top-three files (`Catalog::open`, `SearchSort::from_str`, `FileStatus`, `AssetService` + `::new`, `QueryEngine` + `::new`) all got doc comments.
+- A new `doc/qa-report/qa-report.md` (with the prior 2026-04-17 report archived under `qa-report/archive/`) documents the punch-list and tracks which items landed in which commits.
+
+### Smaller DRY cleanups
+
+- New `config::load_config()` helper returns `(PathBuf, CatalogConfig)`. **27** paired `find_catalog_root() + CatalogConfig::load()` call sites in `main.rs` collapsed.
+- New `config::resolve_model_dir(model_dir_root, model_id)` — single source of truth for `~/`-expansion. The web helper delegates; three inline copies in `main.rs` removed.
+- New `web::routes::resolve_asset_id_or_err(catalog, prefix)` — replaces 7 copy-paste sites of the `resolve_asset_id().ok_or_else(...)` pattern. Unified error message format.
+- New `web::routes::spawn_catalog_blocking<T>(...)` async helper. Returns `Result<T, Response>` so handlers `?`-short-circuit the uniform 500-with-formatted-error path. Three demo sites migrated; ~100 remaining sites are opportunistic.
+- `build_search_where` shrank 357 → 205 LOC via 6 new per-filter helpers (`add_text_filters`, `add_format_filter`, `add_volume_filter`, `add_path_filter`, `add_date_filters`, `add_geo_filters`).
+- `parse_search_query` shrank 242 → 186 LOC via four module-scope lookup tables (`SIMPLE_FILTERS`, `NUMERIC_FILTERS`, `STRING_FILTERS`, `BOOLEAN_TOKENS`). Adding a new filter of those shapes is now one table line.
+- Naming: the lone `classify_impl` outlier renamed to `classify_inner` so the codebase consistently uses `_inner` for private helpers.
+
+### Tests + miscellany
+
+- Tests: 779 unit + 249 CLI + 14 doc on standard build (unchanged from v4.4.14). Pro: 886 + 273 + 14 (unchanged).
+- Cross-platform CI passes. No new dependencies, no API changes.
+- Side-change from the workflow callback design: `import_with_callback` and `embed_assets` callbacks went from `Fn` → `FnMut` (strictly more permissive; no caller broke). `describe_assets` stays `Fn + Sync` for parallel execution; the workflow wraps the outer FnMut in a Mutex when calling it.
+- Side-change from extraction: `run_writeback_command` and `run_sync_metadata_command` lost their inner `if cli.timing { … }` print. The outer dispatcher in `main()` already prints a wall-clock summary; the inner ones were duplicates.
+
 ## v4.4.14 (2026-05-03)
 
 A maintenance + UX release. The headline change is **live progress for every long-running web operation** — import, embed, auto-tag, detect-faces, and describe all flow through a new generic `JobRegistry` and a reusable progress toast, replacing the per-route bespoke plumbing (and the silent multi-minute "click and pray" UX on large batches). Plus a Unicode-NFC normalisation pass that fixes duplicate-tag bugs caused by NFC/NFD encoding drift, the missing standalone embed surfaces in the web UI, and the post-import embed/describe phases that were specified in CLI but never wired into the web import dialog.
