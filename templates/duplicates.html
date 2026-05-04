@@ -1,11 +1,11 @@
-<!--
+{#
     Duplicates page — `GET /duplicates`.
 
     Surfaces same-content-hash assets across volumes (cross-volume dedup
     candidates) and same-volume duplicates. Inline forms send dedup
     actions to `POST /api/dedup/resolve` and
     `DELETE /api/dedup/location`.
--->
+#}
 {% extends "base.html" %}
 
 {% block title %}Duplicates - MAKI{% endblock %}

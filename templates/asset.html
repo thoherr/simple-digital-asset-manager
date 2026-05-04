@@ -1,4 +1,4 @@
-<!--
+{#
     Asset detail — `GET /asset/{id}`.
 
     Renders one asset's full metadata, variant list, file locations, faces,
@@ -6,7 +6,7 @@
     description, label, recipe rotation/role/preview-variant overrides).
     Heavy use of htmx + inline JS for the per-field editors; the global
     lightbox and import dialog are mounted by `base.html`.
--->
+#}
 {% extends "base.html" %}
 
 {% block title %}{{ display_name }} - MAKI{% endblock %}
