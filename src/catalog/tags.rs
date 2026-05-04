@@ -6,38 +6,85 @@
 
 use super::*;
 
-/// Merge tag rows that differ only in letter case. Catalog storage preserves
-/// case (so e.g. a person tag "Peter Schneider" stays Title Case), but
-/// `tag:` searches in browse use SQLite `LIKE` which folds ASCII case. That
-/// asymmetry makes the tags-page count smaller than the browse count when
-/// any asset has a stray `Color` alongside the dominant `color`. Fold
-/// variants together for the count, picking the dominant case form for
-/// display: highest individual count wins; on ties, the lexicographically
-/// first form (which puts capitalised proper-noun forms ahead of all-lower).
+/// Hierarchical case-fold: merge tag paths that differ only in letter case,
+/// at each level of the hierarchy.
+///
+/// Catalog storage preserves case (so a proper-noun tag like
+/// `person|Peter Schneider` keeps its capital P), but browse's `tag:` filter
+/// uses SQLite `LIKE` which folds ASCII case. That asymmetry makes the
+/// tags-page tree fragment when the catalog contains case-stray entries.
+///
+/// A flat fold (lowercasing the whole path) is wrong: a catalog with
+/// `Color` (539, no descendants) plus `color|red` (102) and `color|blue` (54)
+/// folds the parent to `Color` but leaves children as `color|*`, producing
+/// an orphaned synthetic parent (count 0) alongside the merged `Color`.
+///
+/// Instead, fold per level, contextualised by the parent's lowercase path:
+///   1. Walk every (path, count) pair, accumulating case variants observed
+///      at each (parent-lowercase-path, lowercase-segment).
+///   2. For each such bucket, pick a dominant case form (highest cumulative
+///      count wins; ties broken by lex-first so capitalised proper-noun
+///      forms outrank all-lower variants).
+///   3. Rewrite every path using the dominant case at each level. Paths
+///      that collapse together (e.g. `Color|red` and `color|red`) sum.
 fn case_fold_tag_counts(raw: Vec<(String, u64)>) -> Vec<(String, u64)> {
     use std::collections::HashMap;
-    let mut by_key: HashMap<String, Vec<(String, u64)>> = HashMap::new();
-    for (name, count) in raw {
-        by_key.entry(name.to_lowercase()).or_default().push((name, count));
+
+    // Step 1: per-level case observations. Key: (parent_lowercase, lowercase_segment).
+    // Value: case_form → cumulative count of paths through this node.
+    let mut per_level: HashMap<(String, String), HashMap<String, u64>> = HashMap::new();
+    for (path, count) in &raw {
+        let mut parent_lower = String::new();
+        for seg in path.split('|') {
+            let lower = seg.to_lowercase();
+            *per_level
+                .entry((parent_lower.clone(), lower.clone()))
+                .or_default()
+                .entry(seg.to_string())
+                .or_default() += count;
+            if !parent_lower.is_empty() {
+                parent_lower.push('|');
+            }
+            parent_lower.push_str(&lower);
+        }
     }
-    let mut merged: Vec<(String, u64)> = by_key
+
+    // Step 2: pick dominant case form for every (parent, segment) bucket.
+    let dominant: HashMap<(String, String), String> = per_level
         .into_iter()
-        .map(|(_, variants)| {
-            let total: u64 = variants.iter().map(|(_, c)| c).sum();
-            // Tie-break: lex-first wins. `b.0.cmp(&a.0)` makes the lex-first
-            // element compare Greater in `max_by`'s eyes (which picks the
-            // Greater).
-            let dominant = variants
-                .iter()
+        .map(|(k, variants)| {
+            let dom = variants
+                .into_iter()
                 .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0)))
                 .unwrap()
-                .0
-                .clone();
-            (dominant, total)
+                .0;
+            (k, dom)
         })
         .collect();
-    merged.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    merged
+
+    // Step 3: rewrite paths using dominant case at each level; sum collapses.
+    let mut counts: HashMap<String, u64> = HashMap::new();
+    for (path, count) in raw {
+        let mut new_segments: Vec<String> = Vec::new();
+        let mut parent_lower = String::new();
+        for seg in path.split('|') {
+            let lower = seg.to_lowercase();
+            let dom_form = dominant
+                .get(&(parent_lower.clone(), lower.clone()))
+                .cloned()
+                .unwrap_or_else(|| seg.to_string());
+            new_segments.push(dom_form);
+            if !parent_lower.is_empty() {
+                parent_lower.push('|');
+            }
+            parent_lower.push_str(&lower);
+        }
+        *counts.entry(new_segments.join("|")).or_default() += count;
+    }
+
+    let mut result: Vec<(String, u64)> = counts.into_iter().collect();
+    result.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    result
 }
 
 impl Catalog {
@@ -651,5 +698,49 @@ mod tests {
         assert_eq!(folded[0], ("red".to_string(), 102));
         assert_eq!(folded[1], ("subject|nature".to_string(), 100));
         assert_eq!(folded[2], ("blue".to_string(), 54));
+    }
+
+    #[test]
+    fn case_fold_propagates_dominant_case_to_children() {
+        // Regression: a flat fold rewrites "color" → "Color" but leaves
+        // "color|red" / "color|blue" untouched, producing an orphaned
+        // synthetic "color" parent (count 0) when the tags-page tree builder
+        // walks prefixes. Hierarchical fold rewrites children's prefix too.
+        let raw = vec![
+            ("Color".to_string(), 539),
+            ("color|red".to_string(), 102),
+            ("color|blue".to_string(), 54),
+        ];
+        let folded = case_fold_tag_counts(raw);
+        let map: std::collections::HashMap<String, u64> = folded.iter().cloned().collect();
+        assert_eq!(map.get("Color"), Some(&539));
+        assert_eq!(map.get("Color|red"), Some(&102));
+        assert_eq!(map.get("Color|blue"), Some(&54));
+        // No leftover lowercase keys.
+        assert!(!map.contains_key("color"));
+        assert!(!map.contains_key("color|red"));
+        assert!(!map.contains_key("color|blue"));
+    }
+
+    #[test]
+    fn case_fold_per_level_independence() {
+        // Each level decides its dominant case independently from other
+        // levels. The same lowercase string can take different forms
+        // depending on its parent path.
+        let raw = vec![
+            // Root-level "subject" has 1 entry — lowercase wins by default.
+            ("subject".to_string(), 5),
+            // Under "subject", "nature" also lowercase.
+            ("subject|nature".to_string(), 10),
+            // Different parent: under "Style", "Nature" capitalised wins.
+            ("Style|Nature".to_string(), 20),
+            ("Style|nature".to_string(), 1),
+        ];
+        let folded = case_fold_tag_counts(raw);
+        let map: std::collections::HashMap<String, u64> = folded.iter().cloned().collect();
+        assert_eq!(map.get("subject"), Some(&5));
+        assert_eq!(map.get("subject|nature"), Some(&10));
+        assert_eq!(map.get("Style|Nature"), Some(&21));
+        assert!(!map.contains_key("Style|nature"));
     }
 }
