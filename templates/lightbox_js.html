@@ -1,13 +1,14 @@
-<!--
-    Full-screen lightbox controller — included once from `base.html`.
-
-    Powers the lightbox overlay opened by clicking an asset card. Handles
-    arrow-key navigation across the current result set, mouse-wheel zoom,
-    drag-to-pan, and the prev/next preloading. Exposes
-    `window.openLightbox(assetId, index)` for callers.
--->
-// --- Shared Lightbox ---
-// Items-based lightbox. Each page calls setItems() with its data and open() to display.
+// Full-screen lightbox controller — included into the host page's <script>
+// tag (asset.html, browse.html, stroll.html). Don't add a <script> wrapper
+// here; the parent owns it.
+//
+// Powers the lightbox overlay opened by clicking an asset card. Handles
+// arrow-key navigation across the current result set, mouse-wheel zoom,
+// drag-to-pan, and prev/next preloading. Exposes window.openLightbox(...)
+// for callers.
+//
+// Items-based: each page calls setItems() with its data and open() to show.
+// Item shape: { id, preview, name, type, format, date, rating, label, variants }
 // Item shape: { id, preview, name, type, format, date, rating, label, variants }
 (function() {
     var items = [];
