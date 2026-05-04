@@ -58,13 +58,17 @@
                 var tl = t.toLowerCase();
                 return tl.indexOf(query) !== -1 || tl.indexOf(queryStorage) !== -1;
             });
+            // Keep leaves AND middle-of-hierarchy tags whose own name (any
+            // component) matches the query.
             var matches = rawMatches.filter(function(t) {
                 var prefix = t + '|';
                 var hasChild = rawMatches.some(function(other) { return other.indexOf(prefix) === 0; });
                 if (!hasChild) return true;
-                var lastPart = t.split('|').pop().toLowerCase();
-                return lastPart.indexOf(query) !== -1 || lastPart.indexOf(queryStorage) !== -1;
-            }).slice(0, 10);
+                var components = t.toLowerCase().split('|');
+                return components.some(function(c) {
+                    return c.indexOf(query) !== -1 || c.indexOf(queryStorage) !== -1;
+                });
+            }).slice(0, 12);
 
             if (matches.length === 0) {
                 ac.style.display = 'none';

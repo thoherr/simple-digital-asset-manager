@@ -571,13 +571,20 @@ window.onFilterChange = onFilterChange;
                 var tl = t.toLowerCase();
                 return tl.indexOf(query) !== -1 || tl.indexOf(queryStorage) !== -1;
             });
+            // Keep leaves AND middle-of-hierarchy tags whose own name (any
+            // component) matches the query — without the second clause,
+            // searching "subject" with both `subject|nature` and
+            // `subject|nature|landscape` in the catalog would hide the
+            // middle node `subject|nature`.
             var matches = rawMatches.filter(function(t) {
                 var prefix = t + '|';
                 var hasChild = rawMatches.some(function(other) { return other.indexOf(prefix) === 0; });
                 if (!hasChild) return true;
-                var lastPart = t.split('|').pop().toLowerCase();
-                return lastPart.indexOf(query) !== -1 || lastPart.indexOf(queryStorage) !== -1;
-            }).slice(0, 10);
+                var components = t.toLowerCase().split('|');
+                return components.some(function(c) {
+                    return c.indexOf(query) !== -1 || c.indexOf(queryStorage) !== -1;
+                });
+            }).slice(0, 12);
 
             if (matches.length === 0) {
                 bAc.style.display = 'none';

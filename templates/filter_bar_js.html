@@ -194,26 +194,45 @@
             return tagMatches(t.toLowerCase()) && selected.indexOf(t) === -1;
         });
 
-        // Prefer leaf tags: suppress entries that are prefixes of other matches,
-        // UNLESS the query directly matches the last component (user is targeting that level).
-        // In anchored mode, also keep entries where ANY component starts with the query —
-        // this lets users select intermediate hierarchy levels (e.g. `events|wedding` from
-        // `|wed` even when `events|wedding|2024-05-12` exists below it).
-        var matches = rawMatches.filter(function(t) {
+        // Pre-compute hasChild once per match (was O(n^2) inside the filter).
+        var rawSet = {};
+        rawMatches.forEach(function(t) { rawSet[t] = true; });
+        function hasChildIn(t) {
             var prefix = t + '|';
-            var hasChild = rawMatches.some(function(other) { return other.indexOf(prefix) === 0; });
-            if (!hasChild) return true;
-            if (anchored) {
-                // Keep this intermediate level if any of its components starts with the query
-                var components = t.toLowerCase().split('|');
-                return components.some(function(c) {
-                    return c.indexOf(query) === 0 || c.indexOf(queryStorage) === 0;
-                });
+            for (var i = 0; i < rawMatches.length; i++) {
+                if (rawMatches[i].indexOf(prefix) === 0) return true;
             }
-            // Keep if query matches the last component of this tag
-            var lastPart = t.split('|').pop().toLowerCase();
-            return lastPart.indexOf(query) !== -1 || lastPart.indexOf(queryStorage) !== -1;
-        }).slice(0, 10);
+            return false;
+        }
+
+        // Filter: keep leaves (no descendants in the result set) AND keep
+        // intermediate hierarchy levels whose own name (any component) matches
+        // the query. Without the second clause, searching "subject" with both
+        // `subject|nature` and `subject|nature|landscape` in the catalog would
+        // hide `subject|nature` even though it's a real catalog tag the user
+        // may want to filter on directly. Anchored mode requires the component
+        // to *start with* the query (stricter); non-anchored allows substring.
+        var matches = rawMatches.filter(function(t) {
+            if (!hasChildIn(t)) return true;
+            var components = t.toLowerCase().split('|');
+            return components.some(function(c) {
+                if (anchored) {
+                    return c.indexOf(query) === 0 || c.indexOf(queryStorage) === 0;
+                }
+                return c.indexOf(query) !== -1 || c.indexOf(queryStorage) !== -1;
+            });
+        });
+
+        // Sort so leaves of matched paths appear after their parent (when both
+        // are kept), and shorter paths appear first within each group. Cap at
+        // 12 (was 10) to leave a little room for the now-included middle nodes.
+        matches.sort(function(a, b) {
+            var ad = a.split('|').length;
+            var bd = b.split('|').length;
+            if (ad !== bd) return ad - bd;
+            return a.localeCompare(b);
+        });
+        matches = matches.slice(0, 12);
 
         if (matches.length === 0) {
             ac.style.display = 'none';
@@ -230,9 +249,28 @@
             var parts = t.split('|');
             if (parts.length > 1) {
                 var prefix = parts.slice(0, -1).join('|') + '|';
-                div.innerHTML = '<span class="tag-path-prefix">' +
-                    prefix.replace(/&/g,'&amp;').replace(/</g,'&lt;') +
-                    '</span>' + parts[parts.length - 1].replace(/&/g,'&amp;').replace(/</g,'&lt;');
+                // Prefix span is a drill-in affordance: clicking it scopes the
+                // autocomplete to that sub-hierarchy by replacing the input
+                // with `|<prefix>` and re-querying. The leaf portion (and the
+                // gaps around the spans) still selects the whole tag.
+                var prefixSpan = document.createElement('span');
+                prefixSpan.className = 'tag-path-prefix';
+                prefixSpan.textContent = prefix;
+                prefixSpan.title = 'Drill into ' + prefix + '… (click leaf name to select tag)';
+                prefixSpan.style.cursor = 'pointer';
+                prefixSpan.onmousedown = function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var input = document.querySelector('.tag-filter-input');
+                    if (!input) return;
+                    input.value = '|' + prefix;
+                    input.focus();
+                    showSuggestions(input.value);
+                };
+                var leafSpan = document.createElement('span');
+                leafSpan.textContent = parts[parts.length - 1];
+                div.appendChild(prefixSpan);
+                div.appendChild(leafSpan);
             } else {
                 div.textContent = t;
             }
