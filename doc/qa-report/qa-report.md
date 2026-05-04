@@ -9,7 +9,7 @@ Previous QA reports are archived under `doc/qa-report/archive/`.
 ## Status
 
 - **Batch 1 (small DRY wins)**: ✅ landed in commit `6889825` (2026-05-03). Tests still 779/249/886/273. See per-item status below.
-- **Batch 2 (structural splits)**: 🟡 mostly done — M1, H1 (partial), M2, **H3 done** across `85984f8`, `7ce8d11`, `9d24d8f`, `6262a39` (2026-05-03 / 2026-05-04). Tests still 779/249/886/273. **H2, M3+M4 remain** — H2 is a separate focused session per the original plan; M3/M4 ~2h together.
+- **Batch 2 (structural splits)**: 🟡 mostly done — M1, H1 (partial), M2, **H3, H2 done** across `85984f8`, `7ce8d11`, `9d24d8f`, `6262a39`, `ae3bd4d` (2026-05-03 / 2026-05-04). Tests still 779/249/886/273. **M3+M4 remain** (~2h together).
 - **Batch 3 (documentation polish)**: pending.
 
 ---
@@ -21,7 +21,7 @@ Previous QA reports are archived under `doc/qa-report/archive/`.
 | # | Finding | Citation | Notes |
 |---|---------|----------|-------|
 | H1 | 🟡 **PARTIAL** (`7ce8d11`, 2026-05-03) — extracted the five longest arms (Import, Tag, AutoTag, RebuildCatalog, Volume); `run_command` shrank 5921 → 4062 LOC. Remaining big arms (GeneratePreviews 281, Collection 206, Describe 197, Cleanup 193, SavedSearch 165) follow the same mechanical pattern; left for opportunistic cleanup as touched. | `src/main.rs` | — |
-| H2 | `catalog.rs` 9 200 LOC god-module | `src/catalog.rs` | Mixes asset CRUD, variant CRUD, location CRUD, recipe storage, schema migrations, denormalised-column maintenance, duplicates queries, rebuild logic. Natural cleavage planes: `catalog/{assets,variants,recipes,migrations,denorm}.rs` re-exporting through one `Catalog` impl. |
+| H2 | ✅ **DONE** (`ae3bd4d`, 2026-05-04) — split into 17 submodules along the existing `// ═══` markers via multi-file `impl Catalog` blocks: schema, asset_crud, variant_crud, recipe_crud, volume, lookup, duplicates, recipe_query, rebuild, stats, search_builder, search_exec, facets, tags, analytics, backup, cleanup. catalog.rs went 9200 → 4524 LOC (most of which is tests). 6 cross-section helpers lifted to `pub(super)`. | `src/catalog/` | — |
 | H3 | ✅ **DONE** (`6262a39`, 2026-05-04) — split into 12 submodules: `asset_service/{import,relocate,verify,sync,cleanup,volume,dedup,refresh,fix,export,ai,video}.rs`. Each is an `impl AssetService { ... }` block; no struct split, public API unchanged. asset_service.rs went 8886 → 2759 LOC (preamble + struct + ctor + free fns + tests). 3 cross-section private helpers lifted to `pub(super)`. | `src/asset_service/` | — |
 | H4 | ✅ **DONE** (`6889825`) — `resolve_asset_id` boilerplate lifted into `web::routes::resolve_asset_id_or_err`; 7 sites migrated, message format unified. | `web/routes/{browse,ai,media,stacks,assets,collections}.rs` | — |
 | H5 | ⚠️ **HELPER LANDED, MIGRATION OPPORTUNISTIC** (`6889825`) — `web::routes::spawn_catalog_blocking` returns `Result<T, Response>` so handlers short-circuit on `?`. 3 demo sites migrated; remaining ~100 sites left for opportunistic cleanup. Recount: 106 actual `spawn_blocking` sites across 13 files (initial 40+ estimate was low). | `web/routes/*.rs` | — |
@@ -76,7 +76,7 @@ Each item is its own PR — they're independent of each other. Order by pain-rel
 1. ✅ **H1** (PARTIAL, `7ce8d11`) — extracted Import, Tag, AutoTag, RebuildCatalog, Volume; `run_command` 5921 → 4062 LOC. Remaining big arms left for opportunistic cleanup.
 2. ✅ **M1** (`85984f8`) — `web/routes/ai/` directory module: tags, embed, similarity, faces, stroll.
 3. ✅ **H3** (`6262a39`) — split into 12 submodules along the existing `// ═══ X ═══` markers via multi-file `impl AssetService` blocks. asset_service.rs 8886 → 2759 LOC. Three cross-section helpers lifted to `pub(super)`.
-4. ⏳ **H2** — Split `catalog.rs` along the same plan as H3. (~4–6h.) Same multi-file-`impl` strategy.
+4. ✅ **H2** (`ae3bd4d`) — split into 17 submodules along the existing `// ═══` markers, same multi-file `impl Catalog` pattern as H3. catalog.rs 9200 → 4524 LOC (≈3.6 kLOC of that is tests). Six cross-section helpers lifted to `pub(super)`.
 5. ✅ **M2** (`9d24d8f`) — extracted the parsing layer into `query/parse.rs` (~800 LOC). The original plan suggested search/write split on the impl block; the cleaner cleavage turned out to be parsing (DB-free) vs everything else (DB-bound). Public API unchanged via `pub use parse::*;`. Search-impl/write-impl split can follow if query.rs grows again.
 6. ⏳ **M3 + M4** — Further decomposition of `build_search_where` (still 356 LOC in catalog.rs) and `parse_search_query` (245 LOC, table-driven dispatch in query/parse.rs). (~2h together.)
 
