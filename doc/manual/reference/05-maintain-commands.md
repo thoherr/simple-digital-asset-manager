@@ -431,7 +431,13 @@ maki [GLOBAL FLAGS] writeback [QUERY] [OPTIONS]
 
 ### DESCRIPTION
 
-Replays pending metadata writes to XMP recipe files on disk. When metadata is edited (rating, label, tags, description) while a volume is offline, XMP write-back is skipped and the recipe is marked with `pending_writeback`. This command pushes those pending changes to XMP when the volume comes back online.
+Flushes pending metadata writes to XMP recipe files on disk. The pending queue accumulates whenever an edit (rating, label, tags, description) cannot or should not be written to disk inline:
+
+- The recipe lives on an offline volume.
+- The XMP file is missing on disk.
+- `[writeback] enabled = false` (the safety-net default in `maki.toml`) — every edit is tracked but no `.xmp` file is touched until this command runs.
+
+This command **always works**, regardless of `[writeback] enabled`. The config flag governs only *automatic* writeback on every edit; `maki writeback` is the explicit manual flush, and is the supported way to keep auto-flush off as a safety net while still pushing staged metadata onto disk on demand. See the [`[writeback]` configuration reference](08-configuration.md#writeback-section) for the full split.
 
 Without `--all`, only recipes with `pending_writeback=1` are processed. Each recipe's XMP file is updated with the current asset metadata (rating, label, tags, description), then re-hashed and the pending flag is cleared.
 
@@ -449,7 +455,7 @@ Scope can be narrowed with a positional search query, `--asset`, or `--volume`. 
 : Limit to recipes belonging to a specific asset (prefix match).
 
 **--all**
-: Write current metadata to every XMP recipe, not just pending ones. Useful for an initial sync or to force-push all MAKI metadata to XMP files.
+: Write current metadata to every XMP recipe in the matching set, not just those flagged pending. Useful for an initial sync, for rematerialising catalog metadata onto disk after large catalog-only restructuring (rename, split, rebuild), or for pushing accumulated edits when you've kept auto-flush off and now want a known asset set written through.
 
 **--dry-run**
 : Report what would be written without modifying any files.

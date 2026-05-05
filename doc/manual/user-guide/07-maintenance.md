@@ -292,9 +292,12 @@ maki refresh --log --time --json
 
 ## Write Back *(Pro)*
 
-`maki writeback` replays pending metadata writes to XMP recipe files. When you edit metadata (rating, label, tags, description) while a volume is offline, the XMP write-back is skipped and the recipe is marked with a `pending_writeback` flag. The edits are safe in the YAML sidecar and SQLite catalog, but the `.xmp` files on disk still have old values. This command pushes those pending changes to XMP when the volume comes back online.
+`maki writeback` flushes pending metadata writes to XMP recipe files. The pending queue accumulates in two situations:
 
-> **Prerequisite:** XMP writeback must be enabled in `maki.toml` for edits to reach `.xmp` files. Without `[writeback] enabled = true`, metadata edits are stored safely in the YAML sidecars and SQLite catalog but are not written to XMP files on your volumes. This is a safety measure — XMP writeback modifies files on your storage volumes. See the [Configuration Reference](../reference/08-configuration.md#writeback-section).
+1. You edit metadata (rating, label, tags, description) while the asset's volume is offline. The auto-writeback path skips the file write and marks the recipe `pending_writeback` until the volume comes back.
+2. `[writeback] enabled = false` (the default safety setting). Every metadata edit lands in the catalog and YAML sidecar and is flagged `pending_writeback`, but no `.xmp` file is touched. Then `maki writeback` is the explicit, one-off flush — your safety net stays in place between flushes.
+
+> **Note:** `maki writeback` always works regardless of `[writeback] enabled`. The config flag governs only *automatic* writeback on every edit; this command is the manual flush. See the [Configuration Reference](../reference/08-configuration.md#writeback-section) for the auto-vs-manual split.
 
 ### Process pending write-backs
 
@@ -362,7 +365,7 @@ maki writeback --log --time --json
 
 `maki sync-metadata` performs bidirectional XMP metadata sync in a single command — combining the inbound (refresh) and outbound (writeback) steps with conflict detection.
 
-> **Prerequisite:** The outbound (writeback) phase requires `[writeback] enabled = true` in `maki.toml`. Without it, `sync-metadata` still performs inbound sync (reading external XMP changes into the catalog) but skips writing MAKI edits back to `.xmp` files. See the [Configuration Reference](../reference/08-configuration.md#writeback-section).
+> **Note:** The outbound (writeback) phase honours `[writeback] enabled`. With auto-flush off (the default), `sync-metadata` performs inbound sync only — the catalog absorbs external XMP changes, but MAKI edits stay queued as `pending_writeback` until you run `maki writeback` (which always works regardless of the flag). With `enabled = true`, both directions run inline. See the [Configuration Reference](../reference/08-configuration.md#writeback-section).
 
 ### Basic usage
 
@@ -447,7 +450,7 @@ Use `writeback` to push MAKI metadata to XMP files on disk. The external tool pi
 maki writeback --volume "Work SSD" --log
 ```
 
-This writes rating, color label, tags, and description to every XMP recipe with pending changes. Requires `[writeback] enabled = true` in `maki.toml`.
+This writes rating, color label, tags, and description to every XMP recipe flagged `pending_writeback`. Works whether or not `[writeback] enabled = true` — that config controls only *automatic* writeback on every edit; the `writeback` command is the explicit manual flush.
 
 For an initial sync (pushing all MAKI metadata to XMP, not just pending changes):
 

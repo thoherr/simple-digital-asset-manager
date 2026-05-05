@@ -341,7 +341,18 @@ impl QueryEngine {
         }
     }
 
-    /// Check if XMP writeback is enabled in maki.toml.
+    /// Whether *automatic* XMP writeback is enabled (`[writeback] enabled`
+    /// in maki.toml). When true, every metadata edit (rating, label,
+    /// description, tags) writes through to the asset's `.xmp` recipe
+    /// files immediately. When false, the edit still lands in the SQLite
+    /// catalog and YAML sidecar — and the recipe is marked
+    /// `pending_writeback = true` — but the `.xmp` files on disk stay
+    /// unchanged until `maki writeback` is run.
+    ///
+    /// Default is `false`: a safety net against accidentally touching
+    /// `.xmp` files on offline media or recipes shared with other DAMs.
+    /// `maki writeback` is the explicit manual flush; it ignores this
+    /// flag (see `writeback` / `writeback_process`).
     fn is_writeback_enabled(&self) -> bool {
         crate::config::CatalogConfig::load(&self.catalog_root)
             .map(|c| c.writeback.enabled)
@@ -1410,9 +1421,7 @@ impl QueryEngine {
             } else {
                 (changed.clone(), Vec::new())
             };
-            if self.is_writeback_enabled() {
-                self.write_back_tags_to_xmp_inner(&mut asset, &to_add, &to_remove, &ctx.catalog, &ctx.meta_store, &ctx.online_volumes, &ctx.content_store);
-            }
+            self.write_back_tags_to_xmp_inner(&mut asset, &to_add, &to_remove, &ctx.catalog, &ctx.meta_store, &ctx.online_volumes, &ctx.content_store);
         }
 
         Ok(TagResult {
@@ -1604,13 +1613,13 @@ impl QueryEngine {
                 store.save(&asset)?;
                 catalog.insert_asset(&asset)?;
 
-                // Writeback: remove old tags, add new tags in XMP
-                if self.is_writeback_enabled() {
-                    self.write_back_tags_to_xmp_inner(
-                        &mut asset, &tags_to_add, &tags_to_remove,
-                        &catalog, &store, &online, &content_store,
-                    );
-                }
+                // Writeback: remove old tags, add new tags in XMP. Inner
+                // tracks pending and skips the file write when auto-flush
+                // is off.
+                self.write_back_tags_to_xmp_inner(
+                    &mut asset, &tags_to_add, &tags_to_remove,
+                    &catalog, &store, &online, &content_store,
+                );
             }
             match action {
                 TagRenameAction::Renamed => result.renamed += 1,
@@ -1754,12 +1763,10 @@ impl QueryEngine {
                 store.save(&asset)?;
                 catalog.insert_asset(&asset)?;
 
-                if self.is_writeback_enabled() {
-                    self.write_back_tags_to_xmp_inner(
-                        &mut asset, &actually_new, &tags_to_remove,
-                        &catalog, &store, &online, &content_store,
-                    );
-                }
+                self.write_back_tags_to_xmp_inner(
+                    &mut asset, &actually_new, &tags_to_remove,
+                    &catalog, &store, &online, &content_store,
+                );
             }
         }
 
@@ -1892,12 +1899,10 @@ impl QueryEngine {
                 store.save(&asset)?;
                 catalog.insert_asset(&asset)?;
 
-                if self.is_writeback_enabled() {
-                    self.write_back_tags_to_xmp_inner(
-                        &mut asset, &[], &tags_to_remove,
-                        &catalog, &store, &online, &content_store,
-                    );
-                }
+                self.write_back_tags_to_xmp_inner(
+                    &mut asset, &[], &tags_to_remove,
+                    &catalog, &store, &online, &content_store,
+                );
             }
             result.removed += 1;
         }
@@ -1973,11 +1978,14 @@ impl QueryEngine {
             // Determine which tags were removed (for XMP writeback): tags
             // present in the original list (after NFC, to compare like-for-
             // like) but absent from the deduped result.
-            let tags_removed: Vec<String> = if apply && self.is_writeback_enabled() {
+            // Compute removed-tag delta for XMP writeback (so the inner
+            // method can mark pending and/or strip the keyword from the
+            // file). Cheap multiset diff; always run when applying so the
+            // pending tracker stays accurate even with auto-flush off.
+            let tags_removed: Vec<String> = if apply {
                 let mut original_normalised: Vec<String> = asset.tags.iter()
                     .map(|t| crate::tag_util::nfc(t))
                     .collect();
-                // Drop one occurrence per kept tag from the multiset.
                 for kept in &nfc_tags {
                     if let Some(pos) = original_normalised.iter().position(|t| t == kept) {
                         original_normalised.remove(pos);
@@ -2002,11 +2010,13 @@ impl QueryEngine {
                 store.save(&asset)?;
                 catalog.insert_asset(&asset)?;
 
-                if self.is_writeback_enabled() && !tags_removed.is_empty() {
+                if !tags_removed.is_empty() {
                     // Only the removed half of the dedup is communicated as a
                     // delete; the kept half is identical to what was already
                     // there modulo NFC, so XMP semantics are unchanged for
-                    // those values. The inner writeback handles its own gating.
+                    // those values. The inner writeback handles its own
+                    // gating (tracks pending when auto-flush is off, writes
+                    // when on).
                     self.write_back_tags_to_xmp_inner(
                         &mut asset, &[], &tags_removed,
                         &catalog, &store, &online, &content_store,
@@ -2376,7 +2386,11 @@ impl QueryEngine {
         catalog: &Catalog,
         store: &MetadataStore,
     ) {
-        if !self.is_writeback_enabled() { return; }
+        // Note: no `if !is_writeback_enabled() return` short-circuit here.
+        // Tracking is always on; the inner method skips the actual XMP file
+        // write when disabled and marks the recipe pending for later flush
+        // via `maki writeback`. This lets users keep auto-write off as a
+        // safety net without losing the change record.
         let registry = DeviceRegistry::new(&self.catalog_root);
         let volumes = match registry.list() {
             Ok(v) => v,
@@ -2403,6 +2417,7 @@ impl QueryEngine {
         online: &HashMap<uuid::Uuid, PathBuf>,
         content_store: &ContentStore,
     ) {
+        let writeback_active = self.is_writeback_enabled();
         let mut sidecar_dirty = false;
 
         for recipe in &mut asset.recipes {
@@ -2414,6 +2429,14 @@ impl QueryEngine {
                 .unwrap_or("")
                 .to_lowercase();
             if ext != "xmp" {
+                continue;
+            }
+
+            if !writeback_active {
+                // Auto-flush off: track the change for later, skip the file
+                // write. `maki writeback` reads pending markers and flushes.
+                Self::mark_recipe_pending(recipe, catalog);
+                sidecar_dirty = true;
                 continue;
             }
 
@@ -2493,6 +2516,7 @@ impl QueryEngine {
         online: &HashMap<uuid::Uuid, PathBuf>,
         content_store: &ContentStore,
     ) {
+        let writeback_active = self.is_writeback_enabled();
         let mut sidecar_dirty = false;
 
         for recipe in &mut asset.recipes {
@@ -2504,6 +2528,12 @@ impl QueryEngine {
                 .unwrap_or("")
                 .to_lowercase();
             if ext != "xmp" {
+                continue;
+            }
+
+            if !writeback_active {
+                Self::mark_recipe_pending(recipe, catalog);
+                sidecar_dirty = true;
                 continue;
             }
 
@@ -2772,7 +2802,7 @@ impl QueryEngine {
         catalog: &Catalog,
         store: &MetadataStore,
     ) {
-        if !self.is_writeback_enabled() { return; }
+        let writeback_active = self.is_writeback_enabled();
         let registry = DeviceRegistry::new(&self.catalog_root);
         let volumes = match registry.list() {
             Ok(v) => v,
@@ -2800,6 +2830,12 @@ impl QueryEngine {
                 .unwrap_or("")
                 .to_lowercase();
             if ext != "xmp" {
+                continue;
+            }
+
+            if !writeback_active {
+                Self::mark_recipe_pending(recipe, catalog);
+                sidecar_dirty = true;
                 continue;
             }
 
@@ -2876,7 +2912,8 @@ impl QueryEngine {
         catalog: &Catalog,
         store: &MetadataStore,
     ) {
-        if !self.is_writeback_enabled() { return; }
+        // Tracking is unconditional; the inner method skips the file write
+        // when auto-flush is off.
         let registry = DeviceRegistry::new(&self.catalog_root);
         let volumes = match registry.list() {
             Ok(v) => v,
@@ -2903,6 +2940,7 @@ impl QueryEngine {
         online: &HashMap<uuid::Uuid, PathBuf>,
         content_store: &ContentStore,
     ) {
+        let writeback_active = self.is_writeback_enabled();
         let mut sidecar_dirty = false;
 
         for recipe in &mut asset.recipes {
@@ -2914,6 +2952,12 @@ impl QueryEngine {
                 .unwrap_or("")
                 .to_lowercase();
             if ext != "xmp" {
+                continue;
+            }
+
+            if !writeback_active {
+                Self::mark_recipe_pending(recipe, catalog);
+                sidecar_dirty = true;
                 continue;
             }
 
@@ -2995,13 +3039,11 @@ impl QueryEngine {
         log: bool,
         callback: Option<&dyn Fn(&str, &str)>,
     ) -> Result<WritebackResult> {
-        if !dry_run && !self.is_writeback_enabled() {
-            anyhow::bail!(
-                "XMP writeback is disabled. To enable, add to maki.toml:\n\n  \
-                 [writeback]\n  enabled = true\n\n  \
-                 Warning: this will modify .xmp recipe files on your volumes."
-            );
-        }
+        // `maki writeback` is the explicit manual flush. It runs whether or
+        // not `[writeback] enabled` is set — the config flag governs only
+        // *automatic* writeback on every edit. Users who keep auto-flush
+        // off as a safety net still want this command to work; that's the
+        // whole point of the split.
         let catalog = Catalog::open(&self.catalog_root)?;
         let store = MetadataStore::new(&self.catalog_root);
         let registry = DeviceRegistry::new(&self.catalog_root);
@@ -3074,13 +3116,8 @@ impl QueryEngine {
         log: bool,
         callback: Option<&dyn Fn(&str, &str)>,
     ) -> Result<WritebackResult> {
-        if !dry_run && !self.is_writeback_enabled() {
-            anyhow::bail!(
-                "XMP writeback is disabled. To enable, add to maki.toml:\n\n  \
-                 [writeback]\n  enabled = true\n\n  \
-                 Warning: this will modify .xmp recipe files on your volumes."
-            );
-        }
+        // No `is_writeback_enabled()` gate: explicit manual flush always
+        // runs (see comment on `writeback`).
         let mut result = WritebackResult::default();
         result.dry_run = dry_run;
 

@@ -856,7 +856,21 @@ enum Commands {
         asset_ids: Vec<String>,
     },
 
-    /// Write back pending metadata changes to XMP recipe files
+    /// Write pending metadata changes to XMP recipe files
+    ///
+    /// Manually flushes recipe edits (rating, label, description, tags)
+    /// from the catalog to the .xmp files on disk. Always works regardless
+    /// of `[writeback] enabled` in maki.toml — that config controls only
+    /// AUTOMATIC writeback on every edit; this command is the explicit
+    /// manual flush, intended for users who keep auto-flush off as a
+    /// safety net but want to push staged changes for a specific set of
+    /// assets.
+    ///
+    /// By default writes only recipes flagged `pending_writeback`. With
+    /// `--all` (combined with a query/volume) it rewrites every XMP in
+    /// the matching set, even those without pending markers — useful for
+    /// rematerialising catalog metadata onto disk after large catalog-
+    /// only edits.
     #[cfg(feature = "pro")]
     #[command(display_order = 42)]
     Writeback {
@@ -872,7 +886,9 @@ enum Commands {
         #[arg(long, display_order = 11)]
         asset: Option<String>,
 
-        /// Write back all XMP recipes (not just pending ones)
+        /// Write all XMP recipes in the matching set, not just those
+        /// flagged pending. Use this together with a query/volume filter
+        /// to rematerialise catalog metadata for a known asset set.
         #[arg(long, display_order = 12)]
         all: bool,
 

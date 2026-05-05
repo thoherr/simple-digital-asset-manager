@@ -270,7 +270,7 @@ For rating, description, and color label, the **first source to set a value wins
 
 When a sidecar recipe is **updated later** (e.g. after editing in Capture One or Lightroom), the behavior changes: sidecar XMP **overwrites** rating, description, and color label. This ensures that edits made in photo editing software take effect. The `created_at` date is never overwritten — it is always derived from EXIF.
 
-> **Note:** The reverse direction — writing MAKI edits back to `.xmp` files — requires enabling `[writeback] enabled = true` in `maki.toml`. Without this, edits are stored in the catalog and YAML sidecars but not written to XMP files on your volumes. See the [Configuration Reference](../reference/08-configuration.md#writeback-section) for details.
+> **Note:** The reverse direction — writing MAKI edits back to `.xmp` files — has two modes. `[writeback] enabled = true` in `maki.toml` flushes every edit immediately. With it off (the default safety net), edits land in the catalog and YAML sidecar and are flagged `pending_writeback` until you run `maki writeback` — that command always works regardless of the flag. See the [Configuration Reference](../reference/08-configuration.md#writeback-section) for the full split.
 
 ## Preview Generation
 

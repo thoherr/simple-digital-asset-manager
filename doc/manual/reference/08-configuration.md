@@ -727,23 +727,28 @@ default_filter = "type:image"
 
 ## [writeback] Section
 
-Controls whether metadata edits are written back to XMP recipe files on your storage volumes.
+Controls whether metadata edits flow into the `.xmp` recipe files on your storage volumes **automatically** on every change.
 
 ### enabled
 
 - **Type:** boolean
 - **Default:** `false`
 
-When `false` (the default), edits to rating, tags, description, and color label are stored in the YAML sidecar files and SQLite catalog only. The `.xmp` files on your volumes are **not** modified. This is a safety measure -- XMP writeback modifies files on your storage volumes, and you must opt in explicitly.
+This flag governs *automatic* (a.k.a. inline) writeback. It does **not** disable manual writeback — `maki writeback` always works regardless of this setting and is the supported way to keep auto-flush off as a safety net while still pushing staged metadata onto disk on demand.
 
-When `true`, edits are written back to associated `.xmp` recipe files on disk immediately (for online volumes) or queued as `pending_writeback` (for offline volumes). This enables interoperability with Lightroom, CaptureOne, and other tools that read XMP sidecars.
+| `enabled` | What happens on rating/label/description/tag edits |
+|-----------|----------------------------------------------------|
+| `false` *(default)* | Edit lands in YAML sidecar + SQLite catalog. The recipe is flagged `pending_writeback = true`. The `.xmp` file on disk is **not** touched. Run `maki writeback` to flush staged changes whenever you want. |
+| `true` | Edit lands in YAML/SQLite **and** is written to the recipe's `.xmp` immediately (or queued as `pending_writeback` if the recipe lives on an offline volume). |
 
-> **Note:** Even with writeback disabled, your edits are never lost. They are always persisted in the YAML sidecar (source of truth) and SQLite catalog. You can enable writeback later and run `maki writeback --all` to push all accumulated edits to XMP files at once.
+> **Note:** Edits are always tracked. Even with `enabled = false`, the catalog and the recipe's `pending_writeback` flag mark exactly which assets have staged edits — `maki status` surfaces the count, and `maki writeback` (optionally narrowed by query/volume) flushes them. The flag is purely "should every keystroke touch disk, or do I want a single explicit flush button?"
 
 ```toml
 [writeback]
-enabled = true
+enabled = true   # auto-flush on every edit
 ```
+
+To rematerialise the catalog metadata onto disk for a specific asset set without changing the config, use `maki writeback --all <query>`. That writes every XMP in the matching set whether or not it's flagged pending — useful right after a large catalog-only restructuring (rename, split, rebuild).
 
 ---
 

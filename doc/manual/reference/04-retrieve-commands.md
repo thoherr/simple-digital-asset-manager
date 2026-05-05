@@ -740,7 +740,7 @@ Sections:
 
 - **Catalog** — schema version (with a migrate hint if stale), asset/variant/recipe/file-location counts, total size, and online/offline volume split.
 - **Cleanup** — locationless variants, orphaned assets, and orphaned derived files on disk (previews, smart previews, embeddings, face crops). Each non-zero count points at `maki cleanup --apply`. If everything's clean, prints `✓ no cleanup needed`.
-- **Pending work** — pending XMP writebacks (split by online/offline target volume; flagged differently when `[writeback] enabled = false`), assets without an embedding (AI builds), assets unscanned for faces (AI builds).
+- **Pending work** — pending XMP writebacks (split by online/offline target volume; the hint reads `→ maki writeback` regardless of `[writeback] enabled`, since manual flush always works), assets without an embedding (AI builds), assets unscanned for faces (AI builds).
 - **Backup coverage** — how many assets have fewer than `--min-copies` distinct volume copies. Points at `maki backup-status --at-risk` to drill down.
 - **Volumes** — registered volumes sorted online-first with per-volume asset count, size, and purpose tag. `●` = online, `○` = offline.
 

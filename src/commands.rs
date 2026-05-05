@@ -902,8 +902,11 @@ pub fn print_status_human(report: &maki::status::StatusReport) {
                 p.pending_writebacks_online, ""
             );
         } else {
+            // Auto-flush off (the safety-net default). Manual `maki
+            // writeback` runs regardless of the config flag, so the hint
+            // points straight at it without a config-change detour.
             println!(
-                "  ✗ {} pending XMP writeback(s){:<23} → enable [writeback] in maki.toml, then `maki writeback`",
+                "  ✗ {} pending XMP writeback(s){:<23} → maki writeback  (auto-flush off; this is the manual flush)",
                 p.pending_writebacks_online, ""
             );
         }

@@ -570,10 +570,17 @@ fn is_default_contact_sheet(c: &ContactSheetDefaults) -> bool {
 /// XMP writeback configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WritebackConfig {
-    /// Enable XMP writeback. When false (default), MAKI will not modify
-    /// recipe/XMP files on disk. Edits to rating, tags, description, and
-    /// color label are stored in the catalog but not written to XMP until
-    /// this is enabled.
+    /// Enable *automatic* XMP writeback on every edit. When true, edits
+    /// to rating, label, description, and tags write through to the
+    /// asset's `.xmp` recipe files immediately.
+    ///
+    /// When false (default), edits are still tracked in the catalog and
+    /// YAML sidecar — and the recipe is flagged `pending_writeback` —
+    /// but the `.xmp` files on disk stay untouched. Run `maki writeback`
+    /// to flush pending changes manually; that command always works
+    /// regardless of this flag and is the supported way to keep auto-
+    /// flush off as a safety net while still pushing staged metadata
+    /// onto disk on demand.
     #[serde(default)]
     pub enabled: bool,
 }

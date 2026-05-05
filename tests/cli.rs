@@ -9315,6 +9315,78 @@ fn sync_metadata_outbound_writes_pending() {
     assert!(xmp_content.contains("Rating=\"4\"") || xmp_content.contains("Rating='4'"));
 }
 
+/// When `[writeback] enabled = false` (the default), edits should still be
+/// tracked: the recipe gets `pending_writeback = true` and the XMP file on
+/// disk stays untouched. A subsequent `maki writeback` command then flushes
+/// those staged edits — proving the auto-off / manual-on workflow.
+#[test]
+#[cfg(feature = "pro")]
+fn edit_with_writeback_disabled_tracks_pending_then_manual_flush_writes() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // No [writeback] section in maki.toml → enabled defaults to false.
+
+    let xmp_path = root.join("photos/WB_010.xmp");
+    create_test_file(&root, "photos/WB_010.ARW", b"raw-wb-disabled");
+    create_test_file(
+        &root,
+        "photos/WB_010.xmp",
+        b"<x:xmpmeta><rdf:RDF><rdf:Description xmp:Rating=\"1\"/></rdf:RDF></x:xmpmeta>",
+    );
+    maki()
+        .current_dir(&root)
+        .args(["import", root.join("photos").to_str().unwrap()])
+        .assert()
+        .success();
+
+    let output = maki()
+        .current_dir(&root)
+        .args(["search", "-q", "*"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+    let asset_id = stdout.trim().to_string();
+
+    // Edit rating with writeback disabled.
+    maki()
+        .current_dir(&root)
+        .args(["edit", &asset_id, "--rating", "4"])
+        .assert()
+        .success();
+
+    // The XMP on disk still shows Rating="1" — auto-flush is off.
+    let xmp_after_edit = std::fs::read_to_string(&xmp_path).unwrap();
+    assert!(
+        xmp_after_edit.contains("Rating=\"1\"") || xmp_after_edit.contains("Rating='1'"),
+        "Auto-flush off: XMP must stay at Rating=1 after edit. Got: {xmp_after_edit}"
+    );
+
+    // `maki status` should surface the pending writeback (proves tracking
+    // ran even though auto-flush was off).
+    maki()
+        .current_dir(&root)
+        .args(["status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pending XMP writeback"));
+
+    // Manual flush works regardless of `[writeback] enabled` — that's the
+    // whole point of the split.
+    maki()
+        .current_dir(&root)
+        .args(["writeback"])
+        .assert()
+        .success();
+
+    // The XMP on disk now reflects the edit.
+    let xmp_after_flush = std::fs::read_to_string(&xmp_path).unwrap();
+    assert!(
+        xmp_after_flush.contains("Rating=\"4\"") || xmp_after_flush.contains("Rating='4'"),
+        "Manual flush wrote the rating. Got: {xmp_after_flush}"
+    );
+}
+
 #[test]
 #[cfg(feature = "pro")]
 fn sync_metadata_dry_run() {
