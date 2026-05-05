@@ -590,6 +590,18 @@ Review suggestions in the web UI -- accept good ones, dismiss bad ones, and adju
 
 ---
 
+## Tag Input in the Web UI
+
+The browse filter bar's tag input and the asset-detail tag chip both share the same autocomplete dropdown. Two behaviours worth knowing:
+
+**Middle-of-hierarchy matches stay visible.** Type `subject` and the dropdown shows `subject` itself even if your catalogue also has `subject|nature`, `subject|nature|landscape`, etc. as deeper matches. Earlier MAKI versions hid the parent row in favour of the more specific children, which made it hard to land at exactly the level you intended. Now any node whose own name (any segment) matches the query stays in the list alongside its descendants.
+
+**Drill into a hierarchy by clicking the prefix.** Each suggestion that has a hierarchy renders the prefix in a dimmed style. Clicking that dimmed prefix narrows the autocomplete to that level — useful when a query produces dozens of suggestions across unrelated parents (`bird` matches `subject|nature|animal|bird`, `event|birding-trip`, etc.) and you want to focus on one branch. Clicking the leaf segment commits the full path as usual.
+
+The same dropdown is reused on the tag rename / split modals on the tags page, so the behaviour is consistent everywhere a tag value is typed.
+
+---
+
 ## The Vocabulary File
 
 MAKI creates a `vocabulary.yaml` file in your catalog root when you run `maki init`. This file defines your planned tag hierarchy — a skeleton of categories and terms you intend to use. MAKI reads it and offers these tags in autocomplete, even before you've tagged a single asset with them.

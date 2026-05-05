@@ -546,9 +546,21 @@ The web UI supports drag-and-drop for two common operations:
 | Key | Action |
 |-----|--------|
 | Cmd+A (Mac) / Ctrl+A | Select all cards on the current page |
+| Shift+Cmd+A (Mac) / Shift+Ctrl+A | Select **all assets matching the current filter**, across every page |
 | Escape | Clear selection (if any), otherwise clear keyboard focus |
 
 These shortcuts are suppressed when focus is in a text input, textarea, or dropdown.
+
+**Shift+Cmd+A** is the answer to "I forgot to embed / auto-tag / add a tag during import — how do I fix all 500 photos at once?" Filter the browse page down to the set you want (`path:concert-2024`, `tag:family`, etc.), press the shortcut, and confirm. The full set lands in the selection and any batch toolbar action runs across every page in one shot.
+
+When the result spans more than one page, a confirmation dialog appears showing the asset count and how many pages it covers. If you already have an existing selection, the dialog offers two radios:
+
+- **Replace current selection** (default) — the selected set becomes exactly the matching assets.
+- **Add to current selection** — union with what was already selected.
+
+Single-page filters skip the dialog and merge silently. After a multi-page select-all the bottom toolbar reads `487 selected (across 9 pages)` so the wider scope is always visible. Manually toggling a checkbox afterward drops the "(across N pages)" hint, since the count would no longer reliably correspond to a known scope.
+
+The selection persists across page navigation, view-mode switches (grid → calendar etc.), and page reloads (until the tab is closed) — so you can browse to verify what you've grabbed before running the batch operation.
 
 
 ## Keyboard Navigation

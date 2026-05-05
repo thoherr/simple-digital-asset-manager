@@ -2,6 +2,71 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.5.0 (2026-05-05)
+
+A behaviour-and-UX release. The headline change is a rework of XMP writeback semantics so the safety-net default (`[writeback] enabled = false`) no longer blocks change tracking or the explicit `maki writeback` command — the config flag now controls *only* automatic flush on every edit. A new `--mirror-tags` flag reconciles XMP keyword lists with the catalog after large catalog-only restructuring (rename, split, delete, fix-unicode), so accumulated drift can be flushed in one shot. Browse gains Shift-Cmd-A "select all matching the current filter" with a confirmation modal — the missing primitive for "I forgot to embed/auto-tag this 500-photo shoot." The tags page click count now equals what the click target shows. Tag autocomplete keeps middle-of-hierarchy matches visible and lets you drill into a prefix.
+
+Tests: 782 + 249 standard, 889 + 276 pro (up from 779 + 249 / 886 + 273 in v4.4.15) — three new pro-CLI regression tests cover the writeback / mirror-tags / disabled-then-flush flows; lib counts grew through expanded vocabulary and tag-filter assertions.
+
+### Writeback rework: auto-flush split from tracking, manual flush always works
+
+Before: `[writeback] enabled = false` killed three things in one go — automatic XMP write on every edit (intended), the per-recipe `pending_writeback` tracking (unintended; the inline path short-circuited at entry), and the explicit `maki writeback` command (outright bail-out). Users keeping the flag off as a safety net during development therefore lost the audit trail of staged edits *and* couldn't flush manually without flipping the config off and on for every batch.
+
+`[writeback] enabled` now means strictly "auto-write on every edit." Every metadata edit (rating, label, description, tags) marks the asset's XMP recipe(s) `pending_writeback = true` regardless. `maki writeback` is the explicit manual flush and runs whether or not the flag is set. `maki status`'s pending-writeback hint reads `→ maki writeback (auto-flush off; this is the manual flush)` when auto-flush is off, instead of the old "enable [writeback] in maki.toml" detour.
+
+Inside `_inner` writeback methods, the disabled state is treated like an offline volume: mark pending, skip the file write, save the sidecar. Caller-side `if self.is_writeback_enabled() { write_back_…_to_xmp_inner(…) }` guards (six sites in `query.rs`) gone. Two early-return bail-outs in `writeback` / `writeback_process` gone. `sync_metadata`'s outbound phase explicitly passes `mirror_tags = false` and `is_writeback_enabled` is no longer checked there; the inbound phase is unaffected.
+
+### `maki writeback --mirror-tags` reconciles XMP with catalog
+
+The classic flush has always been **additive only**: it pushes catalog tags onto the XMP, but never removes XMP tags the catalog no longer has. So renames, splits, deletions, and `tag fix-unicode` performed in MAKI leave the OLD keyword stranded in `dc:subject` and `lr:hierarchicalSubject` on disk alongside the new one — a pre-existing bug, made unavoidable by users who keep auto-flush off and rely on manual flush.
+
+`--mirror-tags` (requires `--all`) reads the existing `dc:subject` + `lr:hierarchicalSubject` from each XMP, diffs against the asset's catalog tags, and removes the stale entries before writing the current set. Result: XMP keyword lists exactly mirror catalog tags. Other metadata fields (rating/label/description) were already replace-semantic, so they need no special handling. Pair-required with `--all` because mirror mode is most useful as a broad rematerialise sweep — running it on the narrow pending-only default is rarely what users want, and clap's `requires` makes the intended scope obvious. Default behaviour unchanged: bare `maki writeback` and `--all` (without `--mirror-tags`) stay additive, preserving back-compat for users who mix MAKI tags with externally-added XMP keywords.
+
+Typical use after large catalog-only restructuring:
+
+```
+maki writeback --all --mirror-tags --log
+maki writeback --all --mirror-tags "tag:wedding"   # scoped variant
+```
+
+### Browse: Shift-Cmd-A selects all assets matching the current filter
+
+Cmd-A already covered "select everything visible" (the current page). The gap: there was no way to operate on results that span more than one page without manually paging through and shift-clicking — useless for the concrete case of "I forgot to embed / auto-tag / add a tag during import for this 500-photo concert shoot."
+
+Wire **Shift-Cmd-A** (Mac) / Shift-Ctrl-A (Linux/Windows) to "select all matching the current filter." A new `GET /api/all-ids?<search-params>` endpoint returns every matching asset ID in one round-trip (no thumbnails, just UUIDs — fits any realistic catalog). When the result spans more than one page a confirmation modal appears, sized to `total_pages`, with replace/add radios when an existing selection is non-empty. Single-page filters skip the dialog and merge silently. After a multi-page select-all the bottom toolbar reads `487 selected (across 9 pages)` so the wider scope is always visible. The full set then drives every existing batch toolbar action (Embed, Add Tag, Auto-Tag, Detect Faces, …) without further changes.
+
+The new endpoint is also a primitive future "operate on full filter result" features can build on without adding more endpoints.
+
+### Tags page: click count matches row count
+
+The tags page row "color" with own_count 174 / leaf 23 used to navigate via `?tag=color` (default browse semantic = case-insensitive any-path-position) and land on a result of 540 — way off. Two semantic gaps stacked up: default browse `tag:color` is case-insensitive (collapses lowercase `color` into `Color` cousins), and matches "color" at any path position (so a stray `something|color` path is included).
+
+Click targets now use the `=^` (whole-path + case-sensitive) and `=^/` (whole-path + leaf-only + case-sensitive) markers so the click result count exactly equals the row's own_count / leaf_count. To make `=^/` work, the tag filter parser now allows `=` and `/` to combine — they previously were mutually exclusive, with `=` silently dropping `/`. The combined SQL branch wraps `=`-positives in parentheses and AND-NOTs both descendant-position guards (`"<path>|…` from root, `|<path>|…` from any mid-tree position).
+
+Inside `list_leaf_tag_counts`, the descendant guard switched LIKE → GLOB so the case-sensitive leaf computation isn't confounded by ASCII case-folding: `["color", "Color|red"]` correctly leaf-counts "color" without LIKE treating "Color|red" as a descendant.
+
+Two earlier attempts at this fix (a flat case-fold of `list_all_tags`, then a hierarchical case-fold) were merged and reverted within the same release window — both overcorrected by collapsing intentionally-distinct case variants into single rows. Reverts are part of the history; the eventual fix moved the gating from the catalog query to the navigation layer.
+
+### Tag autocomplete improvements
+
+Two UX fixes for the tag-filter dropdown (also reused on the asset-detail tag input and tag rename / split modals):
+
+- **Middle-of-hierarchy matches stay visible.** Earlier MAKI versions hid the parent row in favour of the more specific children, making it hard to land at exactly the level you intended. Now any node whose own name (any segment) matches the query stays in the list alongside its descendants.
+- **Drill into a hierarchy by clicking the prefix.** Each suggestion that has a hierarchy renders the prefix in a dimmed style. Clicking the dimmed prefix narrows the autocomplete to that level — useful when a query produces dozens of suggestions across unrelated parents.
+
+### `maki tag export-vocabulary --counts` + nested JSON
+
+Two additions to the export-vocabulary command for vocabulary curation:
+
+- `--counts` annotates each entry with its per-tag asset count. In YAML output (`# N assets` trailing comment, file still parses), the count gives a quick read on which tags are heavily-used vs. candidates for retirement. In TEXT (Lightroom / Capture One keyword) output the flag is silently ignored — those tools reject comments. JSON format already emits counts unconditionally.
+- `--format json` emits the vocabulary as a nested object: each node has `count`, optional `children` keyed by sub-segment. Identical in information content to YAML + counts; the JSON shape is just easier to consume from dashboards or integration scripts.
+
+### Smaller fixes
+
+- **Path autocomplete cap raised 20 → 100** on the filter bar. A typical year/month/day catalog tree exceeds 20 at every level (≥30 years × 12 months × 31 days plus multi-shoot day suffixes). Server-side `/api/paths` now defaults to 100 too (still hard-clamped to 100 to prevent runaway responses).
+- **Browse pagination clamp**: deleting / grouping the last few items on the last page no longer dumps the user into an empty "No results found" screen. The `/api/page-ids` and main browse handler clamp the requested page to the last available page when the result set shrinks.
+- Two browser regressions from v4.4.15's template-comment refactor fixed: leading HTML comments before `{% extends %}` triggered quirks mode; an HTML comment inside a `<script>` partial broke JS parsing.
+
 ## v4.4.15 (2026-05-04)
 
 A maintenance release. No new user-facing features — the entire release is internal restructuring driven by a fresh QA report (`doc/qa-report/qa-report.md`, refreshed at v4.4.14). The headline outcome: every large file in the codebase has been split along its natural cleavage planes, the `main.rs` god-module has been collapsed to a 2.8-kLOC dispatcher, and the import command now demonstrates a clean kernel/workflow/handler separation that future commands can follow.
