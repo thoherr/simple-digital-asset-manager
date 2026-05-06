@@ -4859,16 +4859,26 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     margin-bottom: 1rem;
     font-size: 0.88rem;
 }
+/* Explicit `flex-direction: row` and `margin-bottom: 0` are necessary
+   resets — the generic `.import-modal label` rule (above) sets them to
+   `column` and `0.75rem`, which is correct for the form-row labels but
+   stacks each child of a checkbox label onto its own line (the input,
+   each text node, each <strong>, each <span>…). Same specificity, so
+   a later same-specificity override is the right tool. */
 .maintain-checkboxes label {
     display: flex;
+    flex-direction: row;
     align-items: flex-start;
     gap: 0.5rem;
-    line-height: 1.35;
+    line-height: 1.4;
     color: var(--text);
     font-weight: 400;
+    font-size: 0.88rem;
+    margin-bottom: 0;
 }
 .maintain-checkboxes input[type="checkbox"] {
     margin-top: 0.15rem;
+    flex-shrink: 0;
 }
 
 /* Reusable progress toast for background jobs (embed, auto-tag, detect-faces).
