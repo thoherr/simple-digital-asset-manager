@@ -1,0 +1,106 @@
+{# Maintain dialog: tabbed modal exposing long-running maintenance
+   operations (writeback, sync-metadata, verify) to the web UI.
+
+   Each tab is a small form that POSTs to /api/maintain/<op> and hands
+   the returned job_id off to window.makiJob.watch() — the same toast
+   pipeline the import dialog uses, so live progress and re-attach come
+   for free. The tabbed shell is the only Maintain-specific UI; per-tab
+   forms are intentionally minimal because most users will run these
+   commands rarely. Reuses .import-overlay/.import-modal styling so the
+   dialog visually matches the existing Import / batch confirmation
+   modals without inventing a separate skin. #}
+<div id="maintain-overlay" class="import-overlay" style="display:none">
+    <div class="import-modal" id="maintain-modal" role="dialog" aria-labelledby="maintain-title" aria-modal="true">
+        <div class="import-header">
+            <h2 id="maintain-title">Maintain</h2>
+            <button type="button" class="import-close" id="maintain-close" aria-label="Close">&times;</button>
+        </div>
+
+        <div class="maintain-tabs" role="tablist">
+            <button type="button" class="maintain-tab active" role="tab" data-maintain-tab="writeback" aria-selected="true">Writeback</button>
+            <button type="button" class="maintain-tab" role="tab" data-maintain-tab="sync-metadata" aria-selected="false">Sync metadata</button>
+            <button type="button" class="maintain-tab" role="tab" data-maintain-tab="verify" aria-selected="false">Verify</button>
+        </div>
+
+        {# ── Writeback ───────────────────────────────────────────── #}
+        <div class="maintain-pane active" data-maintain-pane="writeback">
+            <p class="maintain-blurb">
+                Flush pending metadata edits (rating, label, description, tags)
+                from the catalog to <code>.xmp</code> recipe files on disk.
+                Always works regardless of <code>[writeback] enabled</code>.
+            </p>
+            <form id="maintain-writeback-form">
+                <div class="maintain-row">
+                    <label for="maintain-wb-volume">Volume</label>
+                    <select id="maintain-wb-volume" name="volume">
+                        <option value="">All online volumes</option>
+                    </select>
+                </div>
+                <div class="maintain-row">
+                    <label for="maintain-wb-query">Query <span class="maintain-row-hint">(optional, same syntax as search)</span></label>
+                    <input type="text" id="maintain-wb-query" name="query" placeholder="e.g. tag:wedding" autocomplete="off">
+                </div>
+                <div class="maintain-checkboxes">
+                    <label><input type="checkbox" id="maintain-wb-all"> Write <strong>all</strong> XMP recipes in scope (not just pending)</label>
+                    <label><input type="checkbox" id="maintain-wb-mirror" disabled> Mirror tags &mdash; remove XMP keywords the catalog no longer has <span class="maintain-row-hint">(requires &ldquo;all&rdquo;; destructive)</span></label>
+                    <label><input type="checkbox" id="maintain-wb-dry"> Dry run &mdash; preview without writing</label>
+                </div>
+                <div class="import-form-actions">
+                    <button type="button" class="batch-btn" id="maintain-wb-cancel">Close</button>
+                    <button type="submit" class="batch-btn batch-btn-primary" id="maintain-wb-run">Run writeback</button>
+                </div>
+            </form>
+        </div>
+
+        {# ── Sync metadata ───────────────────────────────────────── #}
+        <div class="maintain-pane" data-maintain-pane="sync-metadata" style="display:none">
+            <p class="maintain-blurb">
+                Bidirectional XMP &harr; catalog sync. Inbound: external
+                <code>.xmp</code> changes are pulled into the catalog. Outbound:
+                pending catalog edits are flushed to <code>.xmp</code> when
+                no conflict exists (a recipe changed on disk AND in MAKI).
+            </p>
+            <form id="maintain-sm-form">
+                <div class="maintain-row">
+                    <label for="maintain-sm-volume">Volume</label>
+                    <select id="maintain-sm-volume" name="volume">
+                        <option value="">All online volumes</option>
+                    </select>
+                </div>
+                <div class="maintain-checkboxes">
+                    <label><input type="checkbox" id="maintain-sm-media"> Re-extract embedded XMP from JPEG/TIFF media files <span class="maintain-row-hint">(slow)</span></label>
+                    <label><input type="checkbox" id="maintain-sm-dry"> Dry run &mdash; preview without writing</label>
+                </div>
+                <div class="import-form-actions">
+                    <button type="button" class="batch-btn" id="maintain-sm-cancel">Close</button>
+                    <button type="submit" class="batch-btn batch-btn-primary" id="maintain-sm-run">Run sync-metadata</button>
+                </div>
+            </form>
+        </div>
+
+        {# ── Verify ──────────────────────────────────────────────── #}
+        <div class="maintain-pane" data-maintain-pane="verify" style="display:none">
+            <p class="maintain-blurb">
+                Re-hash media + recipe files on disk and compare against the
+                catalog's stored content hashes. Surfaces silent corruption
+                (bit-rot, accidental edits, sync glitches) and missing files.
+            </p>
+            <form id="maintain-vf-form">
+                <div class="maintain-row">
+                    <label for="maintain-vf-volume">Volume</label>
+                    <select id="maintain-vf-volume" name="volume">
+                        <option value="">All online volumes</option>
+                    </select>
+                </div>
+                <div class="maintain-row">
+                    <label for="maintain-vf-max-age">Skip files verified within last N days <span class="maintain-row-hint">(blank = re-verify all)</span></label>
+                    <input type="number" id="maintain-vf-max-age" min="0" placeholder="30">
+                </div>
+                <div class="import-form-actions">
+                    <button type="button" class="batch-btn" id="maintain-vf-cancel">Close</button>
+                    <button type="submit" class="batch-btn batch-btn-primary" id="maintain-vf-run">Run verify</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

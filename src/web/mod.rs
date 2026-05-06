@@ -531,6 +531,9 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/paths", axum::routing::get(routes::paths_api))
         .route("/api/page-ids", axum::routing::get(routes::page_ids_api))
         .route("/api/all-ids", axum::routing::get(routes::all_ids_api))
+        .route("/api/maintain/writeback", axum::routing::post(routes::start_writeback_api))
+        .route("/api/maintain/sync-metadata", axum::routing::post(routes::start_sync_metadata_api))
+        .route("/api/maintain/verify", axum::routing::post(routes::start_verify_api))
         .route("/api/open-location", axum::routing::post(routes::open_location))
         .route("/api/open-terminal", axum::routing::post(routes::open_terminal))
         .route(

@@ -40,6 +40,9 @@ pub enum JobKind {
     AutoTag,
     DetectFaces,
     Describe,
+    Writeback,
+    SyncMetadata,
+    Verify,
 }
 
 impl JobKind {
@@ -50,6 +53,9 @@ impl JobKind {
             JobKind::AutoTag => "Auto-tag",
             JobKind::DetectFaces => "Detect faces",
             JobKind::Describe => "Describe",
+            JobKind::Writeback => "Writeback",
+            JobKind::SyncMetadata => "Sync metadata",
+            JobKind::Verify => "Verify",
         }
     }
 }

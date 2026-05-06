@@ -1,0 +1,178 @@
+{# Maintain dialog JS: tab switching, volume-list population, form
+   submission to /api/maintain/<op>, hand-off to window.makiJob.watch.
+   Public API: window.makiMaintain.openDialog([initialTab]),
+   .closeDialog(), .reattachIfRunning(). The shape mirrors makiImport so
+   the nav handler in base.html can treat both dialogs interchangeably. #}
+<script>
+(function() {
+    var overlay = document.getElementById('maintain-overlay');
+    if (!overlay) return;
+    var modal = document.getElementById('maintain-modal');
+    var closeBtn = document.getElementById('maintain-close');
+
+    var tabs = overlay.querySelectorAll('.maintain-tab');
+    var panes = overlay.querySelectorAll('.maintain-pane');
+    var volumeSelects = [
+        document.getElementById('maintain-wb-volume'),
+        document.getElementById('maintain-sm-volume'),
+        document.getElementById('maintain-vf-volume')
+    ];
+
+    var volumesLoaded = false;
+    function populateVolumes() {
+        if (volumesLoaded) return Promise.resolve();
+        return fetch('/api/volumes')
+            .then(function(r) { return r.ok ? r.json() : []; })
+            .then(function(data) {
+                // /api/volumes returns a JSON array directly.
+                var vols = (Array.isArray(data) ? data : []).filter(function(v) { return v.is_online; });
+                volumeSelects.forEach(function(sel) {
+                    if (!sel) return;
+                    vols.forEach(function(v) {
+                        var opt = document.createElement('option');
+                        opt.value = v.label;
+                        opt.textContent = v.label;
+                        sel.appendChild(opt);
+                    });
+                });
+                volumesLoaded = true;
+            })
+            .catch(function() {});
+    }
+
+    function showTab(name) {
+        tabs.forEach(function(t) {
+            var on = t.getAttribute('data-maintain-tab') === name;
+            t.classList.toggle('active', on);
+            t.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        panes.forEach(function(p) {
+            var on = p.getAttribute('data-maintain-pane') === name;
+            p.style.display = on ? '' : 'none';
+            p.classList.toggle('active', on);
+        });
+    }
+
+    tabs.forEach(function(t) {
+        t.addEventListener('click', function() {
+            showTab(t.getAttribute('data-maintain-tab'));
+        });
+    });
+
+    function openDialog(initialTab) {
+        populateVolumes();
+        overlay.style.display = 'flex';
+        if (initialTab) showTab(initialTab);
+    }
+    function closeDialog() {
+        overlay.style.display = 'none';
+    }
+    closeBtn.addEventListener('click', closeDialog);
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) closeDialog();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (overlay.style.display !== 'none' && e.key === 'Escape') {
+            closeDialog();
+        }
+    });
+
+    // Reattach helper: if a maintain-kind job is currently running, open the
+    // toast for it instead of the dialog. Mirrors makiImport.reattachIfRunning.
+    function reattachIfRunning() {
+        return fetch('/api/jobs')
+            .then(function(r) { return r.ok ? r.json() : { jobs: [] }; })
+            .then(function(s) {
+                var jobs = s.jobs || [];
+                for (var i = 0; i < jobs.length; i++) {
+                    if (jobs[i].completed) continue;
+                    var k = jobs[i].kind;
+                    if (k === 'writeback' || k === 'sync_metadata' || k === 'verify') {
+                        if (window.makiJob && window.makiJob.watch) {
+                            window.makiJob.watch(jobs[i].id, jobs[i].kind_label || k, {});
+                        }
+                        return true;
+                    }
+                }
+                return false;
+            })
+            .catch(function() { return false; });
+    }
+
+    // ── Writeback tab ──────────────────────────────────────────────────
+    var wbAll = document.getElementById('maintain-wb-all');
+    var wbMirror = document.getElementById('maintain-wb-mirror');
+    wbAll.addEventListener('change', function() {
+        wbMirror.disabled = !wbAll.checked;
+        if (!wbAll.checked) wbMirror.checked = false;
+    });
+
+    document.getElementById('maintain-writeback-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var body = {
+            query: document.getElementById('maintain-wb-query').value.trim() || null,
+            volume: document.getElementById('maintain-wb-volume').value || null,
+            all: wbAll.checked,
+            mirror_tags: wbMirror.checked,
+            dry_run: document.getElementById('maintain-wb-dry').checked
+        };
+        launchJob('/api/maintain/writeback', body, 'Writeback');
+    });
+    document.getElementById('maintain-wb-cancel').addEventListener('click', closeDialog);
+
+    // ── Sync metadata tab ──────────────────────────────────────────────
+    document.getElementById('maintain-sm-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var body = {
+            volume: document.getElementById('maintain-sm-volume').value || null,
+            media: document.getElementById('maintain-sm-media').checked,
+            dry_run: document.getElementById('maintain-sm-dry').checked
+        };
+        launchJob('/api/maintain/sync-metadata', body, 'Sync metadata');
+    });
+    document.getElementById('maintain-sm-cancel').addEventListener('click', closeDialog);
+
+    // ── Verify tab ─────────────────────────────────────────────────────
+    document.getElementById('maintain-vf-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var maxAgeStr = document.getElementById('maintain-vf-max-age').value.trim();
+        var body = {
+            volume: document.getElementById('maintain-vf-volume').value || null,
+            max_age_days: maxAgeStr ? parseInt(maxAgeStr, 10) : null
+        };
+        launchJob('/api/maintain/verify', body, 'Verify');
+    });
+    document.getElementById('maintain-vf-cancel').addEventListener('click', closeDialog);
+
+    // ── Common: POST → watch toast → close dialog ──────────────────────
+    function launchJob(url, body, label) {
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        })
+        .then(function(r) {
+            if (!r.ok) {
+                return r.text().then(function(t) { throw new Error(t || ('HTTP ' + r.status)); });
+            }
+            return r.json();
+        })
+        .then(function(data) {
+            if (data.job_id && window.makiJob && window.makiJob.watch) {
+                window.makiJob.watch(data.job_id, label, {});
+            }
+            closeDialog();
+            if (window.makiMaintainStatus) window.makiMaintainStatus.refresh();
+        })
+        .catch(function(e) {
+            alert(label + ' failed to start: ' + e.message);
+        });
+    }
+
+    window.makiMaintain = {
+        openDialog: openDialog,
+        closeDialog: closeDialog,
+        reattachIfRunning: reattachIfRunning
+    };
+})();
+</script>

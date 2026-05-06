@@ -27,6 +27,8 @@ mod import;
 pub use import::*;
 mod jobs;
 pub use jobs::*;
+mod maintain;
+pub use maintain::*;
 mod media;
 pub use media::*;
 mod saved_search;

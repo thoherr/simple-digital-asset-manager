@@ -31,6 +31,9 @@
             <a href="#" id="nav-import-link" class="nav-action">
                 Import<span id="nav-import-badge" class="nav-import-badge" style="display:none" title="Import in progress">●</span>
             </a>
+            <a href="#" id="nav-maintain-link" class="nav-action">
+                Maintain<span id="nav-maintain-badge" class="nav-import-badge" style="display:none" title="Maintenance job in progress">●</span>
+            </a>
         </div>
         <button class="theme-toggle" id="help-toggle" title="Keyboard shortcuts (?)">?</button>
         <button class="theme-toggle" id="theme-toggle" title="Toggle dark mode">
@@ -134,18 +137,25 @@
     </div>
 {% include "import_dialog.html" %}
 {% include "import_dialog_js.html" %}
+{% include "maintain_dialog.html" %}
+{% include "maintain_dialog_js.html" %}
 {% include "job_toast.html" %}
 {% include "job_toast_js.html" %}
 <script>
-// ── Nav: Import link + running-job status badge ──────────────────────────
-// The badge polls /api/jobs (the generic registry endpoint). While any job
-// is running it pulses; the link's click handler re-attaches to a running
-// import's SSE feed instead of opening the volume picker — so a page reload
-// during a long import doesn't lose the feed.
+// ── Nav: Import + Maintain links + running-job status badges ─────────────
+// Single shared poll on /api/jobs drives both badges. Each badge lights up
+// when any job of its kind is running. The link click handler re-attaches
+// to a running job's toast instead of opening the dialog — so a page reload
+// mid-job doesn't lose the feed.
 (function() {
-    var link = document.getElementById('nav-import-link');
-    var badge = document.getElementById('nav-import-badge');
-    if (!link || !badge) return;
+    var importLink  = document.getElementById('nav-import-link');
+    var importBadge = document.getElementById('nav-import-badge');
+    var maintLink   = document.getElementById('nav-maintain-link');
+    var maintBadge  = document.getElementById('nav-maintain-badge');
+    if (!importLink && !maintLink) return;
+
+    // Maintain-side kinds: keep in sync with src/web/jobs.rs JobKind.
+    var MAINT_KINDS = { writeback: 1, sync_metadata: 1, verify: 1 };
 
     // Poll cadences:
     //   ACTIVE (job running)  4 s — keeps the pulse responsive
@@ -155,20 +165,28 @@
     var ACTIVE_MS = 4000;
     var IDLE_MS = 30000;
 
-    var running = false;
+    var importRunning = false;
+    var maintRunning = false;
     var timer = null;
-    var currentMs = 0;
 
     function refresh() {
         return fetch('/api/jobs')
             .then(function(r) { return r.ok ? r.json() : { running: 0, jobs: [] }; })
             .then(function(s) {
-                var nowRunning = (s.running || 0) > 0;
-                badge.style.display = nowRunning ? 'inline-block' : 'none';
-                if (nowRunning !== running) {
-                    running = nowRunning;
-                    schedule();
+                var jobs = s.jobs || [];
+                var nowImport = false, nowMaint = false;
+                for (var i = 0; i < jobs.length; i++) {
+                    if (jobs[i].completed) continue;
+                    var k = jobs[i].kind;
+                    if (k === 'import') nowImport = true;
+                    else if (MAINT_KINDS[k]) nowMaint = true;
                 }
+                if (importBadge) importBadge.style.display = nowImport ? 'inline-block' : 'none';
+                if (maintBadge)  maintBadge.style.display  = nowMaint  ? 'inline-block' : 'none';
+                var changed = (nowImport !== importRunning) || (nowMaint !== maintRunning);
+                importRunning = nowImport;
+                maintRunning = nowMaint;
+                if (changed) schedule();
             })
             .catch(function() {});
     }
@@ -176,14 +194,12 @@
     function schedule() {
         if (timer) { clearInterval(timer); timer = null; }
         if (document.visibilityState === 'hidden') return;
-        currentMs = running ? ACTIVE_MS : IDLE_MS;
-        timer = setInterval(refresh, currentMs);
+        var ms = (importRunning || maintRunning) ? ACTIVE_MS : IDLE_MS;
+        timer = setInterval(refresh, ms);
     }
 
     document.addEventListener('visibilitychange', function() {
         if (document.visibilityState === 'visible') {
-            // Tab came back into focus: refresh immediately so the badge
-            // reflects reality before the next tick, then resume polling.
             refresh();
             schedule();
         } else {
@@ -191,26 +207,39 @@
         }
     });
 
-    link.addEventListener('click', function(e) {
-        e.preventDefault();
-        if (running && window.makiImport && window.makiImport.reattachIfRunning) {
-            window.makiImport.reattachIfRunning().then(function(reattached) {
-                if (!reattached && window.makiImport) window.makiImport.openDialog();
-            });
-        } else if (window.makiImport) {
-            window.makiImport.openDialog();
-        }
-    });
+    if (importLink) {
+        importLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (importRunning && window.makiImport && window.makiImport.reattachIfRunning) {
+                window.makiImport.reattachIfRunning().then(function(reattached) {
+                    if (!reattached && window.makiImport) window.makiImport.openDialog();
+                });
+            } else if (window.makiImport) {
+                window.makiImport.openDialog();
+            }
+        });
+    }
+
+    if (maintLink) {
+        maintLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (maintRunning && window.makiMaintain && window.makiMaintain.reattachIfRunning) {
+                window.makiMaintain.reattachIfRunning().then(function(reattached) {
+                    if (!reattached && window.makiMaintain) window.makiMaintain.openDialog();
+                });
+            } else if (window.makiMaintain) {
+                window.makiMaintain.openDialog();
+            }
+        });
+    }
 
     window.makiImportStatus = {
-        refresh: function() {
-            // External callers (e.g. dialog "import started" / "import done")
-            // use this to force an immediate badge update without waiting for
-            // the next tick. Reschedule afterwards so the cadence matches the
-            // new running state.
-            return refresh().then(schedule);
-        },
-        isRunning: function() { return running; }
+        refresh: function() { return refresh().then(schedule); },
+        isRunning: function() { return importRunning; }
+    };
+    window.makiMaintainStatus = {
+        refresh: function() { return refresh().then(schedule); },
+        isRunning: function() { return maintRunning; }
     };
 
     refresh().then(schedule);

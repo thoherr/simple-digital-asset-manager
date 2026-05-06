@@ -4698,6 +4698,115 @@ body.has-batch-toolbar { padding-bottom: 60px; }
     margin-bottom: 1rem;
 }
 
+/* ── Maintain modal ───────────────────────────────────
+   Reuses .import-overlay/.import-modal for the chrome; adds tabs and
+   a slightly different form layout (vertical stacks of checkboxes
+   instead of the import dialog's horizontal grid because the maintain
+   tabs cluster many small toggles). */
+.import-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+.import-header h2 {
+    margin: 0;
+}
+.import-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 0.35rem;
+}
+.import-close:hover {
+    color: var(--text);
+}
+.maintain-tabs {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1rem;
+}
+.maintain-tab {
+    background: none;
+    border: none;
+    padding: 0.5rem 0.85rem;
+    font: inherit;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+.maintain-tab:hover {
+    color: var(--text);
+}
+.maintain-tab.active {
+    color: var(--text);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+}
+.maintain-blurb {
+    margin: 0 0 1rem 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+.maintain-blurb code {
+    font-size: 0.85em;
+    background: var(--badge-bg);
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+}
+.maintain-row {
+    margin-bottom: 0.75rem;
+}
+.maintain-row label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+}
+.maintain-row input[type="text"],
+.maintain-row input[type="number"],
+.maintain-row select {
+    width: 100%;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-card);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+}
+.maintain-row-hint {
+    font-weight: 400;
+    color: var(--text-muted);
+    font-size: 0.8em;
+}
+.maintain-checkboxes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-bottom: 1rem;
+    font-size: 0.88rem;
+}
+.maintain-checkboxes label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    line-height: 1.35;
+    color: var(--text);
+    font-weight: 400;
+}
+.maintain-checkboxes input[type="checkbox"] {
+    margin-top: 0.15rem;
+}
+
 /* Reusable progress toast for background jobs (embed, auto-tag, detect-faces).
    Floating bottom-right; sits above page content but below modals. */
 .job-toast {
