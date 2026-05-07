@@ -889,7 +889,7 @@ When the import finishes, the dialog shows a summary and a **Browse imported** l
 
 ## Maintain Dialog
 
-The **Maintain** entry in the top navigation (next to Import) opens a tabbed modal that exposes the long-running maintenance commands to the web UI. Three tabs:
+The **Maintain** entry in the top navigation (next to Import) opens a tabbed modal that exposes the long-running maintenance commands to the web UI. Seven tabs covering the most common workflows:
 
 - **Writeback** — flushes pending metadata edits to `.xmp` recipe files on disk. Web equivalent of `maki writeback`. Always works regardless of `[writeback] enabled` (the config flag governs only *automatic* flush on every edit; this dialog is the explicit manual flush). The form exposes:
   - **Volume** dropdown — restrict to a single volume's recipes, or "All online volumes" to flush everywhere.
@@ -907,9 +907,31 @@ The **Maintain** entry in the top navigation (next to Import) opens a tabbed mod
   - **Volume** dropdown.
   - **Skip files verified within last N days** — the `[verify] max_age_days` equivalent. Leave blank to re-verify all files.
 
+- **Previews** — (re-)generates asset thumbnails. Web equivalent of `maki generate-previews` in catalog mode. Useful after a `fix-roles --apply` moved a different variant into the best-preview slot, or to add 2560 px smart previews to assets that only have the regular thumbnail. Form options:
+  - **Volume** dropdown.
+  - `Also generate the 2560 px smart preview` — the `--smart` knob. Generates the high-res preview alongside the regular thumbnail, enabling lightbox zoom.
+  - `Upgrade only — regenerate when a different variant is now the best` — the `--upgrade` knob. Skips assets where the best-preview variant is already at index 0 (i.e. nothing changed since last generation). Cheap "fix what fix-roles broke" sweep.
+  - `Force regenerate every preview, even existing ones` — the `--force` knob. Slow; use only when previews are visibly wrong.
+
+- **Sync** — file-layer reconciliation: detect moved, modified, new, and missing files on disk vs. catalog locations. Web equivalent of `maki sync`. Different from "Sync metadata" above (which works at the *content* level inside `.xmp` files); this one works at the *file location* level. Form options:
+  - **Volume** dropdown — required (the engine's API takes a `Volume`).
+  - **Subpath** — optional volume-relative path to scope the scan (e.g. `2024/wedding`). Has filesystem autocomplete: ↑/↓/Tab/Enter to drill into a directory, Esc to dismiss. Drives the same `/api/volumes/{id}/browse` endpoint the import dialog uses.
+  - `Apply changes` — without this, dry-run only.
+  - `Remove stale catalog locations for missing files` — the `--remove-stale` knob, auto-disabled until "Apply" is checked.
+
+- **Refresh** — re-read metadata from `.xmp` sidecar/recipe files that changed on disk. Web equivalent of `maki refresh`. Use after editing in Lightroom / Capture One while MAKI was offline. Form options:
+  - **Volume** dropdown.
+  - `Also re-extract embedded XMP from JPEG/TIFF media files` — the `--media` knob. Slow.
+  - `Dry run`.
+
+- **Cleanup** — remove orphaned records and files: stale catalog locations, locationless variants, orphaned assets, previews, smart previews, embeddings, and face crops. Web equivalent of `maki cleanup`. Form options:
+  - **Volume** dropdown.
+  - **Path prefix** — optional volume-relative path to restrict cleanup to a subtree. Same filesystem autocomplete as the Sync tab once a volume is chosen.
+  - `Apply changes` — without this, report-only.
+
 Each form's **Run** button posts to a server endpoint that immediately returns a job ID and runs the operation in the background. The shared **progress toast** (bottom-right of the screen, same as Embed / Auto-tag / Detect-faces) shows live per-file progress and a final summary line built from the job's terminal counters. Closing the dialog while a job runs is fine — the toast keeps watching, and the **pulsing dot on the Maintain entry** stays lit until the job finishes. Click the Maintain entry while a job is in flight to re-attach to it.
 
-Only one job per kind runs at a time; starting a second writeback / sync-metadata / verify while one of the same kind is still running returns 409 from the server. Different kinds run in parallel (you can have a verify going while you also flush a writeback).
+Only one job per kind runs at a time; starting a second writeback / sync-metadata / verify / previews / sync / refresh / cleanup while one of the same kind is still running returns 409 from the server. Different kinds run in parallel (you can have a verify going while you also flush a writeback).
 
 ---
 

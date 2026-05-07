@@ -2,6 +2,44 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.5.2 (2026-05-07)
+
+A web-UI release. Round 2 of the Maintain dialog adds four more tabs (Generate previews, Sync, Refresh, Cleanup), the tags page gets a one-click vocabulary export button, and the Maintain dialog grows wider so the seven tab labels fit on a single row.
+
+Tests unchanged: 782 + 249 standard, 889 + 276 pro.
+
+### Maintain dialog: 4 new tabs
+
+The Maintain modal grows from 3 tabs to 7. The new ones:
+
+- **Previews** — `POST /api/maintain/generate-previews`. Volume scope, three checkboxes: `--smart` (also generate the 2560 px smart preview), `--upgrade` (regenerate only when the best-preview variant changed — cheap "fix what fix-roles broke" sweep), `--force` (regenerate even existing previews). Catalog-mode only — the CLI's PATHS-mode "regenerate previews for files I just touched" stays CLI-only since web users pick scope from the catalog rather than the filesystem. Catalog-walk loop replicates the CLI handler in the web route (~80 LOC of `metadata_store.list()` → best-preview variant pick → file location resolve → `PreviewGenerator` call); a future shared helper is queued.
+
+- **Sync** — `POST /api/maintain/sync`. File-layer reconciliation: detect moved, modified, new, and missing files on disk vs. catalog locations. Required volume picker (the engine method takes a `Volume`), optional volume-relative `Subpath` field with **filesystem autocomplete** (`/api/volumes/{id}/browse?prefix=…`), `--apply`, `--remove-stale` (auto-disabled until `--apply` is checked, mirroring the engine's own constraint). Subpath is canonicalize-and-prefix-checked against the volume mount so values containing `..` can't escape the volume.
+
+- **Refresh** — `POST /api/maintain/refresh`. Re-read metadata from `.xmp` sidecar/recipe files that changed on disk. Volume scope, `--media` (also re-extract embedded XMP from JPEG/TIFF), `--dry-run`. The CLI's `--reimport` and `--exif-only` modes stay CLI-only (advanced/destructive options without enough web-UX justification yet).
+
+- **Cleanup** — `POST /api/maintain/cleanup`. Remove orphaned records and files: stale catalog locations, locationless variants, orphaned assets, previews, smart previews, embeddings, and face crops. Volume + path-prefix scope (the path field has the same filesystem autocomplete as the Sync tab), `--apply` (otherwise report-only).
+
+`JobKind` enum gained `GeneratePreviews` / `Sync` / `Refresh` / `Cleanup` variants. The shared toast learned 10 new summary counters (`generated`, `upgraded`, `refreshed`, `moved`, `new_files`, `missing`, `stale_removed`, plus `removed_*` variants for cleanup). Same at-most-one-job-per-kind enforcement and same `/api/jobs` re-attach plumbing as the round-1 tabs.
+
+### Maintain dialog UX polish
+
+- **Modal width raised 500 → 750 px** (override scoped to `#maintain-modal` only — the import modal stays at 500 px since its phased layout doesn't need extra room). Without it, seven tab labels overflowed and wrapped to a second line, which reads as a separate sub-nav rather than a single tab bar.
+- **Defensive tab-bar CSS**: `overflow-x: auto` + `nowrap` + `flex-shrink: 0` on each tab so a future 8th tab scrolls horizontally instead of wrapping.
+- **Checkbox layout fix**: the inherited `.import-modal label { flex-direction: column }` rule (correct for the form-row labels stacking "Volume" above its select) leaked into checkbox labels and stacked input/text/strong/span vertically. Explicit `flex-direction: row` + `margin-bottom: 0` + `flex-shrink: 0` reset.
+- **Path autocomplete on Sync and Cleanup**: same UX as the import dialog's subfolder field (↑/↓/Tab/Enter to drill, Esc to dismiss, 120 ms debounce). Driven by the existing `/api/volumes/{id}/browse` endpoint. Volume label → ID resolution via a `volumesByLabel` map populated when the dialog first opens. Volume change clears the autocomplete cache so the next keystroke hits the new volume's tree.
+
+### Tags page: Export vocabulary button
+
+A one-click UI alternative to running `maki tag export-vocabulary` from a shell. New "Export vocabulary…" button next to the page title (`.tag-page-header` flex row) opens a small modal:
+
+- Format radio: **YAML** (default), **Keyword text** (Lightroom / Capture One), or **JSON**.
+- `Annotate with per-tag asset count` (= `--counts`). Auto-disabled when "Keyword text" is selected (LR / C1 reject comments).
+- `Prune planned-but-unused entries` (= `--prune`).
+- `Built-in default vocabulary only` (= `--default`). Greys out the counts and prune options.
+
+Clicking **Download** navigates to `GET /api/tags/export-vocabulary?format=…&counts=1&prune=1&default=1`, which streams back the rendered file with `Content-Disposition: attachment` so the browser triggers a save dialog. Output is byte-identical to the CLI command with the same flags — same rendering pipeline (`src/vocabulary.rs`), same sanitisation behaviour.
+
 ## v4.5.1 (2026-05-06)
 
 A web-UI release: long-running maintenance commands (writeback, sync-metadata, verify) get a launcher dialog instead of being CLI-only, and the top-of-page nav bar gets a "Catalog" dropdown to keep the seven existing entries from sprawling.

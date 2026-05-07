@@ -713,6 +713,17 @@ Each node has a `count` field plus an optional `children` map keyed by child seg
 
 The structure mirrors the tag tree exactly — root keys are top-level tags, nested keys are sub-tags, and counts are the per-asset totals from the catalog. Identical to `maki tag export-vocabulary --format yaml --counts` in information content; the JSON shape is just easier to consume from code.
 
+### Exporting from the web UI
+
+The tags page (`/tags`) carries an **Export vocabulary…** button next to the page title — a one-click UI alternative to running `maki tag export-vocabulary` from a shell. Clicking it opens a small modal:
+
+- Format radio: **YAML** (default), **Keyword text** (Lightroom / Capture One), or **JSON**.
+- `Annotate with per-tag asset count` — equivalent to `--counts`. Auto-disabled when "Keyword text" is selected (LR / C1 reject comments).
+- `Prune planned-but-unused entries` — equivalent to `--prune`.
+- `Built-in default vocabulary only` — equivalent to `--default`. Greys out the counts and prune options since neither applies (the built-in tree has no asset counts).
+
+Clicking **Download** triggers a browser save dialog with the appropriate filename (`vocabulary.yaml` / `.txt` / `.json`). The output is byte-identical to what the CLI command produces with the same flags — same rendering pipeline (`src/vocabulary.rs`), same sanitisation warnings (the Lightroom-import sanitisation step runs server-side; if any of your tags contain commas, semicolons, or XML entities, the export will silently rename them in the file but the catalog stays untouched).
+
 ### Vocabulary vs. auto-tagging labels
 
 The vocabulary file and the auto-tagging label file (`labels` in `[ai]` config) serve different purposes:
