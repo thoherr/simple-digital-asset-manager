@@ -948,6 +948,74 @@ mod tests {
     }
 
     #[test]
+    fn list_leaf_tag_counts_classifies_per_asset_correctly() {
+        // Locks in the Rust-side streaming-leaf-detection semantics.
+        // Each test case maps an asset's tag set to the leaves we
+        // expect — a tag is a "leaf for this asset" iff no other tag
+        // in the same asset starts with `<tag>|`. Counts aggregate
+        // across assets.
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let insert = |label: &str, tags: Vec<&str>| {
+            // Distinct content_hash per asset — Asset::new derives the
+            // asset ID deterministically from the hash, so reusing one
+            // would have the catalog upsert all four into a single row.
+            let mut asset = crate::models::Asset::new(
+                crate::models::AssetType::Image,
+                &format!("sha256:leaftest-{label}"),
+            );
+            asset.tags = tags.into_iter().map(String::from).collect();
+            catalog.insert_asset(&asset).unwrap();
+        };
+
+        // Asset A: hierarchy with the deep leaf — only the leaf
+        // counts here ("subject" + "subject|nature" are not leaves
+        // because "subject|nature|landscape" descends from both).
+        insert("a", vec![
+            "subject",
+            "subject|nature",
+            "subject|nature|landscape",
+        ]);
+        // Asset B: same hierarchy plus a sibling leaf — both
+        // sibling leaves count.
+        insert("b", vec![
+            "subject",
+            "subject|nature",
+            "subject|nature|landscape",
+            "subject|nature|forest",
+        ]);
+        // Asset C: "color" + "Color|red" — case-sensitive prefix
+        // detection means lowercase "color" has no lowercase
+        // descendant, so it stays a leaf. ("Color|red" sorts before
+        // "color" by ASCII, so the leaf check there sees no further
+        // tag at all.)
+        insert("c", vec!["Color|red", "color"]);
+        // Asset D: a flat-only set — every tag is a leaf for its
+        // own row.
+        insert("d", vec!["abstract", "monochrome"]);
+
+        let counts = catalog.list_leaf_tag_counts().unwrap();
+
+        // Leaves in A: just "subject|nature|landscape" (1).
+        // Leaves in B: "subject|nature|landscape" + "subject|nature|forest"
+        //   (both are leaves; "subject" and "subject|nature" are not).
+        assert_eq!(counts.get("subject|nature|landscape").copied(), Some(2));
+        assert_eq!(counts.get("subject|nature|forest").copied(), Some(1));
+        assert_eq!(counts.get("subject").copied(), None);
+        assert_eq!(counts.get("subject|nature").copied(), None);
+
+        // Case-sensitive: "color" still counts as a leaf despite
+        // "Color|red" sharing the case-insensitive prefix.
+        assert_eq!(counts.get("color").copied(), Some(1));
+        assert_eq!(counts.get("Color|red").copied(), Some(1));
+
+        // Flat-only asset contributes leaves directly.
+        assert_eq!(counts.get("abstract").copied(), Some(1));
+        assert_eq!(counts.get("monochrome").copied(), Some(1));
+    }
+
+    #[test]
     fn has_variant_returns_false_when_empty() {
         let catalog = Catalog::open_in_memory().unwrap();
         catalog.initialize().unwrap();
