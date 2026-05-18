@@ -4,6 +4,8 @@ This document covers vision-language models (VLMs) compatible with `maki describ
 
 MAKI tries the **Ollama native API** (`/api/generate`) first, falling back to the **OpenAI-compatible** `/v1/chat/completions` endpoint. Both use base64-encoded images. Any server that implements either API works — Ollama, llama.cpp, vLLM, LM Studio, SGLang, or cloud providers.
 
+> **Model swap is pure config.** Switching VLMs requires zero code changes. Pull the new model with your backend, change `[vlm] model` in `maki.toml` (or pass `--model` on the CLI), restart `maki serve` if it's running. MAKI knows nothing about which model is loaded — it sends a base64 image + prompt to an HTTP endpoint and accepts whatever JSON comes back.
+
 ---
 
 ## Quick Start
@@ -17,9 +19,50 @@ To switch models, either set `[vlm] model` in `maki.toml` or pass `--model` on t
 
 ---
 
+## Should I Upgrade?
+
+The answer is usually "stick with what works." The descriptions you're getting from your current model are good enough for *navigation* — that's the bar `maki describe` is trying to clear, not poet-grade prose. Upgrading helps in specific cases:
+
+- **Generic / repetitive descriptions on similar images.** A 3 B model often falls back to template language ("a beautiful landscape with mountains and a clear sky"). Stepping up to a 7–8 B model usually breaks the pattern.
+- **Wrong subject identification.** If the model mistakes a horse for a dog, or a wedding for a concert, a larger model with stronger visual reasoning helps. Verify with a small A/B batch before committing.
+- **OCR / text-in-image needs.** If you've been asking the model to read signage, license plates, or document scans, the Qwen-VL family (especially 7 B+) is significantly stronger here than Gemma 3.
+- **Multilingual descriptions.** If you want descriptions in German, Japanese, etc., Qwen models cover 100+ languages out of the box; Gemma is English-centric.
+
+Stay on your current model if:
+
+- **Descriptions are useful for search and you don't read them word-by-word.** The marginal quality gain from 4 B → 8 B costs you ~2–3× the inference time on the same hardware.
+- **You're batch-processing 1000+ images.** Doubling latency per image matters at scale.
+- **Hardware is tight.** A 4 B model running comfortably in RAM beats an 8 B model swapping to disk by every metric.
+
+### Testing a Candidate Model on Your Own Photos
+
+The honest way to decide is a small A/B on photos *you* care about. The web UI's per-asset model selector and the CLI's `--model` flag make this trivial:
+
+```bash
+# 1. Pull the candidate model.
+ollama pull qwen3-vl:8b
+
+# 2. Add it to your maki.toml so it appears in the web UI's per-asset
+#    Describe dropdown without disturbing your default.
+#
+# [vlm]
+# model = "gemma3:4b"                # your current default stays
+# models = ["gemma3:4b", "qwen3-vl:8b"]  # both available in the dropdown
+
+# 3. Pick 20 representative assets, generate descriptions with each
+#    model, compare side-by-side. `--force` overwrites the existing
+#    description on each iteration so you can re-run.
+maki describe "rating:5 date:2026-05" --model gemma3:4b --apply --force --log
+maki describe "rating:5 date:2026-05" --model qwen3-vl:8b --apply --force --log
+```
+
+Or use the web UI: open an asset's detail page, click **Describe** with the model selector set to one candidate, then re-run with the other. The descriptions overwrite each other so you're always seeing the latest.
+
+---
+
 ## Tested Models
 
-All timings measured on Apple M3 Pro (18 GB) with Ollama, using preview images (~800px). Your results will vary with hardware, image size, and model quantization.
+All timings measured on Apple M3 Pro (18 GB) with Ollama, using preview images (~800px) at default Q4 quantization. Your results will vary with hardware, image size, and quantization. Verify model availability on your backend's library page (e.g. `ollama.com/library/<name>`) — model rosters move faster than these docs.
 
 ### Recommended for Photography
 
@@ -45,17 +88,17 @@ All timings measured on Apple M3 Pro (18 GB) with Ollama, using preview images (
 | **Qwen3-VL 32B** `qwen3-vl:32b` | **24 GB** `\newline`{=latex} (20 GB) | 60--90s | Best quality via Ollama. Needs 32 GB+ system RAM. Outstanding quality. |
 | **LLaVA 1.6 7B** `llava:7b` | **6 GB** `\newline`{=latex} (4.7 GB) | 15--25s | Well-established, wide compatibility. Good quality. |
 
-### Qwen3.5 (Next Generation)
+### Qwen3.5 (Native Multimodal)
 
-Qwen3.5 models use **early fusion** — vision and text are processed jointly from the earliest layers, giving better visual reasoning than the separate-encoder approach of older models. All Qwen3.5 models are natively multimodal (no separate "-VL" variant).
+Qwen3.5 models are natively multimodal — no separate "-VL" variant — and use a different vision architecture than the Qwen-VL line. Subjectively stronger on visual reasoning at similar parameter counts, but requires a backend that handles the model's vision projector.
 
 | Model | RAM `\newline`{=latex} Download | Backend | Notes |
 |-------------------:|---------:|----------------:|:----------------------------------------------------------------------|
-| **Qwen3.5 4B** | **4 GB** `\newline`{=latex} (3 GB) | llama.cpp, vLLM | Comparable to Qwen3-VL 8B in some benchmarks. Very good quality. |
-| **Qwen3.5 9B** | **8 GB** `\newline`{=latex} (6 GB) | llama.cpp, vLLM | Best quality-per-GB. Strong upgrade path. Excellent quality. |
+| **Qwen3.5 4B** | **4 GB** `\newline`{=latex} (3 GB) | llama.cpp, vLLM, recent Ollama | Smaller variant; check Ollama version for vision support. |
+| **Qwen3.5 9B** | **8 GB** `\newline`{=latex} (6 GB) | llama.cpp, vLLM, recent Ollama | Strong upgrade path from 7–8 B Qwen-VL. Excellent quality. |
 | **Qwen3.5 27B** | **20 GB** `\newline`{=latex} (16 GB) | llama.cpp, vLLM | Needs significant RAM; best local quality. Outstanding quality. |
 
-**Ollama caveat (as of March 2026):** Ollama cannot handle Qwen3.5 vision — the model's `mmproj` vision files are not supported yet. Text-only works, but image input silently fails. Use llama.cpp or vLLM for Qwen3.5 multimodal. This will likely be resolved in a future Ollama release.
+**Ollama vision support has shifted across Ollama releases** — earlier versions silently dropped image input for Qwen3.5 models. If `maki describe --model qwen3.5:9b` returns text-only descriptions that ignore the image content, your Ollama is too old; upgrade to the latest release or fall back to llama.cpp / vLLM. A quick test: ask the model to describe an obviously distinctive image (e.g. a sunset over water) — if the answer is generic enough that it could fit any photo, vision is broken.
 
 ---
 
@@ -270,24 +313,40 @@ maki describe "type:image" --temperature 0 --apply --log
 maki describe --model qwen3-vl:8b --timeout 300 --asset a1b2c3d4
 ```
 
-**Use per-model config for multi-model workflows.** If you switch between models frequently, set per-model overrides so each model gets its optimal settings automatically:
+**Use per-model config for multi-model workflows.** If you switch between models frequently, set per-model overrides so each model gets its optimal settings automatically. Each `[vlm.model_config."name"]` section merges on top of the global `[vlm]` settings when that model runs, and CLI flags still win over both:
 
 ```toml
 [vlm]
-model = "qwen2.5vl:3b"
-max_image_edge = 512
-timeout = 300
+endpoint = "http://localhost:11434"
+model = "qwen2.5vl:3b"                  # the default for plain `maki describe`
+models = ["qwen2.5vl:3b", "qwen3-vl:8b", "moondream:latest"]  # web UI dropdown
+max_image_edge = 512                    # global: resize before sending
+timeout = 300                           # global: 5 min server-side
 
+# Bigger model — needs more time to load + more context for richer prompts.
+# Lower temperature because we want more deterministic output on careful runs.
 [vlm.model_config."qwen3-vl:8b"]
-timeout = 300
-num_ctx = 8192
+timeout = 600                           # first-load can take 1-2 min on cold start
+num_ctx = 8192                          # extended thinking benefits from headroom
+temperature = 0.3                       # less creative, more grounded
 
+# Fast bulk pass — short outputs, near-zero temperature for consistency,
+# tiny image edge to maximise throughput.
 [vlm.model_config."moondream:latest"]
 max_tokens = 200
 temperature = 0.1
+max_image_edge = 384
 ```
 
-Now `maki describe --model qwen3-vl:8b` automatically uses the longer timeout and larger context window, while `maki describe --model moondream:latest` uses lower temperature and fewer tokens. See [Configuration Reference — per-model config](08-configuration.md#per-model-configuration) for full details.
+Each override answers a specific question:
+
+- `timeout`: how long the HTTP client waits for the server to respond. Larger models need more on cold start (Ollama loads weights into RAM the first time).
+- `num_ctx`: the model's context window. Thinking models (Qwen3-VL, Qwen3.5) need 4 K+ for the `<think>…</think>` block plus the actual answer to fit.
+- `temperature`: 0.0 = deterministic, 1.0 = creative. For batch-describing many photos consistently, low temperature reduces "look at this beautiful…" boilerplate.
+- `max_image_edge`: longest-edge pixel cap before resize. Smaller = faster encode + faster model. 384–512 is plenty for caption-style descriptions; 768 if you're asking the model to OCR or count things.
+- `max_tokens`: response length cap. Tiny for moondream-style one-liners; default 500 for richer captions.
+
+See [Configuration Reference — per-model config](08-configuration.md#per-model-configuration) for the merge precedence rules and field-by-field reference.
 
 **Tune sampling parameters per model.** Some models benefit from non-default sampling. Use `--num-ctx`, `--top-p`, `--top-k`, and `--repeat-penalty` on the CLI, or set them in `maki.toml` (globally or per-model). A value of zero means "not set — use server default":
 
