@@ -888,9 +888,20 @@ pub fn apply_xmp_data_pub(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, v
 
 fn apply_xmp_data(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, variant_hash: &str) {
     let merged = merge_hierarchical_keywords(&xmp.keywords, &xmp.hierarchical_keywords);
-    for kw in &merged {
-        if !asset.tags.contains(kw) {
-            asset.tags.push(kw.clone());
+    // Run every XMP-sourced keyword through the same normaliser that
+    // `maki tag` uses for user input. Lightroom / CaptureOne / manual
+    // XMP edits occasionally produce malformed keywords (leading
+    // whitespace, leading `|`, comma-joined "red, gold" pairs) that
+    // would otherwise land in `asset.tags` verbatim and become
+    // un-renameable later. `|`-prefix-anchor in search syntax means a
+    // tag like ` |München` collides with thousands of legitimately
+    // hierarchical tags ending in `|München` and becomes impossible
+    // to isolate without bespoke tooling — better to never let it in.
+    for raw in &merged {
+        for kw in crate::tag_util::normalize_tag_for_storage(raw).tags {
+            if !asset.tags.contains(&kw) {
+                asset.tags.push(kw);
+            }
         }
     }
 
@@ -933,9 +944,13 @@ fn apply_xmp_data(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, variant_h
 /// - source_metadata: overwrite XMP-sourced keys (rating, label, creator, copyright)
 fn reapply_xmp_data(xmp: &crate::xmp_reader::XmpData, asset: &mut Asset, variant_hash: &str) {
     let merged = merge_hierarchical_keywords(&xmp.keywords, &xmp.hierarchical_keywords);
-    for kw in &merged {
-        if !asset.tags.contains(kw) {
-            asset.tags.push(kw.clone());
+    // Same normaliser pass as `apply_xmp_data`; see comment there for
+    // why we don't trust XMP keywords verbatim.
+    for raw in &merged {
+        for kw in crate::tag_util::normalize_tag_for_storage(raw).tags {
+            if !asset.tags.contains(&kw) {
+                asset.tags.push(kw);
+            }
         }
     }
 

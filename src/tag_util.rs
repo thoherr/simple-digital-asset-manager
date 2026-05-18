@@ -112,9 +112,27 @@ pub fn normalize_tag_for_storage(input: &str) -> TagNormalization {
             .map(|c| if c.is_control() { ' ' } else { c })
             .collect();
         let collapsed: String = clean.split_whitespace().collect::<Vec<_>>().join(" ");
-        if !collapsed.is_empty() {
-            out.push(collapsed);
+        if collapsed.is_empty() {
+            continue;
         }
+        // Clean up stray hierarchy separators: a leading `|` would yield
+        // an anonymous root parent that's semantically just "foo"; a
+        // trailing `|` an anonymous child; `foo||bar` an empty middle
+        // segment. All three are malformed at storage time (the cause
+        // is usually a Lightroom/CaptureOne export quirk where a
+        // mis-typed XMP keyword like " |München" survived into the
+        // catalog via apply_xmp_data, which used to push raw XMP
+        // keywords straight into asset.tags without going through this
+        // normaliser). Strip them so the stored tag is canonical.
+        let parts: Vec<&str> = collapsed
+            .split('|')
+            .map(|p| p.trim())
+            .filter(|p| !p.is_empty())
+            .collect();
+        if parts.is_empty() {
+            continue;
+        }
+        out.push(parts.join("|"));
     }
     let changed = out.len() != 1 || out.first().map(|s| s != &initial).unwrap_or(true);
     TagNormalization { tags: out, changed }
@@ -629,5 +647,64 @@ mod tests {
         // other's ancestor either. Both non-descendants → both counted.
         let tags = vec!["a".to_string(), "a".to_string()];
         assert_eq!(leaf_tag_count(&tags), 2);
+    }
+
+    // ── normalize_tag_for_storage: stray `|` markers ─────────────────
+    // Regressions for the malformed-tag case (user's catalog had
+    // ` |München` from a Lightroom XMP that snuck past the import
+    // path). The normaliser is now the canonical filter at every
+    // tag ingestion site, including XMP keywords.
+
+    #[test]
+    fn normalize_strips_leading_pipe() {
+        let n = normalize_tag_for_storage("|München");
+        assert_eq!(n.tags, vec!["München"]);
+        assert!(n.changed);
+    }
+
+    #[test]
+    fn normalize_strips_leading_whitespace_then_pipe() {
+        // The user's actual broken tag.
+        let n = normalize_tag_for_storage(" |München");
+        assert_eq!(n.tags, vec!["München"]);
+        assert!(n.changed);
+    }
+
+    #[test]
+    fn normalize_strips_trailing_pipe() {
+        let n = normalize_tag_for_storage("subject|nature|");
+        assert_eq!(n.tags, vec!["subject|nature"]);
+        assert!(n.changed);
+    }
+
+    #[test]
+    fn normalize_collapses_empty_middle_segment() {
+        let n = normalize_tag_for_storage("subject||nature");
+        assert_eq!(n.tags, vec!["subject|nature"]);
+        assert!(n.changed);
+    }
+
+    #[test]
+    fn normalize_drops_segment_that_is_only_pipes() {
+        let n = normalize_tag_for_storage("|||");
+        assert!(n.tags.is_empty());
+        assert!(n.changed);
+    }
+
+    #[test]
+    fn normalize_trims_whitespace_around_pipe_segments() {
+        // Whitespace *around* `|` separators should disappear too —
+        // `foo | bar` is a hierarchical tag, not a single tag with
+        // padding inside.
+        let n = normalize_tag_for_storage("foo | bar");
+        assert_eq!(n.tags, vec!["foo|bar"]);
+        assert!(n.changed);
+    }
+
+    #[test]
+    fn normalize_preserves_already_clean_hierarchy() {
+        let n = normalize_tag_for_storage("subject|nature|landscape");
+        assert_eq!(n.tags, vec!["subject|nature|landscape"]);
+        assert!(!n.changed);
     }
 }
