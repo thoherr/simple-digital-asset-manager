@@ -389,6 +389,23 @@ window.onFilterChange = onFilterChange;
     var toolbar = document.getElementById('batch-toolbar');
     var countEl = document.getElementById('batch-count');
 
+    // Count selected IDs that aren't currently rendered as cards on this
+    // page. This is the real "you might accidentally batch-edit something
+    // you can't see" signal — the user's bug report named this exact
+    // pattern (come back to browse, no visible selection on screen, count
+    // says N selected, start a new selection round, batch-tag applies
+    // to assets they'd forgotten about).
+    function countSelectedOffPage() {
+        if (selected.size === 0) return 0;
+        var visible = new Set();
+        document.querySelectorAll('.asset-card[data-asset-id]').forEach(function(card) {
+            visible.add(card.getAttribute('data-asset-id'));
+        });
+        var off = 0;
+        selected.forEach(function(id) { if (!visible.has(id)) off++; });
+        return off;
+    }
+
     function updateToolbar() {
         var n = selected.size;
         // If the recorded span hint no longer matches the actual selection
@@ -413,6 +430,25 @@ window.onFilterChange = onFilterChange;
             document.body.classList.remove('has-batch-toolbar');
             document.body.classList.remove('batch-active');
         }
+
+        // Persistent off-page indicator. Stays visible AS LONG AS any
+        // selected asset isn't rendered on the current page — clears
+        // automatically when the user pages back to where they all live,
+        // clears the selection, or deselects everything that isn't here.
+        var pill = document.getElementById('restored-selection-pill');
+        if (pill) {
+            var offPage = countSelectedOffPage();
+            if (offPage > 0) {
+                pill.style.display = '';
+                pill.textContent = '⚠ ' + offPage + ' selected off this page';
+                pill.title = offPage + ' asset(s) you have selected are not visible on this page. Batch actions still apply to them.';
+                countEl.classList.add('has-off-page');
+            } else {
+                pill.style.display = 'none';
+                countEl.classList.remove('has-off-page');
+            }
+        }
+
         syncCheckboxes();
         updateStackButtons();
     }
@@ -514,6 +550,11 @@ window.onFilterChange = onFilterChange;
         if (e.detail.target && e.detail.target.id === 'results') {
             syncCheckboxes();
             bustChangedPreviews();
+            // Pagination, filter changes, and sort all swap #results.
+            // Recompute the off-page pill against the new set of
+            // visible cards so the indicator stays accurate as the
+            // user pages around with a persistent selection.
+            updateToolbar();
         }
     });
 
@@ -1596,49 +1637,22 @@ window.onFilterChange = onFilterChange;
         }
     });
 
-    // Apply restored selection to DOM (must run after initial render)
+    // Apply restored selection to DOM (must run after initial render).
+    // updateToolbar() now manages the persistent "off-page" pill itself
+    // based on which selected IDs are actually rendered as cards.
     if (selected.size > 0) updateToolbar();
 
-    // If the selection survived navigation to a non-detail page and
-    // back (Tags / Stats / Maintain / …), surface that with a
-    // dismissable pill next to the count + a one-shot pulse on the
-    // count badge itself. The user reported accidentally tagging
-    // assets they'd forgotten were selected — this is the visible
-    // cue that recovers them.
-    if (restoredFromAway) {
-        var restoredPill = document.getElementById('restored-selection-pill');
-        if (restoredPill) restoredPill.style.display = '';
-        if (countEl) {
-            countEl.classList.add('pulse-restored');
-            // Pulse runs for ~2 s then quietly drops the class so the
-            // page doesn't stay animated forever.
-            setTimeout(function() {
-                countEl.classList.remove('pulse-restored');
-            }, 2200);
-        }
-        // Hide the pill the moment the user touches the selection
-        // (any add/remove/clear) — they've acknowledged it.
-        function dismissRestoredPill() {
-            if (restoredPill && restoredPill.style.display !== 'none') {
-                restoredPill.style.display = 'none';
-            }
-            document.body.removeEventListener('click', maybeDismissOnClick, true);
-        }
-        function maybeDismissOnClick(e) {
-            // Any click on an asset checkbox / card or on the batch
-            // toolbar's Clear button counts as acknowledgement.
-            var t = e.target;
-            if (!t) return;
-            if (t.closest && (t.closest('.asset-card') || t.closest('#batch-clear'))) {
-                dismissRestoredPill();
-            }
-        }
-        document.body.addEventListener('click', maybeDismissOnClick, true);
-        // The pill itself is also clickable to dismiss.
-        if (restoredPill) {
-            restoredPill.style.cursor = 'pointer';
-            restoredPill.addEventListener('click', dismissRestoredPill);
-        }
+    // One-shot pulse on the count badge when the page loads with a
+    // selection that came from a non-detail navigation (Tags / Stats /
+    // Maintain / …). This is the attention-grabber on initial return;
+    // the persistent visibility cue is the off-page pill driven by
+    // updateToolbar(). Detail-page round trips don't pulse — that's
+    // the normal browsing flow.
+    if (restoredFromAway && selected.size > 0 && countEl) {
+        countEl.classList.add('pulse-restored');
+        setTimeout(function() {
+            countEl.classList.remove('pulse-restored');
+        }, 2200);
     }
 
     // Expose for keyboard navigation integration

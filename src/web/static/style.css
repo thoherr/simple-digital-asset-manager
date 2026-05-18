@@ -461,14 +461,18 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     white-space: nowrap;
 }
 
-/* "Selection still active from a previous visit" pill — sits in the
-   batch toolbar next to the count when the user returns to the browse
-   page (from Tags / Stats / Maintain / etc.) with a non-empty
-   selection that survived sessionStorage. Yellow-toned to distinguish
-   from the blue-toned filter-restored pill; the colour reads as
-   "heads up, check this" rather than "info". Click anywhere on the
-   pill, on a selected card, or on the toolbar's Clear button to
-   dismiss. */
+/* Persistent "selection extends beyond this page" indicator — sits in
+   the batch toolbar next to the count whenever any selected asset
+   isn't currently rendered as a card. Yellow-toned warning style so
+   it stays visually distinct from the blue informational filter pill.
+   The bug it prevents: the user comes back to browse with N assets
+   selected but none of them visible on this page, starts a new
+   selection round, applies a batch action — and the batch sweeps up
+   the forgotten N assets too. With this pill present, the off-page
+   count is always on screen as long as the condition holds; it
+   clears automatically when the selection comes back into view or
+   the user hits Clear. No click-to-dismiss behaviour: the condition
+   itself is the dismissal trigger. */
 .restored-selection-pill {
     display: inline-block;
     padding: 0.2rem 0.6rem;
@@ -479,15 +483,21 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     border-radius: 1rem;
     white-space: nowrap;
     margin-left: 0.5rem;
-    transition: opacity 0.2s ease;
-}
-.restored-selection-pill:hover {
-    opacity: 0.75;
 }
 [data-theme="dark"] .restored-selection-pill {
     color: #f4c069;
     background: rgba(244, 192, 105, 0.14);
     border-color: rgba(244, 192, 105, 0.45);
+}
+/* When the off-page condition holds, give the count itself a subtle
+   warning tint as a secondary cue. The pill carries the explicit
+   number; this is just so the count colour matches and the user's
+   eye registers both pieces as one warning chunk. */
+.batch-count.has-off-page {
+    color: var(--warning, #c08000);
+}
+[data-theme="dark"] .batch-count.has-off-page {
+    color: #f4c069;
 }
 
 /* One-shot pulse on the batch-toolbar count when selection was
