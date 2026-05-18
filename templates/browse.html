@@ -66,6 +66,7 @@
 <div class="batch-toolbar" id="batch-toolbar">
     <div class="batch-toolbar-inner">
         <span class="batch-count" id="batch-count">0 selected</span>
+        <span class="restored-selection-pill" id="restored-selection-pill" style="display:none" title="You still have assets selected from a previous visit. Make sure that's what you want before applying a batch action.">⚠ from previous visit</span>
         <button class="batch-btn" id="batch-select-page">Select page <kbd class="shortcut-hint"><span class="mod-key"></span>A</kbd></button>
         <button class="batch-btn" id="batch-clear">Clear <kbd class="shortcut-hint">Esc</kbd></button>
         <span class="batch-sep"></span>
@@ -349,7 +350,13 @@ window.onFilterChange = onFilterChange;
     // null means "all selected IDs are on the current page".
     var selectionPageSpan = null;
 
-    // Restore selection from sessionStorage — but clear on forced reload
+    // Restore selection from sessionStorage — but clear on forced reload.
+    // Track whether the restore came from a navigation that left the
+    // browse page entirely (e.g. visit to /tags, /stats) as opposed to
+    // a detail-page-and-back round trip — selection forgotten across
+    // a non-detail navigation is the case that bit the user, so we
+    // flag it for visible feedback below.
+    var restoredFromAway = false;
     try {
         var savedSel = sessionStorage.getItem('maki-browse-selection');
         if (savedSel) {
@@ -357,6 +364,24 @@ window.onFilterChange = onFilterChange;
             var navType = (performance.getEntriesByType('navigation')[0] || {}).type;
             if (navType !== 'reload') {
                 JSON.parse(savedSel).forEach(function(id) { selected.add(id); });
+                if (selected.size > 0) {
+                    // document.referrer is the page that linked here.
+                    // Empty / cross-origin / pageless => treat as
+                    // "from elsewhere"; same-origin /asset/... => was
+                    // a detail-page round trip (still in the browsing
+                    // flow, no warning needed); anything else
+                    // same-origin (Tags, Stats, Maintain, …) => the
+                    // user genuinely left and came back, surface the
+                    // restored selection.
+                    var ref = document.referrer || '';
+                    var sameOrigin = ref.indexOf(window.location.origin) === 0;
+                    var fromDetail = sameOrigin
+                        && ref.substring(window.location.origin.length).indexOf('/asset/') === 0;
+                    var fromBrowseFilterChange = sameOrigin
+                        && (ref.substring(window.location.origin.length) === '/'
+                            || ref.substring(window.location.origin.length).indexOf('/?') === 0);
+                    restoredFromAway = !fromDetail && !fromBrowseFilterChange;
+                }
             }
         }
     } catch(e) {}
@@ -1573,6 +1598,48 @@ window.onFilterChange = onFilterChange;
 
     // Apply restored selection to DOM (must run after initial render)
     if (selected.size > 0) updateToolbar();
+
+    // If the selection survived navigation to a non-detail page and
+    // back (Tags / Stats / Maintain / …), surface that with a
+    // dismissable pill next to the count + a one-shot pulse on the
+    // count badge itself. The user reported accidentally tagging
+    // assets they'd forgotten were selected — this is the visible
+    // cue that recovers them.
+    if (restoredFromAway) {
+        var restoredPill = document.getElementById('restored-selection-pill');
+        if (restoredPill) restoredPill.style.display = '';
+        if (countEl) {
+            countEl.classList.add('pulse-restored');
+            // Pulse runs for ~2 s then quietly drops the class so the
+            // page doesn't stay animated forever.
+            setTimeout(function() {
+                countEl.classList.remove('pulse-restored');
+            }, 2200);
+        }
+        // Hide the pill the moment the user touches the selection
+        // (any add/remove/clear) — they've acknowledged it.
+        function dismissRestoredPill() {
+            if (restoredPill && restoredPill.style.display !== 'none') {
+                restoredPill.style.display = 'none';
+            }
+            document.body.removeEventListener('click', maybeDismissOnClick, true);
+        }
+        function maybeDismissOnClick(e) {
+            // Any click on an asset checkbox / card or on the batch
+            // toolbar's Clear button counts as acknowledgement.
+            var t = e.target;
+            if (!t) return;
+            if (t.closest && (t.closest('.asset-card') || t.closest('#batch-clear'))) {
+                dismissRestoredPill();
+            }
+        }
+        document.body.addEventListener('click', maybeDismissOnClick, true);
+        // The pill itself is also clickable to dismiss.
+        if (restoredPill) {
+            restoredPill.style.cursor = 'pointer';
+            restoredPill.addEventListener('click', dismissRestoredPill);
+        }
+    }
 
     // Expose for keyboard navigation integration
     window.damBatch = {

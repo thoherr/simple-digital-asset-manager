@@ -461,6 +461,56 @@ nav .nav-version { margin-left: auto; font-size: 0.75rem; opacity: 0.5; font-wei
     white-space: nowrap;
 }
 
+/* "Selection still active from a previous visit" pill — sits in the
+   batch toolbar next to the count when the user returns to the browse
+   page (from Tags / Stats / Maintain / etc.) with a non-empty
+   selection that survived sessionStorage. Yellow-toned to distinguish
+   from the blue-toned filter-restored pill; the colour reads as
+   "heads up, check this" rather than "info". Click anywhere on the
+   pill, on a selected card, or on the toolbar's Clear button to
+   dismiss. */
+.restored-selection-pill {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.78rem;
+    color: var(--warning, #c08000);
+    background: color-mix(in srgb, var(--warning, #c08000) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning, #c08000) 50%, transparent);
+    border-radius: 1rem;
+    white-space: nowrap;
+    margin-left: 0.5rem;
+    transition: opacity 0.2s ease;
+}
+.restored-selection-pill:hover {
+    opacity: 0.75;
+}
+[data-theme="dark"] .restored-selection-pill {
+    color: #f4c069;
+    background: rgba(244, 192, 105, 0.14);
+    border-color: rgba(244, 192, 105, 0.45);
+}
+
+/* One-shot pulse on the batch-toolbar count when selection was
+   restored from elsewhere — three quick wobbles, then class is
+   stripped by JS so the page doesn't stay animated forever. */
+@keyframes maki-batch-count-pulse {
+    0%, 100% { transform: scale(1); }
+    20%      { transform: scale(1.15); }
+    40%      { transform: scale(1); }
+    60%      { transform: scale(1.12); }
+    80%      { transform: scale(1); }
+}
+.batch-count.pulse-restored {
+    display: inline-block;
+    animation: maki-batch-count-pulse 0.9s ease-out 2;
+    transform-origin: center;
+    color: var(--warning, #c08000);
+    font-weight: 600;
+}
+[data-theme="dark"] .batch-count.pulse-restored {
+    color: #f4c069;
+}
+
 /* Results grid */
 .results-grid {
     display: grid;
