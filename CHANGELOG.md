@@ -2,6 +2,141 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.5.12 (2026-05-18)
+
+Tag-data hygiene + browse-page selection safety release. One real
+performance win, one real bug, one new CLI tool, and two browser-side
+UX changes around the persistent selection state.
+
+Tests: 806 + 250 standard, 926 + 282 pro (+8 / +0 / +8 / +0 from v4.5.11
+— eight new lib tests for the stray-`|` normaliser cases and one for the
+new Rust-side leaf-detection algorithm).
+
+### Tags page: Rust-side leaf detection (~3× faster)
+
+`list_leaf_tag_counts` previously ran a `NOT EXISTS` subquery against
+`json_each(a.tags)` per (asset, tag) pair — O(N × M²) over a virtual
+table SQLite can't index. On a 90 k-asset catalog the tags page hit
+~1 s; on a 260 k-asset / 4.5 k-tag catalog ~1 s as well.
+
+Replaced with a streaming Rust-side computation. A single
+`SELECT a.id, je.value FROM assets a, json_each(a.tags) AS je WHERE …
+ORDER BY a.id, je.value` hands the rows back already lex-sorted within
+each asset; a per-asset accumulator + linear walk decides leaf-ness via
+a one-step `starts_with` check on the next tag (the lex-sort guarantees
+any descendant `T|...` is the immediately-following entry, so a single
+peek suffices). Same signature, same return type, case-sensitivity
+preserved (Rust's `str::starts_with` is byte-exact, matching the SQL
+version's `GLOB` rather than `LIKE`).
+
+Measured: ~360 ms on a 90 k catalog (down from ~1 s), ~900 ms on a 260 k
+catalog (down from ~980 ms — the larger catalogs scale closer to linear
+in N because the second `json_each` no longer multiplies in). Regression
+test `list_leaf_tag_counts_classifies_per_asset_correctly` locks four
+shapes: deep hierarchy with single leaf, hierarchy with sibling leaves,
+mixed case (`color` + `Color|red` — case-sensitive prefix means
+lowercase `color` stays a leaf), and flat-only tag sets.
+
+### Tag normalisation: strip stray `|` markers + plug XMP-import gap
+
+A user found a tag ` |München` in their catalog — leading whitespace,
+then `|München`. The `|`-prefix-anchor search syntax meant
+`tag:|München` matched 12 k legitimately hierarchical tags ending in
+`|München` too, hiding the one offender in a giant result set.
+
+Two gaps, both closed:
+
+1. `normalize_tag_for_storage` previously stripped whitespace and
+   control chars but accepted leading / trailing / consecutive `|`
+   separators verbatim. Now also:
+
+   - Strips leading and trailing `|` (anonymous root parent / trailing
+     child — semantically meaningless).
+   - Drops empty middle segments (`foo||bar` → `foo|bar`).
+   - Trims whitespace around each `|` segment (`foo | bar` →
+     `foo|bar`).
+   - Drops the tag entirely if it's only `|`s with nothing else.
+
+2. `apply_xmp_data` and `reapply_xmp_data` (the XMP-keyword ingestion
+   sites — used by `maki import`, `maki refresh --media`, and the new
+   `sync --apply` media-modified path) used to push merged keywords
+   into `asset.tags` verbatim, bypassing the normaliser that
+   `maki tag` and the web UI's tag input both go through. Both now
+   route every XMP-sourced keyword through `normalize_tag_for_storage`.
+
+Seven new unit tests in `tag_util::tests` lock the new normaliser
+behaviour (leading pipe, leading whitespace + pipe, trailing pipe,
+empty middle segment, all-pipes, whitespace around pipes, idempotent
+on already-clean hierarchies).
+
+### `maki tag scan` — find assets with malformed tags
+
+The shell incantation `maki search 'tag:"= |München"'` works for
+some malformed tags but not when the "whitespace" isn't an ASCII space
+(NBSP U+00A0, tab, zero-width space, ogham, etc. — all valid Unicode
+whitespace, all things Lightroom / CaptureOne export quirks can emit).
+
+New command:
+
+```bash
+maki tag scan          # human-readable
+maki tag scan --json   # machine-readable
+```
+
+Walks every asset's tag list and reports any tag value that doesn't
+survive a round-trip through `normalize_tag_for_storage`. For each
+offender, the output names the asset, dumps the raw tag with its byte
+sequence in hex (so the whitespace flavour is self-diagnosing), and
+shows the canonical form the normaliser would produce:
+
+```
+b6598546-2eb6-4126-b3e7-a6dbad5faee1  (unnamed)
+    raw:  " |München"
+    hex:  20 7c 4d c3 bc 6e 63 68 65 6e
+    fix:  "München"
+```
+
+Read-only. Pair with `maki tag fix-unicode --apply` (for NFC/NFD),
+`maki tag rename` / `tag delete --apply` (for targeted edits), or
+edit the sidecar by hand and reload via `maki rebuild-catalog --asset
+<id>` (existing command, single-asset rebuild from the corrected
+sidecar).
+
+Reference manual gains a `maki tag scan` section with the full
+behaviour catalogue and example output.
+
+### Browse: persistent off-page selection indicator
+
+User reported accidentally tagging assets they'd forgotten were still
+selected from a previous visit. The selection state persists across
+navigation by design, but the visual cue when returning to the browse
+page was identical regardless of whether the selection was new or
+carried over — the warning surface disappeared the moment the user
+looked away.
+
+Two-part fix:
+
+1. **One-shot pulse** on the count badge when the page loads with a
+   selection that came from a non-detail navigation (Tags / Stats /
+   Maintain / …). Attention-grabber on landing. Detail-page round
+   trips don't pulse — that's the normal browsing flow.
+2. **Persistent off-page indicator** in the batch toolbar. A yellow
+   `⚠ N selected off this page` pill is visible whenever at least one
+   selected asset isn't currently rendered as a card on the current
+   page. Recomputed on every selection toggle AND every htmx swap of
+   `#results` (pagination, filter change, sort), so the count stays
+   accurate as you page around with a persistent selection. The batch
+   count itself ("12 selected") also tints yellow when the condition
+   holds — count + pill read as one warning chunk.
+
+The pill is condition-driven, not event-driven: no click-to-dismiss.
+It clears automatically the moment the off-page count drops to zero
+(you page to where the selection lives, clear it, or deselect
+everything that isn't visible). This is the protection against the
+real danger case — coming back to a browse page where *none* of the
+selected assets are visible, where the previous one-shot pill would
+disappear after the first click.
+
 ## v4.5.11 (2026-05-17)
 
 Workflow-driven release focused on the catalog↔disk reconciliation paths.
