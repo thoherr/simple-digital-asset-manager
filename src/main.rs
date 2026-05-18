@@ -1257,6 +1257,20 @@ enum TagCommands {
         apply: bool,
     },
 
+    /// Scan all assets for malformed tags (leading/trailing whitespace,
+    /// stray `|` separators, non-NFC byte sequences, control chars,
+    /// empty segments). Read-only — reports asset IDs and the offending
+    /// tag values so you can fix sidecars by hand or feed the IDs into
+    /// `maki tag rename` / `maki tag delete --apply`. Equivalent check
+    /// to what `normalize_tag_for_storage` applies at every tag write
+    /// site; tags that round-trip through it unchanged are skipped.
+    #[command(name = "scan")]
+    Scan {
+        /// Output JSON instead of human-readable lines.
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Expand all hierarchical tags to include ancestor paths
     #[command(name = "expand-ancestors")]
     ExpandAncestors {

@@ -12,6 +12,7 @@ Commands for importing files, applying metadata, and merging asset variants. Imp
 | [tag delete](#maki-tag-delete) | Delete a tag (and descendants) from every asset that has it |
 | [tag clear](#maki-tag-clear) | Remove all tags from an asset |
 | [tag fix-unicode](#maki-tag-fix-unicode) | Normalise tag values to Unicode NFC catalog-wide |
+| [tag scan](#maki-tag-scan) | Find assets with malformed tags (whitespace, stray pipes, NFD, …) |
 | [tag expand-ancestors](#maki-tag-expand-ancestors) | Expand hierarchical tags to include ancestor paths |
 | [tag export-vocabulary](#maki-tag-export-vocabulary) | Export tag tree as a vocabulary.yaml file |
 | [edit](#maki-edit) | Edit metadata (name, rating, label, description, date) |
@@ -724,6 +725,66 @@ NFC is still the right storage form: it matches the W3C/IETF recommendation, mod
 
 [tag expand-ancestors](#maki-tag-expand-ancestors) -- the other tag-data-cleanup migration; both are typically run once after major imports from external tools.
 [tag rename](#maki-tag-rename), [tag delete](#maki-tag-delete) -- targeted edits.
+
+---
+
+## maki tag scan {#maki-tag-scan}
+
+### NAME
+
+maki-tag-scan -- find assets whose tags don't pass the canonical normalisation
+
+### SYNOPSIS
+
+    maki [GLOBAL FLAGS] tag scan [--json]
+
+### DESCRIPTION
+
+Read-only scan that walks every asset's tag list and reports any tag value that wouldn't survive a round-trip through `normalize_tag_for_storage` (the same filter every `maki tag` write site applies). Catches tags that bypassed normalisation at some prior ingestion point — typically an XMP keyword from Lightroom / CaptureOne / a manual `.xmp` edit that landed in `asset.tags` verbatim before the normaliser was applied to those code paths.
+
+The check covers:
+
+- Leading or trailing whitespace, including ASCII space, tab, and the various Unicode whitespace forms (non-breaking space U+00A0, zero-width space U+200B, ogham space U+1680, narrow no-break space U+202F, etc.).
+- Leading or trailing `|` separators (`|foo`, `foo|` — semantically meaningless and break the `|`-prefix-anchor search syntax).
+- Empty middle segments (`foo||bar`).
+- Whitespace around `|` separators (`foo | bar`).
+- Control characters.
+- NFD-vs-NFC byte sequences for the same logical string (also fixable via `maki tag fix-unicode --apply`).
+- Comma- or semicolon-joined "tags" that should have been split (`red, gold, white`).
+
+For each offender, the output names the asset, dumps the raw tag with both its display form and its raw byte sequence in hex (so you can see which whitespace flavour actually snuck in), and shows the canonical form the normaliser would produce. Use it to find single problematic assets you can fix by hand, or to feed the IDs into `maki tag rename` / `maki tag delete --apply`.
+
+### OPTIONS
+
+**\--json**
+: Emit JSON instead of human-readable lines. The result is `{scanned, malformed, assets: [{asset_id, name, tags: [{raw, raw_bytes_hex, normalised}]}]}`.
+
+### EXAMPLES
+
+Default output:
+
+```
+maki tag scan
+```
+
+```
+b6598546-2eb6-4126-b3e7-a6dbad5faee1  (unnamed)
+    raw:  " |München"
+    hex:  20 7c 4d c3 bc 6e 63 68 65 6e
+    fix:  "München"
+Tag scan: 12847 scanned, 1 with malformed tag(s).
+```
+
+JSON for tooling:
+
+```bash
+maki tag scan --json | jq '.assets[] | .asset_id'
+```
+
+### SEE ALSO
+
+[tag fix-unicode](#maki-tag-fix-unicode) -- auto-fix the NFC/NFD subset of what `scan` reports.
+[tag rename](#maki-tag-rename), [tag delete](#maki-tag-delete) -- targeted fixes once you know which asset and tag to address.
 
 ---
 

@@ -1989,6 +1989,88 @@ pub fn run_tag_command(
             }
             Ok(())
         }
+        Some(TagCommands::Scan { json }) => {
+            // Read-only scan across all assets via the metadata store
+            // (sidecar = source of truth, same path `tag_fix_unicode`
+            // uses). A tag is "malformed" iff normalize_tag_for_storage
+            // would change its bytes — covers leading/trailing
+            // whitespace including non-breaking space (U+00A0), tabs,
+            // stray `|` separators, control chars, empty segments,
+            // NFD-vs-NFC duplicates. The user's diagnostic case was a
+            // tag like ` |München` where the leading "space" turned
+            // out not to be a regular ASCII 0x20 — this scan catches
+            // it regardless of which whitespace flavour snuck in.
+            let catalog_root = maki::config::find_catalog_root()?;
+            let store = maki::metadata_store::MetadataStore::new(&catalog_root);
+            let summaries = store.list()?;
+            let mut findings: Vec<serde_json::Value> = Vec::new();
+            let mut asset_count = 0u32;
+            let mut bad_count = 0u32;
+            for s in &summaries {
+                asset_count += 1;
+                let asset = match store.load(s.id) {
+                    Ok(a) => a,
+                    Err(e) => {
+                        eprintln!("  warn: failed to load {}: {e:#}", s.id);
+                        continue;
+                    }
+                };
+                let mut offenders: Vec<(String, Vec<String>)> = Vec::new();
+                for t in &asset.tags {
+                    let n = maki::tag_util::normalize_tag_for_storage(t);
+                    // Mismatch iff the normaliser would have split the
+                    // input, dropped it, or produced a different single
+                    // string. Single-entry equal → tag is canonical.
+                    let canonical = n.tags.len() == 1 && n.tags[0] == *t;
+                    if !canonical {
+                        offenders.push((t.clone(), n.tags));
+                    }
+                }
+                if offenders.is_empty() {
+                    continue;
+                }
+                bad_count += 1;
+                if json {
+                    findings.push(serde_json::json!({
+                        "asset_id": s.id.to_string(),
+                        "name": asset.name,
+                        "tags": offenders.iter().map(|(raw, normalised)| serde_json::json!({
+                            "raw": raw,
+                            "raw_bytes_hex": raw.as_bytes().iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(""),
+                            "normalised": normalised,
+                        })).collect::<Vec<_>>(),
+                    }));
+                } else {
+                    let display = asset.name.as_deref().unwrap_or("(unnamed)");
+                    println!("{}  {}", s.id, display);
+                    for (raw, normalised) in &offenders {
+                        let hex = raw.as_bytes().iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ");
+                        let suggestion = if normalised.is_empty() {
+                            "(would be dropped)".to_string()
+                        } else {
+                            normalised.iter().map(|s| format!("{s:?}")).collect::<Vec<_>>().join(", ")
+                        };
+                        println!("    raw:  {raw:?}");
+                        println!("    hex:  {hex}");
+                        println!("    fix:  {suggestion}");
+                    }
+                }
+            }
+            if json {
+                println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+                    "scanned": asset_count,
+                    "malformed": bad_count,
+                    "assets": findings,
+                }))?);
+            } else if bad_count == 0 {
+                println!("Tag scan: {asset_count} asset(s) scanned, no malformed tags.");
+            } else {
+                println!("Tag scan: {asset_count} scanned, {bad_count} with malformed tag(s).");
+                println!("  Tip: run `maki tag fix-unicode --apply` to auto-fix tags that only differ in NFC/NFD form,");
+                println!("       or edit sidecars by hand and run `maki rebuild-catalog`.");
+            }
+            Ok(())
+        }
         Some(TagCommands::Clear { asset_id }) => {
             let catalog_root = maki::config::find_catalog_root()?;
             let engine = QueryEngine::new(&catalog_root);
