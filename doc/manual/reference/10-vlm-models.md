@@ -21,7 +21,13 @@ To switch models, either set `[vlm] model` in `maki.toml` or pass `--model` on t
 
 ## Should I Upgrade?
 
-The answer is usually "stick with what works." The descriptions you're getting from your current model are good enough for *navigation* — that's the bar `maki describe` is trying to clear, not poet-grade prose. Upgrading helps in specific cases:
+The answer is usually "stick with what works." The descriptions you're getting from your current model are good enough for *navigation* — that's the bar `maki describe` is trying to clear, not poet-grade prose. The clearest upgrade paths from popular defaults:
+
+- `gemma3:4b` → `gemma4:e4b` — same effective compute, native multimodal (vs Gemma 3's bolt-on projector), 128K context, native system prompts. Similar latency on equivalent hardware.
+- `qwen2.5vl:3b` → `qwen3-vl:8b` — bigger but noticeably richer; or stay at 3 B class with `qwen3-vl:4b` for minimal RAM increase.
+- `moondream` → `gemma4:e2b` — same speed bracket, much better visual reasoning.
+
+Upgrading helps in specific cases:
 
 - **Generic / repetitive descriptions on similar images.** A 3 B model often falls back to template language ("a beautiful landscape with mountains and a clear sky"). Stepping up to a 7–8 B model usually breaks the pattern.
 - **Wrong subject identification.** If the model mistakes a horse for a dog, or a wedding for a concert, a larger model with stronger visual reasoning helps. Verify with a small A/B batch before committing.
@@ -69,7 +75,8 @@ All timings measured on Apple M3 Pro (18 GB) with Ollama, using preview images (
 | Model | RAM `\newline`{=latex} Download | Speed | Notes |
 |-------------------:|---------:|--------:|:----------------------------------------------------------------------|
 | **Qwen2.5-VL 3B** `qwen2.5vl:3b` | **3 GB** `\newline`{=latex} (2.0 GB) | 8--12s | **Default.** Best balance of speed, quality, and resource use. Very good quality. |
-| **Qwen3-VL 8B** `qwen3-vl:8b` | **6 GB** `\newline`{=latex} (5.2 GB) | 15--20s | **Recommended upgrade.** Excellent quality, noticeably better descriptions. |
+| **Gemma 4 E4B** `gemma4:e4b` | **10 GB** `\newline`{=latex} (9.6 GB) | 10--15s | **Recommended upgrade from Gemma 3 4B.** Native multimodal, 128K context, native system prompts. |
+| **Qwen3-VL 8B** `qwen3-vl:8b` | **6 GB** `\newline`{=latex} (5.2 GB) | 15--20s | **Recommended upgrade from Qwen2.5-VL 3B.** Excellent quality, noticeably better descriptions. |
 | **Qwen3-VL 4B** `qwen3-vl:4b` | **4 GB** `\newline`{=latex} (2.8 GB) | 10--15s | Good step up from Qwen2.5-VL 3B without much extra RAM. Very good quality. |
 | **Qwen2.5-VL 7B** `qwen2.5vl:7b` | **6 GB** `\newline`{=latex} (4.7 GB) | 20--36s | Proven, widely tested. Excellent quality. |
 | **Gemma 3 4B** `gemma3:4b` | **4 GB** `\newline`{=latex} (3.3 GB) | 10--15s | Strong reasoning, good at scene understanding. Very good quality. |
@@ -80,12 +87,15 @@ All timings measured on Apple M3 Pro (18 GB) with Ollama, using preview images (
 |-------------------:|---------:|--------:|:----------------------------------------------------------------------|
 | **Moondream 2B** `moondream` | **2 GB** `\newline`{=latex} (1.7 GB) | 3--5s | Fastest option. Good for bulk first passes before refining with a larger model. |
 | **SmolVLM 2.2B** `smolvlm` | **2 GB** `\newline`{=latex} (1.5 GB) | 4--8s | HuggingFace, very compact. Similar niche to Moondream. |
+| **Gemma 4 E2B** `gemma4:e2b` | **8 GB** `\newline`{=latex} (7.2 GB) | 6--10s | Smaller Gemma 4 variant; faster than E4B while keeping the new generation's prompting + 128K context. |
 
 ### Large / High Quality
 
 | Model | RAM `\newline`{=latex} Download | Speed | Notes |
 |-------------------:|---------:|--------:|:----------------------------------------------------------------------|
-| **Qwen3-VL 32B** `qwen3-vl:32b` | **24 GB** `\newline`{=latex} (20 GB) | 60--90s | Best quality via Ollama. Needs 32 GB+ system RAM. Outstanding quality. |
+| **Qwen3-VL 32B** `qwen3-vl:32b` | **24 GB** `\newline`{=latex} (20 GB) | 60--90s | Best Qwen quality via Ollama. Needs 32 GB+ system RAM. Outstanding quality. |
+| **Gemma 4 26B** `gemma4:26b` | **22 GB** `\newline`{=latex} (18 GB) | 50--80s | MoE architecture (25 B total / 3.8 B active); strong quality with moderate active-weight footprint. 256K context. |
+| **Gemma 4 31B** `gemma4:31b` | **24 GB** `\newline`{=latex} (20 GB) | 70--100s | Largest dense Gemma 4; near-cloud quality on a workstation. 256K context. |
 | **LLaVA 1.6 7B** `llava:7b` | **6 GB** `\newline`{=latex} (4.7 GB) | 15--25s | Well-established, wide compatibility. Good quality. |
 
 ### Qwen3.5 (Native Multimodal)
@@ -99,6 +109,21 @@ Qwen3.5 models are natively multimodal — no separate "-VL" variant — and use
 | **Qwen3.5 27B** | **20 GB** `\newline`{=latex} (16 GB) | llama.cpp, vLLM | Needs significant RAM; best local quality. Outstanding quality. |
 
 **Ollama vision support has shifted across Ollama releases** — earlier versions silently dropped image input for Qwen3.5 models. If `maki describe --model qwen3.5:9b` returns text-only descriptions that ignore the image content, your Ollama is too old; upgrade to the latest release or fall back to llama.cpp / vLLM. A quick test: ask the model to describe an obviously distinctive image (e.g. a sunset over water) — if the answer is generic enough that it could fit any photo, vision is broken.
+
+### Gemma 4 (Native Multimodal)
+
+Google's Gemma 4 is natively multimodal — vision (and audio on the smaller variants) baked into the same model rather than glued on via a separate projector. Compared to Gemma 3: 128K context (vs 8K), native system-prompt support, configurable "thinking" modes, and a noticeable step up on coding / structured-output benchmarks. For photographic description specifically the practical wins are the longer context (room for richer prompts + multi-image comparisons in the future) and the native system-prompt slot (cleaner instruction-following than Gemma 3's in-content prompts).
+
+| Variant | Tag | Effective Params | Modalities | Notes |
+|--------:|----:|-----------------:|-----------:|:------|
+| E2B | `gemma4:e2b` | 2.3 B (5.1 B w/ embeddings) | text + image + audio | Compact, fast. Smaller-than-Gemma-3-4B effective compute. |
+| E4B | `gemma4:e4b` | 4.5 B (8 B w/ embeddings) | text + image + audio | **Direct upgrade path for `gemma3:4b` users.** Similar effective size, newer architecture, longer context. |
+| 26B MoE | `gemma4:26b` | 25.2 B total / 3.8 B active | text + image | MoE — only ~3.8 B weights active per token, large total. Good quality / active-weight ratio. |
+| 31B Dense | `gemma4:31b` | 30.7 B | text + image | Largest dense variant; best local Gemma 4 quality. |
+
+**Vision-only requires the standard quant tags.** Variants tagged `-mlx-bf16`, `-mxfp8`, or `-nvfp4` are text-only optimisations for specific accelerators and silently drop image input. Stick with the default tags (`gemma4:e2b`, `gemma4:e4b`, `gemma4:26b`, `gemma4:31b`) — or the explicit `-it-q4_K_M` / `-it-q8_0` quants — for `maki describe`. A quick smoke test matches the Qwen3.5 case: describe a distinctive image and check whether the answer is plausibly visual.
+
+Audio support on E2B / E4B is interesting but `maki describe` only sends images — the audio modality is unused.
 
 ---
 
@@ -125,9 +150,11 @@ endpoint = "http://localhost:11434"
 model = "qwen2.5vl:3b"
 ```
 
-**Supported models:** All models with Ollama vision support — Qwen2.5-VL, Qwen3-VL, LLaVA, Moondream, Gemma 3, SmolVLM. Not Qwen3.5 (see caveat above).
+**Supported models:** All models with Ollama vision support — Qwen2.5-VL, Qwen3-VL, Gemma 3, Gemma 4 (text+image variants, see caveat above), LLaVA, Moondream, SmolVLM. Qwen3.5 multimodal depends on your Ollama version.
 
 **Concurrency:** Ollama handles one request at a time by default. For `concurrency > 1`, set `OLLAMA_NUM_PARALLEL` environment variable or increase `num_parallel` in Ollama's config.
+
+**Apple Silicon — MLX backend.** Recent Ollama releases (early 2026 onwards) bundle Apple's MLX framework as the default inference path on Apple Silicon, with measurable wins on per-token latency and energy use vs the GGUF/llama.cpp backend. Most models pick this up automatically when the relevant `*-mlx-*` quants are available; some have MLX-only text-mode tags (notably the Gemma 4 `-mlx-bf16` series) that silently drop image input — use the standard tags for `maki describe`. No MAKI config changes needed; the speedup is transparent on the HTTP API.
 
 ### llama.cpp
 
@@ -221,24 +248,26 @@ model = "gpt-4o"
 | Scenario | Recommended Model | Why |
 |------------------------------|--------------------------|----------------------------------------|
 | **Daily use, modest hardware** | Qwen2.5-VL 3B | Fast, 3 GB RAM, good quality |
-| **Best quality via Ollama** | Qwen3-VL 8B | Excellent descriptions, reasonable speed |
-| **Bulk first pass** | Moondream 2B | 3--5s per image, good-enough descriptions |
-| **Best local quality** | Qwen3.5 9B (llama.cpp) | Early fusion, strong reasoning |
-| **32 GB+ Mac or GPU server** | Qwen3-VL 32B or Qwen3.5 27B | Near-cloud quality |
-| **Tag suggestions** | Qwen3-VL 8B | Structured output reliability |
-| **Architectural / technical** | Gemma 3 4B or Qwen3-VL 8B | Good at detail and materials |
+| **Direct upgrade from Gemma 3** | Gemma 4 E4B | Native multimodal, 128K context, similar latency |
+| **Best quality via Ollama** | Qwen3-VL 8B or Gemma 4 E4B | Excellent descriptions, reasonable speed |
+| **Bulk first pass** | Moondream 2B or Gemma 4 E2B | 3--10s per image, good-enough descriptions |
+| **Best local quality** | Gemma 4 31B or Qwen3.5 9B (llama.cpp) | Strongest reasoning at workstation RAM |
+| **32 GB+ Mac or GPU server** | Qwen3-VL 32B / Gemma 4 31B / Qwen3.5 27B | Near-cloud quality |
+| **Tag suggestions** | Qwen3-VL 8B or Gemma 4 E4B | Structured output reliability |
+| **Architectural / technical** | Gemma 4 E4B or Qwen3-VL 8B | Good at detail and materials |
 | **Multilingual descriptions** | Qwen3.5 (any size) | 201 languages |
+| **Apple Silicon, low energy** | any Gemma 4 / Qwen variant on recent Ollama | MLX backend kicks in automatically |
 
 ### By Hardware
 
 | System RAM | GPU VRAM | Suggested Models |
 |-------------|----------|-------------------------------------------------------|
-| 8 GB | — | Moondream 2B, SmolVLM 2.2B |
-| 16 GB | — | Qwen2.5-VL 3B (default), Gemma 3 4B, Qwen3-VL 4B |
-| 24--32 GB | — | Qwen3-VL 8B, Qwen2.5-VL 7B, Qwen3.5 9B |
-| 32 GB+ | — | Qwen3-VL 32B, Qwen3.5 27B |
-| — | 8 GB | Qwen3-VL 8B (FP16), Qwen3.5 9B (Q4) |
-| — | 16 GB+ | Qwen3.5 27B (Q4), Qwen3-VL 32B (Q4) |
+| 8 GB | — | Moondream 2B, SmolVLM 2.2B, Gemma 4 E2B |
+| 16 GB | — | Qwen2.5-VL 3B (default), Gemma 3 4B, Qwen3-VL 4B, Gemma 4 E4B |
+| 24--32 GB | — | Qwen3-VL 8B, Qwen2.5-VL 7B, Qwen3.5 9B, Gemma 4 26B |
+| 32 GB+ | — | Qwen3-VL 32B, Qwen3.5 27B, Gemma 4 31B |
+| — | 8 GB | Qwen3-VL 8B (FP16), Qwen3.5 9B (Q4), Gemma 4 E4B |
+| — | 16 GB+ | Qwen3.5 27B (Q4), Qwen3-VL 32B (Q4), Gemma 4 31B |
 
 ---
 
