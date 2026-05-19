@@ -138,6 +138,28 @@ Color isn't really a subject (unless the photo is *about* red — an abstract co
 
 One caveat: MAKI already has a first-class **color label** field (Red/Yellow/Green/Blue/Purple — the Lightroom-style editorial label). If you only ever tag the five standard colors, you're duplicating that label with more keystrokes. Content-color tagging earns its keep when you want finer distinctions (`teal`, `magenta`, `warm`, `cold`, `pastel`, `monochrome`) or dominant-color filtering across a catalog — which is a different use case from the workflow-oriented color label.
 
+#### Worked example: striking objects that span subject and event
+
+Some photo elements are *visually distinctive* (clearly subject material — they're what's in the frame) AND *almost always tied to a specific occasion* (clearly event material — they exist because of that gathering or festival). Fireworks, campfires, maypoles, parade floats, costumes, decorations, sparklers, bonfires — these all live on the boundary. The instinct to file them under one facet leaves the other axis unsearchable; the right move is to **always tag both**, with each tag answering its own facet's question.
+
+Three concrete examples that come up often:
+
+- **Fireworks.** Subject side: `subject|nature|sky|fireworks` (sibling to `aurora`, `lightning`, `sunset` — the photo *looks like* a sky shot, even though the source is human-made). Event side: `event|holiday|new-year`, `event|holiday|independence-day`, `event|festival|<name>|closing-fireworks`. A `setting|night` qualifier often comes along for the ride, useful when distinguishing dusk fireworks from full-dark.
+- **Campfire.** Subject side: `subject|object|fire|campfire` (the `fire` parent earns its place because you'll eventually want bonfire, hearth, candle, gas lamp under it — useful for "show me all fire photos" cutting across kinds). Event side: `event|trip|<name>`, `event|gathering|<name>`, or just leave the occasion-facet empty if it's a generic camping shot.
+- **Maypole / Maibaum.** Worth being deliberate here — the English "may pole" (ribbon-dance pole) and the Bavarian *Maibaum* (painted pole with guild shields, erected May 1, guarded against theft by the next village) are different cultural objects sharing one English name. If you photograph both, keep them distinct: `subject|tradition|maypole` (general) with optional `|maypole|bavarian` and `|maypole|english` children, OR commit to the local name as the leaf: `subject|tradition|maibaum`. Event-side pair: `event|tradition|maibaum-aufstellen` for the erection-ceremony photos specifically. Location facet usually rides along too, since many Bavarian villages have a permanent Maibaum on the central square — `location|Germany|Bayern|<village>` co-occurs naturally.
+
+The general pattern: if a photo element is **both** distinctive enough to search for visually **and** tightly coupled to an occasion, give it a home under `subject|...` (for queries like "show me all fireworks photos") and pair it with `event|...` at tagging time (for "all fireworks at New Year"). Neither tag alone gives you both axes; both together does.
+
+A few neighbours that follow the same pattern, with suggested homes:
+
+- Parade float → `subject|vehicle|float` + `event|parade|<name>`
+- Costume / traditional dress → `subject|object|costume|<style>` + relevant `event|`
+- Christmas tree → `subject|object|decoration|christmas-tree` + `event|holiday|christmas|<year>`
+- Lantern festival lanterns → `subject|object|light|lantern` + `event|festival|<name>`
+- Sparklers → `subject|object|light|sparkler` (or `subject|nature|sky|sparklers` if photographed sky-style) + appropriate `event|`
+
+These leaves don't need to ship in the default vocabulary on day one — add them when your catalog demands them, and the hierarchy organically grows along the axis your photos actually exercise.
+
 #### The general rule
 
 Ask: *what distinct question does this tag answer about the photo?* If the answer matches an existing facet, nest it. If it's a new question — a new way someone might want to slice the catalog — promote it to top-level.
