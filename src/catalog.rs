@@ -3010,6 +3010,52 @@ mod tests {
     }
 
     #[test]
+    fn insert_recipe_preserves_pending_writeback_flag() {
+        // Regression for v4.5.15 bug: `insert_recipe` previously omitted
+        // `pending_writeback` from its column list, so every catalog
+        // write (rebuild-catalog, reimport, sync) silently reset the
+        // flag back to the schema default (0), even when the in-memory
+        // recipe (loaded from YAML) carried `pending_writeback: true`.
+        // YAML and SQLite would then diverge silently — the symptom
+        // being `maki writeback --asset <id>` reporting "0 written"
+        // while the YAML sidecar still carried `pending_writeback: true`.
+        let (catalog, volume, _asset, recipe_id) = setup_recipe_catalog();
+
+        // Recipe starts un-pending (setup creates it with the default).
+        catalog.mark_pending_writeback(&recipe_id).unwrap();
+        assert_eq!(
+            catalog.list_pending_writeback_recipes(None).unwrap().len(),
+            1,
+            "recipe should be pending after mark"
+        );
+
+        // Reload the YAML sidecar's view of the recipe (with pending=true)
+        // and re-insert it — simulates rebuild-catalog / reimport.
+        let recipe = crate::models::Recipe {
+            id: recipe_id.parse().unwrap(),
+            variant_hash: "sha256:rectest".to_string(),
+            software: "Adobe/CaptureOne".to_string(),
+            recipe_type: crate::models::RecipeType::Sidecar,
+            content_hash: "sha256:recipe_old".to_string(),
+            location: crate::models::FileLocation {
+                volume_id: volume.id,
+                relative_path: std::path::PathBuf::from("photos/photo.xmp"),
+                verified_at: None,
+            },
+            pending_writeback: true,
+        };
+        catalog.insert_recipe(&recipe).unwrap();
+
+        // After re-insert, SQLite must still report pending.
+        assert_eq!(
+            catalog.list_pending_writeback_recipes(None).unwrap().len(),
+            1,
+            "pending_writeback must survive insert_recipe — \
+             v4.5.14-and-earlier reset it to the schema default (0)"
+        );
+    }
+
+    #[test]
     fn asset_has_recipe_true_when_recipe_attached() {
         let (catalog, _vol, asset, _recipe_id) = setup_recipe_catalog();
         assert!(catalog.asset_has_recipe(&asset.id.to_string()).unwrap());

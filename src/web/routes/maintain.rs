@@ -39,6 +39,9 @@ pub struct StartWritebackRequest {
     /// `--all` (writes every XMP in the matching set, not just pending). Required when `mirror_tags` is true.
     #[serde(default)]
     pub all: bool,
+    /// `--force` (re-write every recipe in the explicit scope regardless of pending state). Distinct from `all`.
+    #[serde(default)]
+    pub force: bool,
     /// `--mirror-tags` (reconcile XMP keyword lists against catalog). Requires `all`.
     #[serde(default)]
     pub mirror_tags: bool,
@@ -119,6 +122,7 @@ fn run_writeback(
         None,
         asset_id_set.as_ref(),
         req.all,
+        req.force,
         effective_mirror_tags,
         req.dry_run,
         false,

@@ -464,6 +464,7 @@ pub async fn writeback_asset(
                 Some(&full_id),
                 None,
                 false,  // all: only pending recipes for this asset
+                false,  // force: respect pending flag
                 false,  // mirror_tags: web flush is incremental, never destructive
                 false,  // dry_run
                 false,  // log

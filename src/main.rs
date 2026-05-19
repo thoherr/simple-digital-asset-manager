@@ -897,6 +897,17 @@ enum Commands {
         #[arg(long, display_order = 12)]
         all: bool,
 
+        /// Force a re-write of every recipe in the scope regardless of
+        /// pending state. Unlike `--all` (which expands the scope to
+        /// every recipe in the catalog), `--force` keeps the explicit
+        /// scope (`--asset`, query, or `--volume`) but ignores the
+        /// pending-flag filter. Useful when you've cleared pending in
+        /// SQLite but want to push catalog metadata onto disk anyway —
+        /// e.g. after upgrading to a release with a new XMP normaliser
+        /// like the v4.5.14 namespace fix.
+        #[arg(long, display_order = 14)]
+        force: bool,
+
         /// Make XMP keyword lists match the catalog exactly. The default
         /// flush is additive — it pushes catalog tags onto the XMP but
         /// never removes XMP tags the catalog no longer has, so renames
@@ -2455,6 +2466,7 @@ faces/\n\
             volume,
             asset,
             all,
+            force,
             mirror_tags,
             dry_run,
             asset_ids,
@@ -2463,6 +2475,7 @@ faces/\n\
             volume,
             asset,
             all,
+            force,
             mirror_tags,
             dry_run,
             asset_ids,

@@ -2168,9 +2168,21 @@ impl QueryEngine {
             }
         }
 
-        // Re-extract from embedded XMP in JPEG/TIFF media files (skip in exif_only mode)
+        // Re-extract from embedded XMP in JPEG/TIFF media files (skip in exif_only mode).
+        // Sidecar-wins gate: when the asset has an XMP recipe, that
+        // sidecar is authoritative — embedded XMP in JPEG/TIFF variants
+        // is frozen at import time (writeback never patches it) and
+        // reading it would re-inject stale flat keywords. The same gate
+        // sits in `asset_service::refresh` for `refresh --media` /
+        // `sync-metadata --media`; see `Catalog::asset_has_recipe` for
+        // the policy docstring.
         let locations = catalog.list_file_locations_for_asset(&full_id)?;
-        if !exif_only {
+        let sidecar_authoritative = if !exif_only {
+            catalog.asset_has_recipe(&full_id)?
+        } else {
+            false
+        };
+        if !exif_only && !sidecar_authoritative {
         for (content_hash, relative_path, volume_id) in &locations {
             let vol = match vol_map.get(volume_id) {
                 Some(v) if v.is_online => *v,
@@ -2194,7 +2206,7 @@ impl QueryEngine {
                 }
             }
         }
-        } // end if !exif_only
+        } // end if !exif_only && !sidecar_authoritative
 
         // Re-extract EXIF from media files to refresh source_metadata and date
         let mut earliest_date: Option<chrono::DateTime<chrono::Utc>> = None;
@@ -3115,6 +3127,7 @@ impl QueryEngine {
         asset_filter: Option<&str>,
         asset_id_set: Option<&HashSet<String>>,
         all: bool,
+        force: bool,
         mirror_tags: bool,
         dry_run: bool,
         log: bool,
@@ -3125,6 +3138,12 @@ impl QueryEngine {
         // *automatic* writeback on every edit. Users who keep auto-flush
         // off as a safety net still want this command to work; that's the
         // whole point of the split.
+        //
+        // `force` extends the scope to recipes whose pending flag is
+        // false. `all` extends the scope to every recipe in the catalog
+        // (and implies pending-filter off). The two compose: `force`
+        // alone keeps any caller-supplied scope (asset/query/volume) and
+        // re-writes everything in it; `all` ignores scope entirely.
         let catalog = Catalog::open(&self.catalog_root)?;
         let store = MetadataStore::new(&self.catalog_root);
         let registry = DeviceRegistry::new(&self.catalog_root);
@@ -3152,9 +3171,51 @@ impl QueryEngine {
             None
         };
 
-        // Collect recipes to process
+        // Collect recipes to process. Three modes:
+        //   `all`     — every xmp recipe in the catalog, optionally
+        //               volume-filtered. Asset/query scope (if any) is
+        //               applied later by `writeback_process`.
+        //   `force`   — every xmp recipe regardless of pending flag, but
+        //               the caller's scope is honoured at SQL level too
+        //               (avoids loading the whole table when the scope
+        //               is one asset).
+        //   default   — only recipes with `pending_writeback = 1`.
         let pending_recipes: Vec<(String, String, String, String)> = if all {
             // All XMP recipes (optionally filtered by volume)
+            let sql = if volume_id_filter.is_some() {
+                "SELECT r.id, v.asset_id, r.volume_id, r.relative_path \
+                 FROM recipes r \
+                 JOIN variants v ON r.variant_hash = v.content_hash \
+                 WHERE r.volume_id = ?1 AND LOWER(r.relative_path) LIKE '%.xmp'"
+            } else {
+                "SELECT r.id, v.asset_id, r.volume_id, r.relative_path \
+                 FROM recipes r \
+                 JOIN variants v ON r.variant_hash = v.content_hash \
+                 WHERE LOWER(r.relative_path) LIKE '%.xmp'"
+            };
+            let mut stmt = catalog.conn().prepare(sql)?;
+            let params: Vec<Box<dyn rusqlite::types::ToSql>> = if let Some(ref vid) = volume_id_filter {
+                vec![Box::new(vid.clone())]
+            } else {
+                vec![]
+            };
+            let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })?;
+            let mut result = Vec::new();
+            for row in rows { result.push(row?); }
+            result
+        } else if force {
+            // Same shape as `all` for now; the asset/query filter is
+            // re-applied inside `writeback_process` against the in-memory
+            // `asset_id_set`. We could push the asset filter into SQL too
+            // for very large catalogs, but the membership test there is
+            // already O(1) per row.
             let sql = if volume_id_filter.is_some() {
                 "SELECT r.id, v.asset_id, r.volume_id, r.relative_path \
                  FROM recipes r \

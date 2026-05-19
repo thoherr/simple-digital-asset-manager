@@ -10397,6 +10397,92 @@ fn build_jpeg_with_xmp_for_test(xmp_xml: &str) -> Vec<u8> {
 }
 
 #[test]
+fn refresh_reimport_skips_embedded_xmp_when_sidecar_present() {
+    // Sister regression to refresh_media_skips_when_sidecar_present
+    // (v4.5.14) — that fix landed in refresh.rs and sync-metadata, but
+    // `query::reimport_metadata_inner` (the path behind
+    // `maki refresh --reimport` and the web UI's "Reload metadata"
+    // button) had the same iterate-locations-and-read-embedded-XMP loop
+    // without the sidecar-wins gate. v4.5.15 closes that.
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    let xmp_with_stale = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>StaleEmbeddedTag</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+    let jpeg_bytes = build_jpeg_with_xmp_for_test(xmp_with_stale);
+
+    let jpeg = root.join("photo.jpg");
+    std::fs::write(&jpeg, &jpeg_bytes).unwrap();
+
+    // Sidecar with no keywords — establishes the "asset has recipe"
+    // state that gates embedded-XMP reads.
+    let xmp_sidecar = root.join("photo.xmp");
+    std::fs::write(
+        &xmp_sidecar,
+        b"<?xml version=\"1.0\"?>\n\
+          <x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\
+          <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\
+          <rdf:Description rdf:about=\"\" \
+            xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"/>\
+          </rdf:RDF></x:xmpmeta>",
+    )
+    .unwrap();
+
+    maki()
+        .current_dir(&root)
+        .args(["import", root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let asset_id = String::from_utf8_lossy(
+        &maki()
+            .current_dir(&root)
+            .args(["search", "-q", "", "--format", "ids"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+    assert!(!asset_id.is_empty());
+
+    // Reimport clears tags first (line 2139), then re-reads everything.
+    // Without the sidecar-wins gate, the JPEG's embedded
+    // "StaleEmbeddedTag" lands back in asset.tags.
+    maki()
+        .current_dir(&root)
+        .args(["refresh", "--reimport", "--asset", &asset_id])
+        .assert()
+        .success();
+
+    let after_reimport = String::from_utf8_lossy(
+        &maki()
+            .current_dir(&root)
+            .args(["show", &asset_id])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .to_string();
+    assert!(
+        !after_reimport.contains("StaleEmbeddedTag"),
+        "refresh --reimport must NOT re-inject embedded keywords when \
+         a sidecar exists. Got:\n{after_reimport}"
+    );
+}
+
+#[test]
 fn refresh_media_skips_when_sidecar_present() {
     // Sidecar-wins rule (v4.5.14): if an asset has an XMP sidecar recipe,
     // `refresh --media` must NOT re-extract embedded XMP from JPEG/TIFF
@@ -10503,5 +10589,79 @@ fn refresh_media_skips_when_sidecar_present() {
         !after_refresh.contains("StaleEmbeddedTag"),
         "refresh --media must NOT re-inject embedded keywords when a \
          sidecar exists. Got:\n{after_refresh}"
+    );
+}
+
+/// `maki writeback --force` re-writes recipes in the explicit scope
+/// even when SQLite reports `pending_writeback = 0`. Use case: catalog
+/// state was clobbered (e.g. by a pre-v4.5.15 `insert_recipe` reset)
+/// but the YAML sidecar / disk file still need to be reconciled. Also
+/// useful after upgrading to a release with a new XMP normaliser to
+/// re-canonicalise existing sidecars.
+#[test]
+#[cfg(feature = "pro")]
+fn writeback_force_rewrites_non_pending_recipe() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    create_test_file(&root, "WB_FORCE.ARW", b"raw-force-test");
+    create_test_file(
+        &root,
+        "WB_FORCE.xmp",
+        b"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\
+          <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\
+          <rdf:Description rdf:about=\"\" \
+            xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" \
+            xmp:Rating=\"1\"/>\
+          </rdf:RDF></x:xmpmeta>",
+    );
+    maki()
+        .current_dir(&root)
+        .args(["import", root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let asset_id = String::from_utf8_lossy(
+        &maki()
+            .current_dir(&root)
+            .args(["search", "-q", "", "--format", "ids"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+    assert!(!asset_id.is_empty());
+
+    // Plain `writeback --asset <id>` finds nothing pending and is a
+    // no-op — confirms the test fixture has pending=0 in SQLite.
+    let plain = maki()
+        .current_dir(&root)
+        .args(["writeback", "--asset", &asset_id])
+        .output()
+        .unwrap();
+    let plain_out = String::from_utf8_lossy(&plain.stdout);
+    assert!(
+        plain_out.contains("0 written"),
+        "Plain writeback should report 0 written when no recipe is \
+         pending. Got:\n{plain_out}"
+    );
+
+    // With --force, the same scope picks up the recipe and processes
+    // it. The XMP already carries Rating=1 (which is what the catalog
+    // has — import absorbed it), so the result is `already in sync`
+    // not `written` — that's still the right behaviour: --force opts
+    // into the writeback path, the catalog/disk reconciliation runs,
+    // and the test asserts that opt-in happened.
+    let forced = maki()
+        .current_dir(&root)
+        .args(["writeback", "--asset", &asset_id, "--force"])
+        .output()
+        .unwrap();
+    let forced_out = String::from_utf8_lossy(&forced.stdout);
+    assert!(
+        forced_out.contains("already in sync"),
+        "writeback --force must process the recipe even when not \
+         pending. Expected 'already in sync' in output. Got:\n{forced_out}"
     );
 }

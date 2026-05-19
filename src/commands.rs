@@ -5500,6 +5500,7 @@ pub fn run_writeback_command(
         volume: Option<String>,
         asset: Option<String>,
         all: bool,
+        force: bool,
         mirror_tags: bool,
         dry_run: bool,
         asset_ids: Vec<String>,
@@ -5529,6 +5530,7 @@ pub fn run_writeback_command(
         None, // asset_filter replaced by scope
         scope.as_ref(),
         all,
+        force,
         effective_mirror_tags,
         dry_run,
         cli.log,

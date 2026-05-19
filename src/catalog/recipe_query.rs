@@ -20,13 +20,20 @@ impl Catalog {
     }
 
     /// Check whether an asset has any recipe (`.xmp` sidecar) across any of
-    /// its variants.
+    /// its variants. **This is the canonical sidecar-wins gate.**
     ///
-    /// Used by `refresh --media` / `sync-metadata --media` to short-circuit
-    /// embedded-XMP re-extraction from JPEG/TIFF variants when an XMP
-    /// sidecar already exists. The sidecar is MAKI's authoritative
-    /// metadata file; the JPEG's embedded XMP is potentially stale
-    /// (writeback never patches embedded XMP).
+    /// Every code path that reads embedded XMP from a JPEG/TIFF variant
+    /// must call this first and skip the read when it returns `true`.
+    /// The sidecar is MAKI's authoritative metadata file (writeback keeps
+    /// it current); embedded XMP in JPEG/TIFF containers is frozen at
+    /// import time — writeback never patches it — and reading it would
+    /// re-inject stale flat keywords on every refresh.
+    ///
+    /// Known call sites (keep this list in sync when adding new ones):
+    /// - `asset_service::refresh::refresh` (the `refresh --media` loop)
+    /// - `asset_service::refresh::sync_metadata` (Phase 3 media loop)
+    /// - `query::reimport_metadata_inner` (the web UI's "Reload
+    ///   metadata" button + `maki refresh --reimport`)
     pub fn asset_has_recipe(&self, asset_id: &str) -> Result<bool> {
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM recipes r \

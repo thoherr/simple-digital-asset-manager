@@ -2,6 +2,78 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.5.15 (2026-05-19)
+
+Three related fixes to the XMP-roundtrip stack, surfaced by real-world
+testing of v4.5.14:
+
+1. **`insert_recipe` now preserves `pending_writeback`** (the root
+   cause of YAML/SQLite divergence). The `INSERT OR REPLACE` was
+   omitting that column, so every catalog write (rebuild-catalog,
+   reimport, sync) silently reset the flag back to the schema default
+   (0) — even when the in-memory recipe (loaded from YAML) carried
+   `pending_writeback: true`. Symptom: `maki writeback --asset <id>`
+   reports "0 written" while the YAML sidecar still has
+   `pending_writeback: true`, the web UI shows no pending indicator,
+   and the actual edit never makes it to disk. The fix adds
+   `pending_writeback` to the column list in `Catalog::insert_recipe`
+   so state survives every catalog write.
+
+2. **Sidecar-wins gate extended to `reimport_metadata_inner`** — the
+   path behind `maki refresh --reimport` and the web UI's "Reload
+   metadata" button. v4.5.14 added this gate to the two refresh-media
+   loops but missed the third copy of the same iterate-JPEG-locations-
+   and-read-embedded-XMP pattern. Without the gate, "Reload metadata"
+   re-injected the JPEG's stale flat keywords just like the unfixed
+   refresh path used to. Same `Catalog::asset_has_recipe` helper, now
+   called at all three sites; the docstring lists them so a future
+   fourth site is easy to wire correctly.
+
+3. **`maki writeback --force` flag** (and matching web Maintain
+   dialog checkbox) — escape hatch for the case where the catalog's
+   pending state is wrong (cleared by a stale `insert_recipe`, or
+   simply not flagged because you want to re-canonicalise after an
+   upgrade). Different from `--all`: `--all` expands the scope to
+   every recipe in the catalog; `--force` keeps the explicit scope
+   (`--asset`, query, or `--volume`) but ignores the pending-flag
+   filter. So `maki writeback --asset 016cc7dd --force` re-writes
+   the two recipes attached to that asset regardless of pending state.
+
+### Operator note — repairing existing diverged state
+
+If you're upgrading from a release where `insert_recipe` had already
+clobbered SQLite's pending flags, run `maki rebuild-catalog --asset
+<id>` (or catalog-wide `maki rebuild-catalog`) once after upgrading.
+The rebuild reads from YAML (source of truth) and re-inserts every
+recipe with the fixed code path, so the pending state from YAML now
+lands in SQLite correctly. After that, plain `maki writeback` will
+find the pending recipes again. Alternatively, `maki writeback
+--asset <id> --force` re-writes regardless of state and clears
+pending in both stores.
+
+Tests: 813 + 252 standard, 933 + 285 pro (+1 lib for `insert_recipe`
+regression, +1 CLI standard for reimport, +2 CLI pro for `--force` +
+the pro-gated reimport coverage).
+
+### Regression coverage
+
+- `catalog::tests::insert_recipe_preserves_pending_writeback_flag` —
+  inserts a recipe with `pending_writeback: true`, calls
+  `insert_recipe` again with the same id, asserts SQLite still reports
+  pending. Verified to FAIL on v4.5.14 (clobber to 0) and PASS on
+  v4.5.15 (state survives).
+- `refresh_reimport_skips_embedded_xmp_when_sidecar_present` — builds
+  a JPEG with embedded `StaleEmbeddedTag` keyword, imports it
+  alongside an empty `.xmp` sidecar, runs `maki refresh --reimport
+  --asset <id>`, asserts the stale keyword does NOT come back.
+  Mirrors the existing `refresh_media_skips_when_sidecar_present`
+  fixture, exercising the third leak site.
+- `writeback_force_rewrites_non_pending_recipe` (pro) — imports an
+  asset with a non-pending recipe, runs plain `maki writeback --asset
+  <id>` (asserts "0 written" — no-op), then `--force` (asserts
+  "already in sync" — opt-in path triggered). Locks the semantics:
+  `--force` keeps the explicit scope, drops the pending filter.
+
 ## v4.5.14 (2026-05-19)
 
 Closes two XMP-roundtrip leaks that let non-hierarchical tags reappear
