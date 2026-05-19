@@ -449,6 +449,10 @@ fn build_router(state: Arc<AppState>) -> Router {
             "/api/asset/{id}/reimport-metadata",
             axum::routing::post(routes::reimport_metadata),
         )
+        .route(
+            "/api/asset/{id}/recipes-fragment",
+            axum::routing::get(routes::recipes_fragment),
+        )
         .route("/api/tags", axum::routing::get(routes::tags_api))
         .route("/api/tags/export-vocabulary", axum::routing::get(routes::export_vocabulary_api))
         .route("/api/tag/rename", axum::routing::post(routes::rename_tag_api))

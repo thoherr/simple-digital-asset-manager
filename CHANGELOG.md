@@ -2,6 +2,51 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.5.16 (2026-05-19)
+
+Asset detail page: pending_writeback markers now update immediately
+after any rating/tag/description/label edit. Previously the recipes
+block was server-rendered once on page load and never refreshed, so
+the ↻ icons and the `pending` summary badge stayed stale until the
+user manually reloaded the page.
+
+Fix structure:
+
+1. **New partial template** `templates/recipes_fragment.html` carries
+   the existing `<details>` block markup. `RecipesFragment` in
+   `src/web/templates.rs` builds it from `AssetDetails` using the
+   same recipe-grouping logic as the inline render.
+2. **New endpoint** `GET /api/asset/{id}/recipes-fragment` returns
+   that partial.
+3. **Asset detail page** wraps the recipes block in `<div
+   id="recipes-block" hx-get="…/recipes-fragment"
+   hx-trigger="pending-changed from:body" hx-swap="innerHTML">`. Initial
+   render stays inline (no flash of loading state); subsequent
+   updates hit the partial endpoint.
+4. **Edit endpoints** (`set_rating`, `set_description`, `set_name`,
+   `set_color_label`, `add_tags`, `remove_tag`, `clear_tags`) now
+   append `HX-Trigger: pending-changed` to their successful responses
+   via a shared `with_pending_trigger` helper. htmx picks up the
+   header and fires the event on `document.body`; the recipes block
+   listens and refreshes.
+5. **Writeback button** (`writebackAsset` JS) no longer reloads the
+   whole page on success — it fires the same `pending-changed` event
+   so the markers clear in place and the button itself goes away
+   when the refreshed partial reports nothing pending.
+
+Set-date doesn't trigger pending writeback (it's not an XMP-written
+field), so its response is unchanged. The tags-page endpoint and
+global tag mutations (rename/split/delete) also keep their original
+responses — they're not invoked from an asset detail page where the
+trigger would have an effect.
+
+Tests unchanged: 813 + 252 standard, 933 + 285 pro. The change is
+template wiring + a response header; verifying it via the CLI test
+harness would require spinning up the axum router and reading the
+response headers, which doesn't fit our current test infrastructure.
+Manual verification: open an asset, edit the rating, watch the ↻
+markers appear in the recipes section without a page reload.
+
 ## v4.5.15 (2026-05-19)
 
 Three related fixes to the XMP-roundtrip stack, surfaced by real-world

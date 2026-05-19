@@ -684,6 +684,65 @@ pub struct RatingFragment {
     pub rating: Option<u8>,
 }
 
+/// Recipes block on the asset detail page (with pending_writeback
+/// markers and the Write-back-to-XMP button). Rendered both inline on
+/// page load AND as a partial reloaded via the `pending-changed`
+/// HX-Trigger event so the pending icons update immediately after a
+/// rating/tag/description/label edit.
+#[derive(Template)]
+#[template(path = "recipes_fragment.html")]
+pub struct RecipesFragment {
+    pub asset_id: String,
+    pub recipes: Vec<RecipeRow>,
+    pub recipe_location_count: usize,
+    pub has_pending_writeback: bool,
+}
+
+impl RecipesFragment {
+    /// Build the fragment from the same `AssetDetails` shape used by
+    /// the full detail page. Mirrors the grouping in
+    /// `AssetPage::from_details` so the fragment and inline render
+    /// stay consistent.
+    pub fn from_details(
+        details: &AssetDetails,
+        volume_online: &std::collections::HashMap<String, bool>,
+    ) -> Self {
+        use std::collections::BTreeMap;
+        let mut groups: BTreeMap<(String, String), RecipeRow> = BTreeMap::new();
+        for r in &details.recipes {
+            let vid = r.volume_id.clone().unwrap_or_default();
+            let online = volume_online.get(&vid).copied().unwrap_or(false);
+            let key = (r.variant_hash.clone(), r.content_hash.clone());
+            let loc = RecipeLocationRow {
+                volume_label: r.volume_label.clone().unwrap_or_else(|| "-".to_string()),
+                volume_id: vid,
+                relative_path: r.relative_path.as_deref().unwrap_or("-").to_string(),
+                is_online: online,
+                pending_writeback: r.pending_writeback,
+            };
+            let group = groups.entry(key.clone()).or_insert_with(|| RecipeRow {
+                recipe_type: r.recipe_type.clone(),
+                software: r.software.clone(),
+                content_hash: key.1.clone(),
+                variant_hash: key.0.clone(),
+                pending_writeback: false,
+                locations: Vec::new(),
+            });
+            if r.pending_writeback {
+                group.pending_writeback = true;
+            }
+            group.locations.push(loc);
+        }
+        let recipes: Vec<RecipeRow> = groups.into_values().collect();
+        Self {
+            asset_id: details.id.clone(),
+            has_pending_writeback: recipes.iter().any(|r| r.pending_writeback),
+            recipe_location_count: recipes.iter().map(|r| r.locations.len()).sum(),
+            recipes,
+        }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "label_fragment.html")]
 pub struct LabelFragment {

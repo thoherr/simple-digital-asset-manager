@@ -12,9 +12,23 @@ use axum::{Form, Json};
 use crate::device_registry::DeviceRegistry;
 use crate::web::templates::{
     DateFragment, DescriptionFragment, LabelFragment, NameFragment, PreviewFragment,
-    RatingFragment, TagsFragment,
+    RatingFragment, RecipesFragment, TagsFragment,
 };
 use crate::web::AppState;
+
+/// Append `HX-Trigger: pending-changed` to a successful HTML response
+/// from any metadata-edit endpoint (rating, description, name, label,
+/// tags). The asset detail page's recipes block listens for this event
+/// and refreshes itself so the pending_writeback markers update
+/// immediately — otherwise they're stale until the next full reload.
+fn with_pending_trigger(html: String) -> Response {
+    let mut resp = Html(html).into_response();
+    resp.headers_mut().insert(
+        "HX-Trigger",
+        axum::http::HeaderValue::from_static("pending-changed"),
+    );
+    resp
+}
 
 use super::resolve_best_variant_idx;
 
@@ -43,7 +57,7 @@ pub async fn set_rating(
     .await;
 
     match result {
-        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Ok(html)) => with_pending_trigger(html),
         Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
     }
@@ -74,7 +88,7 @@ pub async fn set_description(
     .await;
 
     match result {
-        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Ok(html)) => with_pending_trigger(html),
         Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
     }
@@ -114,7 +128,7 @@ pub async fn set_name(
     .await;
 
     match result {
-        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Ok(html)) => with_pending_trigger(html),
         Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
     }
@@ -544,6 +558,37 @@ pub async fn set_variant_role(
     }
 }
 
+/// GET /api/asset/{id}/recipes-fragment — render the recipes block
+/// partial (with current pending_writeback markers). The asset detail
+/// page wraps the recipes block in a hx-loaded container that listens
+/// for `pending-changed` and refreshes via this endpoint.
+pub async fn recipes_fragment(
+    State(state): State<Arc<AppState>>,
+    Path(asset_id): Path<String>,
+) -> Response {
+    let state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let engine = state.query_engine();
+        let details = engine.show(&asset_id)?;
+        let registry = DeviceRegistry::new(&state.catalog_root);
+        let volume_online: std::collections::HashMap<String, bool> = registry
+            .list()
+            .unwrap_or_default()
+            .iter()
+            .map(|v| (v.id.to_string(), v.is_online))
+            .collect();
+        let tmpl = RecipesFragment::from_details(&details, &volume_online);
+        Ok::<_, anyhow::Error>(tmpl.render()?)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
+    }
+}
+
 /// POST /api/asset/{id}/reimport-metadata — clear and re-extract metadata from source files.
 pub async fn reimport_metadata(
     State(state): State<Arc<AppState>>,
@@ -601,7 +646,7 @@ pub async fn set_label(
     .await;
 
     match result {
-        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Ok(html)) => with_pending_trigger(html),
         Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
     }

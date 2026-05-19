@@ -1,0 +1,37 @@
+{# Recipes block partial — used both inline on initial asset.html
+   render and as a hx-loaded fragment refreshed on the
+   `pending-changed` event after any metadata edit. Keep this in sync
+   with the inline copy in asset.html. #}
+{% if !recipes.is_empty() %}
+<details>
+    <summary>Recipes ({{ recipes.len() }}{% if recipe_location_count != recipes.len() %}, {{ recipe_location_count }} locations{% endif %}){% if has_pending_writeback %} <span class="badge" style="background:#e67e22;color:#fff;font-size:0.7rem;margin-left:4px;">pending</span>{% endif %}</summary>
+    <table class="variants-table">
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Software</th>
+                <th>Locations</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in recipes %}
+            <tr>
+                <td><span class="badge">{{ r.recipe_type }}</span>{% if r.pending_writeback %} <span class="pending-writeback-marker" tabindex="0" role="img" aria-label="Pending writeback: metadata changes not yet written to this XMP file" data-tip="This recipe has staged metadata edits in MAKI's catalog that have not yet been written to the XMP file on disk. Use the &ldquo;Write back to XMP&rdquo; button below (or run &ldquo;maki writeback&rdquo;) to flush them.">&#x21bb;</span>{% endif %}</td>
+                <td>{{ r.software }}</td>
+                <td>
+                    {% for loc in r.locations %}
+                    <div><span class="badge volume-badge">{{ loc.volume_label }}</span> {{ loc.relative_path }}{% if loc.pending_writeback %} <span class="pending-writeback-marker" tabindex="0" role="img" aria-label="Pending writeback: this XMP location has not yet received the staged metadata edits" data-tip="Staged metadata edits in MAKI's catalog have not yet been written to this XMP file. Use the &ldquo;Write back to XMP&rdquo; button below (or run &ldquo;maki writeback&rdquo;) to flush them.">&#x21bb;</span>{% endif %}{% if loc.is_online %}
+                        <button class="reveal-btn" title="Reveal in file manager"
+                            onclick="fetch('/api/open-location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume_id:'{{ loc.volume_id }}',relative_path:'{{ loc.relative_path }}'})}).then(function(r){if(!r.ok)r.text().then(function(t){alert(t)})})">&#128194;</button><button class="reveal-btn" title="Open terminal here"
+                            onclick="fetch('/api/open-terminal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume_id:'{{ loc.volume_id }}',relative_path:'{{ loc.relative_path }}'})}).then(function(r){if(!r.ok)r.text().then(function(t){alert(t)})})">&gt;_</button>{% endif %}</div>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if has_pending_writeback %}
+    <button class="btn btn-sm" id="writeback-btn" onclick="writebackAsset()" style="margin-top:6px;" title="Write pending metadata changes to XMP recipe files on disk">Write back to XMP</button>
+    {% endif %}
+</details>
+{% endif %}

@@ -13,6 +13,19 @@ use crate::web::AppState;
 
 use super::{BatchError, BatchResult};
 
+/// Wrap a successful tag-edit response with the `pending-changed`
+/// HX-Trigger header so the asset detail page's recipes block
+/// refreshes its pending_writeback markers. Mirrors the helper of the
+/// same name in `routes::assets`.
+fn with_pending_trigger(html: String) -> Response {
+    let mut resp = Html(html).into_response();
+    resp.headers_mut().insert(
+        "HX-Trigger",
+        axum::http::HeaderValue::from_static("pending-changed"),
+    );
+    resp
+}
+
 #[derive(Debug, serde::Deserialize)]
 pub struct TagForm {
     pub tags: String,
@@ -49,7 +62,7 @@ pub async fn add_tags(
     .await;
 
     match result {
-        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Ok(html)) => with_pending_trigger(html),
         Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
     }
@@ -76,7 +89,7 @@ pub async fn remove_tag(
     .await;
 
     match result {
-        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Ok(html)) => with_pending_trigger(html),
         Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
     }
@@ -109,7 +122,7 @@ pub async fn clear_tags(
     .await;
 
     match result {
-        Ok(Ok(html)) => Html(html).into_response(),
+        Ok(Ok(html)) => with_pending_trigger(html),
         Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e:#}")).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
     }
