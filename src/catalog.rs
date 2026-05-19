@@ -3010,6 +3010,34 @@ mod tests {
     }
 
     #[test]
+    fn asset_has_recipe_true_when_recipe_attached() {
+        let (catalog, _vol, asset, _recipe_id) = setup_recipe_catalog();
+        assert!(catalog.asset_has_recipe(&asset.id.to_string()).unwrap());
+    }
+
+    #[test]
+    fn asset_has_recipe_false_when_only_variants() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        catalog.initialize().unwrap();
+
+        let asset = crate::models::Asset::new(crate::models::AssetType::Image, "sha256:noxmp");
+        catalog.insert_asset(&asset).unwrap();
+        let variant = crate::models::Variant {
+            content_hash: "sha256:noxmp".to_string(),
+            asset_id: asset.id,
+            role: crate::models::VariantRole::Original,
+            format: "jpg".to_string(),
+            file_size: 1000,
+            original_filename: "noxmp.jpg".to_string(),
+            source_metadata: Default::default(),
+            locations: vec![],
+        };
+        catalog.insert_variant(&variant).unwrap();
+
+        assert!(!catalog.asset_has_recipe(&asset.id.to_string()).unwrap());
+    }
+
+    #[test]
     fn find_recipe_by_location_returns_match() {
         let (catalog, volume, _, recipe_id) = setup_recipe_catalog();
         let result = catalog

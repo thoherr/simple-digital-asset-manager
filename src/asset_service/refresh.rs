@@ -255,19 +255,11 @@ impl AssetService {
                     continue;
                 }
 
-                let embedded_xmp = crate::embedded_xmp::extract_embedded_xmp(&full_path);
-
-                // Check if XMP data is non-empty
-                if embedded_xmp.keywords.is_empty()
-                    && embedded_xmp.description.is_none()
-                    && embedded_xmp.source_metadata.is_empty()
-                {
-                    result.unchanged += 1;
-                    on_file(&full_path, RefreshStatus::Unchanged, file_start.elapsed());
-                    continue;
-                }
-
-                // Load asset and re-apply embedded XMP
+                // Resolve owning asset; short-circuit when an XMP sidecar
+                // exists. The sidecar is the authoritative metadata file
+                // and `writeback` keeps it current. Embedded XMP inside
+                // a JPEG/TIFF variant is frozen at import time — reading
+                // it would re-inject stale flat keywords every refresh.
                 let asset_id_str = match catalog.find_asset_id_by_variant(content_hash)? {
                     Some(id) => id,
                     None => {
@@ -279,6 +271,24 @@ impl AssetService {
                         continue;
                     }
                 };
+
+                if catalog.asset_has_recipe(&asset_id_str)? {
+                    result.skipped += 1;
+                    on_file(&full_path, RefreshStatus::SidecarPresent, file_start.elapsed());
+                    continue;
+                }
+
+                let embedded_xmp = crate::embedded_xmp::extract_embedded_xmp(&full_path);
+
+                // Check if XMP data is non-empty
+                if embedded_xmp.keywords.is_empty()
+                    && embedded_xmp.description.is_none()
+                    && embedded_xmp.source_metadata.is_empty()
+                {
+                    result.unchanged += 1;
+                    on_file(&full_path, RefreshStatus::Unchanged, file_start.elapsed());
+                    continue;
+                }
 
                 let uuid: Uuid = asset_id_str.parse()?;
                 let mut asset = metadata_store.load(uuid)?;
@@ -547,6 +557,19 @@ impl AssetService {
                     continue;
                 }
 
+                let asset_id_str = match catalog.find_asset_id_by_variant(content_hash)? {
+                    Some(id) => id,
+                    None => continue,
+                };
+
+                // Sidecar-wins: if the asset has an XMP recipe, skip
+                // embedded-XMP re-extraction. See refresh_media for
+                // rationale.
+                if catalog.asset_has_recipe(&asset_id_str)? {
+                    result.skipped += 1;
+                    continue;
+                }
+
                 let embedded_xmp = crate::embedded_xmp::extract_embedded_xmp(&full_path);
 
                 if embedded_xmp.keywords.is_empty()
@@ -555,11 +578,6 @@ impl AssetService {
                 {
                     continue;
                 }
-
-                let asset_id_str = match catalog.find_asset_id_by_variant(content_hash)? {
-                    Some(id) => id,
-                    None => continue,
-                };
 
                 let uuid: Uuid = asset_id_str.parse()?;
                 let mut asset = metadata_store.load(uuid)?;

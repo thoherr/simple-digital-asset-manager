@@ -5684,6 +5684,7 @@ pub fn run_refresh_command(
                     RefreshStatus::Refreshed => "refreshed",
                     RefreshStatus::Missing => "missing",
                     RefreshStatus::Offline => "offline",
+                    RefreshStatus::SidecarPresent => "skipped (sidecar present)",
                 };
                 let name = path.file_name()
                     .and_then(|n| n.to_str())

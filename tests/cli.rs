@@ -10378,3 +10378,130 @@ fn shell_batch_tag_via_variable() {
         .success()
         .stdout(predicate::str::contains("\n").count(2)); // two IDs, two lines
 }
+
+/// Build a minimal JPEG with an XMP APP1 marker carrying `xmp_xml`.
+/// Mirrors `embedded_xmp::tests::build_jpeg_with_xmp` so the integration
+/// test below doesn't need to reach into private test helpers.
+fn build_jpeg_with_xmp_for_test(xmp_xml: &str) -> Vec<u8> {
+    const XMP_NAMESPACE: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
+    let mut data = Vec::new();
+    data.extend_from_slice(&[0xFF, 0xD8]); // SOI
+    data.extend_from_slice(&[0xFF, 0xE1]); // APP1
+    let payload_len = XMP_NAMESPACE.len() + xmp_xml.len();
+    let segment_len = (payload_len + 2) as u16;
+    data.extend_from_slice(&segment_len.to_be_bytes());
+    data.extend_from_slice(XMP_NAMESPACE);
+    data.extend_from_slice(xmp_xml.as_bytes());
+    data.extend_from_slice(&[0xFF, 0xD9]); // EOI
+    data
+}
+
+#[test]
+fn refresh_media_skips_when_sidecar_present() {
+    // Sidecar-wins rule (v4.5.14): if an asset has an XMP sidecar recipe,
+    // `refresh --media` must NOT re-extract embedded XMP from JPEG/TIFF
+    // variants. The sidecar is authoritative; the JPEG's embedded XMP is
+    // frozen at import time (writeback doesn't patch embedded XMP) and
+    // would otherwise re-inject stale flat keywords on every refresh.
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // JPEG carries an embedded XMP block with a flat keyword that would
+    // get re-imported on refresh --media if the sidecar gate weren't
+    // honoured.
+    let xmp_with_stale = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>StaleEmbeddedTag</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+    let jpeg_bytes = build_jpeg_with_xmp_for_test(xmp_with_stale);
+
+    let jpeg = root.join("photo.jpg");
+    std::fs::write(&jpeg, &jpeg_bytes).unwrap();
+
+    // Pre-existing XMP sidecar with no keywords. Import below picks it
+    // up as the recipe — establishing the "asset has a sidecar" state
+    // that gates embedded-XMP re-extraction.
+    let xmp_sidecar = root.join("photo.xmp");
+    std::fs::write(
+        &xmp_sidecar,
+        b"<?xml version=\"1.0\"?>\n\
+          <x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\
+          <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\
+          <rdf:Description rdf:about=\"\" \
+            xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"/>\
+          </rdf:RDF></x:xmpmeta>",
+    )
+    .unwrap();
+
+    maki()
+        .current_dir(&root)
+        .args(["import", root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let asset_id = String::from_utf8_lossy(
+        &maki()
+            .current_dir(&root)
+            .args(["search", "-q", "", "--format", "ids"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+    assert!(!asset_id.is_empty(), "import should yield an asset");
+
+    // Initial import absorbed the embedded keyword. Clear it from the
+    // catalog so we can detect re-injection via refresh --media.
+    maki()
+        .current_dir(&root)
+        .args(["tag", "clear", &asset_id])
+        .assert()
+        .success();
+
+    let after_clear = String::from_utf8_lossy(
+        &maki()
+            .current_dir(&root)
+            .args(["show", &asset_id])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .to_string();
+    assert!(
+        !after_clear.contains("StaleEmbeddedTag"),
+        "tag clear should have removed the keyword. Got:\n{after_clear}"
+    );
+
+    // refresh --media. Without the sidecar-wins gate, this re-injects
+    // the JPEG's embedded "StaleEmbeddedTag" into the asset's tags.
+    maki()
+        .current_dir(&root)
+        .args(["refresh", "--media"])
+        .assert()
+        .success();
+
+    let after_refresh = String::from_utf8_lossy(
+        &maki()
+            .current_dir(&root)
+            .args(["show", &asset_id])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .to_string();
+    assert!(
+        !after_refresh.contains("StaleEmbeddedTag"),
+        "refresh --media must NOT re-inject embedded keywords when a \
+         sidecar exists. Got:\n{after_refresh}"
+    );
+}

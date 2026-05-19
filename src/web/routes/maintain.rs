@@ -754,6 +754,7 @@ fn run_refresh(
             crate::asset_service::RefreshStatus::Refreshed => "refreshed",
             crate::asset_service::RefreshStatus::Missing => "missing",
             crate::asset_service::RefreshStatus::Offline => "offline",
+            crate::asset_service::RefreshStatus::SidecarPresent => "sidecar-present",
         };
         let asset = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
         job_cb.emit(&serde_json::json!({

@@ -19,6 +19,25 @@ impl Catalog {
         Ok(count > 0)
     }
 
+    /// Check whether an asset has any recipe (`.xmp` sidecar) across any of
+    /// its variants.
+    ///
+    /// Used by `refresh --media` / `sync-metadata --media` to short-circuit
+    /// embedded-XMP re-extraction from JPEG/TIFF variants when an XMP
+    /// sidecar already exists. The sidecar is MAKI's authoritative
+    /// metadata file; the JPEG's embedded XMP is potentially stale
+    /// (writeback never patches embedded XMP).
+    pub fn asset_has_recipe(&self, asset_id: &str) -> Result<bool> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM recipes r \
+             JOIN variants v ON r.variant_hash = v.content_hash \
+             WHERE v.asset_id = ?1",
+            rusqlite::params![asset_id],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
     /// Find a recipe by its location (variant_hash, volume_id, relative_path).
     /// Returns `(recipe_id, content_hash)` if found.
     pub fn find_recipe_by_location(

@@ -308,8 +308,60 @@ pub fn update_hierarchical_subjects(
     Ok(true)
 }
 
+/// Render a canonical `lr:hierarchicalSubject` block at the given indent.
+fn render_hierarchical_block(indent: &str, tags: &[String]) -> String {
+    let bag_indent = format!("{} ", indent);
+    let li_indent = format!("{}  ", indent);
+    let mut block = format!(
+        "{}<lr:hierarchicalSubject>\n{}<rdf:Bag>\n",
+        indent, bag_indent
+    );
+    for tag in tags {
+        block.push_str(&format!("{}<rdf:li>{}</rdf:li>\n", li_indent, xml_escape(tag)));
+    }
+    block.push_str(&format!(
+        "{}</rdf:Bag>\n{}</lr:hierarchicalSubject>",
+        bag_indent, indent
+    ));
+    block
+}
+
+/// Collect every prefix declared as bound to the Adobe Lightroom namespace URI.
+/// `lr` and `lightroom` are always included as fallbacks for files that declare
+/// the namespace on an ancestor element our scan doesn't cover.
+fn collect_lightroom_prefixes(content: &str) -> Vec<String> {
+    let mut prefixes: Vec<String> = vec!["lr".to_string(), "lightroom".to_string()];
+    let xmlns_re = Regex::new(
+        r#"xmlns:([A-Za-z_][A-Za-z0-9_.\-]*)\s*=\s*"http://ns\.adobe\.com/lightroom/1\.0/""#,
+    )
+    .unwrap();
+    for caps in xmlns_re.captures_iter(content) {
+        let p = caps.get(1).unwrap().as_str().to_string();
+        if !prefixes.contains(&p) {
+            prefixes.push(p);
+        }
+    }
+    prefixes
+}
+
 /// Apply hierarchical subject add/remove operations to an XMP string.
 /// Tags use pipe-separated format (e.g., `animals|birds|eagles`).
+///
+/// `hierarchicalSubject` is keyed by namespace URI, not prefix. Some tools
+/// (older CaptureOne, third-party exporters) bind a prefix other than `lr:`
+/// to the Lightroom namespace — e.g. `lightroom:hierarchicalSubject`. When
+/// MAKI writes to only the `lr:` block but leaves a parallel `lightroom:`
+/// block intact, the latter becomes a stale parallel source of truth and
+/// flat-name leaves leak back into the catalog on re-import.
+///
+/// This function:
+/// 1. Detects every prefix bound to the Lightroom namespace.
+/// 2. Finds all `<prefix:hierarchicalSubject>` blocks.
+/// 3. If exactly one block exists and it is the canonical `lr:` form, edits
+///    it in place (preserves byte-equivalence for the common case).
+/// 4. Otherwise (zero blocks, multiple blocks, or a single non-canonical
+///    block) strips every match, accumulates tags, and writes one canonical
+///    `lr:` block.
 fn update_hierarchical_in_string(
     content: &str,
     hier_to_add: &[String],
@@ -317,25 +369,42 @@ fn update_hierarchical_in_string(
 ) -> String {
     let remove_set: HashSet<&str> = hier_to_remove.iter().map(|s| s.as_str()).collect();
 
-    // Match existing lr:hierarchicalSubject block with rdf:Bag
-    let subject_re = Regex::new(
-        r"(?s)([ \t]*)<lr:hierarchicalSubject>\s*<rdf:Bag>(.*?)</rdf:Bag>\s*</lr:hierarchicalSubject>",
-    )
+    let prefixes = collect_lightroom_prefixes(content);
+    let prefix_alt = prefixes
+        .iter()
+        .map(|p| regex::escape(p))
+        .collect::<Vec<_>>()
+        .join("|");
+
+    let block_re = Regex::new(&format!(
+        r"(?s)([ \t]*)<({px}):hierarchicalSubject>\s*<rdf:Bag>(.*?)</rdf:Bag>\s*</({px}):hierarchicalSubject>",
+        px = prefix_alt
+    ))
     .unwrap();
     let li_re = Regex::new(r"<rdf:li>([^<]*)</rdf:li>").unwrap();
 
-    if let Some(caps) = subject_re.captures(content) {
-        let full_match = caps.get(0).unwrap();
-        let indent = caps.get(1).unwrap().as_str();
-        let bag_content = caps.get(2).unwrap().as_str();
+    // (start, end, indent, prefix) for every matched block, in file order.
+    let mut matches: Vec<(usize, usize, String, String)> = Vec::new();
+    let mut accumulated_tags: Vec<String> = Vec::new();
+    for caps in block_re.captures_iter(content) {
+        let full = caps.get(0).unwrap();
+        let indent = caps.get(1).unwrap().as_str().to_string();
+        let prefix = caps.get(2).unwrap().as_str().to_string();
+        let bag = caps.get(3).unwrap().as_str();
+        for c in li_re.captures_iter(bag) {
+            let t = c.get(1).unwrap().as_str().to_string();
+            if !accumulated_tags.contains(&t) {
+                accumulated_tags.push(t);
+            }
+        }
+        matches.push((full.start(), full.end(), indent, prefix));
+    }
 
-        let mut tags: Vec<String> = li_re
-            .captures_iter(bag_content)
-            .map(|c| c.get(1).unwrap().as_str().to_string())
-            .collect();
-
+    // Fast path: exactly one canonical `lr:` block — edit in place.
+    if matches.len() == 1 && matches[0].3 == "lr" {
+        let (start, end, indent, _) = matches[0].clone();
+        let mut tags = accumulated_tags;
         tags.retain(|t| !remove_set.contains(t.as_str()));
-
         for tag in hier_to_add {
             if !tags.iter().any(|t| t == tag) {
                 tags.push(tag.clone());
@@ -343,8 +412,6 @@ fn update_hierarchical_in_string(
         }
 
         if tags.is_empty() {
-            let start = full_match.start();
-            let end = full_match.end();
             let trim_start = if content[..start].ends_with('\n') {
                 start - 1
             } else {
@@ -353,36 +420,47 @@ fn update_hierarchical_in_string(
             return format!("{}{}", &content[..trim_start], &content[end..]);
         }
 
-        let bag_indent = format!("{} ", indent);
-        let li_indent = format!("{}  ", indent);
-        let mut block = format!(
-            "{}<lr:hierarchicalSubject>\n{}<rdf:Bag>\n",
-            indent, bag_indent
-        );
-        for tag in &tags {
-            block.push_str(&format!("{}<rdf:li>{}</rdf:li>\n", li_indent, xml_escape(tag)));
-        }
-        block.push_str(&format!(
-            "{}</rdf:Bag>\n{}</lr:hierarchicalSubject>",
-            bag_indent, indent
-        ));
-
-        return format!(
-            "{}{}{}",
-            &content[..full_match.start()],
-            block,
-            &content[full_match.end()..]
-        );
+        let block = render_hierarchical_block(&indent, &tags);
+        return format!("{}{}{}", &content[..start], block, &content[end..]);
     }
 
-    // No existing lr:hierarchicalSubject — only proceed if we have tags to add
-    if hier_to_add.is_empty() {
+    // Slow path: zero blocks → fall through to inject; otherwise (multiple
+    // blocks, or single non-canonical prefix) → strip every match and
+    // re-inject a single canonical block.
+
+    let mut tags = accumulated_tags;
+    tags.retain(|t| !remove_set.contains(t.as_str()));
+    for tag in hier_to_add {
+        if !tags.iter().any(|t| t == tag) {
+            tags.push(tag.clone());
+        }
+    }
+
+    if matches.is_empty() && hier_to_add.is_empty() {
         return content.to_string();
     }
 
+    // Strip all matched blocks (reverse order to keep earlier offsets valid).
+    let preserved_indent = matches.first().map(|m| m.2.clone());
+    let mut stripped = content.to_string();
+    for (start, end, _, _) in matches.iter().rev() {
+        let trim_start = if stripped[..*start].ends_with('\n') {
+            *start - 1
+        } else {
+            *start
+        };
+        stripped.replace_range(trim_start..*end, "");
+    }
+
+    if tags.is_empty() {
+        return stripped;
+    }
+
+    // From here on, work with `stripped` and inject a single canonical block.
+    let mut content = stripped;
+
     // Ensure xmlns:lr namespace is declared
-    let mut content = content.to_string();
-    if !content.contains("xmlns:lr") {
+    if !content.contains("xmlns:lr=") {
         let desc_re = Regex::new(r#"(<rdf:Description\b)"#).unwrap();
         if desc_re.is_match(&content) {
             content = desc_re
@@ -399,21 +477,11 @@ fn update_hierarchical_in_string(
     if let Some(caps) = close_re.captures(&content) {
         let m = caps.get(0).unwrap();
         let desc_indent = caps.get(1).unwrap().as_str();
-        let indent = format!("{} ", desc_indent);
-        let bag_indent = format!("{}  ", desc_indent);
-        let li_indent = format!("{}   ", desc_indent);
-
-        let mut block = format!(
-            "{}<lr:hierarchicalSubject>\n{}<rdf:Bag>\n",
-            indent, bag_indent
-        );
-        for tag in hier_to_add {
-            block.push_str(&format!("{}<rdf:li>{}</rdf:li>\n", li_indent, xml_escape(tag)));
-        }
-        block.push_str(&format!(
-            "{}</rdf:Bag>\n{}</lr:hierarchicalSubject>\n",
-            bag_indent, indent
-        ));
+        let indent = preserved_indent
+            .clone()
+            .unwrap_or_else(|| format!("{} ", desc_indent));
+        let mut block = render_hierarchical_block(&indent, &tags);
+        block.push('\n');
 
         return format!("{}{}{}", &content[..m.start()], block, &content[m.start()..]);
     }
@@ -424,22 +492,14 @@ fn update_hierarchical_in_string(
         let m = caps.get(0).unwrap();
         let desc_indent = caps.get(1).unwrap().as_str();
         let attrs = caps.get(2).unwrap().as_str();
-        let indent = format!("{} ", desc_indent);
-        let bag_indent = format!("{}  ", desc_indent);
-        let li_indent = format!("{}   ", desc_indent);
+        let indent = preserved_indent
+            .clone()
+            .unwrap_or_else(|| format!("{} ", desc_indent));
 
         let mut block = format!("{}<rdf:Description{}>\n", desc_indent, attrs);
-        block.push_str(&format!(
-            "{}<lr:hierarchicalSubject>\n{}<rdf:Bag>\n",
-            indent, bag_indent
-        ));
-        for tag in hier_to_add {
-            block.push_str(&format!("{}<rdf:li>{}</rdf:li>\n", li_indent, xml_escape(tag)));
-        }
-        block.push_str(&format!(
-            "{}</rdf:Bag>\n{}</lr:hierarchicalSubject>\n{}</rdf:Description>",
-            bag_indent, indent, desc_indent
-        ));
+        block.push_str(&render_hierarchical_block(&indent, &tags));
+        block.push('\n');
+        block.push_str(&format!("{}</rdf:Description>", desc_indent));
 
         return format!("{}{}{}", &content[..m.start()], block, &content[m.end()..]);
     }
@@ -2159,5 +2219,128 @@ mod tests {
             data2.hierarchical_keywords,
             vec!["animals|birds|eagles", "nature|sky|sunset"]
         );
+    }
+
+    #[test]
+    fn collect_lightroom_prefixes_finds_alien_bindings() {
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/"
+    xmlns:lightroom="http://ns.adobe.com/lightroom/1.0/"
+    xmlns:lrc="http://ns.adobe.com/lightroom/1.0/">
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+        let prefixes = collect_lightroom_prefixes(xmp);
+        assert!(prefixes.contains(&"lr".to_string()));
+        assert!(prefixes.contains(&"lightroom".to_string()));
+        assert!(prefixes.contains(&"lrc".to_string()));
+    }
+
+    #[test]
+    fn update_hierarchical_collapses_dual_namespace_blocks() {
+        // Reproduces the real-world XMP that triggered this bug: a
+        // `lightroom:hierarchicalSubject` block (legacy, flat leaves) sits
+        // beside an `lr:hierarchicalSubject` block (MAKI's canonical
+        // pipe-paths). Writeback must collapse them into a single `lr:`
+        // block so the next refresh doesn't re-import flat leaves.
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/"
+    xmlns:lightroom="http://ns.adobe.com/lightroom/1.0/">
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>location|Germany|Bayern</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+   <lightroom:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>Bavaria</rdf:li>
+     <rdf:li>Germany</rdf:li>
+    </rdf:Bag>
+   </lightroom:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_hierarchical_in_string(xmp, &[], &[]);
+
+        // The legacy `lightroom:` block is gone.
+        assert!(
+            !result.contains("<lightroom:hierarchicalSubject"),
+            "lightroom: block should be removed:\n{result}"
+        );
+        // A single canonical `lr:` block remains.
+        let lr_count = result.matches("<lr:hierarchicalSubject>").count();
+        assert_eq!(lr_count, 1, "expected exactly one lr: block:\n{result}");
+        // Flat leaves from the legacy block survive (they had no canonical
+        // home — better to keep them visible than to silently drop user
+        // data).
+        assert!(result.contains("<rdf:li>Bavaria</rdf:li>"));
+        // The original pipe-path is preserved.
+        assert!(result.contains("<rdf:li>location|Germany|Bayern</rdf:li>"));
+    }
+
+    #[test]
+    fn update_hierarchical_collapses_alien_prefix() {
+        // A tool binds an exotic prefix to the Lightroom namespace.
+        // The block must still be detected and canonicalised to `lr:`.
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lrc="http://ns.adobe.com/lightroom/1.0/">
+   <lrc:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>nature|landscape</rdf:li>
+    </rdf:Bag>
+   </lrc:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_hierarchical_in_string(
+            xmp,
+            &["nature|sky|sunset".to_string()],
+            &[],
+        );
+
+        assert!(
+            !result.contains("<lrc:hierarchicalSubject"),
+            "exotic prefix block should be removed:\n{result}"
+        );
+        assert!(result.contains("<lr:hierarchicalSubject>"));
+        assert!(result.contains("<rdf:li>nature|landscape</rdf:li>"));
+        assert!(result.contains("<rdf:li>nature|sky|sunset</rdf:li>"));
+        // xmlns:lr should have been added since only `xmlns:lrc=...` was
+        // declared previously.
+        assert!(result.contains(r#"xmlns:lr="http://ns.adobe.com/lightroom/1.0/""#));
+    }
+
+    #[test]
+    fn update_hierarchical_canonical_lr_only_is_byte_stable() {
+        // A file with only a canonical `lr:` block and no edits should
+        // be returned unchanged — no spurious re-rendering that could
+        // cause SHA drift on no-op writebacks.
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/">
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>animals|birds|eagles</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let result = update_hierarchical_in_string(xmp, &[], &[]);
+        assert_eq!(result, xmp);
     }
 }

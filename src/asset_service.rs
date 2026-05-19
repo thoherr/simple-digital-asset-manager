@@ -448,6 +448,10 @@ pub enum RefreshStatus {
     Refreshed,
     Missing,
     Offline,
+    /// Embedded-XMP read skipped because the asset has an XMP sidecar
+    /// recipe — the sidecar is authoritative and the JPEG/TIFF's embedded
+    /// XMP would otherwise re-inject stale tags on every refresh.
+    SidecarPresent,
 }
 
 /// Result of a refresh operation.

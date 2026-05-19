@@ -263,6 +263,8 @@ The `--media` flag also scans JPEG and TIFF variant files, re-extracting embedde
 1. **Retroactive extraction**: You imported files before the embedded XMP feature existed and want to pick up keywords/ratings/labels that were embedded all along.
 2. **External edits**: A tool like CaptureOne or Lightroom modified the embedded XMP in a JPEG/TIFF file.
 
+> **Sidecar-wins rule** (v4.5.14): MAKI skips embedded-XMP re-extraction for any variant whose asset already has an `.xmp` sidecar recipe. The sidecar is the authoritative metadata file (writeback keeps it current); a JPEG's embedded XMP is frozen at import time and would otherwise re-inject stale keywords on every refresh — which then can't be removed because the embedded-XMP merge is add-only. The `--log` output shows skipped variants as `skipped (sidecar present)`. If you need to force re-extraction from an embedded block (e.g. a sidecarless workflow where another tool edits the embedded XMP directly), delete the recipe first (`maki cleanup --recipes --asset <id>`) or re-import.
+
 ### Dry run
 
 ```bash

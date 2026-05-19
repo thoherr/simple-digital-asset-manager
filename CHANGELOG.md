@@ -2,6 +2,112 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.5.14 (2026-05-19)
+
+Closes two XMP-roundtrip leaks that let non-hierarchical tags reappear
+in the catalog after a clean writeback. Symptom: user reports flat
+keywords (`Bavaria`, `Fools Theater`, …) coming back into the asset's
+tag list on the next `refresh --media`, even after `tag rename` /
+`tag clear` cycles had moved them into the canonical hierarchy.
+
+Both leaks share a root cause: a `.xmp` sidecar is supposed to be the
+single source of truth for an asset's metadata, but two parallel paths
+were sneaking around it.
+
+Tests: 812 + 251 standard, 932 + 283 pro (+6 lib / +1 CLI per build).
+
+### Namespace-URI-aware XMP `hierarchicalSubject` writeback
+
+XMP is keyed by namespace URI, not prefix string. The Adobe Lightroom
+namespace (`http://ns.adobe.com/lightroom/1.0/`) can be bound to any
+prefix via an `xmlns:` declaration — most files use `lr:`, some older
+CaptureOne / third-party exports use `lightroom:`, and nothing in the
+spec stops a tool from inventing its own. `lr:hierarchicalSubject` and
+`lightroom:hierarchicalSubject` are *the same XMP field*.
+
+`update_hierarchical_in_string` in `src/xmp_reader.rs` previously
+matched on the literal prefix `lr:` only. Writeback patched the `lr:`
+block and left any parallel `lightroom:` block intact. On the next
+`refresh --media` the reader (which already uses prefix-agnostic
+`local_name()`) absorbed *both* blocks, and the legacy block's
+flat-leaf entries (`Bavaria`, `Fools Theater`, …) merged back into
+`asset.tags`.
+
+Fix: the writer now scans `xmlns:X="…/lightroom/1.0/"` declarations,
+collects every prefix bound to the Lightroom namespace (always
+including `lr` and `lightroom` as fallbacks), builds a dynamic regex
+from that set, and canonicalises the file to exactly one `lr:` block.
+Multiple blocks → tags are union-merged → single `lr:` block replaces
+all of them. Exotic prefixes are detected and collapsed. Byte-equivalence
+is preserved for the common case (single canonical `lr:` block, no
+edits — the fast path edits in place, doesn't re-render).
+
+Regression tests in `xmp_reader::tests`:
+- `collect_lightroom_prefixes_finds_alien_bindings` — `lr` + `lightroom`
+  + `lrc` all detected from one XMP.
+- `update_hierarchical_collapses_dual_namespace_blocks` — the real-world
+  bug fixture (both `lr:` pipe-paths and `lightroom:` flat leaves
+  present) → exactly one `lr:` block survives, with merged contents.
+- `update_hierarchical_collapses_alien_prefix` — exotic `lrc:` block
+  canonicalised to `lr:`; `xmlns:lr=` injected if not previously
+  present.
+- `update_hierarchical_canonical_lr_only_is_byte_stable` — the no-op
+  case returns input bytes unchanged (verifies the fast path didn't
+  introduce SHA drift on writebacks that should be idempotent).
+
+### Sidecar-wins precedence for embedded-XMP on `refresh --media`
+
+`refresh --media` (and `sync-metadata --media` Phase 3) iterates every
+JPEG/TIFF file location for every asset and feeds the embedded XMP
+through `reapply_xmp_data`. That function is documented as add-only —
+"Keywords: merge (add new; cannot remove since we don't track
+provenance)". Combined with the fact that MAKI's writeback only patches
+the `.xmp` sidecar (it never modifies embedded XMP inside JPEG/TIFF
+containers), this meant: for any asset with both a master + a JPEG
+variant, the JPEG's embedded XMP was *frozen* at import time, and
+every `refresh --media` re-injected its stale flat keywords into
+`asset.tags`. Once in, they could never leave (no provenance).
+
+`merge_hierarchical_keywords` suppresses flat keywords that are
+*components* of hierarchical paths, so identical-spelling collisions
+(`Bayern` in dc:subject + `…|Bayern|…` in hierarchicalSubject) were
+already filtered out. But spelling drift (`Bavaria` flat vs `Bayern`
+canonical, `Fools Theater` flat vs `FoolsTheater` canonical) slipped
+straight through because the strings aren't equal.
+
+Fix: new `Catalog::asset_has_recipe(asset_id)` helper in
+`src/catalog/recipe_query.rs` — `SELECT COUNT(*) FROM recipes JOIN
+variants WHERE asset_id = ?1`. Both refresh-media loops in
+`src/asset_service/refresh.rs` now call it after resolving the owning
+asset for a variant location, *before* extracting embedded XMP. If
+true, the file is reported as `RefreshStatus::SidecarPresent` (new
+enum variant) and skipped entirely.
+
+The rule: **the `.xmp` sidecar is authoritative; embedded XMP in any
+variant is potentially stale and ignored when a sidecar exists**. If
+an asset has no sidecar at all (rare — happens on imports that opted
+out of sidecar creation), the embedded-XMP path still runs unchanged.
+
+`--log` output labels skipped files as `skipped (sidecar present)`
+on the CLI and `sidecar-present` in the web Maintain SSE stream, so
+the new behaviour is auditable on the first run after upgrade.
+
+Integration test `refresh_media_skips_when_sidecar_present` in
+`tests/cli.rs` builds a real JPEG with embedded XMP carrying a
+`StaleEmbeddedTag` keyword, imports it alongside an empty `.xmp`
+sidecar, runs `tag clear` to remove the keyword from the catalog,
+then runs `refresh --media` and asserts the keyword does NOT come
+back. Unit tests in `catalog::tests` cover the new query in both
+directions (asset with recipe → true; asset with only variants → false).
+
+### Roadmap (deferred)
+
+Same namespace-URI canonicalisation could be applied to the other
+multi-prefix-in-the-wild XMP namespaces (`dc:`, `digikam:` /
+`digiKam:`, `MicrosoftPhoto:` / `mp:`). Not done in this release —
+the Lightroom namespace was the one actively causing user-visible
+data drift; the others are theoretical risks today.
+
 ## v4.5.13 (2026-05-19)
 
 Docs-only release. Zero code changes — the binary is byte-equivalent
