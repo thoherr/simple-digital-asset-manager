@@ -2,6 +2,73 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.5.13 (2026-05-19)
+
+Docs-only release. Zero code changes — the binary is byte-equivalent
+to v4.5.12 modulo the version string. Cut as a separate release so
+the GitHub release page surfaces the refreshed VLM model guide as a
+shipped artifact rather than a `main`-branch-only doc update.
+
+Tests: 806 + 250 standard, 926 + 282 pro (unchanged from v4.5.12).
+
+### VLM model guide refresh + Gemma 4 family
+
+`doc/manual/reference/10-vlm-models.md` rewritten with practical
+decision frameworks rather than feature-list-first model catalogues:
+
+- **New "Should I Upgrade?" section** answering the question
+  directly: stay on your current model if it works for navigation;
+  upgrade for generic / repetitive descriptions, wrong subject ID,
+  OCR, or multilingual needs. Names three concrete upgrade paths
+  from popular defaults — `gemma3:4b` → `gemma4:e4b`,
+  `qwen2.5vl:3b` → `qwen3-vl:8b`, `moondream` → `gemma4:e2b`.
+
+- **New "Testing a Candidate Model on Your Own Photos" workflow** —
+  concrete 3-step A/B recipe using the existing per-asset model
+  selector and the `--force` re-describe flag. The honest way to
+  decide a model swap is to compare on photos the user actually
+  cares about; this makes the workflow obvious.
+
+- **Gemma 4 family added** to all three Tested Models tables
+  (Recommended / Budget / Large) with Ollama tag names, effective
+  parameter counts, RAM, download size, and latency estimates:
+  - `gemma4:e2b` (2.3 B effective, text+image+audio) — small/fast
+  - `gemma4:e4b` (4.5 B effective, text+image+audio) — direct
+    upgrade path for `gemma3:4b` users
+  - `gemma4:26b` (25.2 B total / 3.8 B active MoE, text+image)
+  - `gemma4:31b` (30.7 B dense, text+image)
+
+  Plus the gotcha that `-mlx-bf16`, `-mxfp8`, and `-nvfp4` quant
+  variants are text-only and silently drop image input — stick
+  with default tags or `-it-q4_K_M` / `-it-q8_0` quants for
+  `maki describe`.
+
+- **MLX backend note** under the Ollama section: recent Ollama
+  releases bundle Apple's MLX framework as the default inference
+  path on Apple Silicon. Transparent on the HTTP API — no MAKI
+  config changes — but the same MLX-only-tags-are-text-only
+  gotcha applies.
+
+- **Per-model config example expanded** with an annotated
+  multi-model setup explaining what each override is for
+  (`timeout` for cold-start loading, `num_ctx` for thinking
+  models, `temperature` for batch consistency, `max_image_edge`
+  for throughput, `max_tokens` for response length cap).
+
+- **Lead paragraph** adds an explicit "Model swap is pure config"
+  note — zero code changes needed to try a new model. The model
+  name is a string in `[vlm].model`; MAKI is just an HTTP client
+  to Ollama / OpenAI-compatible APIs.
+
+- **Qwen3.5 section softened** — dropped unverifiable "early
+  fusion" architectural claims and the stale "as of March 2026"
+  Ollama caveat date. Replaced with a how-to-spot-broken-vision
+  smoke test that stays useful regardless of which Ollama
+  version the user is on.
+
+By-use-case and by-hardware decision tables also updated to
+include Gemma 4 placements at every RAM tier.
+
 ## v4.5.12 (2026-05-18)
 
 Tag-data hygiene + browse-page selection safety release. One real
