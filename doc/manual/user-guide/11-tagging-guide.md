@@ -160,6 +160,44 @@ A few neighbours that follow the same pattern, with suggested homes:
 
 These leaves don't need to ship in the default vocabulary on day one — add them when your catalog demands them, and the hierarchy organically grows along the axis your photos actually exercise.
 
+#### Worked example: when *not* to add a tag — "action"
+
+Some words look like obvious tags but actually compress three different questions into one ambiguous string. "Action" is the textbook case. Walked through carefully, it usually splits into:
+
+1. **"There's a recognisable activity in the frame."** A runner, a surfer, a dog jumping, a dancer mid-leap. → Already covered by `subject|person|activity|*` (or `subject|animal|...`, or `subject|performing arts|...`). The activity-ness is *implicit* in the activity tag. Adding a separate `action` here is redundant and dilutes the activity branch.
+
+2. **"The photo's defining quality is motion / a decisive moment, regardless of subject."** A panning shot of a passing train, a frozen-mid-jump portrait, a wave crashing — the dynamism *is* the photo, not whatever happens to be moving. → A genuine cross-cutting qualifier, sibling to `style` / `condition` / `mood`:
+
+    ```
+    subject
+    └── motion
+        ├── action      (dynamic moment, decisive moment)
+        ├── still       (statically posed, calm composition)
+        ├── panning     (subject sharp, background streaked)
+        ├── frozen      (high-shutter mid-action)
+        └── flowing     (silky-water long exposure, blurred crowd)
+    ```
+
+    Combines with any subject branch — `subject|nature|water|wave` + `subject|motion|action` is a different photo than `subject|nature|water|wave` + `subject|motion|flowing`.
+
+3. **"I used a specific motion-emphasis technique."** Long exposure, panning, fast-shutter freeze, slow-sync flash. → That's `technique|motion|*`, not subject. Describes *how the shot was made*, not what's in it.
+
+**The recommendation:**
+
+- Don't add a bare `action` tag — it's not searchable for anything specific.
+- For sense (1), use the specific activity tag. "All my action photos" becomes a saved search like `tag:subject|person|activity OR tag:subject|animal OR tag:subject|performing arts`.
+- For sense (2), `subject|motion|*` earns its keep only if you actively want to slice the catalog by motion-quality independent of subject. If you're not sure, you don't need it.
+- For sense (3), `technique|motion|*` follows the same rule as other technique tags — only worth it if you tag technique systematically.
+
+The wider lesson: **a tag that means "kinda this, kinda that" isn't a tag, it's a placeholder**. When you reach for one, the question to ask isn't "where should it go in the hierarchy" but "which of the three questions am I actually answering, and is there already a facet that handles it?". Often the answer is "yes, and I don't need a new tag at all".
+
+A few more words that look like tags but usually decompose:
+
+- `candid` → either `subject|mood|*` (relaxed, joyful) or implicit in `subject|person|portrait` vs `subject|person|activity`. Rarely needs its own tag.
+- `mood` (as a tag, not a facet) → use one of the mood leaves (`subject|mood|melancholic` etc.). The word `mood` itself answers nothing.
+- `nature` → use the specific nature subbranch (`subject|nature|landscape`, `subject|nature|flora`). Bare `nature` is just the parent facet name.
+- `interesting`, `nice`, `cool` → not tags. These are ratings or color labels in disguise. Use MAKI's rating (1–5) or color label fields.
+
 #### The general rule
 
 Ask: *what distinct question does this tag answer about the photo?* If the answer matches an existing facet, nest it. If it's a new question — a new way someone might want to slice the catalog — promote it to top-level.
