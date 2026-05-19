@@ -27,6 +27,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Default ubuntu-latest runners ship with ~14 GB free, which a
+      # full Rust build of MAKI (default features + `--features ai`,
+      # plus cache restore landing a fat `target/`) can exhaust —
+      # observed as `IOException: No space left on device` during the
+      # cache restore step on Linux. Purge pre-installed tooling we
+      # don't need to free ~25 GB. Conservative defaults: keep the
+      # tool-cache (node/python may be touched by transitive deps)
+      # and swap storage; drop the OS-bundled Android/.NET/Haskell
+      # stacks and the cached Docker images.
+      - name: Free disk space (Linux only)
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: true
+          swap-storage: false
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
