@@ -1030,6 +1030,20 @@ pub fn print_status_human(report: &maki::status::StatusReport) {
         );
         pending_lines += 1;
     }
+    // Per-volume breakdown of the pending counts above. Only show
+    // when there are pending writebacks across more than one volume —
+    // a single-volume catalog already named everything in the lines
+    // above, no need to repeat. The list comes pre-sorted by count
+    // desc from `gather()`.
+    if p.pending_writebacks_by_volume.len() > 1 {
+        for v in &p.pending_writebacks_by_volume {
+            let marker = if v.is_online { "online" } else { "offline" };
+            println!(
+                "      └─ {:>5} on {} ({})",
+                v.count, v.volume_label, marker,
+            );
+        }
+    }
     if let Some(n) = p.assets_without_embedding {
         if n > 0 {
             println!(

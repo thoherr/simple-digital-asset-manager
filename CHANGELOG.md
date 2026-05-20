@@ -2,6 +2,46 @@
 
 All notable changes to the Digital Asset Manager are documented here.
 
+## v4.5.17 (2026-05-20)
+
+`maki status` now shows a per-volume breakdown of pending XMP
+writebacks when more than one volume has any. Example output:
+
+```
+Pending work
+  ✗ 1240 pending XMP writeback(s) on online volume(s)            → maki writeback
+  ✗   30 pending XMP writeback(s) on offline volume(s)           → mount the volumes, then `maki writeback`
+      └─  890 on Archive 2026 (online)
+      └─  350 on Working SSD (online)
+      └─   30 on Backup Drive 1 (offline)
+```
+
+Useful when triaging an unexpected backlog — instantly tells you
+which drive needs mounting (offline pending) and which is bearing
+most of the queue (online pending).
+
+The info is free — `status` was already loading the full pending-
+writeback list to compute the online vs offline split. Bucketing
+by `volume_id` is a single in-memory pass over data already in
+hand; no new SQL queries, no measurable runtime cost. New
+`PendingByVolume` struct + `pending_writebacks_by_volume:
+Vec<PendingByVolume>` field on `PendingWork`, sorted count-desc
+then label-asc for deterministic output.
+
+Display rules: the per-volume list is only shown when pending
+writebacks span more than one volume — single-volume catalogs
+already have everything named in the lines above, and repeating
+adds noise. Offline volumes carry an `(offline)` marker so the
+column lines up with the existing offline-only-line message.
+
+The same data is exposed via the existing `--json` status output
+(if/when added — there's no `--json` flag on `status` today; the
+struct is JSON-serializable and ready for it).
+
+Tests unchanged: 813 + 252 standard, 933 + 285 pro. The change is
+mechanical accumulation over an existing iteration; the build
+passing guards the bucketing logic.
+
 ## v4.5.16 (2026-05-19)
 
 Asset detail page: pending_writeback markers now update immediately

@@ -64,6 +64,10 @@ pub struct PendingWork {
     /// XMP writeback queue split by whether the target volume is reachable.
     pub pending_writebacks_online: usize,
     pub pending_writebacks_offline: usize,
+    /// Per-volume breakdown of pending writebacks. Same data the online
+    /// /offline split is computed from — bucketed by volume, sorted
+    /// most-pending first. Empty when there are no pending writebacks.
+    pub pending_writebacks_by_volume: Vec<PendingByVolume>,
     /// Whether the writeback feature is enabled in `[writeback]` config —
     /// when false, queued writebacks won't process until the user opts in.
     pub writeback_enabled: bool,
@@ -72,6 +76,14 @@ pub struct PendingWork {
     pub assets_without_embedding: Option<u64>,
     /// Assets with face_scan_status NULL or 'pending'. Same caveat as above.
     pub assets_without_face_scan: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PendingByVolume {
+    pub volume_label: String,
+    pub volume_id: String,
+    pub count: usize,
+    pub is_online: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -142,8 +154,14 @@ pub fn gather(
         .filter(|v| v.is_online)
         .map(|v| v.id.to_string())
         .collect();
+    let volume_label_by_id: std::collections::HashMap<String, String> = volumes
+        .iter()
+        .map(|v| (v.id.to_string(), v.label.clone()))
+        .collect();
     let mut pwb_on = 0usize;
     let mut pwb_off = 0usize;
+    let mut by_volume: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     // tuple = (recipe_id, asset_id, volume_id, relative_path)
     for r in &pending_writebacks_all {
         if online_volume_ids.contains(&r.2) {
@@ -151,7 +169,23 @@ pub fn gather(
         } else {
             pwb_off += 1;
         }
+        *by_volume.entry(r.2.clone()).or_insert(0) += 1;
     }
+    let mut pending_writebacks_by_volume: Vec<PendingByVolume> = by_volume
+        .into_iter()
+        .map(|(volume_id, count)| {
+            let volume_label = volume_label_by_id
+                .get(&volume_id)
+                .cloned()
+                .unwrap_or_else(|| format!("<unknown {volume_id}>"));
+            let is_online = online_volume_ids.contains(&volume_id);
+            PendingByVolume { volume_label, volume_id, count, is_online }
+        })
+        .collect();
+    // Sort by count desc, then label asc — stable, deterministic output.
+    pending_writebacks_by_volume.sort_by(|a, b| {
+        b.count.cmp(&a.count).then_with(|| a.volume_label.cmp(&b.volume_label))
+    });
     let writeback_enabled = crate::config::CatalogConfig::load(catalog_root)
         .map(|c| c.writeback.enabled)
         .unwrap_or(false);
@@ -186,6 +220,7 @@ pub fn gather(
     let pending = PendingWork {
         pending_writebacks_online: pwb_on,
         pending_writebacks_offline: pwb_off,
+        pending_writebacks_by_volume,
         writeback_enabled,
         assets_without_embedding,
         assets_without_face_scan,
