@@ -4,43 +4,173 @@ All notable changes to the Digital Asset Manager are documented here.
 
 ## v4.5.17 (2026-05-20)
 
-`maki status` now shows a per-volume breakdown of pending XMP
-writebacks when more than one volume has any. Example output:
+Workflow-driven release. Two threads:
 
+1. **XMP writeback hardening.** v4.5.14–v4.5.16 each closed one
+   piece of the runaway-escape / mirror-tags story; v4.5.17 closes
+   the rest. The on-disk damage that accumulated from pre-fix
+   versions (multi-layer `&amp;amp;amp;…` entries, leaf-only entries
+   stranded in `lr:hierarchicalSubject` over years of multi-tool
+   roundtrips) now cleans up reliably with `maki writeback --all
+   --force`.
+2. **`maki status` polish.** Per-volume breakdown of pending
+   writebacks, missing-previews count, and alignment fixes for the
+   `→ maki <command>` action hints.
+
+Plus the import dialog finally treats dry-run as a first-class job
+(progress, re-attach, minimize-to-toast), and the CI Linux job no
+longer dies on disk-space pressure.
+
+Tests: 822 + 252 standard, 942 + 286 pro (+9 lib / +2 CLI standard
+/ +2 CLI pro from v4.5.16).
+
+### XMP writeback hardening
+
+- **`xml_unescape` on regex-based reads.** `update_tags_in_string`
+  and `update_hierarchical_in_string` capture raw `<rdf:li>` text
+  via regex and never decoded XML entity references. On each
+  rewrite, `xml_escape` re-escaped the captured text, turning
+  `&amp;` into `&amp;amp;` and accumulating one layer per
+  writeback — so band names like `Bobby & the BigTones` ended up
+  as `Bobby &amp;amp;amp;amp;amp;amp;amp;amp; the BigTones` after
+  eight runs. Each round was incorrectly seen as "new tag, must
+  add" because the catalog's `Bobby & the BigTones` and the file's
+  `Bobby &amp; the BigTones` were different strings to the
+  comparison. Fix: new `xml_unescape` helper (inverse of
+  `xml_escape`, with `&amp;` decoded LAST to preserve nested-
+  encoding semantics) applied at both `li_re.captures_iter` sites.
+- **`--force` flag** on `maki writeback`. Distinct from `--all`
+  (which expands the scope to every recipe in the catalog),
+  `--force` keeps the explicit scope but rebuilds the
+  `dc:subject` + `lr:hierarchicalSubject` blocks from catalog
+  state, discarding any pre-existing XMP entry that isn't in the
+  catalog. More aggressive than `--mirror-tags` (which only drops
+  entries the catalog doesn't have via the diff path) — `--force`
+  empties the blocks and re-adds catalog tags fresh. Use when
+  stale entries are stuck in a file that mirror-tags didn't catch
+  (multi-layer escape leftovers, leaf-only entries in
+  `lr:hierarchicalSubject`, manually corrupted XMP), or as a
+  guaranteed "this file now matches catalog" escape hatch. Web
+  Maintain dialog gets a matching checkbox.
+- **`update_hierarchical_subjects` honors leaf-only removals.**
+  The function filtered both the add list AND the remove list to
+  pipe-containing tags only. For adds that's correct (flat tags
+  don't belong in `lr:hierarchicalSubject`). For removes it
+  silently kept any leaf-only entry already in the file —
+  `Bavaria`, `Konzert`, multi-escape leftovers, anything flat
+  that mirror-tags or `--force` legitimately marked for removal.
+  Fix: drop the pipe filter on `hier_remove`. Add side keeps its
+  filter.
+
+Cleanup workflow for catalogs with accumulated damage:
+
+```bash
+maki writeback --all --force --volume MediaPortable
+maki writeback --all --force --volume Media
 ```
-Pending work
-  ✗ 1240 pending XMP writeback(s) on online volume(s)            → maki writeback
-  ✗   30 pending XMP writeback(s) on offline volume(s)           → mount the volumes, then `maki writeback`
-      └─  890 on Archive 2026 (online)
-      └─  350 on Working SSD (online)
-      └─   30 on Backup Drive 1 (offline)
-```
 
-Useful when triaging an unexpected backlog — instantly tells you
-which drive needs mounting (offline pending) and which is bearing
-most of the queue (online pending).
+Sweeps every recipe's tag blocks fresh from catalog state in a
+single pass per volume.
 
-The info is free — `status` was already loading the full pending-
-writeback list to compute the online vs offline split. Bucketing
-by `volume_id` is a single in-memory pass over data already in
-hand; no new SQL queries, no measurable runtime cost. New
-`PendingByVolume` struct + `pending_writebacks_by_volume:
-Vec<PendingByVolume>` field on `PendingWork`, sorted count-desc
-then label-asc for deterministic output.
+### `maki status` polish
 
-Display rules: the per-volume list is only shown when pending
-writebacks span more than one volume — single-volume catalogs
-already have everything named in the lines above, and repeating
-adds noise. Offline volumes carry an `(offline)` marker so the
-column lines up with the existing offline-only-line message.
+- **Per-volume pending writeback breakdown.** When pending
+  writebacks span more than one volume (or a multi-volume catalog
+  has any pending at all), status nests one `└─ N on <label>
+  (online|offline)` line per volume under the existing online/
+  offline summary. Example:
 
-The same data is exposed via the existing `--json` status output
-(if/when added — there's no `--json` flag on `status` today; the
-struct is JSON-serializable and ready for it).
+  ```
+  Pending work
+    ✗ 103176 pending XMP writeback(s) on offline volume(s)  → mount the volumes, then `maki writeback`
+        └─ 92596 on MediaBackup-2 (offline)
+        └─ 10045 on Media (offline)
+        └─   535 on MediaPortable (offline)
+  ```
 
-Tests unchanged: 813 + 252 standard, 933 + 285 pro. The change is
-mechanical accumulation over an existing iteration; the build
-passing guards the bucketing logic.
+  Tells you instantly which drive needs mounting and which is
+  bearing most of the queue. Cost is zero — status already loaded
+  the full pending-writeback list to compute the online/offline
+  split; the per-volume bucket is the same in-memory pass.
+
+- **Missing previews + smart previews count.** New pending lines
+  for assets whose `best_variant_hash` doesn't have a preview file
+  on disk:
+
+  ```
+    ✗ 142 asset(s) missing previews  → maki generate-previews
+    ✗  87 asset(s) missing smart previews  → maki generate-previews --smart
+  ```
+
+  Smart previews only reported when the smart-previews directory
+  exists (users who haven't opted in aren't shown the line). Cost
+  is two extra `read_dir` walks of sharded directories.
+
+- **Hint alignment.** Removed the fragile fixed-width padding
+  (`{:<11}`, `{:<23}`, etc.) on every `→ maki <command>` line.
+  The padding assumed specific number widths and broke as soon as
+  numbers grew (e.g. 6-digit pending counts pushed the arrows out
+  by a different amount on each line). Hints now sit two spaces
+  after the text, robust to any digit count.
+
+### Import dialog: dry-run as a first-class job
+
+Previously the dry-run path ran synchronously in `spawn_blocking`,
+returning the final summary as the HTTP response. Closing the
+modal mid-dry-run lost everything; re-opening didn't re-attach;
+no per-file progress feedback during the wait. Now dry-run goes
+through the same `JobRegistry` machinery as a live import — same
+SSE progress stream, same minimize-to-toast, same `reattachIfRunning`
+flow. The terminal payload carries `dry_run: true` so the result
+phase shows "Would import N" rather than "Imported N", hides the
+"Browse imported" link, and shows a "Run for real" button that
+re-launches with the same form parameters as a live import.
+
+### CI: free disk space on Linux runners
+
+The Linux job tipped over with `IOException: No space left on
+device` during the cache restore step — default `ubuntu-latest`
+runners ship with ~14 GB free, which a full Rust build of MAKI
+(default features + `--features ai`, plus a fat `target/` cache
+restore) was exhausting. Added a `jlumbroso/free-disk-space@main`
+step gated by `if: runner.os == 'Linux'` that frees ~25 GB by
+purging OS-bundled Android SDK / .NET / Haskell / cached Docker
+images. macOS and Windows untouched.
+
+### Documentation
+
+Tagging guide gained two more "Thinking in facets" worked examples
+alongside the existing events and color ones:
+
+- **Striking objects that span subject and event** (fireworks,
+  campfire, Maibaum, with concrete hierarchy placements and a
+  note on distinguishing the Bavarian Maibaum from the British
+  ribbon-dance maypole). Five more neighbours follow the same
+  pattern: parade float, costume, christmas tree, lantern,
+  sparkler.
+- **When *not* to add a tag — "action"** showing how an obvious-
+  looking word splits into three different questions (activity
+  in the frame, motion-quality qualifier, photo technique) and
+  the right home for each.
+
+### v4.5.17 commit trail
+
+Twelve commits accumulated locally before cutting:
+
+1. `890b2a6` — per-volume pending writeback breakdown
+2. `11df152` — status hint alignment (drop fragile padding)
+3. `efa7143` — import dry-run as first-class job
+4. `6ea6fd6` — broaden per-volume-breakdown gate to multi-volume catalogs
+5. `5dfb21d` — missing previews + smart previews count
+6. `a3b8284` — xmp entity-decode on read (runaway-escape root fix)
+7. `5890569` — stronger byte-stability test for multi-layer entries
+8. `de2e926` — parse_xmp / xml_unescape parity test
+9. `480cff6` — `--force` rebuilds dc:subject + lr:hierarchicalSubject from scratch
+10. `143c3b4` — `update_hierarchical_subjects` honors leaf-only removals
+
+Plus earlier in the cycle (already on `main`): tagging-guide
+worked examples (`a647dff`, `c670076`), roadmap reordering
+(`650787e`), CI free-disk-space step (`f29e009`).
 
 ## v4.5.16 (2026-05-19)
 
