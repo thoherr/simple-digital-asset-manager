@@ -995,9 +995,13 @@ pub fn print_status_human(report: &maki::status::StatusReport) {
     } else {
         for (n, label) in &cleanup_actions {
             if *n > 0 {
-                println!(
-                    "  ✗ {n} {label:<42} → maki cleanup --apply"
-                );
+                // Hint sits two spaces after the message. Previously
+                // padded with `{label:<42}` to attempt column-aligned
+                // arrows, but the padding only worked when `n` was the
+                // expected 1-3 digits; a 6-digit count blew the column
+                // out and broke alignment anyway. Plain inline arrows
+                // are robust to any number size.
+                println!("  ✗ {n} {label}  → maki cleanup --apply");
             }
         }
     }
@@ -1009,24 +1013,24 @@ pub fn print_status_human(report: &maki::status::StatusReport) {
     if p.pending_writebacks_online > 0 {
         if p.writeback_enabled {
             println!(
-                "  ✗ {} pending XMP writeback(s) on online volume(s){:<11} → maki writeback",
-                p.pending_writebacks_online, ""
+                "  ✗ {} pending XMP writeback(s) on online volume(s)  → maki writeback",
+                p.pending_writebacks_online
             );
         } else {
             // Auto-flush off (the safety-net default). Manual `maki
             // writeback` runs regardless of the config flag, so the hint
             // points straight at it without a config-change detour.
             println!(
-                "  ✗ {} pending XMP writeback(s){:<23} → maki writeback  (auto-flush off; this is the manual flush)",
-                p.pending_writebacks_online, ""
+                "  ✗ {} pending XMP writeback(s)  → maki writeback  (auto-flush off; this is the manual flush)",
+                p.pending_writebacks_online
             );
         }
         pending_lines += 1;
     }
     if p.pending_writebacks_offline > 0 {
         println!(
-            "  ✗ {} pending XMP writeback(s) on offline volume(s){:<6} → mount the volumes, then `maki writeback`",
-            p.pending_writebacks_offline, ""
+            "  ✗ {} pending XMP writeback(s) on offline volume(s)  → mount the volumes, then `maki writeback`",
+            p.pending_writebacks_offline
         );
         pending_lines += 1;
     }
@@ -1046,19 +1050,13 @@ pub fn print_status_human(report: &maki::status::StatusReport) {
     }
     if let Some(n) = p.assets_without_embedding {
         if n > 0 {
-            println!(
-                "  ✗ {} asset(s) without an embedding{:<23} → maki embed",
-                n, ""
-            );
+            println!("  ✗ {n} asset(s) without an embedding  → maki embed");
             pending_lines += 1;
         }
     }
     if let Some(n) = p.assets_without_face_scan {
         if n > 0 {
-            println!(
-                "  ✗ {} asset(s) unscanned for faces{:<24} → maki faces detect",
-                n, ""
-            );
+            println!("  ✗ {n} asset(s) unscanned for faces  → maki faces detect");
             pending_lines += 1;
         }
     }
@@ -1079,7 +1077,7 @@ pub fn print_status_human(report: &maki::status::StatusReport) {
     } else {
         let pct = (b.at_risk as f64 / b.total_assets as f64) * 100.0;
         println!(
-            "  ✗ {} of {} asset(s) ({:.1}%) have fewer than {} copies → maki backup-status --at-risk",
+            "  ✗ {} of {} asset(s) ({:.1}%) have fewer than {} copies  → maki backup-status --at-risk",
             b.at_risk, b.total_assets, pct, b.min_copies
         );
     }
