@@ -2458,6 +2458,49 @@ mod tests {
     }
 
     #[test]
+    fn update_hierarchical_with_multi_layer_escaped_entries() {
+        // Reproduces the user's catalog state: a file that already
+        // accumulated multiple `&amp;…` layers from pre-fix writebacks.
+        // Verify byte-stability across two rounds — any change is a
+        // bug because the catalog tag (decoded to literal `&`) is
+        // already present after round 1's unescape.
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/">
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>person|ensemble|band|Bobby &amp; the BigTones</rdf:li>
+     <rdf:li>person|ensemble|band|Bobby &amp;amp;amp; the BigTones</rdf:li>
+     <rdf:li>person|ensemble|band|Bobby &amp;amp;amp;amp;amp; the BigTones</rdf:li>
+     <rdf:li>person|ensemble|band|Bobby &amp;amp;amp;amp;amp;amp;amp; the BigTones</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let catalog_tag = "person|ensemble|band|Bobby & the BigTones".to_string();
+        let after_first = update_hierarchical_in_string(xmp, &[catalog_tag.clone()], &[]);
+
+        // Strongest assertion: round 1 is byte-stable. Every existing
+        // `&amp;amp;…` entry must decode (xml_unescape) and re-encode
+        // (xml_escape) back to itself, with no additional `amp;` layer
+        // and no new entries appended.
+        assert_eq!(
+            after_first, xmp,
+            "Round 1 must not modify the file when the catalog tag is \
+             already present (after unescape).\n\
+             ---- BEFORE ----\n{xmp}\n---- AFTER ----\n{after_first}"
+        );
+
+        // Round 2 same assertion against round-1 output.
+        let after_second = update_hierarchical_in_string(&after_first, &[catalog_tag], &[]);
+        assert_eq!(after_second, after_first, "Round 2 must be byte-stable");
+    }
+
+    #[test]
     fn update_tags_does_not_runaway_escape_ampersand() {
         // Same bug, dc:subject side. The flat-tag writer
         // (`update_tags_in_string`) used the same regex-captures-raw-text
