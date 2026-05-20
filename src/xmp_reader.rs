@@ -161,10 +161,14 @@ fn update_tags_in_string(content: &str, tags_to_add: &[String], tags_to_remove: 
         let indent = caps.get(1).unwrap().as_str();
         let bag_content = caps.get(2).unwrap().as_str();
 
-        // Parse existing tags
+        // Parse existing tags. `xml_unescape` is essential here — without
+        // it `&amp;`-style entities are kept as literal text, never match
+        // the catalog (which carries decoded `&`), and accumulate an extra
+        // `&amp;` layer on every writeback (the `&` in `&amp;` gets
+        // re-escaped to `&amp;amp;`, then `&amp;amp;amp;`, etc.).
         let mut tags: Vec<String> = li_re
             .captures_iter(bag_content)
-            .map(|c| c.get(1).unwrap().as_str().to_string())
+            .map(|c| xml_unescape(c.get(1).unwrap().as_str()))
             .collect();
 
         // Apply removals
@@ -392,7 +396,11 @@ fn update_hierarchical_in_string(
         let prefix = caps.get(2).unwrap().as_str().to_string();
         let bag = caps.get(3).unwrap().as_str();
         for c in li_re.captures_iter(bag) {
-            let t = c.get(1).unwrap().as_str().to_string();
+            // Decode XML entities (`&amp;` → `&`, etc.) so existing
+            // entries are compared against the catalog's decoded form,
+            // not the still-escaped on-disk form. See `xml_unescape`
+            // for the runaway-escape bug this prevents.
+            let t = xml_unescape(c.get(1).unwrap().as_str());
             if !accumulated_tags.contains(&t) {
                 accumulated_tags.push(t);
             }
@@ -688,6 +696,32 @@ fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+/// Decode XML entity references that `xml_escape` would have produced,
+/// plus the two common attribute-style entities `&quot;` / `&apos;` for
+/// robustness against XMP written by other tools.
+///
+/// **Order matters**: `&amp;` must be decoded **last** so we don't
+/// turn an encoded `&lt;` (which appears in the file as `&amp;lt;`
+/// when nested-escaped) into a real `<` prematurely.
+///
+/// Required by the regex-based readers in `update_tags_in_string` and
+/// `update_hierarchical_in_string`, which capture raw `<rdf:li>...
+/// </rdf:li>` text — if the captured text isn't decoded before the
+/// dedup / remove-set comparison, an entry like
+/// `<rdf:li>Bobby &amp; the BigTones</rdf:li>` is treated as the
+/// literal string `Bobby &amp; the BigTones`, never matches the
+/// catalog's `Bobby & the BigTones`, and gets re-escaped on every
+/// writeback round — producing the runaway `&amp;amp;amp;...`
+/// nesting that accumulates one extra `amp;` layer per `maki
+/// writeback --all` pass.
+fn xml_unescape(s: &str) -> String {
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
 }
 
 /// Create a new XMP sidecar file from scratch with the given metadata.
@@ -2342,5 +2376,113 @@ mod tests {
 
         let result = update_hierarchical_in_string(xmp, &[], &[]);
         assert_eq!(result, xmp);
+    }
+
+    #[test]
+    fn xml_unescape_decodes_standard_entities() {
+        assert_eq!(xml_unescape("Bobby &amp; the BigTones"), "Bobby & the BigTones");
+        assert_eq!(xml_unescape("&lt;tag&gt;"), "<tag>");
+        assert_eq!(xml_unescape("a &quot;b&quot; c"), "a \"b\" c");
+        assert_eq!(xml_unescape("can&apos;t"), "can't");
+        // Nested case: `&amp;` decoded LAST, so `&amp;lt;` decodes to
+        // `&lt;`, not `<`.
+        assert_eq!(xml_unescape("&amp;lt;"), "&lt;");
+        // Idempotent on already-decoded strings.
+        assert_eq!(xml_unescape("plain text"), "plain text");
+    }
+
+    #[test]
+    fn xml_escape_unescape_round_trip() {
+        for s in &[
+            "Bobby & the BigTones",
+            "rock <metal> roll",
+            "name: \"value\"",
+            "can't won't",
+            "a & b < c > d",
+            "no specials",
+        ] {
+            let escaped = xml_escape(s);
+            assert_eq!(xml_unescape(&escaped), *s, "round-trip failed for {s:?}");
+        }
+    }
+
+    #[test]
+    fn update_hierarchical_does_not_runaway_escape_ampersand() {
+        // Regression for the bug surfaced by `maki writeback --all`:
+        // when an `<rdf:li>` already contained `&amp;`, the writer was
+        // re-escaping the captured raw text (`&amp;` → `&amp;amp;`),
+        // adding one extra `amp;` layer per writeback pass. Symptom:
+        // re-running writeback on the same catalog state kept
+        // "writing" the same recipes forever, with files growing
+        // entries like `Bobby &amp;amp;amp;amp;amp; the BigTones`.
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/">
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>person|ensemble|band|Bobby &amp; the BigTones</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        // First writeback: catalog already has `Bobby & the BigTones` —
+        // the tag is in the file. No additions, no removals. Output
+        // must be byte-stable (or at minimum: must NOT introduce
+        // `&amp;amp;`).
+        let catalog_tag = "person|ensemble|band|Bobby & the BigTones".to_string();
+        let after_first = update_hierarchical_in_string(xmp, &[catalog_tag.clone()], &[]);
+        assert!(
+            !after_first.contains("&amp;amp;"),
+            "Round 1 must not introduce nested &amp;amp; escapes. Got:\n{after_first}"
+        );
+        // The original entry's encoding is preserved (one `&amp;`).
+        assert!(after_first.contains("Bobby &amp; the BigTones"));
+        // No duplicate entry got added (the tag was already there).
+        assert_eq!(
+            after_first.matches("Bobby &amp;").count(),
+            1,
+            "Should have exactly one `Bobby &amp;…` entry. Got:\n{after_first}"
+        );
+
+        // Second writeback on the result: must be a no-op for this
+        // single-tag block. The pre-v4.5.17-fix bug surfaced as the
+        // entry being re-captured as literal `Bobby &amp; the BigTones`
+        // (not decoded), then xml_escape'd to `Bobby &amp;amp; the
+        // BigTones`, so the file changed every round.
+        let after_second = update_hierarchical_in_string(&after_first, &[catalog_tag], &[]);
+        assert_eq!(after_second, after_first, "Round 2 must be a no-op");
+    }
+
+    #[test]
+    fn update_tags_does_not_runaway_escape_ampersand() {
+        // Same bug, dc:subject side. The flat-tag writer
+        // (`update_tags_in_string`) used the same regex-captures-raw-text
+        // pattern, so it suffered the identical escape escalation.
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>Bobby &amp; the BigTones</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let catalog_tag = "Bobby & the BigTones".to_string();
+        let after_first = update_tags_in_string(xmp, &[catalog_tag.clone()], &[]);
+        assert!(
+            !after_first.contains("&amp;amp;"),
+            "Round 1 must not introduce nested &amp;amp; escapes. Got:\n{after_first}"
+        );
+        let after_second = update_tags_in_string(&after_first, &[catalog_tag], &[]);
+        assert_eq!(after_second, after_first, "Round 2 must be a no-op");
     }
 }
