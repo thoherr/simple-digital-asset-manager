@@ -76,6 +76,14 @@ pub struct PendingWork {
     pub assets_without_embedding: Option<u64>,
     /// Assets with face_scan_status NULL or 'pending'. Same caveat as above.
     pub assets_without_face_scan: Option<u64>,
+    /// Assets whose `best_variant_hash` has no preview file under
+    /// `<catalog_root>/previews/`. Run `maki generate-previews` to fill.
+    pub missing_previews: usize,
+    /// Assets whose `best_variant_hash` has no smart-preview file under
+    /// `<catalog_root>/smart-previews/`. `None` when the smart-previews
+    /// directory doesn't exist at all (user hasn't opted into smart
+    /// previews) — reporting them as missing would be noise.
+    pub missing_smart_previews: Option<usize>,
 }
 
 #[derive(Debug, Serialize)]
@@ -217,6 +225,20 @@ pub fn gather(
         (None, None)
     };
 
+    // Preview-coverage: count assets whose `best_variant_hash` doesn't
+    // have a corresponding file under `<catalog_root>/previews/` (or
+    // `smart-previews/`). The smart variant is reported only when the
+    // smart-previews directory exists — users who haven't opted into
+    // smart previews shouldn't see them as "missing".
+    //
+    // Implementation: walk each sharded directory once to build a
+    // HashSet<String> of stems present on disk, then SQL-query the
+    // expected best_variant_hashes and count those NOT in the
+    // present-set. Cost is one directory walk per kind plus one
+    // small SQL query — modest on top of the cleanup_dry pass.
+    let (missing_previews, missing_smart_previews) =
+        count_missing_previews(catalog_root, &catalog)?;
+
     let pending = PendingWork {
         pending_writebacks_online: pwb_on,
         pending_writebacks_offline: pwb_off,
@@ -224,6 +246,8 @@ pub fn gather(
         writeback_enabled,
         assets_without_embedding,
         assets_without_face_scan,
+        missing_previews,
+        missing_smart_previews,
     };
 
     // ── Backup coverage ─────────────────────────────────
@@ -287,4 +311,76 @@ pub fn gather(
         volumes: volume_rows,
         ai_enabled,
     })
+}
+
+/// Walk a sharded preview directory (`<dir>/<2-char-prefix>/<hex>.<ext>`)
+/// once and collect every hex stem present. Returns an empty set if the
+/// directory doesn't exist or can't be read.
+fn collect_preview_stems_on_disk(dir: &Path) -> std::collections::HashSet<String> {
+    let mut set = std::collections::HashSet::new();
+    let Ok(shards) = std::fs::read_dir(dir) else {
+        return set;
+    };
+    for shard in shards.flatten() {
+        if !shard.path().is_dir() {
+            continue;
+        }
+        let Ok(files) = std::fs::read_dir(shard.path()) else {
+            continue;
+        };
+        for f in files.flatten() {
+            if let Some(stem) = f.path().file_stem().and_then(|s| s.to_str()) {
+                if !stem.is_empty() {
+                    set.insert(stem.to_string());
+                }
+            }
+        }
+    }
+    set
+}
+
+/// Count missing previews (regular + smart) by intersecting the set of
+/// expected `best_variant_hash` values from the catalog with the set of
+/// stems found under `<catalog_root>/previews/` and `smart-previews/`.
+///
+/// Smart-preview coverage is `Some(n)` only when the `smart-previews`
+/// directory exists — users who haven't opted into smart previews
+/// shouldn't see them as "missing".
+fn count_missing_previews(
+    catalog_root: &Path,
+    catalog: &Catalog,
+) -> Result<(usize, Option<usize>)> {
+    let preview_dir = catalog_root.join("previews");
+    let smart_dir = catalog_root.join("smart-previews");
+
+    let previews_on_disk = collect_preview_stems_on_disk(&preview_dir);
+    let smart_present = smart_dir.is_dir();
+    let smart_on_disk = if smart_present {
+        collect_preview_stems_on_disk(&smart_dir)
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    let mut stmt = catalog.conn().prepare(
+        "SELECT best_variant_hash FROM assets \
+         WHERE best_variant_hash IS NOT NULL AND best_variant_hash != ''",
+    )?;
+    let expected: Vec<String> = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut missing_previews = 0usize;
+    let mut missing_smart = 0usize;
+    for full_hash in &expected {
+        let hex = full_hash.strip_prefix("sha256:").unwrap_or(full_hash);
+        if !previews_on_disk.contains(hex) {
+            missing_previews += 1;
+        }
+        if smart_present && !smart_on_disk.contains(hex) {
+            missing_smart += 1;
+        }
+    }
+
+    Ok((missing_previews, if smart_present { Some(missing_smart) } else { None }))
 }

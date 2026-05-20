@@ -1062,6 +1062,21 @@ pub fn print_status_human(report: &maki::status::StatusReport) {
             pending_lines += 1;
         }
     }
+    if p.missing_previews > 0 {
+        println!(
+            "  ✗ {} asset(s) missing previews  → maki generate-previews",
+            p.missing_previews
+        );
+        pending_lines += 1;
+    }
+    if let Some(n) = p.missing_smart_previews {
+        if n > 0 {
+            println!(
+                "  ✗ {n} asset(s) missing smart previews  → maki generate-previews --smart"
+            );
+            pending_lines += 1;
+        }
+    }
     if pending_lines == 0 {
         println!("  ✓ nothing pending");
     }
