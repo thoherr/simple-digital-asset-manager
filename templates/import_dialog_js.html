@@ -107,7 +107,6 @@
         // Reset form state
         document.getElementById('import-subfolder').value = '';
         importTagChips.clear();
-        document.getElementById('import-dry-result').style.display = 'none';
         // Reset post-import opt-in checkboxes; user re-checks each open.
         var embedEl = document.getElementById('import-embed');
         if (embedEl) embedEl.checked = false;
@@ -165,16 +164,28 @@
 
     function showResult(data) {
         showPhase('result');
+        var dry = !!data.dry_run;
+        var headline = document.querySelector('#import-result-phase h2');
+        if (headline) headline.textContent = dry ? 'Dry Run Complete' : 'Import Complete';
+        var verb = dry ? 'would be ' : '';
         var parts = [];
-        if (data.imported) parts.push(data.imported + ' imported');
-        if (data.locations_added) parts.push(data.locations_added + ' locations added');
+        if (data.imported) parts.push(data.imported + ' ' + verb + 'imported');
+        if (data.locations_added) parts.push(data.locations_added + ' locations ' + verb + 'added');
         if (data.skipped) parts.push(data.skipped + ' skipped');
         if (data.recipes_attached) parts.push(data.recipes_attached + ' recipes');
         if (data.previews_generated) parts.push(data.previews_generated + ' previews');
         if (data.embedded) parts.push(data.embedded + ' embedded');
         if (data.described) parts.push(data.described + ' described');
         document.getElementById('import-result-text').textContent =
-            parts.join(', ') || 'Nothing to import.';
+            parts.join(', ') || (dry ? 'Nothing would be imported.' : 'Nothing to import.');
+        // The "Run for real" button is only meaningful for dry-run
+        // results; on live imports the catalog is already updated.
+        var runRealBtn = document.getElementById('import-run-for-real');
+        if (runRealBtn) runRealBtn.style.display = dry ? '' : 'none';
+        // For dry-runs the browse-link points at "what would have been
+        // imported", which is empty by definition — hide it instead.
+        var browseLink = document.getElementById('import-browse-link');
+        if (browseLink) browseLink.style.display = dry ? 'none' : '';
         // Build a "Browse imported" link that actually scopes the result to
         // what was just imported. Two strategies depending on count:
         //   - Small batches (≤80 IDs): exact `id:` filter — guarantees only
@@ -520,12 +531,16 @@
         if (window.location.pathname === '/volumes') window.location.reload();
     });
 
-    // Dry run
-    document.getElementById('import-dry-run').addEventListener('click', function() {
-        var params = getImportParams(true);
-        var btn = this;
-        btn.disabled = true;
-        btn.textContent = 'Scanning…';
+    // Dry-run and live-import share the same flow: POST → get
+    // {job_id} → show progress phase → attach SSE → terminal event
+    // calls showResult. The terminal payload carries `dry_run` so
+    // showResult labels the summary appropriately ("Would import N"
+    // vs "Imported N"). Treating dry-run as a real job means re-attach,
+    // minimize-to-toast, and the "import in progress" badge all work
+    // the same for both modes.
+    function launchImport(dryRun) {
+        var params = getImportParams(dryRun);
+        var headlineEl = document.querySelector('#import-progress-phase h2');
         fetch('/api/import', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -536,49 +551,38 @@
             return r.json();
         })
         .then(function(data) {
-            var el = document.getElementById('import-dry-result');
-            el.textContent = 'Would import ' + (data.imported || 0) + ' file(s), ' +
-                (data.skipped || 0) + ' skipped, ' +
-                (data.recipes_attached || 0) + ' recipe(s).';
-            el.style.display = 'block';
-        })
-        .catch(function(err) { alert('Dry run failed: ' + err.message); })
-        .finally(function() { btn.disabled = false; btn.textContent = 'Dry Run'; });
-    });
-
-    // Start import
-    document.getElementById('import-start').addEventListener('click', function() {
-        var params = getImportParams(false);
-        var btn = this;
-        btn.disabled = true;
-
-        fetch('/api/import', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(params)
-        })
-        .then(function(r) {
-            if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
-            return r.json();
-        })
-        .then(function(data) {
-            if (data.dry_run) { showResult(data); return; }
             activeJobId = data.job_id;
             showPhase('progress');
+            if (headlineEl) headlineEl.textContent = dryRun ? 'Dry run…' : 'Importing…';
             document.getElementById('import-log').innerHTML = '';
             document.getElementById('import-fill').style.width = '0%';
-            document.getElementById('import-status-text').textContent = 'Starting import…';
-            // Refresh status badge so it picks up the running job immediately.
+            document.getElementById('import-status-text').textContent =
+                dryRun ? 'Scanning…' : 'Starting import…';
             if (window.makiImportStatus && window.makiImportStatus.refresh) {
                 window.makiImportStatus.refresh();
             }
             attachProgressStream();
         })
         .catch(function(err) {
-            alert('Import failed: ' + err.message);
-            btn.disabled = false;
+            alert((dryRun ? 'Dry run' : 'Import') + ' failed: ' + err.message);
         });
+    }
+
+    document.getElementById('import-dry-run').addEventListener('click', function() {
+        launchImport(true);
     });
+    document.getElementById('import-start').addEventListener('click', function() {
+        launchImport(false);
+    });
+    // "Run for real" on the dry-run result phase: re-uses the form
+    // inputs (still populated — we never cleared them) and launches a
+    // live import with the same scope.
+    var runRealBtn = document.getElementById('import-run-for-real');
+    if (runRealBtn) {
+        runRealBtn.addEventListener('click', function() {
+            launchImport(false);
+        });
+    }
 
     function attachProgressStream() {
         if (!activeJobId) return;

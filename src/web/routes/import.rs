@@ -37,29 +37,20 @@ pub struct StartImportRequest {
     pub dry_run: Option<bool>,
 }
 
-/// POST /api/import — start an import job (or run dry-run synchronously).
+/// POST /api/import — start an import job. Honours `dry_run` by passing
+/// the flag through to the workflow; the job machinery (progress SSE,
+/// re-attach via `/api/jobs`, minimize-to-toast) treats dry-runs and
+/// live imports identically. The terminal payload carries `dry_run`
+/// so the client can label the summary "Would import N" vs
+/// "Imported N".
 pub async fn start_import_api(
     State(state): State<Arc<AppState>>,
     Json(req): Json<StartImportRequest>,
 ) -> Response {
-    let dry_run = req.dry_run.unwrap_or(false);
-
-    if dry_run {
-        let state = state.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            run_import_dry(&state, &req)
-        })
-        .await;
-
-        return match result {
-            Ok(Ok(json)) => Json(json).into_response(),
-            Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e:#}")).into_response(),
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response(),
-        };
-    }
-
-    // At-most-one running import. Still allowed to start once the most recent
-    // one has finished — the registry keeps completed jobs around for re-attach.
+    // At-most-one running import — applies to dry-runs too, since both
+    // hold a catalog handle and traverse the same workflow. The
+    // registry keeps completed jobs around for re-attach, so a
+    // dry-run finishing doesn't block the next live import.
     if let Some(latest) = state.jobs.latest(JobKind::Import) {
         if !latest.is_completed() {
             return (StatusCode::CONFLICT, "An import is already running").into_response();
@@ -131,28 +122,6 @@ fn build_workflow_request(
         #[cfg(not(feature = "pro"))]
         describe: false,
     })
-}
-
-/// Synchronous dry-run path. Reports counts without emitting progress.
-fn run_import_dry(
-    state: &AppState,
-    req: &StartImportRequest,
-) -> anyhow::Result<serde_json::Value> {
-    let mut wf_req = build_workflow_request(state, req)?;
-    wf_req.dry_run = true;
-    let config = crate::config::CatalogConfig::load(&state.catalog_root).unwrap_or_default();
-    let service = state.asset_service();
-    let r = service.import_workflow(&wf_req, &config, |_| {})?;
-    Ok(serde_json::json!({
-        "dry_run": true,
-        "imported": r.import.imported,
-        "locations_added": r.import.locations_added,
-        "skipped": r.import.skipped,
-        "recipes_attached": r.import.recipes_attached,
-        "recipes_updated": r.import.recipes_updated,
-        "previews_generated": r.import.previews_generated,
-        "new_asset_ids": r.import.new_asset_ids,
-    }))
 }
 
 fn run_import_with_progress(
@@ -272,9 +241,13 @@ fn run_import_with_progress(
         }
     })?;
 
-    // Build the terminal payload from the workflow result.
+    // Build the terminal payload from the workflow result. `dry_run`
+    // is propagated so the client can label the summary "Would import
+    // N" vs "Imported N" — same job, same SSE feed, only the framing
+    // differs.
     #[allow(unused_mut)]
     let mut out = serde_json::json!({
+        "dry_run": wf_req.dry_run,
         "imported": r.import.imported,
         "locations_added": r.import.locations_added,
         "skipped": r.import.skipped,
