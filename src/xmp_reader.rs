@@ -2458,6 +2458,62 @@ mod tests {
     }
 
     #[test]
+    fn extract_decodes_multi_layer_entries_one_step() {
+        // mirror-tags computation uses `extract` (parse_xmp) to read
+        // existing keywords and diff against catalog. Verify that the
+        // parse-side decoding matches what `xml_unescape` produces, so
+        // the remove-set built from extract() values actually matches
+        // the entries `update_hierarchical_in_string` sees after its
+        // own li_re + xml_unescape pass.
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/">
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>person|ensemble|band|Bobby &amp; the BigTones</rdf:li>
+     <rdf:li>person|ensemble|band|Bobby &amp;amp; the BigTones</rdf:li>
+     <rdf:li>person|ensemble|band|Bobby &amp;amp;amp;amp; the BigTones</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let data = parse_xmp(xmp);
+        // Parse-side decoding strips one entity layer per call. So:
+        //   file `&amp;`        → string `&`
+        //   file `&amp;amp;`    → string `&amp;`
+        //   file `&amp;amp;amp;amp;` → string `&amp;amp;amp;`
+        assert_eq!(
+            data.hierarchical_keywords,
+            vec![
+                "person|ensemble|band|Bobby & the BigTones".to_string(),
+                "person|ensemble|band|Bobby &amp; the BigTones".to_string(),
+                "person|ensemble|band|Bobby &amp;amp;amp; the BigTones".to_string(),
+            ],
+            "parse_xmp must decode exactly one entity layer per pass"
+        );
+
+        // And xml_unescape on the same raw li texts must produce the
+        // identical strings, otherwise the mirror-tags remove-set
+        // won't match what update_hierarchical_in_string sees.
+        assert_eq!(
+            xml_unescape("Bobby &amp; the BigTones"),
+            "Bobby & the BigTones"
+        );
+        assert_eq!(
+            xml_unescape("Bobby &amp;amp; the BigTones"),
+            "Bobby &amp; the BigTones"
+        );
+        assert_eq!(
+            xml_unescape("Bobby &amp;amp;amp;amp; the BigTones"),
+            "Bobby &amp;amp;amp; the BigTones"
+        );
+    }
+
+    #[test]
     fn update_hierarchical_with_multi_layer_escaped_entries() {
         // Reproduces the user's catalog state: a file that already
         // accumulated multiple `&amp;…` layers from pre-fix writebacks.
