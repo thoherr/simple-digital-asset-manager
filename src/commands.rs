@@ -1034,12 +1034,14 @@ pub fn print_status_human(report: &maki::status::StatusReport) {
         );
         pending_lines += 1;
     }
-    // Per-volume breakdown of the pending counts above. Only show
-    // when there are pending writebacks across more than one volume —
-    // a single-volume catalog already named everything in the lines
-    // above, no need to repeat. The list comes pre-sorted by count
-    // desc from `gather()`.
-    if p.pending_writebacks_by_volume.len() > 1 {
+    // Per-volume breakdown of the pending counts above. Show the
+    // names whenever the catalog has more than one volume — even when
+    // only one volume currently holds pending, naming it tells the
+    // user which drive (online: where the queue lives; offline: which
+    // drive to mount). For single-volume catalogs we skip the
+    // breakdown since the top-level line already implies the only
+    // volume. The list comes pre-sorted by count desc from `gather()`.
+    if report.volumes.len() > 1 && !p.pending_writebacks_by_volume.is_empty() {
         for v in &p.pending_writebacks_by_volume {
             let marker = if v.is_online { "online" } else { "offline" };
             println!(
