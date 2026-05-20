@@ -10670,35 +10670,28 @@ fn writeback_force_rewrites_non_pending_recipe() {
 /// in the catalog. Reproduces the "stale runaway-escape entry stuck in
 /// a file that --mirror-tags didn't catch" scenario the user hit on
 /// Z91_4714.xmp.
+///
+/// Fixture setup is non-trivial: we want a clean *catalog* state plus
+/// a *damaged* on-disk XMP, but `maki import` reads the XMP we hand
+/// it. So we import a clean file first, set tags via CLI, then
+/// overwrite the on-disk XMP with the damaged content.
 #[test]
 #[cfg(feature = "pro")]
 fn writeback_force_drops_stale_xmp_entry() {
     let dir = tempdir().unwrap();
     let root = init_catalog(dir.path());
 
-    // Pre-build a fixture XMP with a correct entry AND a stale entry
-    // that doesn't correspond to anything in the catalog. The "stale"
-    // entry here is a plausibly-corrupted form (multi-layer escape of
-    // a band name) — the same shape that triggered the runaway-escape
-    // bug fixed earlier in this release.
+    // Step 1: import a RAW with a clean XMP so the catalog learns
+    // only what we want it to know.
     create_test_file(&root, "WB_FORCE_STALE.ARW", b"raw");
-    create_test_file(
-        &root,
-        "WB_FORCE_STALE.xmp",
+    let xmp_path = root.join("WB_FORCE_STALE.xmp");
+    std::fs::write(
+        &xmp_path,
         br#"<?xml version="1.0" encoding="UTF-8"?>
 <x:xmpmeta xmlns:x="adobe:ns:meta/">
  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
   <rdf:Description rdf:about=""
-    xmlns:dc="http://purl.org/dc/elements/1.1/"
-    xmlns:lr="http://ns.adobe.com/lightroom/1.0/"
-    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
-    xmp:Rating="0">
-   <dc:subject>
-    <rdf:Bag>
-     <rdf:li>Bobby &amp; the BigTones</rdf:li>
-     <rdf:li>Bobby &amp;amp;amp;amp;amp;amp;amp;amp; the BigTones</rdf:li>
-    </rdf:Bag>
-   </dc:subject>
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/">
    <lr:hierarchicalSubject>
     <rdf:Bag>
      <rdf:li>person|ensemble|band|Bobby &amp; the BigTones</rdf:li>
@@ -10707,7 +10700,8 @@ fn writeback_force_drops_stale_xmp_entry() {
   </rdf:Description>
  </rdf:RDF>
 </x:xmpmeta>"#,
-    );
+    )
+    .unwrap();
 
     maki()
         .current_dir(&root)
@@ -10727,19 +10721,42 @@ fn writeback_force_drops_stale_xmp_entry() {
     .to_string();
     assert!(!asset_id.is_empty());
 
-    // Confirm the stale entry survived import (proves the fixture
-    // shape is what the test thinks it is).
-    let xmp_path = root.join("WB_FORCE_STALE.xmp");
-    let before = std::fs::read_to_string(&xmp_path).unwrap();
-    assert!(
-        before.contains("Bobby &amp;amp;amp;amp;amp;amp;amp;amp; the BigTones"),
-        "fixture must carry the stale multi-layer-escape entry:\n{before}"
-    );
+    // Step 2: overwrite the XMP with damaged content the catalog
+    // does NOT know about — multi-layer escape leftovers in
+    // dc:subject AND leaf-only legacy entries in lr:hierarchicalSubject.
+    std::fs::write(
+        &xmp_path,
+        br#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="0">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>Bobby &amp; the BigTones</rdf:li>
+     <rdf:li>Bobby &amp;amp;amp;amp;amp;amp;amp;amp; the BigTones</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>person|ensemble|band|Bobby &amp; the BigTones</rdf:li>
+     <rdf:li>Bavaria</rdf:li>
+     <rdf:li>Bobby &amp;amp; the BigTones</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#,
+    )
+    .unwrap();
 
-    // `--force` rewrites the tag blocks from catalog state. The
-    // catalog only knows about `Bobby & the BigTones` (after import-
-    // time decode); the 8-layer-escape leftover has no catalog
-    // home and gets dropped.
+    // Step 3: `--force` rewrites both tag blocks from catalog state.
+    // The catalog only knows `person|ensemble|band|Bobby & the BigTones`;
+    // the leaf-only entries and multi-escape leftovers have no
+    // catalog home and get dropped.
     maki()
         .current_dir(&root)
         .args(["writeback", "--asset", &asset_id, "--force"])
@@ -10749,10 +10766,20 @@ fn writeback_force_drops_stale_xmp_entry() {
     let after = std::fs::read_to_string(&xmp_path).unwrap();
     assert!(
         !after.contains("&amp;amp;"),
-        "stale multi-layer-escape entry must be removed:\n{after}"
+        "stale multi-layer-escape entries must be removed from BOTH \
+         dc:subject and lr:hierarchicalSubject:\n{after}"
+    );
+    assert!(
+        !after.contains("<rdf:li>Bavaria</rdf:li>"),
+        "leaf-only legacy entries in lr:hierarchicalSubject must be \
+         removed:\n{after}"
     );
     assert!(
         after.contains("Bobby &amp; the BigTones"),
         "correctly-escaped entry must survive:\n{after}"
+    );
+    assert!(
+        after.contains("<rdf:li>person|ensemble|band|Bobby &amp; the BigTones</rdf:li>"),
+        "correctly-pipe-pathed hierarchical entry must survive:\n{after}"
     );
 }

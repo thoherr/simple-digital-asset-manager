@@ -287,17 +287,23 @@ pub fn update_hierarchical_subjects(
     tags_to_add: &[String],
     tags_to_remove: &[String],
 ) -> Result<bool> {
-    // Filter to only hierarchical tags (containing `|` — the internal hierarchy separator)
+    // The add list is filtered to pipe-containing tags only — flat
+    // tags don't belong in `lr:hierarchicalSubject`, and silently
+    // dropping them here prevents callers from accidentally polluting
+    // the block (e.g. with `dc:subject` flat components).
     let hier_add: Vec<String> = tags_to_add
         .iter()
         .filter(|t| t.contains('|'))
         .cloned()
         .collect();
-    let hier_remove: Vec<String> = tags_to_remove
-        .iter()
-        .filter(|t| t.contains('|'))
-        .cloned()
-        .collect();
+    // The remove list, however, is taken as-is. If the caller asks
+    // to drop a leaf-only entry from `lr:hierarchicalSubject` (which
+    // is what `--mirror-tags` / `--force` does for any pre-existing
+    // non-pipe garbage), we honor it. Filtering by pipe here would
+    // silently keep stale leaf entries — `Bavaria`, `Konzert`,
+    // multi-escape leftovers, anything flat that legitimately
+    // shouldn't be in the hierarchical block.
+    let hier_remove: Vec<String> = tags_to_remove.to_vec();
 
     if hier_add.is_empty() && hier_remove.is_empty() {
         return Ok(false);
@@ -2104,6 +2110,62 @@ mod tests {
         );
         assert!(result.contains("<rdf:li>animals|birds</rdf:li>"));
         assert!(result.contains("<rdf:li>nature|sky|sunset</rdf:li>"));
+    }
+
+    #[test]
+    fn update_hierarchical_subjects_removes_leaf_only_entries() {
+        // Real-world bug from user file Z91_4714.xmp: lr:hierarchicalSubject
+        // had accumulated leaf-only entries (`Bavaria`, `Konzert`, a
+        // multi-escape leftover) over years of writing back from various
+        // tools. mirror-tags and --force compute remove-sets that
+        // include these leaf entries; `update_hierarchical_subjects`
+        // must honor them. The previous pipe-only filter on hier_remove
+        // silently kept them all.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.xmp");
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/">
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>Bavaria</rdf:li>
+     <rdf:li>Konzert</rdf:li>
+     <rdf:li>Bobby &amp;amp; the BigTones</rdf:li>
+     <rdf:li>location|Germany|Bayern</rdf:li>
+     <rdf:li>person|ensemble|band|Bobby &amp; the BigTones</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+        std::fs::write(&path, xmp).unwrap();
+
+        // Caller asks to remove the leaf-only entries (matches what
+        // --force / mirror-tags would compute for a file like this).
+        let result = update_hierarchical_subjects(
+            &path,
+            &[],
+            &[
+                "Bavaria".to_string(),
+                "Konzert".to_string(),
+                // parse_xmp would decode the file's `&amp;amp;` to
+                // this literal form; the function's li_re reader does
+                // the same.
+                "Bobby &amp; the BigTones".to_string(),
+            ],
+        )
+        .unwrap();
+        assert!(result, "function must report modified=true");
+
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(!after.contains("<rdf:li>Bavaria</rdf:li>"));
+        assert!(!after.contains("<rdf:li>Konzert</rdf:li>"));
+        assert!(!after.contains("<rdf:li>Bobby &amp;amp; the BigTones</rdf:li>"));
+        // The two correctly-pipe-pathed entries survive.
+        assert!(after.contains("<rdf:li>location|Germany|Bayern</rdf:li>"));
+        assert!(after.contains("<rdf:li>person|ensemble|band|Bobby &amp; the BigTones</rdf:li>"));
     }
 
     #[test]
