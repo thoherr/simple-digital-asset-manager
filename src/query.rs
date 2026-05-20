@@ -3248,7 +3248,7 @@ impl QueryEngine {
             catalog.list_pending_writeback_recipes(volume_id_filter.as_deref())?
         };
 
-        self.writeback_process(pending_recipes, &catalog, &store, &online, &volume_labels, &content_store, asset_filter, asset_id_set, mirror_tags, dry_run, log, callback)
+        self.writeback_process(pending_recipes, &catalog, &store, &online, &volume_labels, &content_store, asset_filter, asset_id_set, mirror_tags, force, dry_run, log, callback)
     }
 
     /// Process a list of recipes for writeback. Each tuple is (recipe_id, asset_id, volume_id, relative_path).
@@ -3257,6 +3257,7 @@ impl QueryEngine {
     /// volumes (online + offline). Used to surface offline-volume names
     /// in the result summary so users know which drives to reconnect
     /// before re-running. Pass an empty map to fall back to UUIDs.
+    #[allow(clippy::too_many_arguments)]
     pub fn writeback_process(
         &self,
         recipes: Vec<(String, String, String, String)>,
@@ -3268,6 +3269,7 @@ impl QueryEngine {
         asset_filter: Option<&str>,
         asset_id_set: Option<&HashSet<String>>,
         mirror_tags: bool,
+        force: bool,
         dry_run: bool,
         log: bool,
         callback: Option<&dyn Fn(&str, &str)>,
@@ -3391,30 +3393,46 @@ impl QueryEngine {
                     .collect();
                 let lr_tags = crate::tag_util::expand_all_ancestors(&asset.tags);
 
-                // With `--mirror-tags`, read the XMP's existing keyword
-                // lists and remove any entry that's not in the catalog's
-                // current set. This makes the XMP an exact reflection of
-                // catalog tags — necessary for reconciling renames,
-                // splits, deletions, and unicode-fixes that accumulated
-                // while inline writeback was off (the inline path tracks
-                // remove-deltas at edit time, but the queued/manual flush
-                // doesn't persist them, so without mirror-tags the
-                // additive flush silently keeps the old tags around).
-                let (dc_remove, lr_remove): (Vec<String>, Vec<String>) = if mirror_tags {
+                // Three remove-set modes:
+                //
+                //   `force`        — take EVERY existing XMP entry into the
+                //                    remove list. Combined with the catalog
+                //                    tags going into `tags_to_add`, this
+                //                    rebuilds the dc:subject and
+                //                    lr:hierarchicalSubject blocks from
+                //                    scratch — useful when stale entries
+                //                    (e.g. multi-layer escape leftovers)
+                //                    are stuck in a file that mirror-tags
+                //                    somehow misses, or just as an escape
+                //                    hatch when the user wants a guaranteed
+                //                    clean rewrite.
+                //   `mirror_tags`  — remove any XMP entry not in the
+                //                    catalog's current set. Reconciles
+                //                    renames, splits, deletes, unicode-
+                //                    fixes that accumulated while inline
+                //                    writeback was off.
+                //   neither        — additive only: keep all existing
+                //                    entries; add catalog tags missing
+                //                    from the file.
+                let (dc_remove, lr_remove): (Vec<String>, Vec<String>) = if force || mirror_tags {
                     let xmp = xmp_reader::extract(&full_path);
-                    let dc_set: std::collections::HashSet<&str> =
-                        dc_tags.iter().map(|s| s.as_str()).collect();
-                    let lr_set: std::collections::HashSet<&str> =
-                        lr_tags.iter().map(|s| s.as_str()).collect();
-                    let dc_rm: Vec<String> = xmp.keywords.iter()
-                        .filter(|t| !dc_set.contains(t.as_str()))
-                        .cloned()
-                        .collect();
-                    let lr_rm: Vec<String> = xmp.hierarchical_keywords.iter()
-                        .filter(|t| !lr_set.contains(t.as_str()))
-                        .cloned()
-                        .collect();
-                    (dc_rm, lr_rm)
+                    if force {
+                        (xmp.keywords.clone(), xmp.hierarchical_keywords.clone())
+                    } else {
+                        let dc_set: std::collections::HashSet<&str> =
+                            dc_tags.iter().map(|s| s.as_str()).collect();
+                        let lr_set: std::collections::HashSet<&str> =
+                            lr_tags.iter().map(|s| s.as_str()).collect();
+                        let dc_rm: Vec<String> = xmp.keywords.iter()
+                            .filter(|t| !dc_set.contains(t.as_str()))
+                            .cloned()
+                            .collect();
+                        let lr_rm: Vec<String> = xmp.hierarchical_keywords.iter()
+                            .filter(|t| !lr_set.contains(t.as_str()))
+                            .cloned()
+                            .collect();
+                        (dc_rm, lr_rm)
+                    }
                 } else {
                     (Vec::new(), Vec::new())
                 };

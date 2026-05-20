@@ -2458,6 +2458,106 @@ mod tests {
     }
 
     #[test]
+    fn parse_xmp_decodes_8_layer_escape() {
+        // The exact form the user reported in Z91_4714.xmp:
+        // an 8-layer file entry. If quick-xml's `unescape()`
+        // recursively expanded entities (decoding the &amp; inside
+        // the result of decoding &amp;amp;), we'd end up with the
+        // literal `Bobby & the BigTones` — which catalog HAS — and
+        // mirror-tags would silently keep the broken entry as "valid".
+        // Single-pass decoding is essential; this test locks it.
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>Bobby &amp;amp;amp;amp;amp;amp;amp;amp; the BigTones</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        let data = parse_xmp(xmp);
+        assert_eq!(
+            data.keywords,
+            vec!["Bobby &amp;amp;amp;amp;amp;amp;amp; the BigTones".to_string()],
+            "parse_xmp must SINGLE-pass decode (8-layer file → 7-layer \
+             literal). Multi-pass would silently turn this into the \
+             catalog's `Bobby & the BigTones` and defeat mirror-tags."
+        );
+    }
+
+    #[test]
+    fn mirror_tags_drops_broken_entry_end_to_end() {
+        // Reproduces user's reported state on Z91_4714.xmp:
+        //   dc:subject has one correct 1-escape entry AND one broken
+        //   8-escape leftover from pre-fix writebacks. With mirror-tags
+        //   ON, the broken entry MUST be removed in one writeback pass.
+        let xmp = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>person</rdf:li>
+     <rdf:li>ensemble</rdf:li>
+     <rdf:li>band</rdf:li>
+     <rdf:li>Bobby &amp; the BigTones</rdf:li>
+     <rdf:li>Bobby &amp;amp;amp;amp;amp;amp;amp;amp; the BigTones</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#;
+
+        // Simulate what writeback_process computes:
+        //   dc_tags  = flat components of catalog hierarchy (literal `&`)
+        //   dc_remove = xmp.keywords NOT in dc_tags
+        let catalog_dc_tags = vec![
+            "person".to_string(),
+            "ensemble".to_string(),
+            "band".to_string(),
+            "Bobby & the BigTones".to_string(),
+        ];
+        let xmp_data = parse_xmp(xmp);
+        let dc_set: std::collections::HashSet<&str> =
+            catalog_dc_tags.iter().map(|s| s.as_str()).collect();
+        let dc_remove: Vec<String> = xmp_data
+            .keywords
+            .iter()
+            .filter(|t| !dc_set.contains(t.as_str()))
+            .cloned()
+            .collect();
+
+        // The mirror-tags computation must identify the broken entry as
+        // a removal candidate — parse_xmp decodes once (8-escape file
+        // form → 7-escape literal in memory).
+        assert_eq!(
+            dc_remove,
+            vec!["Bobby &amp;amp;amp;amp;amp;amp;amp; the BigTones".to_string()],
+            "mirror-tags must compute the broken entry as a removal. \
+             parse_xmp.keywords was: {:?}",
+            xmp_data.keywords
+        );
+
+        // And update_tags_in_string with that remove list must drop it.
+        let after = update_tags_in_string(xmp, &catalog_dc_tags, &dc_remove);
+        assert!(
+            !after.contains("amp;amp;"),
+            "Broken entry must be removed.\n---- BEFORE ----\n{xmp}\n---- AFTER ----\n{after}"
+        );
+        assert!(
+            after.contains("Bobby &amp; the BigTones"),
+            "Correct entry must survive. Got:\n{after}"
+        );
+        assert_ne!(after, xmp, "File must have changed (Ok(true) path)");
+    }
+
+    #[test]
     fn extract_decodes_multi_layer_entries_one_step() {
         // mirror-tags computation uses `extract` (parse_xmp) to read
         // existing keywords and diff against catalog. Verify that the

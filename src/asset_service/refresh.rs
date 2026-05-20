@@ -501,6 +501,7 @@ impl AssetService {
                 false, // mirror_tags: sync-metadata is incremental — let
                        // explicit `maki writeback --all --mirror-tags`
                        // own the destructive cleanup workflow
+                false, // force: never rebuild from scratch on sync-metadata
                 dry_run,
                 false, // log handled by our callback
                 None,

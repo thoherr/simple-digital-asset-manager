@@ -10592,12 +10592,11 @@ fn refresh_media_skips_when_sidecar_present() {
     );
 }
 
-/// `maki writeback --force` re-writes recipes in the explicit scope
-/// even when SQLite reports `pending_writeback = 0`. Use case: catalog
-/// state was clobbered (e.g. by a pre-v4.5.15 `insert_recipe` reset)
-/// but the YAML sidecar / disk file still need to be reconciled. Also
-/// useful after upgrading to a release with a new XMP normaliser to
-/// re-canonicalise existing sidecars.
+/// `maki writeback --force` opts into the writeback path for recipes
+/// in the explicit scope even when SQLite reports `pending_writeback
+/// = 0`. With no XMP tag blocks present (this fixture's case), the
+/// run completes as "already in sync" because there's nothing to
+/// rebuild.
 #[test]
 #[cfg(feature = "pro")]
 fn writeback_force_rewrites_non_pending_recipe() {
@@ -10663,5 +10662,97 @@ fn writeback_force_rewrites_non_pending_recipe() {
         forced_out.contains("already in sync"),
         "writeback --force must process the recipe even when not \
          pending. Expected 'already in sync' in output. Got:\n{forced_out}"
+    );
+}
+
+/// `--force` rebuilds the dc:subject + lr:hierarchicalSubject blocks
+/// from catalog state, dropping any pre-existing XMP entry that isn't
+/// in the catalog. Reproduces the "stale runaway-escape entry stuck in
+/// a file that --mirror-tags didn't catch" scenario the user hit on
+/// Z91_4714.xmp.
+#[test]
+#[cfg(feature = "pro")]
+fn writeback_force_drops_stale_xmp_entry() {
+    let dir = tempdir().unwrap();
+    let root = init_catalog(dir.path());
+
+    // Pre-build a fixture XMP with a correct entry AND a stale entry
+    // that doesn't correspond to anything in the catalog. The "stale"
+    // entry here is a plausibly-corrupted form (multi-layer escape of
+    // a band name) — the same shape that triggered the runaway-escape
+    // bug fixed earlier in this release.
+    create_test_file(&root, "WB_FORCE_STALE.ARW", b"raw");
+    create_test_file(
+        &root,
+        "WB_FORCE_STALE.xmp",
+        br#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmp:Rating="0">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>Bobby &amp; the BigTones</rdf:li>
+     <rdf:li>Bobby &amp;amp;amp;amp;amp;amp;amp;amp; the BigTones</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>person|ensemble|band|Bobby &amp; the BigTones</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>"#,
+    );
+
+    maki()
+        .current_dir(&root)
+        .args(["import", root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let asset_id = String::from_utf8_lossy(
+        &maki()
+            .current_dir(&root)
+            .args(["search", "-q", "", "--format", "ids"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+    assert!(!asset_id.is_empty());
+
+    // Confirm the stale entry survived import (proves the fixture
+    // shape is what the test thinks it is).
+    let xmp_path = root.join("WB_FORCE_STALE.xmp");
+    let before = std::fs::read_to_string(&xmp_path).unwrap();
+    assert!(
+        before.contains("Bobby &amp;amp;amp;amp;amp;amp;amp;amp; the BigTones"),
+        "fixture must carry the stale multi-layer-escape entry:\n{before}"
+    );
+
+    // `--force` rewrites the tag blocks from catalog state. The
+    // catalog only knows about `Bobby & the BigTones` (after import-
+    // time decode); the 8-layer-escape leftover has no catalog
+    // home and gets dropped.
+    maki()
+        .current_dir(&root)
+        .args(["writeback", "--asset", &asset_id, "--force"])
+        .assert()
+        .success();
+
+    let after = std::fs::read_to_string(&xmp_path).unwrap();
+    assert!(
+        !after.contains("&amp;amp;"),
+        "stale multi-layer-escape entry must be removed:\n{after}"
+    );
+    assert!(
+        after.contains("Bobby &amp; the BigTones"),
+        "correctly-escaped entry must survive:\n{after}"
     );
 }

@@ -897,14 +897,24 @@ enum Commands {
         #[arg(long, display_order = 12)]
         all: bool,
 
-        /// Force a re-write of every recipe in the scope regardless of
-        /// pending state. Unlike `--all` (which expands the scope to
-        /// every recipe in the catalog), `--force` keeps the explicit
-        /// scope (`--asset`, query, or `--volume`) but ignores the
-        /// pending-flag filter. Useful when you've cleared pending in
-        /// SQLite but want to push catalog metadata onto disk anyway —
-        /// e.g. after upgrading to a release with a new XMP normaliser
-        /// like the v4.5.14 namespace fix.
+        /// Force a complete rewrite of every recipe's tag blocks in the
+        /// scope: the dc:subject and lr:hierarchicalSubject blocks are
+        /// rebuilt from the catalog's tag state, discarding whatever
+        /// was on disk. Two things together:
+        ///   1. ignores the pending-flag filter (works on recipes the
+        ///      catalog reports as already in sync), and
+        ///   2. drops every existing XMP keyword in the target blocks
+        ///      before re-adding the catalog's tags fresh.
+        /// More aggressive than `--mirror-tags`, which only drops
+        /// entries the catalog doesn't have. Use this when stale
+        /// entries are stuck in a file that mirror-tags didn't catch
+        /// (e.g. multi-layer entity-escape leftovers, manually
+        /// corrupted XMP), or just as an escape hatch for "I want this
+        /// file rewritten now, regardless of state".
+        ///
+        /// Unlike `--all` (which expands the scope to every recipe in
+        /// the catalog), `--force` keeps the explicit scope
+        /// (`--asset`, query, or `--volume`).
         #[arg(long, display_order = 14)]
         force: bool,
 
